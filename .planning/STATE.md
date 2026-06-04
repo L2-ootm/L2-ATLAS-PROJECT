@@ -17,7 +17,7 @@ last_updated: 2026-06-04
 Phase: 1 — Hermes Foundation Clone & Extension Audit (in progress)
 Plan: docs/plans/2026-06-04_CLAUDE_IMPLEMENTATION_START_PLAN.md (Tasks 2–4 map to this phase)
 Status: Phase 1 active — Task 1 complete (Hermes pin recorded), Task 2 (fresh clone) next
-Last activity: 2026-06-04 — GSD ingest-docs merge complete; REQUIREMENTS.md + ROADMAP.md created; Milestone v1.0 initialized
+Last activity: 2026-06-04 — Roadmap finalized; 9 phase directories created under .planning/phases/; REQUIREMENTS.md traceability updated (34 REQ-IDs, 100% mapped, RUNTIME-04 duplication resolved)
 
 ## Accumulated Context
 
@@ -59,6 +59,14 @@ None — all pre-build gates cleared (D-011/D-012 ratified, Hermes pinned, extra
 - Version: 0.14.0 (tag v2026.5.16-1302-ge8b9369a9)
 - CRITICAL: Never vendor C:/Users/Davi/AppData/Local/hermes/hermes-agent — contains secrets/state
 
+### Coverage fix (2026-06-04)
+
+RUNTIME-04 was previously listed in both Phase 4 and Phase 5 in the draft ROADMAP.md.
+Resolution: RUNTIME-04 ("completed Run shows final status, timestamps, summary") is owned by Phase 5 (Mission & Run Lifecycle) — it is the completion outcome of the state machine, not an audit bus primitive.
+Phase 4 coverage updated to: RUNTIME-03, AUDIT-01, AUDIT-02 only.
+Phase 7 previously claimed COCKPIT-01 (partial) and RUNTIME-01 (partial) — these were removed; Phase 7 owns no v1 REQ-IDs (infrastructure phase enabling Phase 8).
+Final count: 34 REQ-IDs total, all mapped, no duplicates.
+
 ## Phase History
 
 | Phase | Name | Status | Completed |
@@ -66,6 +74,7 @@ None — all pre-build gates cleared (D-011/D-012 ratified, Hermes pinned, extra
 | — | Project setup + research | Done | 2026-06-04 |
 | — | D-011/D-012 ratification | Done | 2026-06-04 |
 | — | Hermes pin (Task 1) | Done | 2026-06-04 |
+| — | Roadmap finalization + phase dirs | Done | 2026-06-04 |
 | 1 | Hermes Foundation Clone & Extension Audit | In progress | — |
 | 2 | Core Domain Schemas & SQLite Migration | Pending | — |
 | 3 | Research Closure (WebUI Spike + CRM Intake) | Pending | — |

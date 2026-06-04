@@ -95,13 +95,39 @@ Status: Active
 
 ## Traceability
 
-| REQ-ID | Phase |
-|---|---|
-| FOUND-01..04 | Phase 1 |
-| SCHEMA-01..03 | Phase 2 |
-| RESEARCH-01..02 | Phase 3 |
-| RUNTIME-01..07 | Phases 4–5 |
-| WIKI-01..05 | Phase 6 |
-| AUDIT-01..03 | Phase 5 (partial), Phase 6 (lint) |
-| COCKPIT-01..06 | Phases 7–8 |
-| SKILLS-01..04 | Phase 9 |
+| REQ-ID | Phase | Status |
+|--------|-------|--------|
+| FOUND-01 | Phase 1 | Pending |
+| FOUND-02 | Phase 1 | Pending |
+| FOUND-03 | Phase 1 | Pending |
+| FOUND-04 | Phase 1 | Pending |
+| SCHEMA-01 | Phase 2 | Pending |
+| SCHEMA-02 | Phase 2 | Pending |
+| SCHEMA-03 | Phase 2 | Pending |
+| RESEARCH-01 | Phase 3 | Pending |
+| RESEARCH-02 | Phase 3 | Pending |
+| RUNTIME-03 | Phase 4 | Pending |
+| AUDIT-01 | Phase 4 | Pending |
+| AUDIT-02 | Phase 4 | Pending |
+| RUNTIME-01 | Phase 5 | Pending |
+| RUNTIME-02 | Phase 5 | Pending |
+| RUNTIME-04 | Phase 5 | Pending |
+| RUNTIME-05 | Phase 5 | Pending |
+| RUNTIME-06 | Phase 5 | Pending |
+| RUNTIME-07 | Phase 5 | Pending |
+| WIKI-01 | Phase 6 | Pending |
+| WIKI-02 | Phase 6 | Pending |
+| WIKI-03 | Phase 6 | Pending |
+| WIKI-04 | Phase 6 | Pending |
+| WIKI-05 | Phase 6 | Pending |
+| AUDIT-03 | Phase 6 | Pending |
+| COCKPIT-01 | Phase 8 | Pending |
+| COCKPIT-02 | Phase 8 | Pending |
+| COCKPIT-03 | Phase 8 | Pending |
+| COCKPIT-04 | Phase 8 | Pending |
+| COCKPIT-05 | Phase 8 | Pending |
+| COCKPIT-06 | Phase 8 | Pending |
+| SKILLS-01 | Phase 9 | Pending |
+| SKILLS-02 | Phase 9 | Pending |
+| SKILLS-03 | Phase 9 | Pending |
+| SKILLS-04 | Phase 9 | Pending |

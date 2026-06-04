@@ -9,18 +9,38 @@
 
 ---
 
+## Phases
+
+- [ ] **Phase 1: Hermes Foundation Clone & Extension Audit** - Clean Hermes clone + authoritative extension-surface audit
+- [ ] **Phase 2: Core Domain Schemas & SQLite Migration** - Pydantic v2 domain model + SQLite schema as single authoritative data contract
+- [ ] **Phase 3: Research Closure — WebUI Spike & CRM Intake** - Close open research gaps D-006 and D-010
+- [ ] **Phase 4: ATLAS Event Bus & Audit Core** - Structured audit event bus wired into Hermes runtime
+- [ ] **Phase 5: Mission & Run Lifecycle** - Core mission state machine: create, execute, complete, cancel
+- [ ] **Phase 6: LLM Wiki Runtime** - Wiki ingest, update, query, and lint pipeline
+- [ ] **Phase 7: API Gateway** - Typed REST API exposing all mission, run, audit, and wiki operations
+- [ ] **Phase 8: WebUI Operator Cockpit** - Web cockpit: mission management, run monitoring, audit viewer, wiki browser
+- [ ] **Phase 9: Skill Inventory & Classification** - Complete classified skill inventory for curated default skill pack
+
+---
+
+## Phase Details
+
 ### Phase 1: Hermes Foundation Clone & Extension Audit
 
 **Goal:** Produce a clean, secret-free Hermes clone at the pinned SHA and an authoritative audit of all extension surfaces so every future ATLAS addition is properly grounded.
 
+**Depends on:** Nothing (first phase)
+
 **Requirements:** FOUND-01, FOUND-02, FOUND-03, FOUND-04
 
-**Success criteria:**
+**Success Criteria** (what must be TRUE):
 1. `_EXTERNAL_REPOS/hermes-agent` exists at SHA `e8b9369a9…`, secret-scan gate reports CLEAN.
 2. `docs/research/HERMES_FOUNDATION_AUDIT.md` exists with every extension-surface row filled (hook, tool registry, session store, delegation, cron, profiles, gateway, MCP, plugin surface, CLI/TUI boundary).
 3. The audit states a clear YES/NO verdict on whether the audit-event bus can attach via plugin/hook without editing cli.py or run_agent.py.
 4. `docs/imports/L2_ATLAS_MODULE_EXTRACTION_PLAN.md` exists with every atlas_core module classified (port/rewrite/reference/discard) and data-carrying modules linked to Phase 2 schemas.
 5. L2-Atlas repo working tree is unmodified after the audit (git status clean).
+
+**Plans:** TBD
 
 ---
 
@@ -28,9 +48,11 @@
 
 **Goal:** Establish the Pydantic v2 domain model and SQLite schema as the single authoritative data contract — the foundation every other phase builds on.
 
+**Depends on:** Phase 1
+
 **Requirements:** SCHEMA-01, SCHEMA-02, SCHEMA-03
 
-**Success criteria:**
+**Success Criteria** (what must be TRUE):
 1. `packages/atlas-core/atlas_core/schemas/core.py` exists with Mission, Run, AuditEvent, ToolCall, Artifact, Source, WikiPage as Pydantic v2 models.
 2. `from atlas_core.schemas.core import Mission` succeeds in a clean Python 3.11 environment.
 3. `Mission.model_json_schema()` emits valid JSON Schema with all fields present.
@@ -38,20 +60,26 @@
 5. FTS5 virtual table created (or blocked state documented with sqlite build note).
 6. Column names in DDL match Pydantic field names 1:1 (no silent drift).
 
+**Plans:** TBD
+
 ---
 
 ### Phase 3: Research Closure — WebUI Spike & CRM Intake
 
 **Goal:** Close the two open research gaps (D-006 WebUI framework, D-010 CRM/Pulse research) so no build phase encounters an unresolved architectural fork.
 
+**Depends on:** Phase 2 (schema shapes inform UI data contract)
+
 **Requirements:** RESEARCH-01, RESEARCH-02
 
-**Success criteria:**
+**Success Criteria** (what must be TRUE):
 1. `docs/research/WEBUI_STACK_SPIKE.md` exists with scored comparison of SvelteKit/Svelte 5 vs Next.js/React against cockpit-specific criteria (realtime stream, L2 code reuse, bundle size, polish ceiling).
 2. Spike ends in a concrete framework recommendation OR a defined 1-day build spike that would objectively decide it.
 3. `NATIVE_APP_STRATEGY.md` no longer presupposes Next.js (C3 inconsistency patched).
 4. `docs/research/CRM_PULSE_CHANNELS_DEEP_DIVE.md` exists with defined open questions, MVP boundary, and a research brief ready for a future deep-dive agent.
 5. D-006 updated to "spike complete / recommendation: [framework]" or "spike required."
+
+**Plans:** TBD
 
 ---
 
@@ -59,9 +87,11 @@
 
 **Goal:** Wire a structured audit event bus into the Hermes runtime so every important action emits a durable AuditEvent — the audit-first requirement that all observability builds on.
 
-**Requirements:** RUNTIME-03, RUNTIME-04, AUDIT-01, AUDIT-02
+**Depends on:** Phase 1 (extension-surface audit), Phase 2 (schemas + DB)
 
-**Success criteria:**
+**Requirements:** RUNTIME-03, AUDIT-01, AUDIT-02
+
+**Success Criteria** (what must be TRUE):
 1. ATLAS event bus module exists at `services/agent-runtime/atlas_core/event_bus.py` (or equivalent per D-011 layout).
 2. Running a Hermes tool call via ATLAS produces at minimum one ToolCall row in the SQLite database.
 3. Running a mock LLM call via ATLAS produces an AuditEvent row of kind `llm_call`.
@@ -70,15 +100,19 @@
 6. All audit writes are transactional — partial failures do not leave orphaned event rows.
 7. No in-core edits to Hermes cli.py or run_agent.py required (verified by git diff showing no changes to those files, or a divergence decision record exists if edits were unavoidable).
 
+**Plans:** TBD
+
 ---
 
 ### Phase 5: Mission & Run Lifecycle
 
 **Goal:** Implement the core mission state machine — create, execute, complete, cancel — backed by the audit event bus, with a working CLI and unit-tested service layer.
 
+**Depends on:** Phase 2 (schemas), Phase 4 (event bus)
+
 **Requirements:** RUNTIME-01, RUNTIME-02, RUNTIME-04, RUNTIME-05, RUNTIME-06, RUNTIME-07
 
-**Success criteria:**
+**Success Criteria** (what must be TRUE):
 1. `atlas mission create --title "Test" --intent "..."` persists a Mission row and prints the mission ID.
 2. `atlas mission run <id>` starts execution, creates a Run row, emits task.started AuditEvent.
 3. A completed run transitions to `succeeded` or `failed` status with finish timestamp and summary.
@@ -88,15 +122,19 @@
 7. Policy engine works on Linux (bash) and Windows (PowerShell) paths — confirmed by two test runs.
 8. All service layer functions have unit tests (≥ 80% branch coverage on mission_service.py and run_service.py).
 
+**Plans:** TBD
+
 ---
 
 ### Phase 6: LLM Wiki Runtime
 
 **Goal:** Implement the wiki ingest, update, query, and lint pipeline — the compounding knowledge layer that persists valuable agent output across runs.
 
+**Depends on:** Phase 2 (schemas + DB), Phase 5 (mission/run lifecycle for audit events)
+
 **Requirements:** WIKI-01, WIKI-02, WIKI-03, WIKI-04, WIKI-05, AUDIT-03
 
-**Success criteria:**
+**Success Criteria** (what must be TRUE):
 1. `atlas wiki ingest <path>` copies the file to `wiki/raw/`, computes SHA-256, creates a Source row, and emits an AuditEvent of kind `wiki_update`.
 2. `atlas wiki update <slug> --body "..."` upserts a WikiPage row, appends to wiki/log.md, and updates wiki/index.md.
 3. `atlas wiki search "query"` returns ranked results via FTS5 full-text search.
@@ -105,15 +143,19 @@
 6. wiki/index.md has an entry for every WikiPage row in the database; wiki/log.md has an entry for every wiki_update AuditEvent.
 7. Service layer unit tests cover ingest, update, search, and lint paths (≥ 80% branch coverage on wiki_service.py).
 
+**Plans:** TBD
+
 ---
 
 ### Phase 7: API Gateway
 
 **Goal:** Expose all mission, run, audit, and wiki operations via a typed REST API so the cockpit and future integrations have a stable interface.
 
-**Requirements:** COCKPIT-01 (partial), RUNTIME-01 (partial)
+**Depends on:** Phase 5 (mission/run lifecycle), Phase 6 (wiki runtime)
 
-**Success criteria:**
+**Requirements:** (none exclusively owned — Phase 7 is the API infrastructure layer enabling Phase 8; all domain REQ-IDs are owned by their originating phases)
+
+**Success Criteria** (what must be TRUE):
 1. FastAPI server starts with `uvicorn atlas_api.main:app` and serves the OpenAPI spec at `/docs`.
 2. `POST /missions` creates a mission; `GET /missions` returns a paginated list.
 3. `POST /missions/{id}/run` starts a run; `GET /runs/{id}` returns run status.
@@ -123,15 +165,19 @@
 7. OpenAPI schema matches the Pydantic response models (no manual schema drift).
 8. Integration tests cover all 8 endpoints (happy path + one error case each).
 
+**Plans:** TBD
+
 ---
 
 ### Phase 8: WebUI Operator Cockpit
 
 **Goal:** Ship the first web-based operator cockpit — mission management, real-time run monitoring, audit trail viewer, and wiki browser — in the framework decided by the Phase 3 spike.
 
+**Depends on:** Phase 3 (framework decision), Phase 7 (API)
+
 **Requirements:** COCKPIT-01, COCKPIT-02, COCKPIT-03, COCKPIT-04, COCKPIT-05, COCKPIT-06
 
-**Success criteria:**
+**Success Criteria** (what must be TRUE):
 1. `npm run dev` (or equivalent) starts the cockpit dev server and renders the mission list page without errors.
 2. Mission list page loads and displays all missions from the API with status badges.
 3. Mission create form submits to the API and the new mission appears in the list without page reload.
@@ -141,21 +187,44 @@
 7. No Electron dependency in package.json.
 8. Cockpit renders without errors in latest Chrome and Firefox.
 
+**Plans:** TBD
+**UI hint:** yes
+
 ---
 
 ### Phase 9: Skill Inventory & Classification
 
 **Goal:** Produce a complete, classified skill inventory so ATLAS can ship with a curated default skill pack rather than an undifferentiated dump of every existing skill.
 
+**Depends on:** Phase 1 (Hermes skill surface known); parallel to Phases 4–8
+
 **Requirements:** SKILLS-01, SKILLS-02, SKILLS-03, SKILLS-04
 
-**Success criteria:**
+**Success Criteria** (what must be TRUE):
 1. `docs/imports/SKILL_INVENTORY.md` exists with every skill from Hermes skills dir, l2-agent-skills, and OpenClaw/GSD imports listed with: name, path, description, class (core/operator/l2-internal/personal-private/experimental/deprecated), public-safe flag, polish-required flag.
 2. Core ATLAS Pack skills have complete metadata (name, version, class, autonomy_level, risk, requires_tools, requires_secrets, verification steps, public_safe: true).
 3. Developer Operator Pack skills have the same metadata and are marked public_safe: true.
 4. L2 Systems Pack skills classified l2-internal and public_safe: false.
 5. No personal/private skill paths are referenced in any public-facing manifest.
 6. Skill registry loads all core + operator pack skills without error on a clean Hermes install.
+
+**Plans:** TBD
+
+---
+
+## Progress Table
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 1. Hermes Foundation Clone & Extension Audit | 0/0 | In progress | - |
+| 2. Core Domain Schemas & SQLite Migration | 0/0 | Not started | - |
+| 3. Research Closure — WebUI Spike & CRM Intake | 0/0 | Not started | - |
+| 4. ATLAS Event Bus & Audit Core | 0/0 | Not started | - |
+| 5. Mission & Run Lifecycle | 0/0 | Not started | - |
+| 6. LLM Wiki Runtime | 0/0 | Not started | - |
+| 7. API Gateway | 0/0 | Not started | - |
+| 8. WebUI Operator Cockpit | 0/0 | Not started | - |
+| 9. Skill Inventory & Classification | 0/0 | Not started | - |
 
 ---
 
@@ -189,3 +258,44 @@ Phase 9 (Skills) — parallel to 4–8, not blocking
 Phases 1–3 are foundation/audit — no shipped service code, only docs + schemas.
 Phases 4–8 are the MVP build track — each produces running, testable code.
 Phase 9 is parallel infrastructure — can run alongside 4–8 without blocking.
+
+---
+
+## Coverage Map (34 REQ-IDs, 100% assigned)
+
+| REQ-ID | Phase |
+|--------|-------|
+| FOUND-01 | Phase 1 |
+| FOUND-02 | Phase 1 |
+| FOUND-03 | Phase 1 |
+| FOUND-04 | Phase 1 |
+| SCHEMA-01 | Phase 2 |
+| SCHEMA-02 | Phase 2 |
+| SCHEMA-03 | Phase 2 |
+| RESEARCH-01 | Phase 3 |
+| RESEARCH-02 | Phase 3 |
+| RUNTIME-03 | Phase 4 |
+| AUDIT-01 | Phase 4 |
+| AUDIT-02 | Phase 4 |
+| RUNTIME-01 | Phase 5 |
+| RUNTIME-02 | Phase 5 |
+| RUNTIME-04 | Phase 5 |
+| RUNTIME-05 | Phase 5 |
+| RUNTIME-06 | Phase 5 |
+| RUNTIME-07 | Phase 5 |
+| WIKI-01 | Phase 6 |
+| WIKI-02 | Phase 6 |
+| WIKI-03 | Phase 6 |
+| WIKI-04 | Phase 6 |
+| WIKI-05 | Phase 6 |
+| AUDIT-03 | Phase 6 |
+| COCKPIT-01 | Phase 8 |
+| COCKPIT-02 | Phase 8 |
+| COCKPIT-03 | Phase 8 |
+| COCKPIT-04 | Phase 8 |
+| COCKPIT-05 | Phase 8 |
+| COCKPIT-06 | Phase 8 |
+| SKILLS-01 | Phase 9 |
+| SKILLS-02 | Phase 9 |
+| SKILLS-03 | Phase 9 |
+| SKILLS-04 | Phase 9 |
