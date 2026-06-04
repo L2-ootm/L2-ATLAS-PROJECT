@@ -1,0 +1,32 @@
+[
+  {
+    "from": "compass_artifact_wf-8fa4ae76-ce60-4a0c-bdf9-8bcba552796c_text_markdown.md",
+    "to": "2026-06-04_01_hermes-foundation-architecture.md",
+    "bytes": 45627
+  },
+  {
+    "from": "deep-research-report (2).md",
+    "to": "2026-06-04_02_knowledge-runtime-llm-wiki-memory-rag.md",
+    "bytes": 33015
+  },
+  {
+    "from": "deep-research-report (3).md",
+    "to": "2026-06-04_03_subagents-workflows-skills.md",
+    "bytes": 40121
+  },
+  {
+    "from": "deep-research-report (4).md",
+    "to": "2026-06-04_04_native-desktop-overlay-stt-ui-report-a.md",
+    "bytes": 35738
+  },
+  {
+    "from": "deep-research-report (5).md",
+    "to": "2026-06-04_04b_native-desktop-overlay-stt-ui-report-b.md",
+    "bytes": 26354
+  },
+  {
+    "from": "deep-research-report (1).md",
+    "to": "2026-06-04_06_market-stack-engineering-practices.md",
+    "bytes": 35440
+  }
+]
