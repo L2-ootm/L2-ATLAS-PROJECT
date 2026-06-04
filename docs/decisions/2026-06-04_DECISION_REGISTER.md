@@ -120,3 +120,19 @@ Status: locked.
 Decision: A dedicated CRM/Pulse/Channels report still needs to be run; existing reports only partially cover it.
 
 Status: open.
+
+## D-011 — Canonical repo layout
+
+Decision: Polyglot monorepo (`foundation/`, `packages/atlas-core`, `services/*`, `apps/*`, `infra/`, `native/`). Resolves the three conflicting layouts across the planning docs.
+
+See: `docs/decisions/2026-06-04_D011_repo_layout.md`.
+
+Status: locked.
+
+## D-012 — Schema source of truth
+
+Decision: Pydantic v2 models in `packages/atlas-core/atlas_core/schemas/` are the single source of truth; emit JSON Schema for TS/Rust; SQLite DDL mirrors the models.
+
+See: `docs/decisions/2026-06-04_D012_schema_source_of_truth.md`.
+
+Status: locked.
