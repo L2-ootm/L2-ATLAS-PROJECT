@@ -1,0 +1,23 @@
+# External repo audit copies — never commit
+_EXTERNAL_REPOS/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+.env
+*.env
+
+# Secrets and state
+auth.json
+*.db
+sessions/
+*.key
+*.pem
+
+# OS
+.DS_Store
+Thumbs.db
