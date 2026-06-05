@@ -2,22 +2,22 @@
 milestone: v1.0
 name: Operator Cockpit MVP
 status: in_progress
-phase: 1
+phase: 2
 progress:
   phases_total: 9
-  phases_complete: 0
-  phases_in_progress: 1
-last_updated: 2026-06-04
+  phases_complete: 1
+  phases_in_progress: 0
+last_updated: 2026-06-05
 ---
 
 # STATE — L2 ATLAS
 
 ## Current Position
 
-Phase: 1 — Hermes Foundation Clone & Extension Audit (in progress)
-Plan: docs/plans/2026-06-04_CLAUDE_IMPLEMENTATION_START_PLAN.md (Tasks 2–4 map to this phase)
-Status: Phase 1 active — Task 1 complete (Hermes pin recorded), Task 2 (fresh clone) next
-Last activity: 2026-06-04 — Roadmap finalized; 9 phase directories created under .planning/phases/; REQUIREMENTS.md traceability updated (34 REQ-IDs, 100% mapped, RUNTIME-04 duplication resolved)
+Phase: 1 — Hermes Foundation Clone & Extension Audit (COMPLETE ✓)
+Next: Phase 2 — Atlas Core Schema & Data Layer
+Status: Phase 1 verified PASS (2026-06-05) — all 5 success criteria met
+Last activity: 2026-06-05 — Phase 1 complete: Hermes cloned at SHA e8b9369a9 (CLEAN scan); 10-surface audit (YES bus verdict); DIV-001..004 stubs; 6 donor modules classified (5 port, 1 reference)
 
 ## Accumulated Context
 
