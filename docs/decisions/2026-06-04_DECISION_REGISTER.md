@@ -136,3 +136,17 @@ Decision: Pydantic v2 models in `packages/atlas-core/atlas_core/schemas/` are th
 See: `docs/decisions/2026-06-04_D012_schema_source_of_truth.md`.
 
 Status: locked.
+
+## D-013 — Language strategy: Prototype in Python, Cement in Rust
+
+Decision: ATLAS uses a hybrid language architecture. Python is the current orchestration layer and is permanent for the Hermes plugin API. The critical runtime (CLI, policy, executor, mission parser, state) migrates to Rust module by module once behavior is validated. C is avoided. Zig is watched but not adopted.
+
+Principle: **Prototype in Python. Cement in Rust. Avoid C unless necessary.**
+
+Migration prerequisites for all current Python code: JSON-stable `model_dump()`, frozen Pydantic v2 models, no circular deps, pure functions where possible, no framework lock-in beyond: pydantic, prompt_toolkit, rich, pytest, ruff.
+
+Current acceptable Python dep budget is frozen — no new frameworks without a new decision.
+
+See: `docs/decisions/D-013-language-strategy.md`.
+
+Status: locked (direction); open (migration timing — triggers after Phase 5 behavior validation).

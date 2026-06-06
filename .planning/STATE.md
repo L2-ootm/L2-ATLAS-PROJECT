@@ -35,6 +35,7 @@ Last activity: 2026-06-05 — Phase 1 complete: Hermes cloned at SHA e8b9369a9 (
 - D-010: CRM/Pulse/Channels research missing — Phase 3 intake required
 - D-011: Canonical repo layout ratified — locked
 - D-012: Pydantic v2 schema source of truth — locked
+- D-013: Language strategy — Prototype in Python, Cement in Rust — locked direction, open timing
 
 ### Known blockers
 
