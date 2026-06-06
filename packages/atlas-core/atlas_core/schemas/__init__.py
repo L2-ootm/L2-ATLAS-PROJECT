@@ -1,5 +1,23 @@
 """Atlas-core domain schemas — public API."""
 
-# Re-exports added in plan 02-02 when core.py is written
+from atlas_core.schemas.core import (
+    Artifact,
+    AuditEvent,
+    Mission,
+    Run,
+    SECRET_PATTERNS,
+    Source,
+    ToolCall,
+    WikiPage,
+)
 
-__all__: list[str] = []
+__all__ = [
+    "Artifact",
+    "AuditEvent",
+    "Mission",
+    "Run",
+    "SECRET_PATTERNS",
+    "Source",
+    "ToolCall",
+    "WikiPage",
+]
