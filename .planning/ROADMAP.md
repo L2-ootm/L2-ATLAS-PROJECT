@@ -66,7 +66,12 @@ Plans:
 5. FTS5 virtual table created (or blocked state documented with sqlite build note).
 6. Column names in DDL match Pydantic field names 1:1 (no silent drift).
 
-**Plans:** TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — Package scaffold, venv setup, editable install, pytest conftest
+- [ ] 02-02-PLAN.md — Pydantic v2 models (core.py) + schema/serialization tests
+- [ ] 02-03-PLAN.md — SQLite migration DDL + migration validation test suite
 
 ---
 
@@ -223,7 +228,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Hermes Foundation Clone & Extension Audit | 0/4 | In progress | - |
-| 2. Core Domain Schemas & SQLite Migration | 0/0 | Not started | - |
+| 2. Core Domain Schemas & SQLite Migration | 0/3 | Planned | - |
 | 3. Research Closure — WebUI Spike & CRM Intake | 0/0 | Not started | - |
 | 4. ATLAS Event Bus & Audit Core | 0/0 | Not started | - |
 | 5. Mission & Run Lifecycle | 0/0 | Not started | - |
