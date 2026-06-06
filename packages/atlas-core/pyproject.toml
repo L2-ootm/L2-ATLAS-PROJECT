@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "atlas-core"
+version = "0.1.0"
+description = "ATLAS domain schemas and shared contracts"
+requires-python = ">=3.11"
+dependencies = ["pydantic>=2.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=9.0", "ruff>=0.15"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["atlas_core"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "ANN"]
