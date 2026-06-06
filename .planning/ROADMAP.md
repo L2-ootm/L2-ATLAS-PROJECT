@@ -12,7 +12,7 @@
 ## Phases
 
 - [ ] **Phase 1: Hermes Foundation Clone & Extension Audit** - Clean Hermes clone + authoritative extension-surface audit
-- [ ] **Phase 2: Core Domain Schemas & SQLite Migration** - Pydantic v2 domain model + SQLite schema as single authoritative data contract
+- [x] **Phase 2: Core Domain Schemas & SQLite Migration** - Pydantic v2 domain model + SQLite schema as single authoritative data contract (completed 2026-06-06)
 - [ ] **Phase 3: Research Closure — WebUI Spike & CRM Intake** - Close open research gaps D-006 and D-010
 - [ ] **Phase 4: ATLAS Event Bus & Audit Core** - Structured audit event bus wired into Hermes runtime
 - [ ] **Phase 5: Mission & Run Lifecycle** - Core mission state machine: create, execute, complete, cancel
@@ -69,19 +69,19 @@ Plans:
 5. FTS5 virtual table created (or blocked state documented with sqlite build note).
 6. Column names in DDL match Pydantic field names 1:1 (no silent drift).
 
-**Plans:** 3 plans
+**Plans:** 3/3 plans complete
 Plans:
 **Wave 1**
 
-- [ ] 02-01-PLAN.md — Package scaffold, venv setup, editable install, pytest conftest
+- [x] 02-01-PLAN.md — Package scaffold, venv setup, editable install, pytest conftest
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 02-02-PLAN.md — Pydantic v2 models (core.py) + schema/serialization tests
+- [x] 02-02-PLAN.md — Pydantic v2 models (core.py) + schema/serialization tests
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 02-03-PLAN.md — SQLite migration DDL + migration validation test suite
+- [x] 02-03-PLAN.md — SQLite migration DDL + migration validation test suite
 
 ---
 
@@ -245,7 +245,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Hermes Foundation Clone & Extension Audit | 0/4 | In progress | - |
-| 2. Core Domain Schemas & SQLite Migration | 0/3 | Planned | - |
+| 2. Core Domain Schemas & SQLite Migration | 3/3 | Complete    | 2026-06-06 |
 | 3. Research Closure — WebUI Spike & CRM Intake | 0/0 | Not started | - |
 | 4. ATLAS Event Bus & Audit Core | 0/0 | Not started | - |
 | 5. Mission & Run Lifecycle | 0/0 | Not started | - |

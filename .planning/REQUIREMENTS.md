@@ -15,9 +15,9 @@ Status: Active
 
 ## SCHEMA — Domain Contracts
 
-- [ ] **SCHEMA-01**: Pydantic v2 models exist for Mission, Run, AuditEvent, ToolCall, Artifact, Source, and WikiPage with correct field names, enums, and FK relationships.
-- [ ] **SCHEMA-02**: SQLite migration 0001_core.sql applies on a fresh database (WAL mode, foreign keys enforced, FTS5 index created).
-- [ ] **SCHEMA-03**: model_json_schema() emits valid JSON Schema for all core Pydantic models (D-012 TS/Rust bridge verified).
+- [x] **SCHEMA-01**: Pydantic v2 models exist for Mission, Run, AuditEvent, ToolCall, Artifact, Source, and WikiPage with correct field names, enums, and FK relationships.
+- [x] **SCHEMA-02**: SQLite migration 0001_core.sql applies on a fresh database (WAL mode, foreign keys enforced, FTS5 index created).
+- [x] **SCHEMA-03**: model_json_schema() emits valid JSON Schema for all core Pydantic models (D-012 TS/Rust bridge verified).
 
 ## RUNTIME — Enhanced Agent Runtime
 
@@ -101,9 +101,9 @@ Status: Active
 | FOUND-02 | Phase 1 | Pending |
 | FOUND-03 | Phase 1 | Pending |
 | FOUND-04 | Phase 1 | Pending |
-| SCHEMA-01 | Phase 2 | Pending |
-| SCHEMA-02 | Phase 2 | Pending |
-| SCHEMA-03 | Phase 2 | Pending |
+| SCHEMA-01 | Phase 2 | Complete |
+| SCHEMA-02 | Phase 2 | Complete |
+| SCHEMA-03 | Phase 2 | Complete |
 | RESEARCH-01 | Phase 3 | Pending |
 | RESEARCH-02 | Phase 3 | Pending |
 | RUNTIME-03 | Phase 4 | Pending |
