@@ -1,0 +1,165 @@
+"""Tests for atlas_core.schemas.core — SCHEMA-01 (import, instantiation, serialization) and SCHEMA-03 (model_json_schema)."""
+
+import json
+
+import pytest
+
+
+# --- Import tests ---
+
+
+def test_import() -> None:
+    """SCHEMA-01: importing Mission from atlas_core.schemas.core must not raise."""
+    from atlas_core.schemas.core import Mission  # noqa: F401
+
+
+def test_all_models_importable() -> None:
+    """SCHEMA-01: all 7 model names and SECRET_PATTERNS must be importable."""
+    from atlas_core.schemas.core import (  # noqa: F401
+        Artifact,
+        AuditEvent,
+        Mission,
+        Run,
+        SECRET_PATTERNS,
+        Source,
+        ToolCall,
+        WikiPage,
+    )
+
+
+# --- Instantiation tests ---
+
+
+def test_model_instantiation_mission() -> None:
+    """SCHEMA-01: Mission with only title produces correct defaults."""
+    from atlas_core.schemas.core import Mission
+
+    m = Mission(title="hello")
+    assert m.id != ""
+    assert m.status == "pending"
+    assert m.intent == ""
+
+
+def test_model_instantiation_audit_event() -> None:
+    """SCHEMA-01: AuditEvent with required fields has correct defaults."""
+    import datetime
+
+    from atlas_core.schemas.core import AuditEvent
+
+    ae = AuditEvent(run_id="r1", event_type="llm_call")
+    assert ae.data == "{}"
+    assert isinstance(ae.timestamp, datetime.datetime)
+
+
+# --- Serialization tests ---
+
+
+def test_serialization_no_datetime_objects() -> None:
+    """SCHEMA-01: model_dump() must not contain datetime objects — created_at must be str."""
+    from atlas_core.schemas.core import Mission
+
+    dumped = Mission(title="t").model_dump()
+    assert isinstance(dumped["created_at"], str), (
+        f"created_at should be str, got {type(dumped['created_at'])}"
+    )
+
+
+def test_serialization_json_safe() -> None:
+    """SCHEMA-01: model_dump() output must be passable to json.dumps without TypeError."""
+    from atlas_core.schemas.core import Mission
+
+    dumped = Mission(title="t").model_dump()
+    # Must not raise TypeError
+    json.dumps(dumped)
+
+
+def test_serialization_no_dict_types() -> None:
+    """SCHEMA-01: AuditEvent.data in model_dump() must be str, not dict."""
+    from atlas_core.schemas.core import AuditEvent
+
+    dumped = AuditEvent(run_id="r", event_type="llm_call").model_dump()
+    assert isinstance(dumped["data"], str)
+
+
+def test_path_is_str() -> None:
+    """SCHEMA-01: Artifact.path in model_dump() must be str, not pathlib.Path."""
+    from atlas_core.schemas.core import Artifact
+
+    dumped = Artifact(run_id="r", path="/tmp/f", artifact_type="file_write").model_dump()
+    assert isinstance(dumped["path"], str)
+
+
+# --- JSON Schema tests ---
+
+
+def test_json_schema_valid_mission() -> None:
+    """SCHEMA-03: Mission.model_json_schema() returns a dict with a 'properties' key."""
+    from atlas_core.schemas.core import Mission
+
+    schema = Mission.model_json_schema()
+    assert isinstance(schema, dict)
+    assert "properties" in schema
+
+
+def test_json_schema_all_fields_present() -> None:
+    """SCHEMA-03: Mission JSON Schema must contain exactly the 7 canonical fields."""
+    from atlas_core.schemas.core import Mission
+
+    props = set(Mission.model_json_schema()["properties"].keys())
+    expected = {"id", "title", "intent", "status", "project", "created_at", "updated_at"}
+    assert props == expected, f"Unexpected field set: {props}"
+
+
+def test_json_schema_status_enum() -> None:
+    """SCHEMA-03: Mission.status JSON Schema must expose 'pending' in its enum array."""
+    from atlas_core.schemas.core import Mission
+
+    status_schema = Mission.model_json_schema()["properties"]["status"]
+    # Pydantic may inline enum or use $ref; resolve either case
+    if "enum" in status_schema:
+        enum_values = status_schema["enum"]
+    elif "anyOf" in status_schema:
+        enum_values = []
+        for item in status_schema["anyOf"]:
+            enum_values.extend(item.get("enum", []))
+    else:
+        # Fallback: check allOf/const patterns
+        enum_values = status_schema.get("enum", [])
+    assert "pending" in enum_values, f"'pending' not found in status schema: {status_schema}"
+
+
+def test_json_schema_all_models() -> None:
+    """SCHEMA-03: model_json_schema() on each of the 7 models must return a dict with 'properties'."""
+    from atlas_core.schemas.core import (
+        Artifact,
+        AuditEvent,
+        Mission,
+        Run,
+        Source,
+        ToolCall,
+        WikiPage,
+    )
+
+    for model in (Mission, Run, AuditEvent, ToolCall, Artifact, Source, WikiPage):
+        schema = model.model_json_schema()
+        assert isinstance(schema, dict), f"{model.__name__} did not return a dict"
+        assert "properties" in schema, f"{model.__name__} schema missing 'properties'"
+
+
+def test_secret_patterns() -> None:
+    """SCHEMA-01: SECRET_PATTERNS must be a tuple of 2 compiled regex patterns."""
+    from atlas_core.schemas.core import SECRET_PATTERNS
+
+    assert isinstance(SECRET_PATTERNS, tuple)
+    assert len(SECRET_PATTERNS) == 2
+    for pattern in SECRET_PATTERNS:
+        assert hasattr(pattern, "match"), f"Pattern {pattern!r} has no .match method"
+
+
+def test_frozen_model() -> None:
+    """SCHEMA-01: assigning to a frozen Mission field must raise an exception."""
+    from atlas_core.schemas.core import Mission
+
+    m = Mission(title="t")
+    with pytest.raises(Exception):
+        m.title = "mutated"  # type: ignore[misc]
