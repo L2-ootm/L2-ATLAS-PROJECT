@@ -70,7 +70,8 @@ Plans:
 6. Column names in DDL match Pydantic field names 1:1 (no silent drift).
 
 **Plans:** 3/3 plans complete
-Plans:
+
+Plans:
 **Wave 1**
 
 - [x] 02-01-PLAN.md — Package scaffold, venv setup, editable install, pytest conftest
@@ -101,7 +102,13 @@ Plans:
 4. `docs/research/CRM_PULSE_CHANNELS_DEEP_DIVE.md` exists with defined open questions, MVP boundary, and a research brief ready for a future deep-dive agent.
 5. D-006 updated to "spike complete / recommendation: [framework]" or "spike required."
 
-**Plans:** TBD
+**Plans:** 2 plans
+
+**Wave 1** *(parallel -- no dependencies)*
+
+Plans:
+- [ ] 03-01-PLAN.md -- WebUI stack spike document, NATIVE_APP_STRATEGY.md patch, D-006 locked
+- [ ] 03-02-PLAN.md -- CRM/Pulse/Channels deep-dive intake document
 
 ---
 
@@ -246,7 +253,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Hermes Foundation Clone & Extension Audit | 0/4 | In progress | - |
 | 2. Core Domain Schemas & SQLite Migration | 3/3 | Complete    | 2026-06-06 |
-| 3. Research Closure — WebUI Spike & CRM Intake | 0/0 | Not started | - |
+| 3. Research Closure — WebUI Spike & CRM Intake | 0/2 | Not started | - |
 | 4. ATLAS Event Bus & Audit Core | 0/0 | Not started | - |
 | 5. Mission & Run Lifecycle | 0/0 | Not started | - |
 | 6. LLM Wiki Runtime | 0/0 | Not started | - |
