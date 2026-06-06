@@ -45,6 +45,17 @@ Wire a structured audit event bus into the Hermes runtime so every important act
 
 ---
 
+## Hard Blockers from Prior Phases
+
+These must be resolved before any Phase 4 task writes AuditEvent.data, ToolCall.args, or ToolCall.result to SQLite:
+
+| ID | Source | Blocker |
+|----|--------|---------|
+| HB-04-01 | Phase 02 REVIEW.md [CRITICAL] | `SECRET_PATTERNS` in `atlas_core/schemas/core.py` does not match JSON key-value notation. Current patterns only catch `key=value` (URL querystring) and `Bearer <token>`. A payload like `{"token": "sk-abc123"}` or `{"api_key": "xyz"}` passes through unredacted. **Fix before first AuditEvent.data write:** add JSON pattern `(?i)"(token|api[_-]?key|secret|password)"\s*:\s*"([^"]+)"` with replacement `"\1": "[REDACTED]"` (preserves valid JSON structure). |
+| HB-04-02 | Phase 02 independent review | SQLite has no enum constraints on `status`, `kind`, and similar TEXT columns. Pydantic is the only write-boundary guard. Any raw SQL path that bypasses the model layer can store invalid enum values silently. All audit writes in this phase must go through the Pydantic model layer, not raw INSERT strings with unchecked literals. |
+
+---
+
 ## What NOT to Build
 
 - Do not implement the mission state machine (create/run/cancel) — that is Phase 5.
