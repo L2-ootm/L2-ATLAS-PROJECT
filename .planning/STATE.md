@@ -1,13 +1,16 @@
 ---
+gsd_state_version: 1.0
 milestone: v1.0
-name: Operator Cockpit MVP
-status: in_progress
-phase: 2
+milestone_name: Operator Cockpit MVP
+status: executing
+last_updated: "2026-06-06T00:34:35.296Z"
+last_activity: 2026-06-06 -- Phase 02 planning complete
 progress:
-  phases_total: 9
-  phases_complete: 1
-  phases_in_progress: 0
-last_updated: 2026-06-05
+  total_phases: 9
+  completed_phases: 0
+  total_plans: 8
+  completed_plans: 0
+  percent: 0
 ---
 
 # STATE — L2 ATLAS
@@ -16,8 +19,8 @@ last_updated: 2026-06-05
 
 Phase: 1 — Hermes Foundation Clone & Extension Audit (COMPLETE ✓)
 Next: Phase 2 — Atlas Core Schema & Data Layer
-Status: Phase 1 verified PASS (2026-06-05) — all 5 success criteria met
-Last activity: 2026-06-05 — Phase 1 complete: Hermes cloned at SHA e8b9369a9 (CLEAN scan); 10-surface audit (YES bus verdict); DIV-001..004 stubs; 6 donor modules classified (5 port, 1 reference)
+Status: Ready to execute
+Last activity: 2026-06-06 -- Phase 02 planning complete
 
 ## Accumulated Context
 

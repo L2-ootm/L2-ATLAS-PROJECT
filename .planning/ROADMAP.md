@@ -34,6 +34,7 @@
 **Requirements:** FOUND-01, FOUND-02, FOUND-03, FOUND-04
 
 **Success Criteria** (what must be TRUE):
+
 1. `_EXTERNAL_REPOS/hermes-agent` exists at SHA `e8b9369a9…`, secret-scan gate reports CLEAN.
 2. `docs/research/HERMES_FOUNDATION_AUDIT.md` exists with every extension-surface row filled (hook, tool registry, session store, delegation, cron, profiles, gateway, MCP, plugin surface, CLI/TUI boundary).
 3. The audit states a clear YES/NO verdict on whether the audit-event bus can attach via plugin/hook without editing cli.py or run_agent.py.
@@ -43,6 +44,7 @@
 **Plans:** 4 plans
 
 Plans:
+
 - [ ] 01-01-PLAN.md — Clone Hermes at pinned SHA, add gitignore, run secret-scan gate
 - [ ] 01-02-PLAN.md — Extension-surface audit + event-bus YES/NO verdict from cloned source
 - [ ] 01-03-PLAN.md — Divergence decision stubs for identified friction points
@@ -59,6 +61,7 @@ Plans:
 **Requirements:** SCHEMA-01, SCHEMA-02, SCHEMA-03
 
 **Success Criteria** (what must be TRUE):
+
 1. `packages/atlas-core/atlas_core/schemas/core.py` exists with Mission, Run, AuditEvent, ToolCall, Artifact, Source, WikiPage as Pydantic v2 models.
 2. `from atlas_core.schemas.core import Mission` succeeds in a clean Python 3.11 environment.
 3. `Mission.model_json_schema()` emits valid JSON Schema with all fields present.
@@ -67,10 +70,17 @@ Plans:
 6. Column names in DDL match Pydantic field names 1:1 (no silent drift).
 
 **Plans:** 3 plans
+Plans:
+**Wave 1**
 
-Plans:
 - [ ] 02-01-PLAN.md — Package scaffold, venv setup, editable install, pytest conftest
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 02-02-PLAN.md — Pydantic v2 models (core.py) + schema/serialization tests
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 02-03-PLAN.md — SQLite migration DDL + migration validation test suite
 
 ---
@@ -84,6 +94,7 @@ Plans:
 **Requirements:** RESEARCH-01, RESEARCH-02
 
 **Success Criteria** (what must be TRUE):
+
 1. `docs/research/WEBUI_STACK_SPIKE.md` exists with scored comparison of SvelteKit/Svelte 5 vs Next.js/React against cockpit-specific criteria (realtime stream, L2 code reuse, bundle size, polish ceiling).
 2. Spike ends in a concrete framework recommendation OR a defined 1-day build spike that would objectively decide it.
 3. `NATIVE_APP_STRATEGY.md` no longer presupposes Next.js (C3 inconsistency patched).
@@ -103,6 +114,7 @@ Plans:
 **Requirements:** RUNTIME-03, AUDIT-01, AUDIT-02
 
 **Success Criteria** (what must be TRUE):
+
 1. ATLAS event bus module exists at `services/agent-runtime/atlas_core/event_bus.py` (or equivalent per D-011 layout).
 2. Running a Hermes tool call via ATLAS produces at minimum one ToolCall row in the SQLite database.
 3. Running a mock LLM call via ATLAS produces an AuditEvent row of kind `llm_call`.
@@ -124,6 +136,7 @@ Plans:
 **Requirements:** RUNTIME-01, RUNTIME-02, RUNTIME-04, RUNTIME-05, RUNTIME-06, RUNTIME-07
 
 **Success Criteria** (what must be TRUE):
+
 1. `atlas mission create --title "Test" --intent "..."` persists a Mission row and prints the mission ID.
 2. `atlas mission run <id>` starts execution, creates a Run row, emits task.started AuditEvent.
 3. A completed run transitions to `succeeded` or `failed` status with finish timestamp and summary.
@@ -146,6 +159,7 @@ Plans:
 **Requirements:** WIKI-01, WIKI-02, WIKI-03, WIKI-04, WIKI-05, AUDIT-03
 
 **Success Criteria** (what must be TRUE):
+
 1. `atlas wiki ingest <path>` copies the file to `wiki/raw/`, computes SHA-256, creates a Source row, and emits an AuditEvent of kind `wiki_update`.
 2. `atlas wiki update <slug> --body "..."` upserts a WikiPage row, appends to wiki/log.md, and updates wiki/index.md.
 3. `atlas wiki search "query"` returns ranked results via FTS5 full-text search.
@@ -167,6 +181,7 @@ Plans:
 **Requirements:** (none exclusively owned — Phase 7 is the API infrastructure layer enabling Phase 8; all domain REQ-IDs are owned by their originating phases)
 
 **Success Criteria** (what must be TRUE):
+
 1. FastAPI server starts with `uvicorn atlas_api.main:app` and serves the OpenAPI spec at `/docs`.
 2. `POST /missions` creates a mission; `GET /missions` returns a paginated list.
 3. `POST /missions/{id}/run` starts a run; `GET /runs/{id}` returns run status.
@@ -189,6 +204,7 @@ Plans:
 **Requirements:** COCKPIT-01, COCKPIT-02, COCKPIT-03, COCKPIT-04, COCKPIT-05, COCKPIT-06
 
 **Success Criteria** (what must be TRUE):
+
 1. `npm run dev` (or equivalent) starts the cockpit dev server and renders the mission list page without errors.
 2. Mission list page loads and displays all missions from the API with status badges.
 3. Mission create form submits to the API and the new mission appears in the list without page reload.
@@ -212,6 +228,7 @@ Plans:
 **Requirements:** SKILLS-01, SKILLS-02, SKILLS-03, SKILLS-04
 
 **Success Criteria** (what must be TRUE):
+
 1. `docs/imports/SKILL_INVENTORY.md` exists with every skill from Hermes skills dir, l2-agent-skills, and OpenClaw/GSD imports listed with: name, path, description, class (core/operator/l2-internal/personal-private/experimental/deprecated), public-safe flag, polish-required flag.
 2. Core ATLAS Pack skills have complete metadata (name, version, class, autonomy_level, risk, requires_tools, requires_secrets, verification steps, public_safe: true).
 3. Developer Operator Pack skills have the same metadata and are marked public_safe: true.
