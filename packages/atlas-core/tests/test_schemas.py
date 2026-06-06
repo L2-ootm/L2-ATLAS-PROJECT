@@ -147,13 +147,31 @@ def test_json_schema_all_models() -> None:
 
 
 def test_secret_patterns() -> None:
-    """SCHEMA-01: SECRET_PATTERNS must be a tuple of 2 compiled regex patterns."""
+    """SECRET_PATTERNS must catch URL querystring, JSON key-value, and Bearer notation."""
+    import re
     from atlas_core.schemas.core import SECRET_PATTERNS
 
     assert isinstance(SECRET_PATTERNS, tuple)
-    assert len(SECRET_PATTERNS) == 2
+    assert len(SECRET_PATTERNS) >= 3
     for pattern in SECRET_PATTERNS:
         assert hasattr(pattern, "match"), f"Pattern {pattern!r} has no .match method"
+
+    def matches_any(text: str) -> bool:
+        return any(p.search(text) for p in SECRET_PATTERNS)
+
+    # URL querystring style
+    assert matches_any("token=abc123")
+    assert matches_any("api_key=xyz")
+    assert matches_any("password=p@ss")
+    # JSON key-value style (the previously uncovered case)
+    assert matches_any('{"token": "sk-abc123"}')
+    assert matches_any('{"api_key": "xyz"}')
+    assert matches_any('{"password": "p@ss"}')
+    # Bearer token
+    assert matches_any("Bearer eyJhbGci.abc.def")
+    # Non-secret strings must not match
+    assert not matches_any("user=alice")
+    assert not matches_any('{"username": "alice"}')
 
 
 def test_frozen_model() -> None:
