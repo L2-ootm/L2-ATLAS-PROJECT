@@ -109,8 +109,12 @@ Questions:
 - How to file query answers back into wiki?
 - What should be visible in cockpit?
 
+Additional retrieval spike:
+- Evaluate `turbovec` as an optional compressed local semantic index behind SQLite metadata and ATLAS policy filters.
+- Output: `docs/research/2026-06-06_TURBOVEC_LOCAL_RETRIEVAL_SPIKE.md`.
+
 Output:
-- `docs/architecture/KNOWLEDGE_RUNTIME.md`
+- `docs/architecture/KNOWLEDGE_RUNTIME.md`;
 - `wiki/SCHEMA.md` v1;
 - ingest/lint/query runbooks.
 
