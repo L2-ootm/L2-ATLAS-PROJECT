@@ -8,10 +8,10 @@ Status: Active
 
 ## FOUNDATION — Hermes Integration
 
-- [ ] **FOUND-01**: Developer can clone Hermes fresh at the pinned SHA with a secret-scan gate that confirms no auth/state files were copied.
-- [ ] **FOUND-02**: Developer can read a Hermes extension-point audit documenting hook/tool/plugin surfaces and whether the audit-event bus can attach without in-core edits.
-- [ ] **FOUND-03**: Every divergence from upstream Hermes is classified (upstreamable / plugin-tool / ATLAS-only / experimental) and recorded in docs/decisions/.
-- [ ] **FOUND-04**: Developer can read a per-module classification (port/rewrite/reference/discard) for all L2-Atlas atlas_core donor modules.
+- [x] **FOUND-01**: Developer can clone Hermes fresh at the pinned SHA with a secret-scan gate that confirms no auth/state files were copied.
+- [x] **FOUND-02**: Developer can read a Hermes extension-point audit documenting hook/tool/plugin surfaces and whether the audit-event bus can attach without in-core edits.
+- [x] **FOUND-03**: Every divergence from upstream Hermes is classified (upstreamable / plugin-tool / ATLAS-only / experimental) and recorded in docs/decisions/.
+- [x] **FOUND-04**: Developer can read a per-module classification (port/rewrite/reference/discard) for all L2-Atlas atlas_core donor modules.
 
 ## SCHEMA — Domain Contracts
 
@@ -97,10 +97,10 @@ Status: Active
 
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
-| FOUND-01 | Phase 1 | Pending |
-| FOUND-02 | Phase 1 | Pending |
-| FOUND-03 | Phase 1 | Pending |
-| FOUND-04 | Phase 1 | Pending |
+| FOUND-01 | Phase 1 | Complete |
+| FOUND-02 | Phase 1 | Complete |
+| FOUND-03 | Phase 1 | Complete |
+| FOUND-04 | Phase 1 | Complete |
 | SCHEMA-01 | Phase 2 | Complete |
 | SCHEMA-02 | Phase 2 | Complete |
 | SCHEMA-03 | Phase 2 | Complete |

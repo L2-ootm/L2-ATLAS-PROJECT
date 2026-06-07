@@ -11,7 +11,7 @@
 
 ## Phases
 
-- [ ] **Phase 1: Hermes Foundation Clone & Extension Audit** - Clean Hermes clone + authoritative extension-surface audit
+- [x] **Phase 1: Hermes Foundation Clone & Extension Audit** - Clean Hermes clone + authoritative extension-surface audit (completed 2026-06-05)
 - [x] **Phase 2: Core Domain Schemas & SQLite Migration** - Pydantic v2 domain model + SQLite schema as single authoritative data contract (completed 2026-06-06)
 - [x] **Phase 3: Research Closure — WebUI Spike & CRM Intake** - Close open research gaps D-006 and D-010 (completed 2026-06-06)
 - [ ] **Phase 4: ATLAS Event Bus & Audit Core** - Structured audit event bus wired into Hermes runtime
@@ -41,14 +41,14 @@
 4. `docs/imports/L2_ATLAS_MODULE_EXTRACTION_PLAN.md` exists with every atlas_core module classified (port/rewrite/reference/discard) and data-carrying modules linked to Phase 2 schemas.
 5. L2-Atlas repo working tree is unmodified after the audit (git status clean).
 
-**Plans:** 4 plans
+**Plans:** 4/4 plans complete
 
 Plans:
 
-- [ ] 01-01-PLAN.md — Clone Hermes at pinned SHA, add gitignore, run secret-scan gate
-- [ ] 01-02-PLAN.md — Extension-surface audit + event-bus YES/NO verdict from cloned source
-- [ ] 01-03-PLAN.md — Divergence decision stubs for identified friction points
-- [ ] 01-04-PLAN.md — L2-Atlas atlas_core donor module extraction plan
+- [x] 01-01-PLAN.md — Clone Hermes at pinned SHA, add gitignore, run secret-scan gate
+- [x] 01-02-PLAN.md — Extension-surface audit + event-bus YES/NO verdict from cloned source
+- [x] 01-03-PLAN.md — Divergence decision stubs for identified friction points
+- [x] 01-04-PLAN.md — L2-Atlas atlas_core donor module extraction plan
 
 ---
 
@@ -251,7 +251,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Hermes Foundation Clone & Extension Audit | 0/4 | In progress | - |
+| 1. Hermes Foundation Clone & Extension Audit | 4/4 | Complete    | 2026-06-05 |
 | 2. Core Domain Schemas & SQLite Migration | 3/3 | Complete    | 2026-06-06 |
 | 3. Research Closure — WebUI Spike & CRM Intake | 2/2 | Complete    | 2026-06-06 |
 | 4. ATLAS Event Bus & Audit Core | 0/0 | Not started | - |
