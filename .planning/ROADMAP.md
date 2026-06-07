@@ -14,7 +14,7 @@
 - [x] **Phase 1: Hermes Foundation Clone & Extension Audit** - Clean Hermes clone + authoritative extension-surface audit (completed 2026-06-05)
 - [x] **Phase 2: Core Domain Schemas & SQLite Migration** - Pydantic v2 domain model + SQLite schema as single authoritative data contract (completed 2026-06-06)
 - [x] **Phase 3: Research Closure — WebUI Spike & CRM Intake** - Close open research gaps D-006 and D-010 (completed 2026-06-06)
-- [ ] **Phase 4: ATLAS Event Bus & Audit Core** - Structured audit event bus wired into Hermes runtime
+- [x] **Phase 4: ATLAS Event Bus & Audit Core** - Structured audit event bus wired into Hermes runtime (completed 2026-06-07)
 - [ ] **Phase 5: Mission & Run Lifecycle** - Core mission state machine: create, execute, complete, cancel
 - [ ] **Phase 6: LLM Wiki Runtime** - Wiki ingest, update, query, and lint pipeline
 - [ ] **Phase 7: API Gateway** - Typed REST API exposing all mission, run, audit, and wiki operations
@@ -130,7 +130,7 @@ Plans:
 6. All audit writes are transactional — partial failures do not leave orphaned event rows.
 7. No in-core edits to Hermes cli.py or run_agent.py required (verified by git diff showing no changes to those files, or a divergence decision record exists if edits were unavoidable).
 
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 **Wave 0** *(no dependencies)*
 
@@ -145,7 +145,7 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 Plans:
-- [ ] 04-03-PLAN.md — atlas_audit Hermes plugin (register, hook callbacks, session->run mapping) + integration tests + plugin install
+- [x] 04-03-PLAN.md — atlas_audit Hermes plugin (register, hook callbacks, session->run mapping) + integration tests + plugin install
 
 ---
 
@@ -269,7 +269,7 @@ Plans:
 | 1. Hermes Foundation Clone & Extension Audit | 4/4 | Complete    | 2026-06-05 |
 | 2. Core Domain Schemas & SQLite Migration | 3/3 | Complete    | 2026-06-06 |
 | 3. Research Closure — WebUI Spike & CRM Intake | 2/2 | Complete    | 2026-06-06 |
-| 4. ATLAS Event Bus & Audit Core | 2/3 | In Progress|  |
+| 4. ATLAS Event Bus & Audit Core | 3/3 | Complete   | 2026-06-07 |
 | 5. Mission & Run Lifecycle | 0/0 | Not started | - |
 | 6. LLM Wiki Runtime | 0/0 | Not started | - |
 | 7. API Gateway | 0/0 | Not started | - |
