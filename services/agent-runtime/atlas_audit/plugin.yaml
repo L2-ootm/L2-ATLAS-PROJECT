@@ -1,0 +1,10 @@
+name: atlas_audit
+version: "0.1.0"
+description: "ATLAS structured audit event bus — persists every Hermes action as an AuditEvent row in SQLite."
+author: L2-ootm
+hooks:
+  - post_api_request
+  - post_llm_call
+  - post_tool_call
+  - subagent_stop
+  - post_approval_response
