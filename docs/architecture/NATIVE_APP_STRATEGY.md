@@ -13,7 +13,7 @@ ATLAS has multiple surfaces, each optimized for its job:
 | Surface | Purpose | Preferred stack |
 |---|---|---|
 | CLI/TUI | developer/operator power interface | enhanced Hermes CLI + Rust/Python where appropriate |
-| WebUI | perfect cockpit/dashboard | Next.js or similarly excellent web stack |
+| WebUI | perfect cockpit/dashboard | SvelteKit/Svelte 5 — see D-006 and docs/research/WEBUI_STACK_SPIKE.md |
 | Native desktop | seamless local app, overlay, voice, hotkeys, OS context | Rust-first native app |
 | Server/API | workspace/runtime backend | enhanced Hermes Python foundation + ATLAS services |
 | Mobile later | monitoring/approval/inbox | later, not MVP |
