@@ -3,25 +3,25 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Operator Cockpit MVP
 status: executing
-last_updated: "2026-06-07T22:23:58.725Z"
-last_activity: 2026-06-07 -- Phase 04 execution started
+last_updated: "2026-06-07"
+last_activity: 2026-06-07 -- Phase 04 complete (15 tests green, 7/7 success criteria verified)
 progress:
   total_phases: 9
-  completed_phases: 2
+  completed_phases: 4
   total_plans: 13
-  completed_plans: 9
-  percent: 22
+  completed_plans: 12
+  percent: 44
 ---
 
 # STATE — L2 ATLAS
 
 ## Current Position
 
-Phase: 04 (ATLAS Event Bus & Audit Core) — EXECUTING
-Plan: 1 of 3
-Next: Phase 4 — ATLAS Event Bus & Audit Core
-Status: Executing Phase 04
-Last activity: 2026-06-07 -- Phase 04 execution started
+Phase: 05 (Mission & Run Lifecycle) — PENDING
+Plan: —
+Next: Phase 5 — Mission & Run Lifecycle
+Status: Phase 04 complete. Ready to plan Phase 05.
+Last activity: 2026-06-07 -- Phase 04 complete (15 tests green, 7/7 success criteria verified)
 
 ## Accumulated Context
 
@@ -84,7 +84,7 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 | 1 | Hermes Foundation Clone & Extension Audit | Done | 2026-06-05 |
 | 2 | Core Domain Schemas & SQLite Migration | Done | 2026-06-06 |
 | 3 | Research Closure (WebUI Spike + CRM Intake) | Done | 2026-06-06 |
-| 4 | ATLAS Event Bus & Audit Core | Pending | — |
+| 4 | ATLAS Event Bus & Audit Core | Done | 2026-06-07 |
 | 5 | Mission & Run Lifecycle | Pending | — |
 | 6 | LLM Wiki Runtime | Pending | — |
 | 7 | API Gateway | Pending | — |
