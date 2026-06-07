@@ -1,0 +1,24 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "atlas-runtime"
+version = "0.1.0"
+description = "ATLAS agent-runtime service layer"
+requires-python = ">=3.11"
+dependencies = [
+    "atlas-core",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=9.0"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["atlas_runtime", "atlas_audit"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
