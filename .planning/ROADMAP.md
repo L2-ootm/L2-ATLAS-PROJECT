@@ -13,7 +13,7 @@
 
 - [ ] **Phase 1: Hermes Foundation Clone & Extension Audit** - Clean Hermes clone + authoritative extension-surface audit
 - [x] **Phase 2: Core Domain Schemas & SQLite Migration** - Pydantic v2 domain model + SQLite schema as single authoritative data contract (completed 2026-06-06)
-- [ ] **Phase 3: Research Closure — WebUI Spike & CRM Intake** - Close open research gaps D-006 and D-010
+- [x] **Phase 3: Research Closure — WebUI Spike & CRM Intake** - Close open research gaps D-006 and D-010 (completed 2026-06-06)
 - [ ] **Phase 4: ATLAS Event Bus & Audit Core** - Structured audit event bus wired into Hermes runtime
 - [ ] **Phase 5: Mission & Run Lifecycle** - Core mission state machine: create, execute, complete, cancel
 - [ ] **Phase 6: LLM Wiki Runtime** - Wiki ingest, update, query, and lint pipeline
@@ -102,13 +102,13 @@ Plans:
 4. `docs/research/CRM_PULSE_CHANNELS_DEEP_DIVE.md` exists with defined open questions, MVP boundary, and a research brief ready for a future deep-dive agent.
 5. D-006 updated to "spike complete / recommendation: [framework]" or "spike required."
 
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 **Wave 1** *(parallel -- no dependencies)*
 
 Plans:
-- [ ] 03-01-PLAN.md -- WebUI stack spike document, NATIVE_APP_STRATEGY.md patch, D-006 locked
-- [ ] 03-02-PLAN.md -- CRM/Pulse/Channels deep-dive intake document
+- [x] 03-01-PLAN.md -- WebUI stack spike document, NATIVE_APP_STRATEGY.md patch, D-006 locked
+- [x] 03-02-PLAN.md -- CRM/Pulse/Channels deep-dive intake document
 
 ---
 
@@ -253,7 +253,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Hermes Foundation Clone & Extension Audit | 0/4 | In progress | - |
 | 2. Core Domain Schemas & SQLite Migration | 3/3 | Complete    | 2026-06-06 |
-| 3. Research Closure — WebUI Spike & CRM Intake | 0/2 | Not started | - |
+| 3. Research Closure — WebUI Spike & CRM Intake | 2/2 | Complete    | 2026-06-06 |
 | 4. ATLAS Event Bus & Audit Core | 0/0 | Not started | - |
 | 5. Mission & Run Lifecycle | 0/0 | Not started | - |
 | 6. LLM Wiki Runtime | 0/0 | Not started | - |

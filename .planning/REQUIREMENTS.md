@@ -61,8 +61,8 @@ Status: Active
 
 ## RESEARCH — Open Research Items
 
-- [ ] **RESEARCH-01**: WebUI stack spike document exists comparing SvelteKit/Svelte 5 vs Next.js/React against cockpit requirements, ending in a concrete recommendation (resolves D-006).
-- [ ] **RESEARCH-02**: CRM/Pulse/Channels deep-dive research document exists with open questions and MVP boundary defined.
+- [x] **RESEARCH-01**: WebUI stack spike document exists comparing SvelteKit/Svelte 5 vs Next.js/React against cockpit requirements, ending in a concrete recommendation (resolves D-006).
+- [x] **RESEARCH-02**: CRM/Pulse/Channels deep-dive research document exists with open questions and MVP boundary defined.
 
 ---
 
@@ -104,8 +104,8 @@ Status: Active
 | SCHEMA-01 | Phase 2 | Complete |
 | SCHEMA-02 | Phase 2 | Complete |
 | SCHEMA-03 | Phase 2 | Complete |
-| RESEARCH-01 | Phase 3 | Pending |
-| RESEARCH-02 | Phase 3 | Pending |
+| RESEARCH-01 | Phase 3 | Complete |
+| RESEARCH-02 | Phase 3 | Complete |
 | RUNTIME-03 | Phase 4 | Pending |
 | AUDIT-01 | Phase 4 | Pending |
 | AUDIT-02 | Phase 4 | Pending |

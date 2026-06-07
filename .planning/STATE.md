@@ -3,24 +3,24 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Operator Cockpit MVP
 status: executing
-last_updated: "2026-06-07T02:40:00Z"
-last_activity: 2026-06-07 -- STATE sync: Phase 1 & 2 complete, Phase 3 plans drafted (03-01 + 03-02), advancing to Phase 3 execution
+last_updated: "2026-06-07T02:50:00Z"
+last_activity: 2026-06-07 -- Phase 3 complete (RESEARCH-01 + RESEARCH-02 satisfied, D-006 locked SvelteKit, D-010 intake done)
 progress:
   total_phases: 9
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 10
-  completed_plans: 7
-  percent: 22
+  completed_plans: 9
+  percent: 33
 ---
 
 # STATE — L2 ATLAS
 
 ## Current Position
 
-Phase: 03
-Next: Phase 3 — Research Closure (WebUI Spike + CRM Intake)
-Status: Plans drafted — ready to execute (03-01-PLAN.md + 03-02-PLAN.md exist, no summaries yet)
-Last activity: 2026-06-07 -- STATE sync: Phase 1 & 2 complete, Phase 3 plans drafted, advancing to execution
+Phase: 04
+Next: Phase 4 — ATLAS Event Bus & Audit Core
+Status: Not started — plans TBD (discuss-phase required)
+Last activity: 2026-06-07 -- Phase 3 complete. All research gaps closed. Build phases begin.
 
 ## Accumulated Context
 
@@ -31,11 +31,11 @@ Last activity: 2026-06-07 -- STATE sync: Phase 1 & 2 complete, Phase 3 plans dra
 - D-003: SQLite/WAL/FTS5/sqlite-vec MVP datastore — locked
 - D-004: LLM Wiki first-class runtime — locked
 - D-005: Rust-first native, no Electron — locked
-- D-006: WebUI framework open (SvelteKit vs Next.js) — Phase 3 spike required
+- D-006: WebUI framework — SvelteKit/Svelte 5 with adapter-static — locked (2026-06-06)
 - D-007: CRM after mission/run/audit/wiki/cockpit — locked
 - D-008: Skills classified before shipping — locked
 - D-009: STT/TTS/overlay after runtime loop — locked
-- D-010: CRM/Pulse/Channels research missing — Phase 3 intake required
+- D-010: CRM/Pulse/Channels research intake complete — 14 open questions captured, research brief written
 - D-011: Canonical repo layout ratified — locked
 - D-012: Pydantic v2 schema source of truth — locked
 - D-013: Language strategy — Prototype in Python, Cement in Rust — locked direction, open timing
@@ -43,7 +43,7 @@ Last activity: 2026-06-07 -- STATE sync: Phase 1 & 2 complete, Phase 3 plans dra
 
 ### Known blockers
 
-None — all pre-build gates cleared (D-011/D-012 ratified, Hermes pinned, extraction plan framed).
+None — all pre-build gates cleared. All research closed. D-006 locked. Build phases (4–8) can proceed.
 
 ### Pending todos
 
@@ -52,9 +52,9 @@ None — all pre-build gates cleared (D-011/D-012 ratified, Hermes pinned, extra
 - [x] Task 4: docs/imports/L2_ATLAS_MODULE_EXTRACTION_PLAN.md written, 6 modules classified (Phase 1 ✅)
 - [x] Task 6: packages/atlas-core/atlas_core/schemas/core.py — 7 frozen Pydantic v2 models, 33 tests green (Phase 2 ✅)
 - [x] Task 7: infra/migrations/0001_core.sql — 7 tables, FTS5, WAL (Phase 2 ✅)
-- [ ] Task 8: Write docs/research/WEBUI_STACK_SPIKE.md + patch NATIVE_APP_STRATEGY + lock D-006 (Phase 3)
-- [ ] Task 9: Write docs/research/CRM_PULSE_CHANNELS_DEEP_DIVE.md (Phase 3)
-- [ ] Task 10: Phase-close update STATE/RISKS/decisions (Phase 3 close)
+- [x] Task 8: WEBUI_STACK_SPIKE.md + NATIVE_APP_STRATEGY patch + D-006 locked SvelteKit (Phase 3 ✅ e71dbe3)
+- [x] Task 9: CRM_PULSE_CHANNELS_DEEP_DIVE.md — 14 open questions, MVP boundary, research brief (Phase 3 ✅ 68039e5)
+- [x] Task 10: Phase-close update STATE/RISKS/decisions (Phase 3 ✅)
 
 ### Hermes pin (verified 2026-06-04)
 
@@ -82,7 +82,7 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 | — | Roadmap finalization + phase dirs | Done | 2026-06-04 |
 | 1 | Hermes Foundation Clone & Extension Audit | Done | 2026-06-05 |
 | 2 | Core Domain Schemas & SQLite Migration | Done | 2026-06-06 |
-| 3 | Research Closure (WebUI Spike + CRM Intake) | In progress (plans drafted) | — |
+| 3 | Research Closure (WebUI Spike + CRM Intake) | Done | 2026-06-06 |
 | 4 | ATLAS Event Bus & Audit Core | Pending | — |
 | 5 | Mission & Run Lifecycle | Pending | — |
 | 6 | LLM Wiki Runtime | Pending | — |
