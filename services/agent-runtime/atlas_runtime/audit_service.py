@@ -40,8 +40,14 @@ def _redact(text: str) -> str:
     Replaces the secret value (group 2) with [REDACTED] while preserving the
     surrounding text structure (valid JSON remains valid JSON after redaction).
     """
+    def _replace_group2(m: re.Match) -> str:
+        """Replace only the captured group 2 span, preserving surrounding text."""
+        start, end = m.span(2)
+        full_start = m.start()
+        return m.group(0)[: start - full_start] + "[REDACTED]" + m.group(0)[end - full_start :]
+
     for pat in SECRET_PATTERNS:
-        text = pat.sub(lambda m: m.group(0).replace(m.group(2), "[REDACTED]"), text)
+        text = pat.sub(_replace_group2, text)
     return text
 
 
@@ -228,4 +234,4 @@ def export_jsonl(
         lines.append(line)
         if dest is not None:
             dest.write(line + "\n")
-    return "\n".join(lines)
+    return "".join(line + "\n" for line in lines)
