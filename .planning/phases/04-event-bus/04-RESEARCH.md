@@ -510,21 +510,13 @@ except ValidationError as e:
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Hermes write-tool canonical names**
-   - What we know: DIV-002 establishes that artifact detection filters `post_tool_call.tool_name` against known write-tool names.
-   - What's unclear: The exact tool name set in the Hermes tool registry at the pinned SHA has not been enumerated.
-   - Recommendation: At Wave 1 of planning, scan `_EXTERNAL_REPOS/hermes-agent/tools/` for file-write tool registrations and enumerate names. Commit the authoritative set to the plugin module.
+1. **Hermes write-tool canonical names** — RESOLVED: `_ARTIFACT_TOOLS = frozenset({"write_file", "edit_file", "multi_edit", "Write", "Edit", "MultiEdit"})` locked in 04-03-PLAN.md Task 1. Verified via `test_write_tool_produces_artifact_event`.
 
-2. **Run ID injection into plugin callbacks**
-   - What we know: Hook callbacks receive `session_id` from Hermes; `run_id` is an ATLAS concept that maps to a `Run` row.
-   - What's unclear: How does the plugin know which `run_id` to emit against? ATLAS needs a "current run" context at callback time.
-   - Recommendation: The plugin holds a module-level `_CURRENT_RUN: dict[str, str]` mapping `session_id → run_id`. `on_session_start` registers the mapping; `on_session_end` removes it. This requires ATLAS to call `start_run()` before invoking Hermes (Phase 5 concern), but the plugin must be designed to handle this from Phase 4.
+2. **Run ID injection into plugin callbacks** — RESOLVED: `_CURRENT_RUN: dict[str, str]` module-level dict in `atlas_audit/__init__.py`; `on_session_start` populates it; `on_session_end` removes it. Tests inject directly via `setup_plugin` autouse fixture. Full design in 04-03-PLAN.md Task 1.
 
-3. **`post_api_request` presence in all Hermes configurations**
-   - What we know: Langfuse plugin registers both `pre_api_request`/`post_api_request` AND `pre_llm_call`/`post_llm_call` for version compatibility.
-   - Recommendation: Register both `post_api_request` and `post_llm_call` in the ATLAS plugin; deduplicate by checking if an event for the same `task_id` + `api_call_count` was already emitted.
+3. **`post_api_request` presence in all Hermes configurations** — RESOLVED: Both `post_api_request` (primary) and `post_llm_call` (no-op log-only) registered for compatibility. `on_post_api_request` is the authoritative handler; `on_post_llm_call` logs debug only to avoid double-emission. Design in 04-03-PLAN.md Task 1 action item 8.
 
 ---
 
