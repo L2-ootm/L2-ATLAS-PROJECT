@@ -16,6 +16,10 @@ ATLAS Operator Cockpit MVP:
 4. File valuable output into LLM Wiki.
 5. Display state in cockpit.
 
+Optional retrieval research now tracked:
+
+- `docs/research/2026-06-06_TURBOVEC_LOCAL_RETRIEVAL_SPIKE.md` — evaluates `turbovec` as a compressed local semantic index behind SQLite metadata and ATLAS policy filters.
+
 ## Rules
 
 - Use Hermes as the foundation codebase. ATLAS enhances the Hermes framework directly; avoid a thin external wrapper as the final architecture.

@@ -70,6 +70,7 @@ services/agent-runtime
 
 services/wiki-runtime
   LLM Wiki ingest/query/lint
+  Optional local semantic retrieval adapter: SQLite metadata + turbovec IdMapIndex spike
 
 packages/atlas-core
   shared schemas and policies
@@ -77,6 +78,8 @@ packages/atlas-core
 wiki/
   persistent markdown knowledge layer
 ```
+
+The optional semantic retrieval layer is not a replacement for LLM Wiki. It is a candidate acceleration/search layer for source-cited context packets and must remain policy-filtered and fallback-safe.
 
 ## First technical decision
 
