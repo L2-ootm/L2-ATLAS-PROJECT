@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Operator Cockpit MVP
 status: executing
-last_updated: "2026-06-06T01:38:09.149Z"
-last_activity: 2026-06-06 -- Phase 03 planning complete
+last_updated: "2026-06-07T02:40:00Z"
+last_activity: 2026-06-07 -- STATE sync: Phase 1 & 2 complete, Phase 3 plans drafted (03-01 + 03-02), advancing to Phase 3 execution
 progress:
   total_phases: 9
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 10
-  completed_plans: 3
-  percent: 11
+  completed_plans: 7
+  percent: 22
 ---
 
 # STATE — L2 ATLAS
@@ -18,9 +18,9 @@ progress:
 ## Current Position
 
 Phase: 03
-Next: Phase 2 — Atlas Core Schema & Data Layer
-Status: Ready to execute
-Last activity: 2026-06-06 -- Phase 03 planning complete
+Next: Phase 3 — Research Closure (WebUI Spike + CRM Intake)
+Status: Plans drafted — ready to execute (03-01-PLAN.md + 03-02-PLAN.md exist, no summaries yet)
+Last activity: 2026-06-07 -- STATE sync: Phase 1 & 2 complete, Phase 3 plans drafted, advancing to execution
 
 ## Accumulated Context
 
@@ -39,6 +39,7 @@ Last activity: 2026-06-06 -- Phase 03 planning complete
 - D-011: Canonical repo layout ratified — locked
 - D-012: Pydantic v2 schema source of truth — locked
 - D-013: Language strategy — Prototype in Python, Cement in Rust — locked direction, open timing
+- D-014: Optional turbovec local semantic retrieval spike — accepted for spike, not core adoption
 
 ### Known blockers
 
@@ -46,12 +47,12 @@ None — all pre-build gates cleared (D-011/D-012 ratified, Hermes pinned, extra
 
 ### Pending todos
 
-- [ ] Task 2: Clone Hermes fresh at SHA e8b9369a9… into _EXTERNAL_REPOS/hermes-agent, run secret-scan gate (Phase 1)
-- [ ] Task 3: Write docs/research/HERMES_FOUNDATION_AUDIT.md (Phase 1)
-- [ ] Task 4: Write docs/imports/L2_ATLAS_MODULE_EXTRACTION_PLAN.md (Phase 1)
-- [ ] Task 6: Write packages/atlas-core/atlas_core/schemas/core.py (Phase 2)
-- [ ] Task 7: Write infra/migrations/0001_core.sql (Phase 2)
-- [ ] Task 8: Write docs/research/WEBUI_STACK_SPIKE.md + patch NATIVE_APP_STRATEGY (Phase 3)
+- [x] Task 2: Clone Hermes at SHA e8b9369a9… into _EXTERNAL_REPOS/hermes-agent, secret-scan CLEAN (Phase 1 ✅)
+- [x] Task 3: docs/research/HERMES_FOUNDATION_AUDIT.md written, 10 surface rows, YES verdict (Phase 1 ✅)
+- [x] Task 4: docs/imports/L2_ATLAS_MODULE_EXTRACTION_PLAN.md written, 6 modules classified (Phase 1 ✅)
+- [x] Task 6: packages/atlas-core/atlas_core/schemas/core.py — 7 frozen Pydantic v2 models, 33 tests green (Phase 2 ✅)
+- [x] Task 7: infra/migrations/0001_core.sql — 7 tables, FTS5, WAL (Phase 2 ✅)
+- [ ] Task 8: Write docs/research/WEBUI_STACK_SPIKE.md + patch NATIVE_APP_STRATEGY + lock D-006 (Phase 3)
 - [ ] Task 9: Write docs/research/CRM_PULSE_CHANNELS_DEEP_DIVE.md (Phase 3)
 - [ ] Task 10: Phase-close update STATE/RISKS/decisions (Phase 3 close)
 
@@ -79,9 +80,9 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 | — | D-011/D-012 ratification | Done | 2026-06-04 |
 | — | Hermes pin (Task 1) | Done | 2026-06-04 |
 | — | Roadmap finalization + phase dirs | Done | 2026-06-04 |
-| 1 | Hermes Foundation Clone & Extension Audit | In progress | — |
-| 2 | Core Domain Schemas & SQLite Migration | Pending | — |
-| 3 | Research Closure (WebUI Spike + CRM Intake) | Pending | — |
+| 1 | Hermes Foundation Clone & Extension Audit | Done | 2026-06-05 |
+| 2 | Core Domain Schemas & SQLite Migration | Done | 2026-06-06 |
+| 3 | Research Closure (WebUI Spike + CRM Intake) | In progress (plans drafted) | — |
 | 4 | ATLAS Event Bus & Audit Core | Pending | — |
 | 5 | Mission & Run Lifecycle | Pending | — |
 | 6 | LLM Wiki Runtime | Pending | — |
