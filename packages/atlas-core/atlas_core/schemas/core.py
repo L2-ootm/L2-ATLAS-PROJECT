@@ -24,7 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 SECRET_PATTERNS = (
     re.compile(r"(?i)\b(token|api[_-]?key|secret|password)=([^\s&]+)"),
-    re.compile(r'(?i)"(token|api[_-]?key|secret|password)"\s*:\s*"([^"]+)"'),
+    re.compile(r'(?i)"(token|api[_-]?key|secret|password)"\s*:\s*("[^"]*"|\d+|null|true|false)'),
     re.compile(r"(?i)\b(bearer)\s+([A-Za-z0-9._~+/=-]+)"),
 )
 
