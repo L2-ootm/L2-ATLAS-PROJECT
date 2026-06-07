@@ -57,9 +57,11 @@ def set_connection(conn: sqlite3.Connection | None) -> None:
 
     Used by tests to supply an in-memory db without spawning Hermes.
     Called with None in teardown to reset state between tests.
+    Guarded by _LOCK to prevent TOCTOU races with concurrent emit() calls.
     """
     global _CONN
-    _CONN = conn
+    with _LOCK:
+        _CONN = conn
 
 
 # ---------------------------------------------------------------------------
@@ -67,7 +69,7 @@ def set_connection(conn: sqlite3.Connection | None) -> None:
 # ---------------------------------------------------------------------------
 
 
-def register(ctx) -> None:
+def register(ctx, conn: sqlite3.Connection | None = None) -> None:
     """Register atlas_audit hook callbacks with the Hermes plugin context.
 
     Hook names are verified against hermes_cli/plugins.py VALID_HOOKS:
@@ -79,7 +81,16 @@ def register(ctx) -> None:
       "post_approval_response" — VALID (line 167)
 
     Registers exactly 6 hooks. plugin.yaml hooks list must match exactly.
+
+    Args:
+        ctx: Hermes plugin context providing register_hook().
+        conn: Optional SQLite connection to initialise _CONN at registration time.
+            If provided, equivalent to calling set_connection(conn) before hooks fire.
+            Phase 5's start_run() will call set_connection() before invoking Hermes
+            when a persistent connection is managed by the mission lifecycle.
     """
+    if conn is not None:
+        set_connection(conn)
     ctx.register_hook("on_session_start", on_session_start)
     ctx.register_hook("post_api_request", on_post_api_request)
     ctx.register_hook("post_llm_call", on_post_llm_call)
@@ -136,24 +147,20 @@ def on_post_tool_call(
             )
             return
 
+        # Snapshot _CONN under _LOCK to prevent TOCTOU race with set_connection()
+        with _LOCK:
+            conn_snapshot = _CONN
+        if conn_snapshot is None:
+            logger.error(
+                "atlas_audit: no connection — audit event dropped (call set_connection first)"
+            )
+            return
+
         event_type = "artifact" if tool_name in _ARTIFACT_TOOLS else "tool_call"
 
-        # Serialize args to JSON string for ToolCall.args (D-013)
-        if isinstance(args, dict):
-            args_str = json.dumps(args)
-        else:
-            args_str = args or "{}"
-
-        # Serialize result (may be None, dict, or str)
-        if isinstance(result, dict):
-            result_str: str | None = json.dumps(result)
-        elif isinstance(result, str):
-            result_str = result
-        else:
-            result_str = None
-
+        # Pass raw args/result — emit() handles dict/str/None serialization (D-013)
         emit(
-            _CONN,
+            conn_snapshot,
             _LOCK,
             run_id=run_id,
             event_type=event_type,
@@ -164,8 +171,8 @@ def on_post_tool_call(
             duration_ms=duration_ms,
             tool_call_kwargs={
                 "tool_name": tool_name,
-                "args": args_str,
-                "result": result_str,
+                "args": args,
+                "result": result,
             },
         )
     except Exception as exc:
@@ -198,6 +205,14 @@ def on_post_api_request(
             )
             return
 
+        with _LOCK:
+            conn_snapshot = _CONN
+        if conn_snapshot is None:
+            logger.error(
+                "atlas_audit: no connection — audit event dropped (call set_connection first)"
+            )
+            return
+
         duration_ms = int(api_duration * 1000)
         data = {
             "model": model,
@@ -208,7 +223,7 @@ def on_post_api_request(
         }
 
         emit(
-            _CONN,
+            conn_snapshot,
             _LOCK,
             run_id=run_id,
             event_type="llm_call",
@@ -276,6 +291,14 @@ def on_subagent_stop(
             )
             return
 
+        with _LOCK:
+            conn_snapshot = _CONN
+        if conn_snapshot is None:
+            logger.error(
+                "atlas_audit: no connection — audit event dropped (call set_connection first)"
+            )
+            return
+
         data = {
             "child_role": str(child_role) if child_role is not None else None,
             "child_summary": child_summary,
@@ -283,10 +306,11 @@ def on_subagent_stop(
         }
 
         emit(
-            _CONN,
+            conn_snapshot,
             _LOCK,
             run_id=run_id,
             event_type="subagent_run",
+            session_id=parent_session_id,
             duration_ms=duration_ms,
             data=data,
         )
@@ -310,8 +334,16 @@ def on_post_approval(*, session_id: str = "", **_: Any) -> None:
             )
             return
 
+        with _LOCK:
+            conn_snapshot = _CONN
+        if conn_snapshot is None:
+            logger.error(
+                "atlas_audit: no connection — audit event dropped (call set_connection first)"
+            )
+            return
+
         emit(
-            _CONN,
+            conn_snapshot,
             _LOCK,
             run_id=run_id,
             event_type="approval",
