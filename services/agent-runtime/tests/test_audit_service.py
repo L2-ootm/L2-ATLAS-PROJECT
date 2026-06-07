@@ -109,7 +109,8 @@ def test_emit_artifact(db, run_id, lock):
 
 def test_emit_redacts_secret_in_data(db, run_id, lock):
     """emit with a dict containing 'token' key stores [REDACTED] instead of the
-    raw secret value in the data column of audit_events."""
+    raw secret value in the data column of audit_events, and the stored string
+    remains valid JSON."""
     emit(
         db,
         lock,
@@ -123,6 +124,36 @@ def test_emit_redacts_secret_in_data(db, run_id, lock):
 
     assert "sk-abc123" not in row
     assert "[REDACTED]" in row
+    # Stored data must still be valid JSON (not broken by redaction)
+    parsed = json.loads(row)
+    assert parsed["token"] == "[REDACTED]"
+    assert parsed["normal_key"] == "value"
+
+
+@pytest.mark.parametrize("value,raw", [
+    ("sk-string", '"sk-string"'),       # JSON string value
+    (42, "42"),                          # JSON numeric value (WR-04 coverage)
+    (None, "null"),                      # JSON null
+])
+def test_redact_json_value_types_remain_valid_json(db, run_id, lock, value, raw):
+    """Redaction of JSON key-value pairs must produce valid JSON for string,
+    numeric, and null secret values.  Each stored data field must survive
+    json.loads() after the secret value is replaced."""
+    emit(
+        db,
+        lock,
+        run_id=run_id,
+        event_type="llm_call",
+        data={"token": value, "ok": "x"},
+    )
+    stored = db.execute(
+        "SELECT data FROM audit_events WHERE run_id=?", (run_id,)
+    ).fetchone()[0]
+
+    assert raw not in stored or "[REDACTED]" in stored
+    parsed = json.loads(stored)  # Must not raise
+    assert parsed["token"] == "[REDACTED]"
+    assert parsed["ok"] == "x"
 
 
 # ---------------------------------------------------------------------------
