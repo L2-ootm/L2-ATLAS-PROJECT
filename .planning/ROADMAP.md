@@ -130,7 +130,22 @@ Plans:
 6. All audit writes are transactional — partial failures do not leave orphaned event rows.
 7. No in-core edits to Hermes cli.py or run_agent.py required (verified by git diff showing no changes to those files, or a divergence decision record exists if edits were unavoidable).
 
-**Plans:** TBD
+**Plans:** 3 plans
+
+**Wave 0** *(no dependencies)*
+
+Plans:
+- [ ] 04-01-PLAN.md — Service package scaffold + conftest + test stubs (pyproject, atlas_runtime, atlas_audit skeleton, db/run_id/lock fixtures)
+
+**Wave 1** *(blocked on Wave 0 completion)*
+
+Plans:
+- [ ] 04-02-PLAN.md — audit_service.py (emit, get_events_for_run, export_jsonl) + full test suite
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+Plans:
+- [ ] 04-03-PLAN.md — atlas_audit Hermes plugin (register, hook callbacks, session->run mapping) + integration tests + plugin install
 
 ---
 
@@ -254,7 +269,7 @@ Plans:
 | 1. Hermes Foundation Clone & Extension Audit | 4/4 | Complete    | 2026-06-05 |
 | 2. Core Domain Schemas & SQLite Migration | 3/3 | Complete    | 2026-06-06 |
 | 3. Research Closure — WebUI Spike & CRM Intake | 2/2 | Complete    | 2026-06-06 |
-| 4. ATLAS Event Bus & Audit Core | 0/0 | Not started | - |
+| 4. ATLAS Event Bus & Audit Core | 0/3 | Planned     | - |
 | 5. Mission & Run Lifecycle | 0/0 | Not started | - |
 | 6. LLM Wiki Runtime | 0/0 | Not started | - |
 | 7. API Gateway | 0/0 | Not started | - |
