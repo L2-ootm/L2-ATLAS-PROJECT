@@ -36,17 +36,21 @@ logger = logging.getLogger(__name__)
 def _redact(text: str) -> str:
     """Apply all SECRET_PATTERNS to a string before persistence.
 
-    Covers: URL querystring key=value, JSON key-value "token":"...", Bearer token.
-    Replaces the secret value (group 2) with [REDACTED] while preserving the
-    surrounding text structure (valid JSON remains valid JSON after redaction).
+    SECRET_PATTERNS[1] is the JSON key-value pattern; its group(2) may be a
+    quoted string ("val"), a number (123), or null/true/false.  All of these
+    must be replaced with a valid JSON string literal so callers can still
+    round-trip the stored data through json.loads().  The other two patterns
+    (URL querystring, Bearer token) appear in non-JSON contexts; plain
+    [REDACTED] is correct there.
     """
-    def _replace_group2(m: re.Match) -> str:
-        """Replace only the captured group 2 span, preserving surrounding text."""
-        start, end = m.span(2)
-        full_start = m.start()
-        return m.group(0)[: start - full_start] + "[REDACTED]" + m.group(0)[end - full_start :]
+    for i, pat in enumerate(SECRET_PATTERNS):
+        repl = '"[REDACTED]"' if i == 1 else "[REDACTED]"
 
-    for pat in SECRET_PATTERNS:
+        def _replace_group2(m, _r=repl):
+            start, end = m.span(2)
+            base = m.start()
+            return m.group(0)[: start - base] + _r + m.group(0)[end - base :]
+
         text = pat.sub(_replace_group2, text)
     return text
 
