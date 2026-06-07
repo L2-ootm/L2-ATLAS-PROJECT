@@ -67,19 +67,22 @@ Preferred candidates:
 
 Status: locked.
 
-## D-006 — WebUI framework not locked yet
+## D-006 — WebUI framework
 
-Decision: WebUI framework remains undecided between SvelteKit/Svelte 5 and Next.js/React.
+Decision: SvelteKit/Svelte 5 with @sveltejs/adapter-static.
 
 Rationale:
-- research recommends SvelteKit;
-- L2 has existing Next.js muscle/code;
-- decision requires spike against cockpit requirements.
+- weighted score 4.3 vs 3.3 (SvelteKit vs Next.js/React) across five cockpit-specific criteria;
+- adapter-static produces a Node.js-free static build — compliant with D-005 (no Electron, no persistent Node process);
+- smaller bundle (~15 KB JS baseline vs ~200–300 KB for Next.js) directly addresses COCKPIT-06 (< 2s load);
+- deployment model advantage is decisive for local-first Rust sidecar + FastAPI topology;
+- L2 code reuse disadvantage is bounded (greenfield cockpit, no React component port required).
 
-Status: open.
+Status: locked.
 
-Required next action:
-- create `docs/research/WEBUI_STACK_SPIKE.md` comparing SvelteKit vs Next.js.
+Date locked: 2026-06-06
+
+See: docs/research/WEBUI_STACK_SPIKE.md
 
 ## D-007 — CRM later, not first surface
 
@@ -150,3 +153,13 @@ Current acceptable Python dep budget is frozen — no new frameworks without a n
 See: `docs/decisions/D-013-language-strategy.md`.
 
 Status: locked (direction); open (migration timing — triggers after Phase 5 behavior validation).
+
+## D-014 — Optional local semantic retrieval spike with turbovec
+
+Decision: Evaluate `turbovec` as an optional compressed local vector index behind an ATLAS retrieval adapter. Use SQLite for metadata, filters, chunks, and citations; use `turbovec.IdMapIndex` only for compressed vector search.
+
+Rationale: ATLAS needs local-first, auditable, policy-filterable semantic retrieval for wiki/project/mission context without depending on a managed vector database.
+
+See: `docs/decisions/D-014-turbovec-local-semantic-retrieval-spike.md` and `docs/research/2026-06-06_TURBOVEC_LOCAL_RETRIEVAL_SPIKE.md`.
+
+Status: accepted for spike; not accepted for core adoption.
