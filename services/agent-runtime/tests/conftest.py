@@ -30,14 +30,20 @@ MIGRATION_PATH = (
 def db_fixture() -> sqlite3.Connection:  # type: ignore[return]
     """In-memory SQLite with WAL mode, FK enforcement, and core migration applied.
 
-    The migration is applied only when infra/migrations/0001_core.sql exists.
+    Raises pytest.fail if infra/migrations/0001_core.sql does not exist, rather
+    than silently returning an empty database (which would cause all downstream
+    tests to fail with misleading 'no such table' errors instead of a clear cause).
     """
     conn = sqlite3.connect(":memory:")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys = ON")
-    if MIGRATION_PATH.exists():
-        sql = MIGRATION_PATH.read_text(encoding="utf-8")
-        conn.executescript(sql)
+    if not MIGRATION_PATH.exists():
+        pytest.fail(
+            f"Required migration not found: {MIGRATION_PATH}\n"
+            "Ensure infra/migrations/0001_core.sql exists before running tests."
+        )
+    sql = MIGRATION_PATH.read_text(encoding="utf-8")
+    conn.executescript(sql)
     yield conn
     conn.close()
 
