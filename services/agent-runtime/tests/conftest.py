@@ -43,9 +43,32 @@ def db_fixture() -> sqlite3.Connection:  # type: ignore[return]
 
 
 @pytest.fixture(name="run_id")
-def run_id_fixture() -> str:
-    """A stable run_id for test isolation."""
-    return str(uuid.uuid4())
+def run_id_fixture(db: sqlite3.Connection) -> str:
+    """A stable run_id for test isolation.
+
+    Inserts a minimal mission + run row into the in-memory DB so that
+    FK constraints on audit_events.run_id and tool_calls.run_id are satisfied
+    when PRAGMA foreign_keys = ON is active.
+    """
+    import datetime
+
+    mission_id = str(uuid.uuid4())
+    run_id = str(uuid.uuid4())
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    db.execute(
+        "INSERT INTO missions(id, title, intent, status, project, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (mission_id, "test-mission", "", "pending", "", now, now),
+    )
+    db.execute(
+        "INSERT INTO runs(id, mission_id, session_id, status, started_at, finished_at, summary) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (run_id, mission_id, None, "running", now, None, ""),
+    )
+    db.commit()
+
+    return run_id
 
 
 @pytest.fixture(name="lock")
