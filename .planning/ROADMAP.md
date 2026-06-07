@@ -14,7 +14,7 @@
 - [x] **Phase 1: Hermes Foundation Clone & Extension Audit** - Clean Hermes clone + authoritative extension-surface audit (completed 2026-06-05)
 - [x] **Phase 2: Core Domain Schemas & SQLite Migration** - Pydantic v2 domain model + SQLite schema as single authoritative data contract (completed 2026-06-06)
 - [x] **Phase 3: Research Closure — WebUI Spike & CRM Intake** - Close open research gaps D-006 and D-010 (completed 2026-06-06)
-- [x] **Phase 4: ATLAS Event Bus & Audit Core** - Structured audit event bus wired into Hermes runtime (completed 2026-06-07)
+- [x] **Phase 4: ATLAS Event Bus & Audit Core** - Structured audit event bus wired into Hermes runtime (completed 2026-06-07)
 - [ ] **Phase 5: Mission & Run Lifecycle** - Core mission state machine: create, execute, complete, cancel
 - [ ] **Phase 6: LLM Wiki Runtime** - Wiki ingest, update, query, and lint pipeline
 - [ ] **Phase 7: API Gateway** - Typed REST API exposing all mission, run, audit, and wiki operations
@@ -168,7 +168,23 @@ Plans:
 7. Policy engine works on Linux (bash) and Windows (PowerShell) paths — confirmed by two test runs.
 8. All service layer functions have unit tests (≥ 80% branch coverage on mission_service.py and run_service.py).
 
-**Plans:** TBD
+**Plans:** 4 plans
+
+**Wave 0** *(no dependencies)*
+
+Plans:
+- [ ] 05-01-PLAN.md — Scaffold: pyproject.toml update, all service stubs, CLI skeleton, test skeletons (xfail)
+
+**Wave 1** *(blocked on Wave 0 completion — runs in parallel)*
+
+Plans:
+- [ ] 05-02-PLAN.md — mission_service.py + run_service.py implementation (RUNTIME-01/02/04/05)
+- [ ] 05-03-PLAN.md — policy.py + subagent_service.py implementation (RUNTIME-06/07)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+Plans:
+- [ ] 05-04-PLAN.md — CLI main.py wiring + full suite coverage gate
 
 ---
 
@@ -270,7 +286,7 @@ Plans:
 | 2. Core Domain Schemas & SQLite Migration | 3/3 | Complete    | 2026-06-06 |
 | 3. Research Closure — WebUI Spike & CRM Intake | 2/2 | Complete    | 2026-06-06 |
 | 4. ATLAS Event Bus & Audit Core | 3/3 | Complete   | 2026-06-07 |
-| 5. Mission & Run Lifecycle | 0/0 | Not started | - |
+| 5. Mission & Run Lifecycle | 0/4 | Pending | - |
 | 6. LLM Wiki Runtime | 0/0 | Not started | - |
 | 7. API Gateway | 0/0 | Not started | - |
 | 8. WebUI Operator Cockpit | 0/0 | Not started | - |
