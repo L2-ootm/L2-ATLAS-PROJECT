@@ -21,3 +21,7 @@ sessions/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local-only files
+docs/private/
+
