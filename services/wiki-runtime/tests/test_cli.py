@@ -19,13 +19,30 @@ from atlas_wiki.cli.main import wiki_app
 runner = CliRunner()
 
 
-def test_ingest_exits_zero_prints_uuid(db, lock, wiki_dir, run_id, tmp_path, monkeypatch):
+def test_ingest_exits_zero_prints_uuid(db, lock, wiki_dir, tmp_path, monkeypatch):
     """atlas wiki ingest <path> exits 0 and prints a 36-character UUID."""
+    import datetime
     import atlas_wiki.cli.main as cli_main
 
     monkeypatch.setattr(cli_main, "_get_connection", lambda: db)
     monkeypatch.setattr(cli_main, "_get_lock", lambda: lock)
     monkeypatch.setattr(cli_main, "_get_wiki_dir", lambda: wiki_dir)
+
+    # CLI uses run_id="operator" — insert a mission+run row with that id so FK passes
+    import uuid
+    mission_id = str(uuid.uuid4())
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    db.execute(
+        "INSERT INTO missions(id, title, intent, status, project, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (mission_id, "operator-mission", "", "pending", "", now, now),
+    )
+    db.execute(
+        "INSERT INTO runs(id, mission_id, session_id, status, started_at, finished_at, summary) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("operator", mission_id, None, "running", now, None, ""),
+    )
+    db.commit()
 
     src = tmp_path / "source.txt"
     src.write_text("hello world content for ingest test", encoding="utf-8")
@@ -49,13 +66,30 @@ def test_ingest_missing_file_exits_nonzero(db, lock, wiki_dir, monkeypatch):
     assert result.exit_code != 0, f"Expected non-zero exit, got {result.exit_code}"
 
 
-def test_update_exits_zero(db, lock, wiki_dir, run_id, monkeypatch):
+def test_update_exits_zero(db, lock, wiki_dir, monkeypatch):
     """atlas wiki update <slug> --body 'text' --title 'Title' exits 0."""
+    import datetime
+    import uuid
     import atlas_wiki.cli.main as cli_main
 
     monkeypatch.setattr(cli_main, "_get_connection", lambda: db)
     monkeypatch.setattr(cli_main, "_get_lock", lambda: lock)
     monkeypatch.setattr(cli_main, "_get_wiki_dir", lambda: wiki_dir)
+
+    # CLI uses run_id="operator" — insert a mission+run row with that id so FK passes
+    mission_id = str(uuid.uuid4())
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    db.execute(
+        "INSERT INTO missions(id, title, intent, status, project, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (mission_id, "operator-mission", "", "pending", "", now, now),
+    )
+    db.execute(
+        "INSERT INTO runs(id, mission_id, session_id, status, started_at, finished_at, summary) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("operator", mission_id, None, "running", now, None, ""),
+    )
+    db.commit()
 
     result = runner.invoke(
         wiki_app,
