@@ -187,6 +187,8 @@ class Source(BaseModel):
         default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
     title: str = ""
+    untrusted: bool = False
+    ingested_by_run_id: Optional[str] = None
 
     @field_serializer("ingested_at")
     def serialize_dt(self, dt: datetime.datetime | None) -> str | None:
@@ -219,6 +221,30 @@ class WikiPage(BaseModel):
         return None if dt is None else dt.isoformat()
 
 
+class MemoryProvenance(BaseModel):
+    """Provenance record for every write to any ATLAS memory layer (D-019)."""
+
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    layer: Literal["WIKI", "PROFILE", "GRAPH", "SKILL", "AUDIT"]
+    item_id: str
+    run_id: Optional[str] = None
+    source_id: Optional[str] = None
+    audit_event_id: Optional[str] = None
+    operator_id: Optional[str] = None
+    sensitivity: Literal["public", "internal", "private", "restricted"] = "internal"
+    untrusted: bool = False
+    written_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+
+    @field_serializer("written_at")
+    def serialize_dt(self, dt: datetime.datetime | None) -> str | None:
+        """Return ISO 8601 string so model_dump() is JSON-safe."""
+        return None if dt is None else dt.isoformat()
+
+
 __all__ = [
     "Mission",
     "Run",
@@ -227,5 +253,6 @@ __all__ = [
     "Artifact",
     "Source",
     "WikiPage",
+    "MemoryProvenance",
     "SECRET_PATTERNS",
 ]
