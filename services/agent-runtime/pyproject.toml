@@ -9,10 +9,14 @@ description = "ATLAS agent-runtime service layer"
 requires-python = ">=3.11"
 dependencies = [
     "atlas-core",
+    "typer>=0.25.0",
 ]
 
+[project.scripts]
+atlas = "atlas_runtime.cli.main:app"
+
 [project.optional-dependencies]
-dev = ["pytest>=9.0"]
+dev = ["pytest>=9.0", "pytest-cov>=7.0"]
 
 [tool.hatch.metadata]
 allow-direct-references = true
@@ -22,3 +26,10 @@ packages = ["atlas_runtime", "atlas_audit"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["atlas_runtime"]
+
+[tool.coverage.report]
+fail_under = 80
