@@ -1,8 +1,5 @@
 """Tests for atlas_runtime.policy.
 
-All tests are marked xfail(strict=True) because the policy functions are stubs
-in Wave 0. Wave 1 executors must implement the policy engine to make these pass.
-
 RUNTIME-07: Policy engine must work on both Linux (POSIX) and Windows path strings.
 The parametrized test cases cover:
   - A relative path within the workspace (allowed)
@@ -34,7 +31,6 @@ from atlas_runtime.policy import (
         ("C:\\Users\\other\\file.txt", False),
     ],
 )
-@pytest.mark.xfail(reason="stub — implement in Wave 1", strict=True)
 def test_workspace_boundary(tmp_path, target, expected_allowed):
     """Policy engine accepts in-workspace paths and rejects out-of-workspace paths.
 
@@ -46,21 +42,18 @@ def test_workspace_boundary(tmp_path, target, expected_allowed):
     assert isinstance(decision, PolicyDecision)
 
 
-@pytest.mark.xfail(reason="stub — implement in Wave 1", strict=True)
 def test_check_tool_allowed_in_list(db, lock):
     """check_tool_allowed() returns allowed=True when tool is in the allowlist."""
     decision = check_tool_allowed("Read", ["Read", "Write"])
     assert decision.allowed is True
 
 
-@pytest.mark.xfail(reason="stub — implement in Wave 1", strict=True)
 def test_check_tool_allowed_not_in_list(db, lock):
     """check_tool_allowed() returns allowed=False when tool is not in the allowlist."""
     decision = check_tool_allowed("Shell", ["Read"])
     assert decision.allowed is False
 
 
-@pytest.mark.xfail(reason="stub — implement in Wave 1", strict=True)
 def test_boundary_violation_emits_failure_event(db, lock, run_id):
     """check_workspace_boundary_and_emit() emits a failure AuditEvent on rejection."""
     decision = check_workspace_boundary_and_emit(
