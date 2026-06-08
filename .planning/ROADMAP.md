@@ -23,7 +23,7 @@
 
 ### Candidate Sidecar Spikes
 
-- [ ] **Phase 4.5 / Phase 5 adjunct: FreeLLMAPI Sidecar Gateway** - Accepted for spike via D-015. Mock and real Kilo keyless smoke tests passed. Integrate as loopback OpenAI-compatible gateway for `free-tier-ok` task classes; do not vendor into ATLAS core yet.
+- [x] **Phase 4.5 / Phase 5 adjunct: FreeLLMAPI Sidecar Gateway** - Accepted for spike via D-015. Mock and real Kilo keyless smoke tests passed. Integrate as loopback OpenAI-compatible gateway for `free-tier-ok` task classes; do not vendor into ATLAS core yet. (completed 2026-06-08)
 
 ---
 
@@ -290,7 +290,7 @@ Plans:
 | 2. Core Domain Schemas & SQLite Migration | 3/3 | Complete    | 2026-06-06 |
 | 3. Research Closure — WebUI Spike & CRM Intake | 2/2 | Complete    | 2026-06-06 |
 | 4. ATLAS Event Bus & Audit Core | 3/3 | Complete   | 2026-06-07 |
-| 5. Mission & Run Lifecycle | 4/4 | Complete   | 2026-06-08 |
+| 5. Mission & Run Lifecycle | 4/4 | Complete    | 2026-06-08 |
 | 6. LLM Wiki Runtime | 0/0 | Not started | - |
 | 7. API Gateway | 0/0 | Not started | - |
 | 8. WebUI Operator Cockpit | 0/0 | Not started | - |

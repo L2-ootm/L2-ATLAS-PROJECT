@@ -21,13 +21,13 @@ Status: Active
 
 ## RUNTIME — Enhanced Agent Runtime
 
-- [ ] **RUNTIME-01**: User can create a Mission (title + intent) via CLI or API and see it persisted in the database.
-- [ ] **RUNTIME-02**: User can execute a Mission and have it processed by the enhanced ATLAS/Hermes runtime loop.
+- [x] **RUNTIME-01**: User can create a Mission (title + intent) via CLI or API and see it persisted in the database.
+- [x] **RUNTIME-02**: User can execute a Mission and have it processed by the enhanced ATLAS/Hermes runtime loop.
 - [ ] **RUNTIME-03**: Every LLM call, tool call, subagent run, approval, external action, and artifact emits a structured AuditEvent row in the database.
-- [ ] **RUNTIME-04**: A completed Run shows final status (succeeded/failed), start/finish timestamps, and a summary.
-- [ ] **RUNTIME-05**: User can cancel a running Mission and see a partial audit trail in the database.
-- [ ] **RUNTIME-06**: Subagents are governed: role, model tier, allowed tools, autonomy level, and token budget are captured per AuditEvent row.
-- [ ] **RUNTIME-07**: Policy engine enforces cross-platform workspace/command safety (not Windows-only PowerShell).
+- [x] **RUNTIME-04**: A completed Run shows final status (succeeded/failed), start/finish timestamps, and a summary.
+- [x] **RUNTIME-05**: User can cancel a running Mission and see a partial audit trail in the database.
+- [x] **RUNTIME-06**: Subagents are governed: role, model tier, allowed tools, autonomy level, and token budget are captured per AuditEvent row.
+- [x] **RUNTIME-07**: Policy engine enforces cross-platform workspace/command safety (not Windows-only PowerShell).
 
 ## WIKI — LLM Knowledge Runtime
 
@@ -109,12 +109,12 @@ Status: Active
 | RUNTIME-03 | Phase 4 | Pending |
 | AUDIT-01 | Phase 4 | Pending |
 | AUDIT-02 | Phase 4 | Pending |
-| RUNTIME-01 | Phase 5 | Pending |
-| RUNTIME-02 | Phase 5 | Pending |
-| RUNTIME-04 | Phase 5 | Pending |
-| RUNTIME-05 | Phase 5 | Pending |
-| RUNTIME-06 | Phase 5 | Pending |
-| RUNTIME-07 | Phase 5 | Pending |
+| RUNTIME-01 | Phase 5 | Complete |
+| RUNTIME-02 | Phase 5 | Complete |
+| RUNTIME-04 | Phase 5 | Complete |
+| RUNTIME-05 | Phase 5 | Complete |
+| RUNTIME-06 | Phase 5 | Complete |
+| RUNTIME-07 | Phase 5 | Complete |
 | WIKI-01 | Phase 6 | Pending |
 | WIKI-02 | Phase 6 | Pending |
 | WIKI-03 | Phase 6 | Pending |
