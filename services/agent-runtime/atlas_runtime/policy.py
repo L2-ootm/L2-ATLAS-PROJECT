@@ -45,12 +45,26 @@ def check_workspace_boundary(
     Windows (C:\\...) and POSIX (/home/...) path strings transparently.
 
     Resolves target relative to workspace_root to prevent CWD-escape attacks
-    (Pitfall 3 in 05-RESEARCH.md).
+    (Pitfall 3 in 05-RESEARCH.md): relative paths are pinned to workspace_root
+    before resolving, so '../outside' cannot escape the workspace root.
 
-    Raises:
-        NotImplementedError: Stub — implement in Wave 1.
+    An absolute path outside the workspace (e.g. 'C:\\Users\\other\\file.txt')
+    causes pathlib to discard the workspace_root prefix on join, resulting in
+    a path that fails the relative_to() check — correctly rejected.
     """
-    raise NotImplementedError("not implemented")
+    try:
+        resolved_root = pathlib.Path(workspace_root).resolve()
+        # Pin relative paths to workspace_root to prevent CWD-escape.
+        # For absolute target_path values, pathlib discards resolved_root on join,
+        # so absolute paths outside the workspace fall through to relative_to() failure.
+        resolved_target = (resolved_root / target_path).resolve()
+        resolved_target.relative_to(resolved_root)
+        return PolicyDecision(allowed=True, reason="within_workspace")
+    except ValueError:
+        return PolicyDecision(
+            allowed=False,
+            reason=f"path_outside_workspace: {target_path!r} not under {workspace_root!r}",
+        )
 
 
 def check_workspace_boundary_and_emit(
@@ -65,10 +79,19 @@ def check_workspace_boundary_and_emit(
     Delegates boundary check to check_workspace_boundary(). If rejected, emits
     an AuditEvent with event_type="failure" and policy_result set to the reason.
 
-    Raises:
-        NotImplementedError: Stub — implement in Wave 1.
+    emit() acquires the lock internally — never call this while holding the lock.
     """
-    raise NotImplementedError("not implemented")
+    decision = check_workspace_boundary(target_path, workspace_root)
+    if not decision.allowed:
+        emit(
+            conn,
+            lock,
+            run_id=run_id,
+            event_type="failure",
+            data={"reason": decision.reason, "target_path": target_path},
+            policy_result=decision.reason,
+        )
+    return decision
 
 
 def check_tool_allowed(
@@ -79,8 +102,10 @@ def check_tool_allowed(
 
     Unclassified tools (not in allowed_tools) are rejected — skills must be
     classified before ATLAS-grade use (D-008).
-
-    Raises:
-        NotImplementedError: Stub — implement in Wave 1.
     """
-    raise NotImplementedError("not implemented")
+    if tool_name in allowed_tools:
+        return PolicyDecision(allowed=True, reason="tool_in_allowlist")
+    return PolicyDecision(
+        allowed=False,
+        reason=f"tool_not_allowed: {tool_name!r} not in allowlist",
+    )
