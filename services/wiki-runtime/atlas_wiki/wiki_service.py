@@ -267,6 +267,11 @@ def search_wiki(
 
     T-06-06: query is always parameterized — never string-interpolated.
     """
+    # Wrap query in double-quotes to treat it as a phrase/prefix search and avoid
+    # FTS5 mis-parsing hyphens as the exclude operator (Rule 1 bug fix).
+    # Escape any literal double-quotes in the query to avoid FTS5 syntax errors.
+    safe_query = '"' + query.replace('"', '""') + '"'
+
     # FTS5 rowid JOIN pattern (required — content table has no stored data)
     cursor = conn.execute(
         "SELECT wp.slug, wp.title, wp.source_id, bm25(wiki_fts) AS rank "
@@ -275,7 +280,7 @@ def search_wiki(
         "WHERE wiki_fts MATCH ? "
         "ORDER BY rank "  # bm25() returns negative; ASC = most relevant first
         "LIMIT ?",
-        (query, limit),
+        (safe_query, limit),
     )
     cols = [d[0] for d in cursor.description]
     return [dict(zip(cols, row)) for row in cursor]
