@@ -51,7 +51,7 @@ wiki/                persistent markdown KB
 | D-003 | SQLite/WAL/FTS5/sqlite-vec for MVP datastore | locked |
 | D-004 | LLM Wiki is first-class runtime (not RAG-only) | locked |
 | D-005 | Rust-first native desktop; Electron is negative baseline | locked |
-| D-006 | WebUI framework: SvelteKit vs Next.js — spike required | open |
+| D-006 | WebUI framework: SvelteKit/Svelte 5 with adapter-static | locked |
 | D-007 | CRM not first surface (after mission/run/audit/wiki/cockpit) | locked |
 | D-008 | Skills must be classified before shipping as ATLAS-grade | locked |
 | D-009 | STT/TTS/overlay is differentiator, not first MVP blocker | locked |
@@ -97,4 +97,4 @@ This document evolves at phase transitions and milestone boundaries.
 2. Archive milestone artifacts
 3. Update Context with current state
 
-_Last updated: 2026-06-04 — Milestone v1.0 started, ingest-docs merge complete_
+_Last updated: 2026-06-08 — Phase 5 complete: Mission & Run Lifecycle. RUNTIME-01/02/04/05/06/07 verified. 44 tests green, 85% branch coverage. Phase 6 (LLM Wiki Runtime) is next._
