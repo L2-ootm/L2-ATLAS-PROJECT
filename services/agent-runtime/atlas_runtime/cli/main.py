@@ -25,6 +25,12 @@ app = typer.Typer()
 mission_app = typer.Typer(name="mission")
 app.add_typer(mission_app, name="mission")
 
+try:
+    from atlas_wiki.cli.main import wiki_app
+    app.add_typer(wiki_app, name="wiki")
+except ImportError:
+    pass  # wiki service not installed — skip wiki subcommands gracefully
+
 # Module-level lock singleton (monkeypatched in tests via _get_lock)
 _LOCK = threading.Lock()
 
