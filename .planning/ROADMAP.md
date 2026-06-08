@@ -210,7 +210,25 @@ Plans:
 6. wiki/index.md has an entry for every WikiPage row in the database; wiki/log.md has an entry for every wiki_update AuditEvent.
 7. Service layer unit tests cover ingest, update, search, and lint paths (≥ 80% branch coverage on wiki_service.py).
 
-**Plans:** TBD
+**Plans:** 6 plans
+
+**Wave 1** *(no dependencies)*
+
+Plans:
+- [ ] 06-01-PLAN.md — Extend atlas_core Source model + MemoryProvenance + 0002 migration
+
+**Wave 2** *(blocked on Wave 1 — runs in parallel)*
+
+Plans:
+- [ ] 06-02-PLAN.md — atlas-wiki package scaffold (pyproject.toml, __init__ files, service stubs)
+- [ ] 06-03-PLAN.md — wiki_service.py core functions (ingest, update, search, lint) + test_wiki_service.py
+- [ ] 06-04-PLAN.md — provenance_service.py + test_provenance_service.py
+
+**Wave 3** *(blocked on Wave 2 completion — runs in parallel)*
+
+Plans:
+- [ ] 06-05-PLAN.md — atlas_wiki CLI main.py + test_cli.py + atlas_runtime CLI extension
+- [ ] 06-06-PLAN.md — Full coverage gate + GRAPH_MEMORY_RESEARCH_NOTES.md
 
 ---
 
