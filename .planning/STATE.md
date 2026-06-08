@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Operator Cockpit MVP
 status: executing
-last_updated: "2026-06-08T19:30:00.000Z"
-last_activity: 2026-06-08 -- Phase 06 Plan 03 complete (wiki service core: ingest, update, search, lint)
+last_updated: "2026-06-08T19:50:00.000Z"
+last_activity: "2026-06-08 -- Phase 06 Plan 04 complete (provenance service tests: 4 tests, 100% branch coverage)"
 progress:
-  total_phases: 9
-  completed_phases: 4
-  total_plans: 21
-  completed_plans: 17
-  percent: 55
+  total_phases: 10
+  completed_phases: 5
+  total_plans: 24
+  completed_plans: 22
+  percent: 53
 ---
 
 # STATE — L2 ATLAS
@@ -18,10 +18,10 @@ progress:
 ## Current Position
 
 Phase: 06
-Plan: 03 complete — ready for 06-04
-Next: Execute Phase 06 Plan 04 (provenance service full implementation)
+Plan: 04 complete — ready for 06-05
+Next: Execute Phase 06 Plan 05 (wiki CLI thin wrappers)
 Status: Executing
-Last activity: 2026-06-08 -- Phase 06 Plan 03 complete (wiki service core: ingest, update, search, lint)
+Last activity: 2026-06-08 -- Phase 06 Plan 04 complete (provenance service tests: 4 tests, 100% branch coverage)
 
 ## Accumulated Context
 
@@ -49,6 +49,7 @@ Last activity: 2026-06-08 -- Phase 06 Plan 03 complete (wiki service core: inges
 - D-019 impl (06-01): MemoryProvenance frozen model + 0002 migration are the schema foundation for all Phase 6 wiki service plans
 - D-019 impl (06-02): atlas-wiki package scaffold with sqlite-vec/fastembed in optional [semantic] group only; no [project.scripts]; wiki_app registered into atlas-runtime via try/except import
 - D-019 impl (06-03): wiki service core implemented via TDD — ingest/update/search/lint + provenance service write_provenance/get_provenance; 84% coverage; all WIKI-01..05 + AUDIT-03 satisfied
+- D-019 impl (06-04): provenance_service.py verified complete via dedicated 4-test suite; 100% branch coverage; T-06-10 (invalid layer bypass) confirmed mitigated by Pydantic-first guard
 - License confirmation (Phase 4.5): all four reference pillars confirmed permissive — Terax Apache-2.0, Odysseus MIT, Hermes MIT, FreeLLMAPI MIT. No copyleft obligation.
 
 ### Known blockers

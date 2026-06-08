@@ -222,7 +222,7 @@ Plans:
 Plans:
 - [x] 06-02-PLAN.md — atlas-wiki package scaffold (pyproject.toml, __init__ files, service stubs)
 - [x] 06-03-PLAN.md — wiki_service.py core functions (ingest, update, search, lint) + test_wiki_service.py
-- [ ] 06-04-PLAN.md — provenance_service.py + test_provenance_service.py
+- [x] 06-04-PLAN.md — provenance_service.py + test_provenance_service.py
 
 **Wave 3** *(blocked on Wave 2 completion — runs in parallel)*
 
