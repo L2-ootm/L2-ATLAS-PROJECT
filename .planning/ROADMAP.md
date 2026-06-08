@@ -15,7 +15,7 @@
 - [x] **Phase 2: Core Domain Schemas & SQLite Migration** - Pydantic v2 domain model + SQLite schema as single authoritative data contract (completed 2026-06-06)
 - [x] **Phase 3: Research Closure — WebUI Spike & CRM Intake** - Close open research gaps D-006 and D-010 (completed 2026-06-06)
 - [x] **Phase 4: ATLAS Event Bus & Audit Core** - Structured audit event bus wired into Hermes runtime (completed 2026-06-07)
-- [ ] **Phase 5: Mission & Run Lifecycle** - Core mission state machine: create, execute, complete, cancel
+- [x] **Phase 5: Mission & Run Lifecycle** - Core mission state machine: create, execute, complete, cancel (completed 2026-06-08)
 - [ ] **Phase 6: LLM Wiki Runtime** - Wiki ingest, update, query, and lint pipeline
 - [ ] **Phase 7: API Gateway** - Typed REST API exposing all mission, run, audit, and wiki operations
 - [ ] **Phase 8: WebUI Operator Cockpit** - Web cockpit: mission management, run monitoring, audit viewer, wiki browser
@@ -172,7 +172,7 @@ Plans:
 7. Policy engine works on Linux (bash) and Windows (PowerShell) paths — confirmed by two test runs.
 8. All service layer functions have unit tests (≥ 80% branch coverage on mission_service.py and run_service.py).
 
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans complete
 
 **Wave 0** *(no dependencies)*
 
@@ -188,7 +188,7 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 Plans:
-- [ ] 05-04-PLAN.md — CLI main.py wiring + full suite coverage gate
+- [x] 05-04-PLAN.md — CLI main.py wiring + full suite coverage gate
 
 ---
 
@@ -290,7 +290,7 @@ Plans:
 | 2. Core Domain Schemas & SQLite Migration | 3/3 | Complete    | 2026-06-06 |
 | 3. Research Closure — WebUI Spike & CRM Intake | 2/2 | Complete    | 2026-06-06 |
 | 4. ATLAS Event Bus & Audit Core | 3/3 | Complete   | 2026-06-07 |
-| 5. Mission & Run Lifecycle | 3/4 | In Progress|  |
+| 5. Mission & Run Lifecycle | 4/4 | Complete   | 2026-06-08 |
 | 6. LLM Wiki Runtime | 0/0 | Not started | - |
 | 7. API Gateway | 0/0 | Not started | - |
 | 8. WebUI Operator Cockpit | 0/0 | Not started | - |
