@@ -172,12 +172,12 @@ Plans:
 7. Policy engine works on Linux (bash) and Windows (PowerShell) paths — confirmed by two test runs.
 8. All service layer functions have unit tests (≥ 80% branch coverage on mission_service.py and run_service.py).
 
-**Plans:** 4 plans
+**Plans:** 1/4 plans executed
 
 **Wave 0** *(no dependencies)*
 
 Plans:
-- [ ] 05-01-PLAN.md — Scaffold: pyproject.toml update, all service stubs, CLI skeleton, test skeletons (xfail)
+- [x] 05-01-PLAN.md — Scaffold: pyproject.toml update, all service stubs, CLI skeleton, test skeletons (xfail)
 
 **Wave 1** *(blocked on Wave 0 completion — runs in parallel)*
 
@@ -290,7 +290,7 @@ Plans:
 | 2. Core Domain Schemas & SQLite Migration | 3/3 | Complete    | 2026-06-06 |
 | 3. Research Closure — WebUI Spike & CRM Intake | 2/2 | Complete    | 2026-06-06 |
 | 4. ATLAS Event Bus & Audit Core | 3/3 | Complete   | 2026-06-07 |
-| 5. Mission & Run Lifecycle | 0/4 | Pending | - |
+| 5. Mission & Run Lifecycle | 1/4 | In Progress|  |
 | 6. LLM Wiki Runtime | 0/0 | Not started | - |
 | 7. API Gateway | 0/0 | Not started | - |
 | 8. WebUI Operator Cockpit | 0/0 | Not started | - |
