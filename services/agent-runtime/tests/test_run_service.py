@@ -137,7 +137,6 @@ def test_cancel_already_terminal_raises(db, lock, mission_id):
         run_service.cancel_run(db, lock, run_id=run.id, mission_id=mission_id)
 
 
-@pytest.mark.xfail(reason="subagent_service.dispatch_subagent not implemented until Plan 03", strict=True)
 def test_dispatch_subagent_emits_subagent_run(db, lock, mission_id):
     """dispatch_subagent() emits a subagent_run AuditEvent (RUNTIME-06)."""
     from atlas_runtime import subagent_service
