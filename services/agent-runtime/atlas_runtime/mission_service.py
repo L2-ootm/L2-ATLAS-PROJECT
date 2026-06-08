@@ -10,14 +10,11 @@ Lock injection pattern follows Phase 4 audit_service.py conventions.
 """
 from __future__ import annotations
 
-import datetime
 import sqlite3
 import threading
-import uuid
 from typing import Optional
 
 from atlas_core.schemas.core import Mission
-from atlas_runtime.audit_service import emit
 
 
 def create_mission(
@@ -30,30 +27,47 @@ def create_mission(
 ) -> Mission:
     """Insert a new Mission row and return the constructed Mission.
 
-    Raises:
-        NotImplementedError: Stub — implement in Wave 1.
+    Pydantic-first write guard: constructs Mission model before any SQL.
+    ValidationError propagates before any DB write if inputs are invalid.
     """
-    raise NotImplementedError("not implemented")
+    # Pydantic-first: construct and validate before any SQL
+    mission = Mission(title=title, intent=intent, project=project)
+    row = mission.model_dump()
+
+    with lock:
+        with conn:
+            conn.execute(
+                "INSERT INTO missions"
+                "(id, title, intent, status, project, created_at, updated_at) "
+                "VALUES (:id, :title, :intent, :status, :project, :created_at, :updated_at)",
+                row,
+            )
+
+    return mission
 
 
 def get_mission(
     conn: sqlite3.Connection,
     mission_id: str,
 ) -> Optional[Mission]:
-    """Return the Mission for the given id, or None if not found.
-
-    Raises:
-        NotImplementedError: Stub — implement in Wave 1.
-    """
-    raise NotImplementedError("not implemented")
+    """Return the Mission for the given id, or None if not found."""
+    cursor = conn.execute(
+        "SELECT * FROM missions WHERE id=?",
+        (mission_id,),
+    )
+    cols = [d[0] for d in cursor.description]
+    row = cursor.fetchone()
+    if row is None:
+        return None
+    return Mission(**dict(zip(cols, row)))
 
 
 def list_missions(
     conn: sqlite3.Connection,
 ) -> list[Mission]:
-    """Return all Mission rows ordered by created_at ASC.
-
-    Raises:
-        NotImplementedError: Stub — implement in Wave 1.
-    """
-    raise NotImplementedError("not implemented")
+    """Return all Mission rows ordered by created_at ASC."""
+    cursor = conn.execute(
+        "SELECT * FROM missions ORDER BY created_at ASC",
+    )
+    cols = [d[0] for d in cursor.description]
+    return [Mission(**dict(zip(cols, row))) for row in cursor]
