@@ -40,25 +40,23 @@ def start_run(
     Raises:
         ValueError: If the mission does not exist or is not in pending state.
     """
-    # Validate mission exists and is in pending state
-    row = conn.execute(
-        "SELECT status FROM missions WHERE id=?", (mission_id,)
-    ).fetchone()
-    if row is None:
-        raise ValueError(f"Mission {mission_id!r} not found")
-    if row[0] != "pending":
-        raise ValueError(
-            f"Cannot start run for mission in state {row[0]!r}"
-        )
-
     # Pydantic-first: construct Run model before any SQL
     run = Run(mission_id=mission_id, session_id=session_id)
     run_row = run.model_dump()
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
-    # Atomic: INSERT run + UPDATE mission in same transaction
+    # Atomic: SELECT + INSERT + UPDATE in same lock+conn block (prevents TOCTOU)
     with lock:
         with conn:
+            row = conn.execute(
+                "SELECT status FROM missions WHERE id=?", (mission_id,)
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"Mission {mission_id!r} not found")
+            if row[0] != "pending":
+                raise ValueError(
+                    f"Cannot start run for mission in state {row[0]!r}"
+                )
             conn.execute(
                 "INSERT INTO runs"
                 "(id, mission_id, session_id, status, started_at, finished_at, summary) "
@@ -71,10 +69,13 @@ def start_run(
             )
     # Lock released — now safe to call emit() (which acquires lock internally)
 
-    # Wire atlas_audit plugin for Hermes session tracking
-    import atlas_audit
-    atlas_audit.set_connection(conn)
-    atlas_audit.on_session_start(session_id=session_id or run.id, run_id=run.id)
+    # Wire atlas_audit plugin for Hermes session tracking (optional — not present in all envs)
+    try:
+        import atlas_audit  # noqa: PLC0415
+        atlas_audit.set_connection(conn)
+        atlas_audit.on_session_start(session_id=session_id or run.id, run_id=run.id)
+    except ImportError:
+        pass
 
     # Emit transition audit event
     emit(
@@ -105,21 +106,20 @@ def complete_run(
     Raises:
         ValueError: If the run does not exist or is not in running state.
     """
-    row = conn.execute(
-        "SELECT status FROM runs WHERE id=?", (run_id,)
-    ).fetchone()
-    if row is None:
-        raise ValueError(f"Run {run_id!r} not found")
-    if row[0] != "running":
-        raise ValueError(
-            f"Cannot complete run in state {row[0]!r}"
-        )
-
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
-    # Atomic dual-table update
+    # Atomic dual-table update with pre-condition check inside lock (prevents TOCTOU)
     with lock:
         with conn:
+            row = conn.execute(
+                "SELECT status FROM runs WHERE id=?", (run_id,)
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"Run {run_id!r} not found")
+            if row[0] != "running":
+                raise ValueError(
+                    f"Cannot complete run in state {row[0]!r}"
+                )
             conn.execute(
                 "UPDATE runs SET status=?, finished_at=?, summary=? WHERE id=?",
                 (status, now, summary, run_id),
@@ -167,21 +167,21 @@ def cancel_run(
     Raises:
         ValueError: If the run does not exist or is already in a terminal state.
     """
-    row = conn.execute(
-        "SELECT status FROM runs WHERE id=?", (run_id,)
-    ).fetchone()
-    if row is None:
-        raise ValueError(f"Run {run_id!r} not found")
-    if row[0] != "running":
-        raise ValueError(
-            f"Cannot cancel run in state {row[0]!r}"
-        )
-
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
-    # Atomic dual-table update — existing audit_events rows are NEVER deleted
+    # Atomic dual-table update with pre-condition check inside lock (prevents TOCTOU)
+    # Existing audit_events rows are NEVER deleted
     with lock:
         with conn:
+            row = conn.execute(
+                "SELECT status FROM runs WHERE id=?", (run_id,)
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"Run {run_id!r} not found")
+            if row[0] != "running":
+                raise ValueError(
+                    f"Cannot cancel run in state {row[0]!r}"
+                )
             conn.execute(
                 "UPDATE runs SET status='cancelled', finished_at=? WHERE id=?",
                 (now, run_id),
