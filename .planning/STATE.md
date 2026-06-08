@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Operator Cockpit MVP
 status: executing
-last_updated: "2026-06-08T00:00:00.000Z"
-last_activity: "2026-06-08 -- Phase 06 Plan 06 complete (coverage gate 81%, GRAPH_MEMORY_RESEARCH_NOTES.md written)"
+last_updated: "2026-06-08T12:00:00.000Z"
+last_activity: "2026-06-08 -- Phase 06 VERIFIED complete (8/8 deliverables, 87.54% coverage, 31 tests green)"
 progress:
   total_phases: 10
   completed_phases: 6
@@ -18,10 +18,10 @@ progress:
 ## Current Position
 
 Phase: 06
-Plan: 06 complete — Phase 06 all plans done
+Plan: 06 complete — Phase 06 VERIFIED (8/8 deliverables, 87.54% cov, 31 tests)
 Next: Execute Phase 07 (API Gateway)
 Status: Executing
-Last activity: 2026-06-08 -- Phase 06 Plan 06 complete (coverage gate 81%, GRAPH_MEMORY_RESEARCH_NOTES.md written)
+Last activity: 2026-06-08 -- Phase 06 verified complete; Twenty CRM intake research in progress
 
 ## Accumulated Context
 
@@ -52,6 +52,7 @@ Last activity: 2026-06-08 -- Phase 06 Plan 06 complete (coverage gate 81%, GRAPH
 - D-019 impl (06-04): provenance_service.py verified complete via dedicated 4-test suite; 100% branch coverage; T-06-10 (invalid layer bypass) confirmed mitigated by Pydantic-first guard
 - D-019 impl (06-05): wiki CLI sub-app wired via TDD; 6 CLI tests pass; atlas_runtime CLI extended with try/except import; FTS5 hyphen-query bug auto-fixed (Rule 1)
 - D-019 impl (06-06): Phase 6 coverage gate passed at 81% (26 wiki + 33 core + 44 runtime tests green); graph memory Layer 4 design questions documented in GRAPH_MEMORY_RESEARCH_NOTES.md — no implementation; SQLite adjacency list (Option A) leading candidate for v2.0
+- D-019 impl (06-FINAL): Phase 6 VERIFIED 2026-06-08 — 8/8 deliverables confirmed, 87.54% coverage (31 tests), 06-VERIFICATION.md written; coverage gap fix: CLI result-display loops, ValueError path, factory types now covered
 - License confirmation (Phase 4.5): all four reference pillars confirmed permissive — Terax Apache-2.0, Odysseus MIT, Hermes MIT, FreeLLMAPI MIT. No copyleft obligation.
 
 ### Known blockers
@@ -101,8 +102,8 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 | 2 | Core Domain Schemas & SQLite Migration | Done | 2026-06-06 |
 | 3 | Research Closure (WebUI Spike + CRM Intake) | Done | 2026-06-06 |
 | 4 | ATLAS Event Bus & Audit Core | Done | 2026-06-07 |
-| 5 | Mission & Run Lifecycle | Planned / Pending execution | — |
-| 6 | LLM Wiki Runtime | Pending | — |
+| 5 | Mission & Run Lifecycle | Done | 2026-06-08 |
+| 6 | LLM Wiki Runtime | Done | 2026-06-08 |
 | 7 | API Gateway | Pending | — |
 | 8 | WebUI Operator Cockpit | Pending | — |
 | 9 | Skill Inventory & Classification | Pending | — |
