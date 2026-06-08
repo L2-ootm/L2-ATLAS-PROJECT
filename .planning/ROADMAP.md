@@ -215,7 +215,7 @@ Plans:
 **Wave 1** *(no dependencies)*
 
 Plans:
-- [ ] 06-01-PLAN.md — Extend atlas_core Source model + MemoryProvenance + 0002 migration
+- [x] 06-01-PLAN.md — Extend atlas_core Source model + MemoryProvenance + 0002 migration
 
 **Wave 2** *(blocked on Wave 1 — runs in parallel)*
 
@@ -309,7 +309,7 @@ Plans:
 | 3. Research Closure — WebUI Spike & CRM Intake | 2/2 | Complete    | 2026-06-06 |
 | 4. ATLAS Event Bus & Audit Core | 3/3 | Complete   | 2026-06-07 |
 | 5. Mission & Run Lifecycle | 4/4 | Complete    | 2026-06-08 |
-| 6. LLM Wiki Runtime | 0/0 | Not started | - |
+| 6. LLM Wiki Runtime | 1/6 | In progress | - |
 | 7. API Gateway | 0/0 | Not started | - |
 | 8. WebUI Operator Cockpit | 0/0 | Not started | - |
 | 9. Skill Inventory & Classification | 0/0 | Not started | - |
