@@ -22,7 +22,6 @@ from __future__ import annotations
 import datetime
 import sqlite3
 import threading
-import uuid
 from typing import Literal, Optional
 
 from atlas_core.schemas.core import Run
@@ -36,13 +35,58 @@ def start_run(
     mission_id: str,
     session_id: Optional[str] = None,
 ) -> Run:
-    """Create a Run row, update mission to running, emit task.started AuditEvent.
+    """Create a Run row, update mission to running, emit tool_call AuditEvent.
 
     Raises:
         ValueError: If the mission does not exist or is not in pending state.
-        NotImplementedError: Stub — implement in Wave 1.
     """
-    raise NotImplementedError("not implemented")
+    # Validate mission exists and is in pending state
+    row = conn.execute(
+        "SELECT status FROM missions WHERE id=?", (mission_id,)
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"Mission {mission_id!r} not found")
+    if row[0] != "pending":
+        raise ValueError(
+            f"Cannot start run for mission in state {row[0]!r}"
+        )
+
+    # Pydantic-first: construct Run model before any SQL
+    run = Run(mission_id=mission_id, session_id=session_id)
+    run_row = run.model_dump()
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    # Atomic: INSERT run + UPDATE mission in same transaction
+    with lock:
+        with conn:
+            conn.execute(
+                "INSERT INTO runs"
+                "(id, mission_id, session_id, status, started_at, finished_at, summary) "
+                "VALUES (:id, :mission_id, :session_id, :status, :started_at, :finished_at, :summary)",
+                run_row,
+            )
+            conn.execute(
+                "UPDATE missions SET status='running', updated_at=? WHERE id=?",
+                (now, mission_id),
+            )
+    # Lock released — now safe to call emit() (which acquires lock internally)
+
+    # Wire atlas_audit plugin for Hermes session tracking
+    import atlas_audit
+    atlas_audit.set_connection(conn)
+    atlas_audit.on_session_start(session_id=session_id or run.id, run_id=run.id)
+
+    # Emit transition audit event
+    emit(
+        conn,
+        lock,
+        run_id=run.id,
+        event_type="tool_call",
+        session_id=session_id,
+        data={"transition": "started", "mission_id": mission_id},
+    )
+
+    return run
 
 
 def complete_run(
@@ -60,9 +104,39 @@ def complete_run(
 
     Raises:
         ValueError: If the run does not exist or is not in running state.
-        NotImplementedError: Stub — implement in Wave 1.
     """
-    raise NotImplementedError("not implemented")
+    row = conn.execute(
+        "SELECT status FROM runs WHERE id=?", (run_id,)
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"Run {run_id!r} not found")
+    if row[0] != "running":
+        raise ValueError(
+            f"Cannot complete run in state {row[0]!r}"
+        )
+
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    # Atomic dual-table update
+    with lock:
+        with conn:
+            conn.execute(
+                "UPDATE runs SET status=?, finished_at=?, summary=? WHERE id=?",
+                (status, now, summary, run_id),
+            )
+            conn.execute(
+                "UPDATE missions SET status=?, updated_at=? WHERE id=?",
+                (status, now, mission_id),
+            )
+    # Lock released — now safe to emit
+
+    emit(
+        conn,
+        lock,
+        run_id=run_id,
+        event_type="tool_call",
+        data={"transition": status, "summary": summary},
+    )
 
 
 def fail_run(
@@ -77,9 +151,8 @@ def fail_run(
 
     Raises:
         ValueError: If the run does not exist or is not in running state.
-        NotImplementedError: Stub — implement in Wave 1.
     """
-    raise NotImplementedError("not implemented")
+    complete_run(conn, lock, run_id=run_id, mission_id=mission_id, status="failed", summary=summary)
 
 
 def cancel_run(
@@ -93,6 +166,36 @@ def cancel_run(
 
     Raises:
         ValueError: If the run does not exist or is already in a terminal state.
-        NotImplementedError: Stub — implement in Wave 1.
     """
-    raise NotImplementedError("not implemented")
+    row = conn.execute(
+        "SELECT status FROM runs WHERE id=?", (run_id,)
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"Run {run_id!r} not found")
+    if row[0] != "running":
+        raise ValueError(
+            f"Cannot cancel run in state {row[0]!r}"
+        )
+
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    # Atomic dual-table update — existing audit_events rows are NEVER deleted
+    with lock:
+        with conn:
+            conn.execute(
+                "UPDATE runs SET status='cancelled', finished_at=? WHERE id=?",
+                (now, run_id),
+            )
+            conn.execute(
+                "UPDATE missions SET status='cancelled', updated_at=? WHERE id=?",
+                (now, mission_id),
+            )
+    # Lock released — now safe to emit
+
+    emit(
+        conn,
+        lock,
+        run_id=run_id,
+        event_type="tool_call",
+        data={"transition": "cancelled"},
+    )

@@ -1,8 +1,5 @@
 """Tests for atlas_runtime.run_service.
 
-All tests are marked xfail(strict=True) because the service functions are stubs
-in Wave 0. Wave 1 executors must implement the service layer to make these pass.
-
 Fixtures from conftest.py (injected by name — do NOT import):
   db   — in-memory SQLite, WAL + FK ON + 0001_core.sql applied
   lock — threading.Lock()
@@ -37,7 +34,6 @@ def mission_id_fixture(db):
     return mid
 
 
-@pytest.mark.xfail(reason="stub — implement in Wave 1", strict=True)
 def test_start_run_creates_run_row(db, lock, mission_id):
     """start_run() inserts a row into the runs table."""
     run = run_service.start_run(db, lock, mission_id=mission_id)
@@ -47,7 +43,6 @@ def test_start_run_creates_run_row(db, lock, mission_id):
     assert count == 1
 
 
-@pytest.mark.xfail(reason="stub — implement in Wave 1", strict=True)
 def test_start_run_emits_audit_event(db, lock, mission_id):
     """start_run() emits at least one AuditEvent."""
     run = run_service.start_run(db, lock, mission_id=mission_id)
@@ -57,7 +52,6 @@ def test_start_run_emits_audit_event(db, lock, mission_id):
     assert count >= 1
 
 
-@pytest.mark.xfail(reason="stub — implement in Wave 1", strict=True)
 def test_start_run_updates_mission_status_to_running(db, lock, mission_id):
     """start_run() transitions the parent mission from pending to running."""
     run = run_service.start_run(db, lock, mission_id=mission_id)
@@ -67,7 +61,6 @@ def test_start_run_updates_mission_status_to_running(db, lock, mission_id):
     assert status == "running"
 
 
-@pytest.mark.xfail(reason="stub — implement in Wave 1", strict=True)
 def test_complete_run_succeeded(db, lock, mission_id):
     """complete_run(status='succeeded') sets run + mission to succeeded with finish timestamp."""
     run = run_service.start_run(db, lock, mission_id=mission_id)
@@ -85,7 +78,6 @@ def test_complete_run_succeeded(db, lock, mission_id):
     assert mission_status == "succeeded"
 
 
-@pytest.mark.xfail(reason="stub — implement in Wave 1", strict=True)
 def test_complete_run_failed(db, lock, mission_id):
     """complete_run(status='failed') sets run + mission to failed with finish timestamp."""
     run = run_service.start_run(db, lock, mission_id=mission_id)
@@ -103,7 +95,6 @@ def test_complete_run_failed(db, lock, mission_id):
     assert mission_status == "failed"
 
 
-@pytest.mark.xfail(reason="stub — implement in Wave 1", strict=True)
 def test_cancel_run_sets_cancelled(db, lock, mission_id):
     """cancel_run() transitions run to cancelled and emits at least 2 audit events."""
     run = run_service.start_run(db, lock, mission_id=mission_id)
@@ -118,7 +109,6 @@ def test_cancel_run_sets_cancelled(db, lock, mission_id):
     assert count >= 2
 
 
-@pytest.mark.xfail(reason="stub — implement in Wave 1", strict=True)
 def test_cancel_preserves_existing_audit_events(db, lock, mission_id):
     """cancel_run() does not delete existing audit_events rows."""
     from atlas_runtime.audit_service import emit
@@ -137,7 +127,6 @@ def test_cancel_preserves_existing_audit_events(db, lock, mission_id):
     assert count_after >= 2
 
 
-@pytest.mark.xfail(reason="stub — implement in Wave 1", strict=True)
 def test_cancel_already_terminal_raises(db, lock, mission_id):
     """cancel_run() on an already-succeeded run raises ValueError."""
     run = run_service.start_run(db, lock, mission_id=mission_id)
@@ -148,7 +137,7 @@ def test_cancel_already_terminal_raises(db, lock, mission_id):
         run_service.cancel_run(db, lock, run_id=run.id, mission_id=mission_id)
 
 
-@pytest.mark.xfail(reason="stub — implement in Wave 1", strict=True)
+@pytest.mark.xfail(reason="subagent_service.dispatch_subagent not implemented until Plan 03", strict=True)
 def test_dispatch_subagent_emits_subagent_run(db, lock, mission_id):
     """dispatch_subagent() emits a subagent_run AuditEvent (RUNTIME-06)."""
     from atlas_runtime import subagent_service
