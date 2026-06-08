@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Operator Cockpit MVP
 status: executing
-last_updated: "2026-06-08T18:55:00.000Z"
-last_activity: 2026-06-08 -- Phase 06 Plan 02 complete (atlas-wiki package scaffold + stubs)
+last_updated: "2026-06-08T19:30:00.000Z"
+last_activity: 2026-06-08 -- Phase 06 Plan 03 complete (wiki service core: ingest, update, search, lint)
 progress:
   total_phases: 9
   completed_phases: 4
   total_plans: 21
-  completed_plans: 16
-  percent: 52
+  completed_plans: 17
+  percent: 55
 ---
 
 # STATE — L2 ATLAS
@@ -18,10 +18,10 @@ progress:
 ## Current Position
 
 Phase: 06
-Plan: 02 complete — ready for 06-03
-Next: Execute Phase 06 Plan 03 (wiki service implementation)
+Plan: 03 complete — ready for 06-04
+Next: Execute Phase 06 Plan 04 (provenance service full implementation)
 Status: Executing
-Last activity: 2026-06-08 -- Phase 06 Plan 02 complete (atlas-wiki package scaffold + stubs)
+Last activity: 2026-06-08 -- Phase 06 Plan 03 complete (wiki service core: ingest, update, search, lint)
 
 ## Accumulated Context
 
@@ -48,6 +48,7 @@ Last activity: 2026-06-08 -- Phase 06 Plan 02 complete (atlas-wiki package scaff
 - D-019: Diverse efficient agent memory framework — 6 memory layers + policy-governed memory router; Phase 6 delivers Layer 2+3; Phase 7 memory API; Phase 8 memory inspection surface
 - D-019 impl (06-01): MemoryProvenance frozen model + 0002 migration are the schema foundation for all Phase 6 wiki service plans
 - D-019 impl (06-02): atlas-wiki package scaffold with sqlite-vec/fastembed in optional [semantic] group only; no [project.scripts]; wiki_app registered into atlas-runtime via try/except import
+- D-019 impl (06-03): wiki service core implemented via TDD — ingest/update/search/lint + provenance service write_provenance/get_provenance; 84% coverage; all WIKI-01..05 + AUDIT-03 satisfied
 - License confirmation (Phase 4.5): all four reference pillars confirmed permissive — Terax Apache-2.0, Odysseus MIT, Hermes MIT, FreeLLMAPI MIT. No copyleft obligation.
 
 ### Known blockers
