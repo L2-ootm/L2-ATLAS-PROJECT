@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Operator Cockpit MVP
 status: executing
-last_updated: "2026-06-08T19:50:00.000Z"
-last_activity: "2026-06-08 -- Phase 06 Plan 04 complete (provenance service tests: 4 tests, 100% branch coverage)"
+last_updated: "2026-06-08T23:59:00.000Z"
+last_activity: "2026-06-08 -- Phase 06 Plan 05 complete (wiki CLI sub-app: 6 CLI tests, atlas_runtime registration)"
 progress:
   total_phases: 10
   completed_phases: 5
   total_plans: 24
-  completed_plans: 22
-  percent: 53
+  completed_plans: 23
+  percent: 52
 ---
 
 # STATE — L2 ATLAS
@@ -18,10 +18,10 @@ progress:
 ## Current Position
 
 Phase: 06
-Plan: 04 complete — ready for 06-05
-Next: Execute Phase 06 Plan 05 (wiki CLI thin wrappers)
+Plan: 05 complete — Phase 06 all plans done
+Next: Execute Phase 07 (API Gateway) or advance to next phase
 Status: Executing
-Last activity: 2026-06-08 -- Phase 06 Plan 04 complete (provenance service tests: 4 tests, 100% branch coverage)
+Last activity: 2026-06-08 -- Phase 06 Plan 05 complete (wiki CLI sub-app: 6 CLI tests, atlas_runtime registration)
 
 ## Accumulated Context
 
@@ -50,6 +50,7 @@ Last activity: 2026-06-08 -- Phase 06 Plan 04 complete (provenance service tests
 - D-019 impl (06-02): atlas-wiki package scaffold with sqlite-vec/fastembed in optional [semantic] group only; no [project.scripts]; wiki_app registered into atlas-runtime via try/except import
 - D-019 impl (06-03): wiki service core implemented via TDD — ingest/update/search/lint + provenance service write_provenance/get_provenance; 84% coverage; all WIKI-01..05 + AUDIT-03 satisfied
 - D-019 impl (06-04): provenance_service.py verified complete via dedicated 4-test suite; 100% branch coverage; T-06-10 (invalid layer bypass) confirmed mitigated by Pydantic-first guard
+- D-019 impl (06-05): wiki CLI sub-app wired via TDD; 6 CLI tests pass; atlas_runtime CLI extended with try/except import; FTS5 hyphen-query bug auto-fixed (Rule 1)
 - License confirmation (Phase 4.5): all four reference pillars confirmed permissive — Terax Apache-2.0, Odysseus MIT, Hermes MIT, FreeLLMAPI MIT. No copyleft obligation.
 
 ### Known blockers

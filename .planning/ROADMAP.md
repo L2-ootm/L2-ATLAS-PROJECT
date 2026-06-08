@@ -210,7 +210,7 @@ Plans:
 6. wiki/index.md has an entry for every WikiPage row in the database; wiki/log.md has an entry for every wiki_update AuditEvent.
 7. Service layer unit tests cover ingest, update, search, and lint paths (≥ 80% branch coverage on wiki_service.py).
 
-**Plans:** 6 plans
+**Plans:** 5/6 plans executed
 
 **Wave 1** *(no dependencies)*
 
@@ -227,7 +227,7 @@ Plans:
 **Wave 3** *(blocked on Wave 2 completion — runs in parallel)*
 
 Plans:
-- [ ] 06-05-PLAN.md — atlas_wiki CLI main.py + test_cli.py + atlas_runtime CLI extension
+- [x] 06-05-PLAN.md — atlas_wiki CLI main.py + test_cli.py + atlas_runtime CLI extension
 - [ ] 06-06-PLAN.md — Full coverage gate + GRAPH_MEMORY_RESEARCH_NOTES.md
 
 ---
@@ -309,7 +309,7 @@ Plans:
 | 3. Research Closure — WebUI Spike & CRM Intake | 2/2 | Complete    | 2026-06-06 |
 | 4. ATLAS Event Bus & Audit Core | 3/3 | Complete   | 2026-06-07 |
 | 5. Mission & Run Lifecycle | 4/4 | Complete    | 2026-06-08 |
-| 6. LLM Wiki Runtime | 2/6 | In progress | - |
+| 6. LLM Wiki Runtime | 5/6 | In Progress|  |
 | 7. API Gateway | 0/0 | Not started | - |
 | 8. WebUI Operator Cockpit | 0/0 | Not started | - |
 | 9. Skill Inventory & Classification | 0/0 | Not started | - |

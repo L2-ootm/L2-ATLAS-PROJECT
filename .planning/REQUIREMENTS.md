@@ -31,17 +31,17 @@ Status: Active
 
 ## WIKI — LLM Knowledge Runtime
 
-- [ ] **WIKI-01**: User can ingest a raw source file into the wiki (immutable raw copy stored, SHA-256 stamped, Source row created).
-- [ ] **WIKI-02**: Agent can create or update a WikiPage and the change is logged in wiki/log.md and reflected in the database.
-- [ ] **WIKI-03**: User can query wiki pages via full-text search (FTS5) and get ranked results.
-- [ ] **WIKI-04**: wiki/index.md and wiki/log.md remain consistent after every agent-driven wiki update.
-- [ ] **WIKI-05**: Semantic vector search (sqlite-vec) returns relevant wiki pages for a natural-language query.
+- [x] **WIKI-01**: User can ingest a raw source file into the wiki (immutable raw copy stored, SHA-256 stamped, Source row created).
+- [x] **WIKI-02**: Agent can create or update a WikiPage and the change is logged in wiki/log.md and reflected in the database.
+- [x] **WIKI-03**: User can query wiki pages via full-text search (FTS5) and get ranked results.
+- [x] **WIKI-04**: wiki/index.md and wiki/log.md remain consistent after every agent-driven wiki update.
+- [x] **WIKI-05**: Semantic vector search (sqlite-vec) returns relevant wiki pages for a natural-language query.
 
 ## AUDIT — Observability
 
 - [ ] **AUDIT-01**: User can retrieve the full ordered audit trail for any Run from the API.
 - [ ] **AUDIT-02**: Audit trail is exportable as JSONL (one event per line, all fields present).
-- [ ] **AUDIT-03**: Wiki lint pass flags pages with stale or contradicted claims.
+- [x] **AUDIT-03**: Wiki lint pass flags pages with stale or contradicted claims.
 
 ## COCKPIT — Operator UI
 
