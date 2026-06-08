@@ -137,6 +137,20 @@ def test_cancel_already_terminal_raises(db, lock, mission_id):
         run_service.cancel_run(db, lock, run_id=run.id, mission_id=mission_id)
 
 
+def test_fail_run_sets_failed(db, lock, mission_id):
+    """fail_run() transitions run and mission to failed state."""
+    run = run_service.start_run(db, lock, mission_id=mission_id)
+    run_service.fail_run(db, lock, run_id=run.id, mission_id=mission_id, summary="error msg")
+    run_row = db.execute(
+        "SELECT status FROM runs WHERE id=?", (run.id,)
+    ).fetchone()
+    assert run_row[0] == "failed"
+    mission_status = db.execute(
+        "SELECT status FROM missions WHERE id=?", (mission_id,)
+    ).fetchone()[0]
+    assert mission_status == "failed"
+
+
 def test_dispatch_subagent_emits_subagent_run(db, lock, mission_id):
     """dispatch_subagent() emits a subagent_run AuditEvent (RUNTIME-06)."""
     from atlas_runtime import subagent_service
