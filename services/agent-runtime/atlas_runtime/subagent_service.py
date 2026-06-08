@@ -11,10 +11,13 @@ Real subagent spawning is deferred to a later phase.
 """
 from __future__ import annotations
 
+import logging
 import sqlite3
 import threading
 
 from atlas_runtime.audit_service import emit
+
+logger = logging.getLogger(__name__)
 
 
 def dispatch_subagent(
@@ -34,7 +37,17 @@ def dispatch_subagent(
     The payload includes role, model_tier, allowed_tools, autonomy_level,
     and token_budget as required by RUNTIME-06.
 
-    Raises:
-        NotImplementedError: Stub — implement in Wave 1.
+    emit() is wrapped in try/except so that audit failures do not propagate
+    to callers (fail-open error guard from 05-PATTERNS.md).
     """
-    raise NotImplementedError("not implemented")
+    payload = {
+        "role": role,
+        "model_tier": model_tier,
+        "allowed_tools": allowed_tools if allowed_tools is not None else [],
+        "autonomy_level": autonomy_level,
+        "token_budget": token_budget,
+    }
+    try:
+        emit(conn, lock, run_id=run_id, event_type="subagent_run", data=payload)
+    except Exception as exc:
+        logger.warning("subagent_service.dispatch_subagent failed: %s", exc)
