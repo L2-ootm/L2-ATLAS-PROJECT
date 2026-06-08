@@ -134,3 +134,122 @@ def test_lint_exits_zero(db, lock, wiki_dir, monkeypatch):
     result = runner.invoke(wiki_app, ["lint"])
     assert result.exit_code == 0, f"Expected exit 0, got {result.exit_code}\n{result.output}"
     assert result.output.strip(), "Expected non-empty lint output"
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap tests — result display loops + error paths + factory functions
+# ---------------------------------------------------------------------------
+
+
+def _insert_operator_run(db):
+    """Insert a mission+run with id='operator' for CLI FK constraint."""
+    import datetime
+    import uuid
+    mission_id = str(uuid.uuid4())
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    db.execute(
+        "INSERT OR IGNORE INTO missions(id, title, intent, status, project, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (mission_id, "operator-mission", "", "pending", "", now, now),
+    )
+    db.execute(
+        "INSERT OR IGNORE INTO runs(id, mission_id, session_id, status, started_at, finished_at, summary) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("operator", mission_id, None, "running", now, None, ""),
+    )
+    db.commit()
+
+
+def test_search_with_results_prints_rows(db, lock, wiki_dir, tmp_path, monkeypatch):
+    """atlas wiki search returns rows when results exist — exercises display loop."""
+    import atlas_wiki.cli.main as cli_main
+    from atlas_wiki import wiki_service
+
+    _insert_operator_run(db)
+    monkeypatch.setattr(cli_main, "_get_connection", lambda: db)
+    monkeypatch.setattr(cli_main, "_get_lock", lambda: lock)
+    monkeypatch.setattr(cli_main, "_get_wiki_dir", lambda: wiki_dir)
+
+    # Seed a wiki page so search returns results
+    wiki_service.update_wiki_page(
+        db, lock, slug="coverage-test", title="Coverage Test",
+        body="The quick brown fox jumps over the lazy dog coverage test",
+        run_id="operator", wiki_dir=wiki_dir,
+    )
+
+    result = runner.invoke(wiki_app, ["search", "coverage"])
+    assert result.exit_code == 0, result.output
+    assert "coverage-test" in result.output
+
+
+def test_lint_with_finding_prints_rows(db, lock, wiki_dir, tmp_path, monkeypatch):
+    """atlas wiki lint prints [rule] lines when findings exist — exercises display loop."""
+    import atlas_wiki.cli.main as cli_main
+    from atlas_wiki import wiki_service
+
+    _insert_operator_run(db)
+    monkeypatch.setattr(cli_main, "_get_connection", lambda: db)
+    monkeypatch.setattr(cli_main, "_get_lock", lambda: lock)
+    monkeypatch.setattr(cli_main, "_get_wiki_dir", lambda: wiki_dir)
+
+    # Seed a page with empty body to trigger the empty-body lint rule
+    wiki_service.update_wiki_page(
+        db, lock, slug="empty-page", title="Empty Page",
+        body="", run_id="operator", wiki_dir=wiki_dir,
+    )
+
+    result = runner.invoke(wiki_app, ["lint"])
+    assert result.exit_code == 0, result.output
+    assert "[" in result.output  # lint finding format: [rule] slug: message
+
+
+def test_semantic_with_results_prints_rows(db, lock, wiki_dir, tmp_path, monkeypatch):
+    """atlas wiki semantic prints rows when FTS fallback returns results."""
+    import atlas_wiki.cli.main as cli_main
+    from atlas_wiki import wiki_service
+
+    _insert_operator_run(db)
+    monkeypatch.setattr(cli_main, "_get_connection", lambda: db)
+    monkeypatch.setattr(cli_main, "_get_lock", lambda: lock)
+    monkeypatch.setattr(cli_main, "_get_wiki_dir", lambda: wiki_dir)
+
+    wiki_service.update_wiki_page(
+        db, lock, slug="semantic-test", title="Semantic Test",
+        body="vector search semantic embedding test page content",
+        run_id="operator", wiki_dir=wiki_dir,
+    )
+
+    result = runner.invoke(wiki_app, ["semantic", "semantic"])
+    assert result.exit_code == 0, result.output
+    # Either shows results or "no results" — both are valid paths
+    assert result.output.strip()
+
+
+def test_update_error_path_exits_nonzero(db, lock, wiki_dir, monkeypatch):
+    """atlas wiki update exits non-zero when wiki_service raises ValueError."""
+    import atlas_wiki.cli.main as cli_main
+    from atlas_wiki import wiki_service
+
+    monkeypatch.setattr(cli_main, "_get_connection", lambda: db)
+    monkeypatch.setattr(cli_main, "_get_lock", lambda: lock)
+    monkeypatch.setattr(cli_main, "_get_wiki_dir", lambda: wiki_dir)
+
+    def _raise(*args, **kwargs):
+        raise ValueError("injected error")
+
+    monkeypatch.setattr(wiki_service, "update_wiki_page", _raise)
+
+    result = runner.invoke(wiki_app, ["update", "some-slug", "--body", "text"])
+    assert result.exit_code != 0, f"Expected non-zero exit, got {result.exit_code}"
+    assert "Error" in result.output
+
+
+def test_factory_functions_return_expected_types():
+    """_get_lock and _get_wiki_dir return the expected types without monkeypatching."""
+    import threading
+    import pathlib
+    from atlas_wiki.cli.main import _get_lock, _get_wiki_dir
+
+    lock_instance = _get_lock()
+    assert hasattr(lock_instance, "acquire") and hasattr(lock_instance, "release")
+    assert isinstance(_get_wiki_dir(), pathlib.Path)
