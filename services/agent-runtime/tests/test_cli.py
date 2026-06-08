@@ -19,7 +19,6 @@ from atlas_runtime.cli.main import app
 runner = CliRunner()
 
 
-@pytest.mark.xfail(reason="stub — implement in Wave 1", strict=True)
 def test_create_command_exits_zero(db, monkeypatch):
     """atlas mission create exits 0 and prints a 36-character UUID."""
     import atlas_runtime.cli.main as cli_main
@@ -30,7 +29,6 @@ def test_create_command_exits_zero(db, monkeypatch):
     assert len(result.output.strip()) == 36
 
 
-@pytest.mark.xfail(reason="stub — implement in Wave 1", strict=True)
 def test_run_command_exits_zero(db, lock, monkeypatch):
     """atlas mission run <id> exits 0 after successfully starting a run."""
     import atlas_runtime.cli.main as cli_main
@@ -43,7 +41,6 @@ def test_run_command_exits_zero(db, lock, monkeypatch):
     assert result.exit_code == 0
 
 
-@pytest.mark.xfail(reason="stub — implement in Wave 1", strict=True)
 def test_cancel_command_exits_zero(db, lock, monkeypatch):
     """atlas mission cancel <id> exits 0 after cancelling an active run."""
     import atlas_runtime.cli.main as cli_main
@@ -57,7 +54,6 @@ def test_cancel_command_exits_zero(db, lock, monkeypatch):
     assert result.exit_code == 0
 
 
-@pytest.mark.xfail(reason="stub — implement in Wave 1", strict=True)
 def test_status_command_exits_zero(db, monkeypatch):
     """atlas mission status <id> exits 0 and prints 'pending' for a new mission."""
     import atlas_runtime.cli.main as cli_main
