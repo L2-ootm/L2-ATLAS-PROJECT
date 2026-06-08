@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Operator Cockpit MVP
 status: executing
-last_updated: "2026-06-08T23:59:00.000Z"
-last_activity: "2026-06-08 -- Phase 06 Plan 05 complete (wiki CLI sub-app: 6 CLI tests, atlas_runtime registration)"
+last_updated: "2026-06-08T00:00:00.000Z"
+last_activity: "2026-06-08 -- Phase 06 Plan 06 complete (coverage gate 81%, GRAPH_MEMORY_RESEARCH_NOTES.md written)"
 progress:
   total_phases: 10
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 24
-  completed_plans: 23
-  percent: 52
+  completed_plans: 24
+  percent: 62
 ---
 
 # STATE — L2 ATLAS
@@ -18,10 +18,10 @@ progress:
 ## Current Position
 
 Phase: 06
-Plan: 05 complete — Phase 06 all plans done
-Next: Execute Phase 07 (API Gateway) or advance to next phase
+Plan: 06 complete — Phase 06 all plans done
+Next: Execute Phase 07 (API Gateway)
 Status: Executing
-Last activity: 2026-06-08 -- Phase 06 Plan 05 complete (wiki CLI sub-app: 6 CLI tests, atlas_runtime registration)
+Last activity: 2026-06-08 -- Phase 06 Plan 06 complete (coverage gate 81%, GRAPH_MEMORY_RESEARCH_NOTES.md written)
 
 ## Accumulated Context
 
@@ -51,6 +51,7 @@ Last activity: 2026-06-08 -- Phase 06 Plan 05 complete (wiki CLI sub-app: 6 CLI 
 - D-019 impl (06-03): wiki service core implemented via TDD — ingest/update/search/lint + provenance service write_provenance/get_provenance; 84% coverage; all WIKI-01..05 + AUDIT-03 satisfied
 - D-019 impl (06-04): provenance_service.py verified complete via dedicated 4-test suite; 100% branch coverage; T-06-10 (invalid layer bypass) confirmed mitigated by Pydantic-first guard
 - D-019 impl (06-05): wiki CLI sub-app wired via TDD; 6 CLI tests pass; atlas_runtime CLI extended with try/except import; FTS5 hyphen-query bug auto-fixed (Rule 1)
+- D-019 impl (06-06): Phase 6 coverage gate passed at 81% (26 wiki + 33 core + 44 runtime tests green); graph memory Layer 4 design questions documented in GRAPH_MEMORY_RESEARCH_NOTES.md — no implementation; SQLite adjacency list (Option A) leading candidate for v2.0
 - License confirmation (Phase 4.5): all four reference pillars confirmed permissive — Terax Apache-2.0, Odysseus MIT, Hermes MIT, FreeLLMAPI MIT. No copyleft obligation.
 
 ### Known blockers

@@ -16,7 +16,7 @@
 - [x] **Phase 3: Research Closure — WebUI Spike & CRM Intake** - Close open research gaps D-006 and D-010 (completed 2026-06-06)
 - [x] **Phase 4: ATLAS Event Bus & Audit Core** - Structured audit event bus wired into Hermes runtime (completed 2026-06-07)
 - [x] **Phase 5: Mission & Run Lifecycle** - Core mission state machine: create, execute, complete, cancel (completed 2026-06-08)
-- [ ] **Phase 6: LLM Wiki Runtime** - Wiki ingest, update, query, and lint pipeline
+- [x] **Phase 6: LLM Wiki Runtime** - Wiki ingest, update, query, and lint pipeline (completed 2026-06-08)
 - [ ] **Phase 7: API Gateway** - Typed REST API exposing all mission, run, audit, and wiki operations
 - [ ] **Phase 8: WebUI Operator Cockpit** - Web cockpit: mission management, run monitoring, audit viewer, wiki browser
 - [ ] **Phase 9: Skill Inventory & Classification** - Complete classified skill inventory for curated default skill pack
@@ -210,7 +210,7 @@ Plans:
 6. wiki/index.md has an entry for every WikiPage row in the database; wiki/log.md has an entry for every wiki_update AuditEvent.
 7. Service layer unit tests cover ingest, update, search, and lint paths (≥ 80% branch coverage on wiki_service.py).
 
-**Plans:** 5/6 plans executed
+**Plans:** 6/6 plans complete
 
 **Wave 1** *(no dependencies)*
 
@@ -228,7 +228,7 @@ Plans:
 
 Plans:
 - [x] 06-05-PLAN.md — atlas_wiki CLI main.py + test_cli.py + atlas_runtime CLI extension
-- [ ] 06-06-PLAN.md — Full coverage gate + GRAPH_MEMORY_RESEARCH_NOTES.md
+- [x] 06-06-PLAN.md — Full coverage gate + GRAPH_MEMORY_RESEARCH_NOTES.md
 
 ---
 
@@ -309,7 +309,7 @@ Plans:
 | 3. Research Closure — WebUI Spike & CRM Intake | 2/2 | Complete    | 2026-06-06 |
 | 4. ATLAS Event Bus & Audit Core | 3/3 | Complete   | 2026-06-07 |
 | 5. Mission & Run Lifecycle | 4/4 | Complete    | 2026-06-08 |
-| 6. LLM Wiki Runtime | 5/6 | In Progress|  |
+| 6. LLM Wiki Runtime | 6/6 | Complete   | 2026-06-08 |
 | 7. API Gateway | 0/0 | Not started | - |
 | 8. WebUI Operator Cockpit | 0/0 | Not started | - |
 | 9. Skill Inventory & Classification | 0/0 | Not started | - |
