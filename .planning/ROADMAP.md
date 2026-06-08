@@ -5,7 +5,7 @@
 **Goal:** Ship the first closed operator loop — create mission → run through enhanced ATLAS/Hermes runtime → capture audit trail → file artifacts to LLM Wiki → display in web cockpit.
 
 **Start:** 2026-06-04
-**Status:** In progress (Phase 1 active)
+**Status:** In progress (Phase 5 planned; pending Wave 0 execution)
 
 ---
 
@@ -20,6 +20,10 @@
 - [ ] **Phase 7: API Gateway** - Typed REST API exposing all mission, run, audit, and wiki operations
 - [ ] **Phase 8: WebUI Operator Cockpit** - Web cockpit: mission management, run monitoring, audit viewer, wiki browser
 - [ ] **Phase 9: Skill Inventory & Classification** - Complete classified skill inventory for curated default skill pack
+
+### Candidate Sidecar Spikes
+
+- [ ] **Phase 4.5 / Phase 5 adjunct: FreeLLMAPI Sidecar Gateway** - Accepted for spike via D-015. Mock and real Kilo keyless smoke tests passed. Integrate as loopback OpenAI-compatible gateway for `free-tier-ok` task classes; do not vendor into ATLAS core yet.
 
 ---
 

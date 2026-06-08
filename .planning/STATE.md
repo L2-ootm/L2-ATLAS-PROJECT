@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: Operator Cockpit MVP
 status: executing
 last_updated: "2026-06-07"
-last_activity: 2026-06-07 -- Phase 04 complete (15 tests green, 7/7 success criteria verified)
+last_activity: 2026-06-07 -- FreeLLMAPI sidecar spike documented; Phase 05 plans drafted
 progress:
   total_phases: 9
   completed_phases: 4
-  total_plans: 13
+  total_plans: 17
   completed_plans: 12
   percent: 44
 ---
@@ -17,11 +17,11 @@ progress:
 
 ## Current Position
 
-Phase: 05 (Mission & Run Lifecycle) — PENDING
-Plan: —
-Next: Phase 5 — Mission & Run Lifecycle
-Status: Phase 04 complete. Ready to plan Phase 05.
-Last activity: 2026-06-07 -- Phase 04 complete (15 tests green, 7/7 success criteria verified)
+Phase: 05 (Mission & Run Lifecycle) — PLANNED / PENDING EXECUTION
+Plan: 05-01 through 05-04 drafted
+Next: Execute Phase 5 Wave 0 (`05-01-PLAN.md`) after committing/stashing research docs
+Status: Phase 04 complete and rechecked. FreeLLMAPI sidecar spike documented as D-015. Phase 05 has 4 plans drafted, not executed.
+Last activity: 2026-06-07 -- FreeLLMAPI sidecar spike documented; Phase 05 plans drafted
 
 ## Accumulated Context
 
@@ -41,10 +41,15 @@ Last activity: 2026-06-07 -- Phase 04 complete (15 tests green, 7/7 success crit
 - D-012: Pydantic v2 schema source of truth — locked
 - D-013: Language strategy — Prototype in Python, Cement in Rust — locked direction, open timing
 - D-014: Optional turbovec local semantic retrieval spike — accepted for spike, not core adoption
+- D-015: FreeLLMAPI sidecar gateway — accepted for integration spike; sidecar first, managed sidecar second, fork/vendor last
 
 ### Known blockers
 
 None — all pre-build gates cleared. All research closed. D-006 locked. Build phases (4–8) can proceed.
+
+### New candidate spikes
+
+- 2026-06-07: FreeLLMAPI integration spike report added at `docs/research/FREELLMAPI_INTEGRATION_SPIKE_2026-06-07.md`. Closed-env mock provider and real Kilo keyless provider smoke tests passed. Recommendation: sidecar OpenAI-compatible free-tier gateway first; consider Phase 4.5 / Phase 5 routing integration, not direct vendoring.
 
 ### Pending todos
 
@@ -85,7 +90,7 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 | 2 | Core Domain Schemas & SQLite Migration | Done | 2026-06-06 |
 | 3 | Research Closure (WebUI Spike + CRM Intake) | Done | 2026-06-06 |
 | 4 | ATLAS Event Bus & Audit Core | Done | 2026-06-07 |
-| 5 | Mission & Run Lifecycle | Pending | — |
+| 5 | Mission & Run Lifecycle | Planned / Pending execution | — |
 | 6 | LLM Wiki Runtime | Pending | — |
 | 7 | API Gateway | Pending | — |
 | 8 | WebUI Operator Cockpit | Pending | — |
