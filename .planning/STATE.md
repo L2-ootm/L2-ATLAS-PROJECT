@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Operator Cockpit MVP
-status: ready_to_plan
-last_updated: 2026-06-08T03:41:19.670Z
-last_activity: 2026-06-08 -- Phase 05 execution started
+status: executing
+last_updated: "2026-06-08T18:40:44.794Z"
+last_activity: 2026-06-08 -- Phase 06 planning complete
 progress:
   total_phases: 9
-  completed_phases: 3
-  total_plans: 17
-  completed_plans: 16
-  percent: 33
-stopped_at: Phase 05 complete (4/4) — ready to discuss Phase 06
+  completed_phases: 4
+  total_plans: 21
+  completed_plans: 14
+  percent: 44
 ---
 
 # STATE — L2 ATLAS
@@ -20,9 +19,9 @@ stopped_at: Phase 05 complete (4/4) — ready to discuss Phase 06
 
 Phase: 06
 Plan: Not started
-Next: Execute Phase 5 Wave 0 (`05-01-PLAN.md`) after committing/stashing research docs
-Status: Ready to plan
-Last activity: 2026-06-08
+Next: Discuss and plan Phase 6 (LLM Wiki Runtime). Phase 4.5 architecture bridge complete.
+Status: Ready to execute
+Last activity: 2026-06-08 -- Phase 06 planning complete
 
 ## Accumulated Context
 
@@ -43,6 +42,11 @@ Last activity: 2026-06-08
 - D-013: Language strategy — Prototype in Python, Cement in Rust — locked direction, open timing
 - D-014: Optional turbovec local semantic retrieval spike — accepted for spike, not core adoption
 - D-015: FreeLLMAPI sidecar gateway — accepted for integration spike; sidecar first, managed sidecar second, fork/vendor last
+- D-016: Terax AI — accepted as Rust-native desktop cockpit reference pillar (not vendor); Phase 8 native shell direction locked
+- D-017: AI router connector strategy — ATLAS model_registry + model_router, FreeLLMAPI sidecar-first, task-class routing, audit-event metadata for all LLM calls
+- D-018: Hermes-as-foundation L2/ATLAS harness strategy — evolve Hermes foundation; do not route through stock Hermes; foundation transformation not wrapper
+- D-019: Diverse efficient agent memory framework — 6 memory layers + policy-governed memory router; Phase 6 delivers Layer 2+3; Phase 7 memory API; Phase 8 memory inspection surface
+- License confirmation (Phase 4.5): all four reference pillars confirmed permissive — Terax Apache-2.0, Odysseus MIT, Hermes MIT, FreeLLMAPI MIT. No copyleft obligation.
 
 ### Known blockers
 

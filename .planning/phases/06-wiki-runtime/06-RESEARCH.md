@@ -1043,22 +1043,25 @@ All core findings (schema state, migration state, FTS5 trigger presence, audit_s
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Where does `atlas wiki` entry point live?**
    - What we know: agent-runtime pyproject.toml registers `atlas = "atlas_runtime.cli.main:app"`. wiki-runtime is a separate package.
    - What's unclear: whether wiki-runtime's pyproject.toml adds a second `atlas` script (collision) or injects into the existing one at import time.
    - Recommendation: The `try: from atlas_wiki.cli.main import wiki_app; app.add_typer(wiki_app, name="wiki")` pattern in atlas_runtime/cli/main.py is the cleanest approach. The planner must include the main.py edit in the atlas-runtime package as part of Wave 1.
+   - **RESOLVED:** Plan 06-05 implements the try/except import registration in atlas_runtime/cli/main.py. The wiki_app Typer sub-app is registered at import time; no second entry point is added. Collision risk eliminated.
 
 2. **0001 migration already applied to production databases — how does 0002 apply?**
    - What we know: conftest.py in tests applies both migrations sequentially. Production has no automated migration runner yet (Phase 7 introduces the API).
    - What's unclear: whether the CLI `_get_connection()` should auto-apply pending migrations.
    - Recommendation: Add a `_apply_migrations(conn)` helper to the CLI that runs all `infra/migrations/00XX_*.sql` files in order, skipping already-applied ones (track via a `schema_migrations` table). Keep it simple — no full migration framework.
+   - **RESOLVED:** Deferred to Phase 7. For Phase 6, tests apply 0002 migration via conftest fixtures directly (db fixture calls executescript on both 0001 and 0002 in order against :memory: SQLite). No production migration runner is implemented in this phase. The CLI _get_connection() connects to the file-backed DB without auto-applying migrations; operators apply 0002 manually before first use.
 
 3. **embedding dim for sqlite-vec vector table**
    - What we know: fastembed default is BAAI/bge-small-en-v1.5, 384 dims.
    - What's unclear: whether CONTEXT.md's "fastembed/ONNX or equivalent" allows a different model.
    - Recommendation: Use 384 dims with BAAI/bge-small-en-v1.5 as the default; make the dimension configurable via a constant.
+   - **RESOLVED:** Use 384 dims with BAAI/bge-small-en-v1.5 as the default (fastembed default). Dimension exposed as a module-level constant EMBEDDING_DIM = 384 in wiki_service.py so it can be overridden without touching SQL DDL.
 
 ---
 
