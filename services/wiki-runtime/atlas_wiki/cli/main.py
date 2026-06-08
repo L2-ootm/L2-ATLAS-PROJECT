@@ -152,5 +152,5 @@ def lint_cmd() -> None:
         typer.echo("no lint findings")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     wiki_app()
