@@ -220,7 +220,7 @@ Plans:
 **Wave 2** *(blocked on Wave 1 — runs in parallel)*
 
 Plans:
-- [ ] 06-02-PLAN.md — atlas-wiki package scaffold (pyproject.toml, __init__ files, service stubs)
+- [x] 06-02-PLAN.md — atlas-wiki package scaffold (pyproject.toml, __init__ files, service stubs)
 - [ ] 06-03-PLAN.md — wiki_service.py core functions (ingest, update, search, lint) + test_wiki_service.py
 - [ ] 06-04-PLAN.md — provenance_service.py + test_provenance_service.py
 
@@ -309,7 +309,7 @@ Plans:
 | 3. Research Closure — WebUI Spike & CRM Intake | 2/2 | Complete    | 2026-06-06 |
 | 4. ATLAS Event Bus & Audit Core | 3/3 | Complete   | 2026-06-07 |
 | 5. Mission & Run Lifecycle | 4/4 | Complete    | 2026-06-08 |
-| 6. LLM Wiki Runtime | 1/6 | In progress | - |
+| 6. LLM Wiki Runtime | 2/6 | In progress | - |
 | 7. API Gateway | 0/0 | Not started | - |
 | 8. WebUI Operator Cockpit | 0/0 | Not started | - |
 | 9. Skill Inventory & Classification | 0/0 | Not started | - |

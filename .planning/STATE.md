@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Operator Cockpit MVP
 status: executing
-last_updated: "2026-06-08T19:15:00.000Z"
-last_activity: 2026-06-08 -- Phase 06 Plan 01 complete (MemoryProvenance schema + 0002 migration)
+last_updated: "2026-06-08T18:55:00.000Z"
+last_activity: 2026-06-08 -- Phase 06 Plan 02 complete (atlas-wiki package scaffold + stubs)
 progress:
   total_phases: 9
   completed_phases: 4
   total_plans: 21
-  completed_plans: 15
-  percent: 48
+  completed_plans: 16
+  percent: 52
 ---
 
 # STATE — L2 ATLAS
@@ -18,10 +18,10 @@ progress:
 ## Current Position
 
 Phase: 06
-Plan: 01 complete — ready for 06-02
-Next: Execute Phase 06 Plan 02 (next wiki runtime plan)
+Plan: 02 complete — ready for 06-03
+Next: Execute Phase 06 Plan 03 (wiki service implementation)
 Status: Executing
-Last activity: 2026-06-08 -- Phase 06 Plan 01 complete (MemoryProvenance schema + 0002 migration)
+Last activity: 2026-06-08 -- Phase 06 Plan 02 complete (atlas-wiki package scaffold + stubs)
 
 ## Accumulated Context
 
@@ -47,6 +47,7 @@ Last activity: 2026-06-08 -- Phase 06 Plan 01 complete (MemoryProvenance schema 
 - D-018: Hermes-as-foundation L2/ATLAS harness strategy — evolve Hermes foundation; do not route through stock Hermes; foundation transformation not wrapper
 - D-019: Diverse efficient agent memory framework — 6 memory layers + policy-governed memory router; Phase 6 delivers Layer 2+3; Phase 7 memory API; Phase 8 memory inspection surface
 - D-019 impl (06-01): MemoryProvenance frozen model + 0002 migration are the schema foundation for all Phase 6 wiki service plans
+- D-019 impl (06-02): atlas-wiki package scaffold with sqlite-vec/fastembed in optional [semantic] group only; no [project.scripts]; wiki_app registered into atlas-runtime via try/except import
 - License confirmation (Phase 4.5): all four reference pillars confirmed permissive — Terax Apache-2.0, Odysseus MIT, Hermes MIT, FreeLLMAPI MIT. No copyleft obligation.
 
 ### Known blockers
