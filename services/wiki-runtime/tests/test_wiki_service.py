@@ -338,3 +338,102 @@ def test_lint_detects_contradiction(
     assert "cross_page_contradiction" in rules, (
         f"Expected 'cross_page_contradiction' finding; got rules: {rules}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage tests (boundary cases)
+# ---------------------------------------------------------------------------
+
+
+def test_ingest_source_invalid_path(
+    db: sqlite3.Connection,
+    lock: threading.Lock,
+    run_id: str,
+    wiki_dir: pathlib.Path,
+) -> None:
+    """ingest_source raises ValueError for a non-existent path (T-06-05)."""
+    with pytest.raises(ValueError, match="does not exist or is not a file"):
+        wiki_service.ingest_source(
+            db, lock, path="/nonexistent/path/doc.txt", run_id=run_id, wiki_dir=wiki_dir
+        )
+
+
+def test_lint_untrusted_only(
+    db: sqlite3.Connection,
+    lock: threading.Lock,
+    run_id: str,
+    wiki_dir: pathlib.Path,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Page whose source is marked untrusted=1 produces a finding with rule='untrusted_only'."""
+    # Ingest file with untrusted=True to get an untrusted source
+    src_file = tmp_path / "untrusted_doc.txt"
+    src_file.write_text("This document is from an untrusted source content.", encoding="utf-8")
+    source = wiki_service.ingest_source(
+        db, lock, path=str(src_file), run_id=run_id, untrusted=True, wiki_dir=wiki_dir
+    )
+    wiki_service.update_wiki_page(
+        db,
+        lock,
+        slug="untrusted-page",
+        title="Untrusted Source Page",
+        body="This page was built from an untrusted document source file.",
+        source_id=source.id,
+        run_id=run_id,
+        wiki_dir=wiki_dir,
+    )
+
+    findings = wiki_service.lint(db)
+    rules = [f["rule"] for f in findings]
+    assert "untrusted_only" in rules, (
+        f"Expected 'untrusted_only' finding; got rules: {rules}"
+    )
+
+
+def test_lint_stale_date(
+    db: sqlite3.Connection,
+    lock: threading.Lock,
+    run_id: str,
+    wiki_dir: pathlib.Path,
+) -> None:
+    """Page body with 'as of YYYY-MM-DD' older than 90 days produces stale_date finding."""
+    wiki_service.update_wiki_page(
+        db,
+        lock,
+        slug="stale-date-page",
+        title="Stale Date Page",
+        body="This information is valid as of 2020-01-01 for historical reference.",
+        run_id=run_id,
+        wiki_dir=wiki_dir,
+    )
+
+    findings = wiki_service.lint(db)
+    rules = [f["rule"] for f in findings]
+    assert "stale_date" in rules, (
+        f"Expected 'stale_date' finding; got rules: {rules}"
+    )
+
+
+def test_provenance_get(
+    db: sqlite3.Connection,
+    lock: threading.Lock,
+    run_id: str,
+    wiki_dir: pathlib.Path,
+) -> None:
+    """After update_wiki_page, get_provenance returns at least one record for the slug."""
+    from atlas_wiki import provenance_service
+
+    wiki_service.update_wiki_page(
+        db,
+        lock,
+        slug="provenance-test",
+        title="Provenance Test Page",
+        body="Body for provenance retrieval test verification.",
+        run_id=run_id,
+        wiki_dir=wiki_dir,
+    )
+
+    records = provenance_service.get_provenance(db, "provenance-test")
+    assert len(records) >= 1, "Expected at least 1 provenance record after update_wiki_page"
+    assert records[0].layer == "WIKI"
+    assert records[0].item_id == "provenance-test"
