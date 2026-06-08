@@ -1,0 +1,1 @@
+"""ATLAS wiki CLI package."""
