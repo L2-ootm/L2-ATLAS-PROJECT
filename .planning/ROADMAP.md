@@ -17,7 +17,7 @@
 - [x] **Phase 4: ATLAS Event Bus & Audit Core** - Structured audit event bus wired into Hermes runtime (completed 2026-06-07)
 - [x] **Phase 5: Mission & Run Lifecycle** - Core mission state machine: create, execute, complete, cancel (completed 2026-06-08)
 - [x] **Phase 6: LLM Wiki Runtime** - Wiki ingest, update, query, and lint pipeline (completed 2026-06-08)
-- [ ] **Phase 7: API Gateway (Rust)** - Typed REST API (+ SSE event stream) exposing all mission, run, audit, and wiki operations — first `native/atlas-core-rs` crate (D-022)
+- [x] **Phase 7: API Gateway (Rust)** - Typed REST API (+ SSE event stream) exposing all mission, run, audit, and wiki operations — first `native/atlas-core-rs` crate (D-022) (completed 2026-06-11)
 - [ ] **Phase 8: Operator Cockpit (web-first, native-portable)** - SvelteKit cockpit: mission management, run monitoring, audit viewer, wiki browser, model panel (D-021: native shell moved to Phase 10/v1.1)
 - [ ] **Phase 9: Skill Inventory & Classification** - Complete classified skill inventory for curated default skill pack
 
@@ -311,7 +311,7 @@ Plans:
 | 4. ATLAS Event Bus & Audit Core | 3/3 | Complete   | 2026-06-07 |
 | 5. Mission & Run Lifecycle | 4/4 | Complete    | 2026-06-08 |
 | 6. LLM Wiki Runtime | 6/6 | Complete   | 2026-06-08 |
-| 7. API Gateway | 0/0 | Not started | - |
+| 7. API Gateway | SC complete | Complete | 2026-06-11 |
 | 8. WebUI Operator Cockpit | 0/0 | Not started | - |
 | 9. Skill Inventory & Classification | 0/0 | Not started | - |
 

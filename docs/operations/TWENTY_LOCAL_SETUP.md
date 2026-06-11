@@ -16,9 +16,12 @@ fronts Twenty data through our API layer.
   RAM when the sidecar is not in use). Docker Desktop remains a supported
   fallback (`winget install Docker.DockerDesktop`). `setup_twenty.ps1`
   auto-detects (podman → docker); force with `-Engine podman|docker`.
-  Note: Twenty's official compose targets Docker; if a Podman
-  incompatibility appears (healthcheck/volume semantics), fall back with
-  `-Engine docker` and record the issue here.
+  Note: Twenty's official compose targets Docker. Podman
+  healthcheck/volume/network semantics are **not validated** until a container
+  engine is installed on this machine. If a Podman incompatibility appears
+  (healthcheck/volume semantics), fall back with `-Engine docker` and record
+  the issue here. Operator action when Twenty testing is needed:
+  `winget install RedHat.Podman`, then `podman machine init && podman machine start`.
 - ~2 GB RAM headroom for the stack (server, worker, twenty-postgres-spilo, redis).
 
 ## Install / lifecycle

@@ -1,5 +1,10 @@
 # Foundation Strategy — Enhanced Hermes Runtime
 
+> **Supersession note — 2026-06-11:** This document is historical/contextual.
+> For the current architecture, use `docs/architecture/OVERVIEW.md` and accepted ADRs
+> D-018, D-021, and D-022. Do not treat pre-D-022 diagrams or phase layout in this
+> document as canonical if they conflict with those sources.
+
 ## Decision
 
 L2 ATLAS should **not** be a separate product that merely routes through Hermes as a black-box subprocess.

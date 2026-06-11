@@ -3,25 +3,25 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Operator Cockpit MVP
 status: executing
-last_updated: "2026-06-08T12:00:00.000Z"
-last_activity: "2026-06-08 -- Phase 06 VERIFIED complete (8/8 deliverables, 87.54% coverage, 31 tests green)"
+last_updated: "2026-06-11T15:00:00.000Z"
+last_activity: "2026-06-11 -- Phase 7 COMPLETE: all 9 SC met. POST /missions + POST /missions/{id}/run (atlas CLI dispatch), GET /v1/wiki/pages, D-012 contract tests (caught run_id drift, fixed), 26 tests green (was 15). Release binary 3.2 MB (<20 MB). Low-model stabilization done (.gitattributes, VALIDATION_INDEX, supersession headers, wiki ingestion rules, Podman note). Next: Phase 8 WebUI Operator Cockpit (SvelteKit)."
 progress:
   total_phases: 10
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 24
   completed_plans: 24
-  percent: 62
+  percent: 70
 ---
 
 # STATE — L2 ATLAS
 
 ## Current Position
 
-Phase: 06
-Plan: 06 complete — Phase 06 VERIFIED (8/8 deliverables, 87.54% cov, 31 tests)
-Next: Execute Phase 07 (API Gateway, incl. SSE stream endpoint per D-021)
+Phase: 07 COMPLETE → Next: 08
+Plan: Phase 07 complete — 9/9 SC met, 26 tests green, binary 3.2 MB
+Next: Execute Phase 08 (WebUI Operator Cockpit, SvelteKit/Svelte 5, D-021)
 Status: Executing
-Last activity: 2026-06-11 -- atlas-gateway BUILT AND VERIFIED (debug + release 2.53 MB, /health live — first Rust crate green, D-022 Phase 7 unblocked); `atlas` skin retokened to canonical L2 design system (DIV-F-006: Electric Violet/Cyber Blue/Titanium White, L2 // SYSTEMS wordmark, HUD voice); model registry + `atlas models refresh|list` live-sync vs gateway /v1/models (D-017, migration 0003); `atlas channels status` read-only inspector + ATLAS_CHANNELS_SETUP.md runbook (L2 BOT harness = foundation gateway under atlas-agent aliases); agent-runtime suite 54 green (was 44)
+Last activity: 2026-06-11 (later) -- Phase 7 READ SURFACE LIVE: atlas-gateway serves /v1/missions[/{id}], /v1/runs/{id}[/events], /v1/wiki/search, /v1/runs/{id}/stream SSE (rowid-cursor poll, end event on terminal runs) — 15 integration tests green against real 0001_core.sql schema; remaining Phase 7: write dispatch via atlas CLI + D-012 contract tests + RSS/SSE latency measurement. NEW surfaces: `atlas integrations l2-bot status` (services/integration-runtime, 8 tests, boolean-only .env detection, no secrets), module catalog (modules/*/manifest.json + schema + scripts/list_modules.py, 8 tests), local installer scaffold (install/windows/install.ps1 + install/unix/install.sh, manifest-driven, dry-run, manual:-step convention; packages/atlas-installer reserves npx path, private/unpublishable). PRIOR same-day: atlas-gateway BUILT AND VERIFIED (debug + release 2.53 MB, /health live — first Rust crate green, D-022 Phase 7 unblocked); `atlas` skin retokened to canonical L2 design system (DIV-F-006: Electric Violet/Cyber Blue/Titanium White, L2 // SYSTEMS wordmark, HUD voice); model registry + `atlas models refresh|list` live-sync vs gateway /v1/models (D-017, migration 0003); `atlas channels status` read-only inspector + ATLAS_CHANNELS_SETUP.md runbook (L2 BOT harness = foundation gateway under atlas-agent aliases); agent-runtime suite 54 green (was 44)
 
 ## Accumulated Context
 
