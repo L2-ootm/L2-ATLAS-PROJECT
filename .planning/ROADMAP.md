@@ -17,8 +17,8 @@
 - [x] **Phase 4: ATLAS Event Bus & Audit Core** - Structured audit event bus wired into Hermes runtime (completed 2026-06-07)
 - [x] **Phase 5: Mission & Run Lifecycle** - Core mission state machine: create, execute, complete, cancel (completed 2026-06-08)
 - [x] **Phase 6: LLM Wiki Runtime** - Wiki ingest, update, query, and lint pipeline (completed 2026-06-08)
-- [ ] **Phase 7: API Gateway** - Typed REST API exposing all mission, run, audit, and wiki operations
-- [ ] **Phase 8: WebUI Operator Cockpit** - Web cockpit: mission management, run monitoring, audit viewer, wiki browser
+- [ ] **Phase 7: API Gateway (Rust)** - Typed REST API (+ SSE event stream) exposing all mission, run, audit, and wiki operations — first `native/atlas-core-rs` crate (D-022)
+- [ ] **Phase 8: Operator Cockpit (web-first, native-portable)** - SvelteKit cockpit: mission management, run monitoring, audit viewer, wiki browser, model panel (D-021: native shell moved to Phase 10/v1.1)
 - [ ] **Phase 9: Skill Inventory & Classification** - Complete classified skill inventory for curated default skill pack
 
 ### Candidate Sidecar Spikes
@@ -232,9 +232,9 @@ Plans:
 
 ---
 
-### Phase 7: API Gateway
+### Phase 7: API Gateway (Rust — D-022)
 
-**Goal:** Expose all mission, run, audit, and wiki operations via a typed REST API so the cockpit and future integrations have a stable interface.
+**Goal:** Expose all mission, run, audit, and wiki operations via a typed REST API (+ SSE stream) so the cockpit and future integrations have a stable interface — delivered as the first native component: a Rust binary (`axum` + `rusqlite`) in `native/atlas-core-rs/`, replacing the earlier FastAPI plan (which contradicted D-013's framework ban).
 
 **Depends on:** Phase 5 (mission/run lifecycle), Phase 6 (wiki runtime)
 
@@ -242,24 +242,25 @@ Plans:
 
 **Success Criteria** (what must be TRUE):
 
-1. FastAPI server starts with `uvicorn atlas_api.main:app` and serves the OpenAPI spec at `/docs`.
-2. `POST /missions` creates a mission; `GET /missions` returns a paginated list.
+1. `atlas-gateway` builds as a single Rust binary in `native/atlas-core-rs/` and serves an OpenAPI spec at `/docs`.
+2. `POST /missions` creates a mission (dispatched via the `atlas` CLI contract); `GET /missions` returns a paginated list (direct SQLite read).
 3. `POST /missions/{id}/run` starts a run; `GET /runs/{id}` returns run status.
-4. `GET /runs/{id}/events` returns ordered AuditEvent list with all fields.
+4. `GET /runs/{id}/events` returns ordered AuditEvent list with all fields; `GET /runs/{id}/events/stream` streams new events via SSE (rowid-cursor poll, ≤ 500 ms interval).
 5. `GET /wiki/pages` returns a paginated page list; `GET /wiki/search?q=` returns FTS5 results.
 6. All endpoints return proper HTTP status codes (201 create, 200 ok, 404 not found, 422 validation error).
-7. OpenAPI schema matches the Pydantic response models (no manual schema drift).
-8. Integration tests cover all 8 endpoints (happy path + one error case each).
+7. Response shapes match the JSON Schema emitted by atlas-core (D-012) — verified by contract tests, no manual drift.
+8. Integration tests cover all endpoints (happy path + one error case each).
+9. Budgets (D-022): idle RSS < 80 MB, release binary < 20 MB, no network calls except serving 127.0.0.1.
 
 **Plans:** TBD
 
 ---
 
-### Phase 8: WebUI Operator Cockpit
+### Phase 8: Operator Cockpit (Web-First, Native-Portable)
 
-**Goal:** Ship the first web-based operator cockpit — mission management, real-time run monitoring, audit trail viewer, and wiki browser — in the framework decided by the Phase 3 spike.
+**Goal:** Ship the first operator cockpit — mission management, real-time run monitoring, audit trail viewer, wiki browser, and read-only model panel — as a SvelteKit web app built under native-portability constraints (D-021 §1: adapter-static, no SSR runtime, loopback API only) so the Phase 10 Tauri shell wraps it unchanged.
 
-**Depends on:** Phase 3 (framework decision), Phase 7 (API)
+**Depends on:** Phase 3 (framework decision), Phase 7 (API incl. SSE stream)
 
 **Requirements:** COCKPIT-01, COCKPIT-02, COCKPIT-03, COCKPIT-04, COCKPIT-05, COCKPIT-06
 
@@ -316,13 +317,16 @@ Plans:
 
 ---
 
-## Milestone v2.0: Pulse, CRM & Native Sidecar (planned)
+## Milestone v1.1: Native Cockpit Shell (planned)
 
-_Not sequenced yet. Phases will be defined after v1.0 completes and is dogfooded._
+Phase 10: Native Cockpit Shell — Tauri 2/Rust shell wrapping the Phase 8 app; PTY/terminal pane, OS keychain, native approvals, IPC capability model, threat-model gate. Governed by `NATIVE_COCKPIT_STRATEGY.md`. (Absorbs the former "Rust Native Sidecar Spike". Canonical numbering: D-021 §2.)
 
-Phase 10: Basic Pulse Monitor
-Phase 11: CRM Primitives (Contact/Organization/Opportunity)
-Phase 12: Rust Native Sidecar Spike (command palette + local IPC)
+## Milestone v2.0: CRM, Pulse & Voice (planned)
+
+_Not sequenced yet. Phases will be defined after v1.0/v1.1 complete and are dogfooded._
+
+Phase 11: CRM via Twenty (sidecar wiring, custom objects, webhook flows, CRM cockpit panel — D-020/D-021)
+Phase 12: Basic Pulse Monitor
 Phase 13: STT/TTS Voice Integration
 Phase 14: Floating Overlay / Run-Status HUD
 

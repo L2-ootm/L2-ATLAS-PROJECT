@@ -4,6 +4,12 @@
 **Domain:** Frontend framework selection (SvelteKit/Svelte 5 vs Next.js/React) + CRM/Pulse/Channels v2 scoping
 **Confidence:** HIGH (WebUI criteria), MEDIUM (CRM open questions)
 
+> Supersession note (2026-06-11): every "FastAPI" reference below is
+> historical. D-022 makes the Phase 7 gateway a Rust binary (axum +
+> rusqlite); read "FastAPI" as "the ATLAS Rust gateway". The SvelteKit /
+> adapter-static / EventSource conclusions remain valid — the cockpit talks
+> to the same REST+SSE contract regardless of gateway implementation.
+
 ---
 
 <user_constraints>

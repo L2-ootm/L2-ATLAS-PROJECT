@@ -19,9 +19,9 @@ progress:
 
 Phase: 06
 Plan: 06 complete — Phase 06 VERIFIED (8/8 deliverables, 87.54% cov, 31 tests)
-Next: Execute Phase 07 (API Gateway)
+Next: Execute Phase 07 (API Gateway, incl. SSE stream endpoint per D-021)
 Status: Executing
-Last activity: 2026-06-08 -- Phase 06 verified complete; D-020 locked (Twenty CRM sidecar pillar); next: Phase 07 (API Gateway)
+Last activity: 2026-06-11 -- atlas-gateway BUILT AND VERIFIED (debug + release 2.53 MB, /health live — first Rust crate green, D-022 Phase 7 unblocked); `atlas` skin retokened to canonical L2 design system (DIV-F-006: Electric Violet/Cyber Blue/Titanium White, L2 // SYSTEMS wordmark, HUD voice); model registry + `atlas models refresh|list` live-sync vs gateway /v1/models (D-017, migration 0003); `atlas channels status` read-only inspector + ATLAS_CHANNELS_SETUP.md runbook (L2 BOT harness = foundation gateway under atlas-agent aliases); agent-runtime suite 54 green (was 44)
 
 ## Accumulated Context
 
@@ -42,7 +42,7 @@ Last activity: 2026-06-08 -- Phase 06 verified complete; D-020 locked (Twenty CR
 - D-013: Language strategy — Prototype in Python, Cement in Rust — locked direction, open timing
 - D-014: Optional turbovec local semantic retrieval spike — accepted for spike, not core adoption
 - D-015: FreeLLMAPI sidecar gateway — accepted for integration spike; sidecar first, managed sidecar second, fork/vendor last
-- D-016: Terax AI — accepted as Rust-native desktop cockpit reference pillar (not vendor); Phase 8 native shell direction locked
+- D-016: Terax AI — accepted as Rust-native desktop cockpit reference pillar (not vendor); native shell direction locked (now Phase 10/v1.1 per D-021 §1 — Phase 8 is web-first)
 - D-017: AI router connector strategy — ATLAS model_registry + model_router, FreeLLMAPI sidecar-first, task-class routing, audit-event metadata for all LLM calls
 - D-018: Hermes-as-foundation L2/ATLAS harness strategy — evolve Hermes foundation; do not route through stock Hermes; foundation transformation not wrapper
 - D-019: Diverse efficient agent memory framework — 6 memory layers + policy-governed memory router; Phase 6 delivers Layer 2+3; Phase 7 memory API; Phase 8 memory inspection surface
@@ -55,10 +55,13 @@ Last activity: 2026-06-08 -- Phase 06 verified complete; D-020 locked (Twenty CR
 - D-019 impl (06-FINAL): Phase 6 VERIFIED 2026-06-08 — 8/8 deliverables confirmed, 87.54% coverage (31 tests), 06-VERIFICATION.md written; coverage gap fix: CLI result-display loops, ValueError path, factory types now covered
 - D-020: Twenty CRM adopted as external self-hosted service pillar — Docker Compose sidecar; ATLAS integrates via Core API, Metadata API, MCP server, webhooks; AGPL-3.0 sidecar-only (no copyleft obligation); CRM/Pulse features land post-Phase 8; D-007 CRM-after-cockpit ordering preserved
 - License confirmation (Phase 4.5): all four reference pillars confirmed permissive — Terax Apache-2.0, Odysseus MIT, Hermes MIT, FreeLLMAPI MIT. No copyleft obligation.
+- D-022 (2026-06-10): Rust-first cementation policy — resolves D-013 open timing; Phase 7 gateway is Rust (axum + rusqlite, first native/atlas-core-rs crate; reads direct SQLite, writes via `atlas` CLI contract, SSE via rowid poll); Python confined to Hermes foundation surface + LLM adapters + scripts; L0–L5 cementation ladder ends with Rust harness core strangling the Python agent loop (v2.x); budgets locked (CLI <100ms/<50MB, daemon <80MB idle, binary <20MB)
+- D-021 (2026-06-10): v1.0 sequencing + branding consolidation — Phase 8 web-first (native shell → Phase 10/v1.1); canonical phase numbering (9 skills, 10 native shell, 11 CRM/Twenty, 12 Pulse); memory framework = 6 layers (AGENT_MEMORY_FRAMEWORK_STRATEGY.md canonical); Twenty = external relationship system of record, Layer 4 graph = local derived index referencing Twenty by ID; Terax reuse architecture-level only; FreeLLMAPI fork triggers defined (2-of-4 criteria); two-layer branding policy (L2/ATLAS brand = experience layer + vendored Hermes-derived foundation; sidecars stay pinned upstream unbranded); Hermes vendored to foundation/atlas-hermes with ATTRIBUTION + DIVERGENCE_LOG (D-018 implementation start)
 
 ### Known blockers
 
-None — all pre-build gates cleared. All research closed. D-006 locked. Build phases (4–8) can proceed.
+- ~~VS Build Tools missing~~ RESOLVED 2026-06-11: Build Tools C++ workload installed; `cargo build -p atlas-gateway` green (debug + release). Release binary 2.53 MB (<20 MB D-022 budget). `/health` verified live on 127.0.0.1:8484 for both profiles.
+- No container engine installed (verified 2026-06-11) — blocks `setup_twenty.ps1 up`, not the fetch (already validated: official compose pinned at v2.1.0 with generated secrets in gitignored infra/compose/twenty/). Preferred engine is now Podman (daemonless, no-bloat — operator install: `winget install RedHat.Podman`); Docker Desktop is the fallback. Script auto-detects podman → docker.
 
 ### New candidate spikes
 

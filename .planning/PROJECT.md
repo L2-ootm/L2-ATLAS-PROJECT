@@ -6,11 +6,11 @@ L2 ATLAS is an AI Company Operating Cockpit: a system for managing autonomous ag
 
 **Core value:** A serious, auditable AI operating system for technical founders, AI operators, and small high-context teams — not a visual agent builder or chat-with-files product.
 
-**Technology foundation:** Enhanced NousResearch Hermes (Python, MIT, v0.14.0) as the runtime substrate. ATLAS adds the product/operator layer: mission model, audit event bus, LLM Wiki, cockpit UI, skill governance, and a Rust-native sidecar track.
+**Technology foundation:** ATLAS is an L2-owned operator cockpit/runtime built by evolving the Hermes Agent foundation (vendored at `foundation/atlas-hermes/`, MIT, v0.14.0) into an ATLAS-branded harness, then adding mission, audit, policy, wiki, memory, router, gateway, and cockpit layers around that evolved foundation (D-018).
 
 ## Current Milestone: v1.0 — Operator Cockpit MVP
 
-**Goal:** Ship the first closed operator loop — create mission → run through enhanced ATLAS/Hermes runtime → capture audit trail → file artifacts to LLM Wiki → display in web cockpit.
+**Goal:** Ship the first closed operator loop — create mission → run through the ATLAS runtime built from the evolved Hermes foundation → capture audit trail → file artifacts to LLM Wiki → display in web cockpit.
 
 **Target features:**
 - Hermes foundation clone & extension-point audit
@@ -19,7 +19,7 @@ L2 ATLAS is an AI Company Operating Cockpit: a system for managing autonomous ag
 - ATLAS event bus + audit core
 - Mission & run lifecycle (create/execute/cancel/complete)
 - LLM Wiki runtime (ingest/query/update/lint)
-- API gateway (FastAPI)
+- API gateway (Rust — axum + rusqlite, D-022; first crate `atlas-gateway` builds green)
 - Web operator cockpit (mission management, run monitoring, wiki browser)
 - Skill inventory & classification
 
@@ -31,14 +31,14 @@ L2 ATLAS is an AI Company Operating Cockpit: a system for managing autonomous ag
 3. Runtime execution (enhanced Hermes + ATLAS services)
 4. Cockpit UI (web + native later)
 
-**Repo layout (D-011):**
+**Repo layout (D-011, amended by D-022 + PRODUCTION_REPO_STRUCTURE.md):**
 ```
-foundation/          Hermes vendoring pointer
+foundation/          vendored Hermes-derived ATLAS foundation (+ ATTRIBUTION, DIVERGENCE_LOG)
 packages/atlas-core/ Pydantic schemas + shared contracts
 services/            agent-runtime, wiki-runtime, pulse-runtime (later)
-apps/                api, web cockpit
+apps/cockpit-web/    Phase 8 SvelteKit cockpit (apps/api removed — gateway is Rust, D-022)
 infra/migrations/    SQLite schema
-native/              Rust sidecar (later)
+native/atlas-core-rs Rust workspace (atlas-gateway crate; future crates/ promotion)
 wiki/                persistent markdown KB
 ```
 
@@ -58,6 +58,8 @@ wiki/                persistent markdown KB
 | D-010 | CRM/Pulse/Channels deep-dive research still needed | open |
 | D-011 | Canonical repo layout: foundation/packages/services/apps/infra | locked |
 | D-012 | Pydantic v2 is schema source of truth; emit JSON Schema for TS/Rust | locked |
+| D-021 | Web-first Phase 8; native shell = Phase 10 (v1.1); canonical phase numbering; 6-layer memory canon; two-layer branding (L2 brand = experience layer + vendored Hermes foundation, sidecars stay upstream); FreeLLMAPI fork triggers | accepted |
+| D-022 | Rust-first cementation: all new components Rust; Phase 7 gateway is Rust (axum/rusqlite); Python confined to Hermes foundation surface, LLM adapters, scripts; L0–L5 port ladder; budgets (CLI <100ms/<50MB, daemon <80MB idle) | accepted |
 
 ## Active Requirements
 
@@ -81,6 +83,8 @@ Summary: 30 requirements across FOUNDATION, SCHEMA, RUNTIME, WIKI, AUDIT, COCKPI
 - No CRM or WhatsApp production integration before runtime loop works.
 - No native overlay before runtime loop works.
 - All autonomous actions are auditable (reason + input + action + output + verification).
+- Branding is two-layer (D-021): L2/ATLAS brand applies to the experience layer and the vendored Hermes-derived foundation only; infrastructure sidecars (FreeLLMAPI, Twenty) are never forked or rebranded — Twenty (AGPL + trademark) must never be embedded.
+- Rust-first (D-022): every new infrastructure component is Rust; no new Python service code outside the exception buckets (Hermes foundation surface, LLM adapters, throwaway scripts); native components ship with measured budgets.
 
 ## Evolution
 
@@ -97,4 +101,4 @@ This document evolves at phase transitions and milestone boundaries.
 2. Archive milestone artifacts
 3. Update Context with current state
 
-_Last updated: 2026-06-08 — Phase 5 complete: Mission & Run Lifecycle. RUNTIME-01/02/04/05/06/07 verified. 44 tests green, 85% branch coverage. Phase 6 (LLM Wiki Runtime) is next._
+_Last updated: 2026-06-11 — Phases 1–6 complete and verified. Foundation vendored + rebranded (DIV-F-001..006). Rust toolchain unblocked; atlas-gateway crate builds green (2.53 MB release, /health verified). Phase 7 (Rust API Gateway + SSE) is next._
