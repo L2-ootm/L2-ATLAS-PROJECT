@@ -66,11 +66,11 @@ shadcn gate: **Not applicable.** Stack is SvelteKit/Svelte 5 + Tailwind v4. No s
 ### Sidebar Behavior
 
 - Collapsed state: icon only (20px Lucide, centered). No text labels.
-- Expanded state: icon (16px) + label (Inter 500, 14px, uppercase, letter-spacing 0.1em).
+- Expanded state: icon (16px) + label (Inter 600, 14px, uppercase, letter-spacing 0.1em).
 - Active nav item: `border-left: 2px solid #00F0FF` + `background: rgba(0,240,255,0.06)` + color `#00F0FF`.
 - Inactive nav item: `border-left: 2px solid transparent` + color `#505050`.
 - Hover (inactive): `background: rgba(255,255,255,0.02)` + color `#A0A0A0`. Duration: 80ms.
-- Sidebar bottom: wordmark `L2 // SYSTEMS` (Orbitron, 10px, uppercase, collapsed: hidden).
+- Sidebar bottom: wordmark `L2 // SYSTEMS` (Orbitron, 12px, uppercase, collapsed: hidden).
 
 ---
 
@@ -80,9 +80,9 @@ Source: `design-tokens.json` spacing block. All values are locked L2 tokens.
 
 | Token | CSS Var | Value | Primary Usage |
 |-------|---------|-------|---------------|
-| space-1 | --l2-space-1 | 4px | Icon gaps, badge inner padding, row gap |
+| space-1 | --l2-space-1 | 4px | Icon gaps, badge inner padding (vertical), row gap |
 | space-2 | --l2-space-2 | 8px | Inline element spacing, compact padding |
-| space-3 | --l2-space-3 | 12px | Data row padding (6px 12px), SSE row gap |
+| space-3 | --l2-space-3 | 12px | Data row padding (4px 12px), SSE row gap |
 | space-4 | --l2-space-4 | 16px | Default panel padding, form field gap |
 | space-6 | --l2-space-6 | 24px | Section padding, main content padding |
 | space-8 | --l2-space-8 | 32px | Between major sections |
@@ -90,10 +90,10 @@ Source: `design-tokens.json` spacing block. All values are locked L2 tokens.
 | space-16 | --l2-space-16 | 64px | Reserved for hero/landing — not used in cockpit |
 
 Exceptions:
-- Data row padding: `6px 12px` (6px is a deliberate density exception for table rows — per DESIGN.md §7 Data Row pattern).
+- Data row padding: `4px 12px` (--l2-space-1 vertical, --l2-space-3 horizontal — data density).
 - SSE event row column gap: `12px` (matches data row convention).
-- Sidebar nav item height: `44px` minimum (touch target safety — WebView2 portability).
-- Status badge padding: `2px 8px` (per USAGE.md component quickref).
+- Sidebar nav item height: `48px` minimum (touch target safety — WebView2 portability, on-grid at --l2-space-12).
+- Status badge padding: `4px 8px` (--l2-space-1 / --l2-space-2).
 
 ---
 
@@ -114,12 +114,9 @@ Source: `design-tokens.json` typography block + DESIGN.md §4.
 | Level | Size Token | Px | Font | Weight | Line Height | Usage |
 |-------|------------|-----|------|--------|-------------|-------|
 | H2 / Section | --l2-text-h2 | 32px | Orbitron | 700 | 1.2 | Surface section titles (e.g. "MISSIONS") |
-| H3 / Sub-section | --l2-text-h3 | 24px | Inter | 600 | 1.2 | Panel sub-headings |
-| Body | --l2-text-body | 16px | Inter | 400 | 1.5 | Descriptions, mission intent, wiki content |
-| Small / Nav label | --l2-text-sm | 14px | Inter | 500 | 1.4 | Nav labels, form labels, secondary copy |
-| Data readout | --l2-text-data | 13px | JetBrains Mono | 400 | 1.4 | Mission IDs, run IDs, latency, token count |
-| HUD label / badge | --l2-text-xs | 12px | JetBrains Mono | 400 | 1.2 | Status badges, HUD labels, SSE event types |
-| Timestamp (minimum) | --l2-text-xs | 12px | JetBrains Mono | 400 | 1.0 | SSE timestamps (11px floor permitted for timestamps only) |
+| Body | --l2-text-body | 16px | Inter | 400 | 1.5 | Descriptions, mission intent, wiki content, panel sub-headings |
+| Small / Nav label | --l2-text-sm | 14px | Inter | 600 | 1.4 | Nav labels, form labels, secondary copy |
+| Data / HUD | --l2-text-xs | 12px | JetBrains Mono | 400 | 1.2 | ALL mono data: mission IDs, run IDs, latency, token count, status badges, HUD labels, SSE event types, timestamps |
 
 Rules:
 - `letter-spacing: 0.2em` on all HUD labels (uppercase mono system labels).
@@ -127,6 +124,8 @@ Rules:
 - `font-variant-numeric: tabular-nums` on all JetBrains Mono data.
 - Hero/H1 (96px/64px Orbitron) are NOT used in the cockpit — cockpit is data-dense, not landing page.
 - Orbitron is restricted to section titles (32px) and the wordmark. Never body text, never data.
+- Inter weights: exactly 2 — 400 (body, descriptions, metadata) and 600 (nav labels, sub-labels, headings). No other Inter weights.
+- JetBrains Mono weight: 400 throughout. All mono data at 12px. No separate 13px data tier.
 
 ---
 
@@ -195,7 +194,7 @@ Source: `components.manifest.json`. One entry per L2 component used per surface.
 ### Global (all surfaces)
 
 **Wordmark**
-- `L2 // SYSTEMS` — Orbitron, 10–12px, uppercase, `letter-spacing: 0.3em`.
+- `L2 // SYSTEMS` — Orbitron, 12px, uppercase, `letter-spacing: 0.3em`.
 - Color: `#E0E0E0`. The `//` separator is the visual signature — never recolor.
 - Location: sidebar bottom (expanded) or hidden (collapsed).
 
@@ -206,8 +205,8 @@ Source: `components.manifest.json`. One entry per L2 component used per surface.
 - Example: `MISSION STATUS`, `CREATED`, `RUN ID`, `EVENT TYPE`.
 
 **Status Badge**
-- Font: JetBrains Mono, 11px, uppercase, `letter-spacing: 0.1em`.
-- Padding: `2px 8px`. Radius: `4px` (--l2-radius-md).
+- Font: JetBrains Mono, 12px, uppercase, `letter-spacing: 0.1em`.
+- Padding: `4px 8px` (--l2-space-1 / --l2-space-2). Radius: `4px` (--l2-radius-md).
 - Variants (background/border/text):
   - `PENDING` → violet-soft / rgba(127,0,255,0.35) / #7F00FF
   - `RUNNING` → rgba(0,240,255,0.12) / rgba(0,240,255,0.35) / #00F0FF
@@ -224,19 +223,19 @@ Source: `components.manifest.json`. One entry per L2 component used per surface.
 **Button / Primary**
 - Background: `#7F00FF`. Border: `1px solid rgba(127,0,255,0.6)`.
 - Box-shadow: `0 0 24px rgba(127,0,255,0.35)`.
-- Font: JetBrains Mono, 13px, uppercase, `letter-spacing: 0.1em`.
+- Font: JetBrains Mono, 12px, uppercase, `letter-spacing: 0.1em`.
 - Radius: `2px`. Color: `#FFFFFF`.
 - Hover: `background: rgba(127,0,255,0.85)`, border-color opacity 1.0. Duration: 80ms.
 - Disabled: `opacity: 0.4`, no hover shadow.
 
 **Button / Secondary**
 - Background: `rgba(20,20,20,0.60)`. Border: `1px solid rgba(255,255,255,0.08)`.
-- Font: Inter 500, 14px, `letter-spacing: 0.05em`. Color: `#A0A0A0`.
+- Font: Inter 600, 14px, `letter-spacing: 0.05em`. Color: `#A0A0A0`.
 - Hover: `background: rgba(255,255,255,0.08)`, color `#E0E0E0`. Duration: 80ms.
 
 **Button / Danger**
 - Background: `rgba(255,0,85,0.15)`. Border: `1px solid rgba(255,0,85,0.40)`.
-- Font: JetBrains Mono, 13px, uppercase. Color: `#FF0055`.
+- Font: JetBrains Mono, 12px, uppercase. Color: `#FF0055`.
 - Hover: `background: rgba(255,0,85,0.25)`. Duration: 80ms.
 - Used only for: run cancellation confirmation.
 
@@ -267,7 +266,7 @@ Source: `components.manifest.json`. One entry per L2 component used per surface.
 - Component: `data-table`.
 - Container: Glass Panel. Width: `100%`. No horizontal scroll on desktop.
 - Column layout:
-  - `ID` — JetBrains Mono 13px, #A0A0A0, `90px`
+  - `ID` — JetBrains Mono 12px, #A0A0A0, `90px`
   - `TITLE` — Inter 400 16px, #E0E0E0, `flex-1`
   - `STATUS` — Status Badge, `120px`, centered
   - `CREATED` — JetBrains Mono 12px, #505050, `160px`
@@ -287,7 +286,7 @@ Source: `components.manifest.json`. One entry per L2 component used per surface.
 - Fields:
   - `TITLE` — text input, Inter 400, placeholder "Mission title"
   - `INTENT` — textarea, Inter 400, placeholder "Describe the operator intent...", `min-height: 96px`
-- Actions row: "CREATE MISSION" (primary) + "CANCEL" (secondary ghost).
+- Actions row: "CREATE MISSION" (primary) + "DISCARD" (secondary ghost).
 - On submit: optimistic UI — add pending row to list, replace with API response. No page reload.
 - On success: close modal, flash success row (border-left violet 2px, fade 400ms).
 
@@ -296,11 +295,11 @@ Source: `components.manifest.json`. One entry per L2 component used per surface.
 ### Surface 2: Runs — Timeline + SSE Stream (COCKPIT-02, COCKPIT-03)
 
 **Run Header**
-- Run ID: JetBrains Mono 13px, #A0A0A0.
+- Run ID: JetBrains Mono 12px, #A0A0A0.
 - Mission title link: Inter 400 14px, violet underline on hover.
 - Status badge (large): same variants as above, `padding: 4px 12px`.
 - Started / finished timestamps: JetBrains Mono 12px, #505050.
-- Elapsed time: JetBrains Mono 13px, #E0E0E0 (e.g. `14.2s`, `2m 33s`).
+- Elapsed time: JetBrains Mono 12px, #E0E0E0 (e.g. `14.2s`, `2m 33s`).
 
 **Run Timeline** (top of surface, horizontal)
 - Simple horizontal progress bar: `height: 2px`, background `rgba(255,255,255,0.08)`.
@@ -315,7 +314,7 @@ Source: `components.manifest.json`. One entry per L2 component used per surface.
 
 **SSE Event Row**
 - Component: `sse-event-row`.
-- Layout: `display: grid; grid-template-columns: 90px 100px 1fr; gap: 12px; padding: 6px 12px`.
+- Layout: `display: grid; grid-template-columns: 90px 100px 1fr; gap: 12px; padding: 4px 12px`.
 - Font: JetBrains Mono 12px throughout.
 - Columns:
   - Timestamp: `rgba(0,240,255,0.5)` (Cyber Blue at 50% opacity)
@@ -330,7 +329,7 @@ Source: `components.manifest.json`. One entry per L2 component used per surface.
 **Controls bar** (above SSE container)
 - "CANCEL RUN" (danger button, shown only for active runs) — opens confirmation inline banner, not modal.
 - "EXPORT JSONL" (secondary button, completed runs only) — triggers file download from API.
-- Filter: SSE event type select (Inter 500 14px, glass input) — "ALL" default.
+- Filter: SSE event type select (Inter 600 14px, glass input) — "ALL" default.
 
 ---
 
@@ -345,13 +344,13 @@ Source: `components.manifest.json`. One entry per L2 component used per surface.
 
 **Wiki Page List**
 - Left column: scrollable page list, `width: 280px`, Glass Panel.
-- Each list item: Inter 400 14px title + JetBrains Mono 11px updated timestamp below.
+- Each list item: Inter 400 14px title + JetBrains Mono 12px updated timestamp below.
 - Active page: `border-left: 2px solid #7F00FF`, `background: rgba(127,0,255,0.06)`.
 - Hover: `background: rgba(255,255,255,0.03)`.
 
 **Wiki Page Viewer**
 - Right column: `flex-1`, Glass Panel.
-- Title: `H3` (Inter 600, 24px, #E0E0E0).
+- Title: Inter 600, 16px, #E0E0E0 (section header level — no separate H3 tier in cockpit).
 - Content: Inter 400, 16px body, line-height 1.5. Markdown rendered.
 - Provenance row (below content): HUD label `SOURCE:` + source IDs in JetBrains Mono 12px, #505050.
 - `CREATED` / `UPDATED` timestamps: JetBrains Mono 12px, #505050.
@@ -359,7 +358,7 @@ Source: `components.manifest.json`. One entry per L2 component used per surface.
 **Wiki Page Create / Update Form**
 - Triggered via "CREATE PAGE" (section header primary button) or "EDIT" icon on active page.
 - Fields: `TITLE` (text, Inter), `CONTENT` (textarea, Inter, `min-height: 240px`), `LAYER` (select, layers 1–6 per AGENT_MEMORY_FRAMEWORK_STRATEGY).
-- Actions: "SAVE PAGE" (primary) + "CANCEL" (secondary).
+- Actions: "SAVE PAGE" (primary) + "DISCARD CHANGES" (secondary).
 - On save: optimistic update of page list item + viewer content.
 
 **Provenance View**
@@ -375,19 +374,19 @@ Source: `components.manifest.json`. One entry per L2 component used per surface.
 
 **Model Registry Table**
 - Data Table: columns `MODEL ID` | `PROVIDER` | `TIER` | `HEALTH` | `POLICY`.
-- All columns: JetBrains Mono 13px.
+- All columns: JetBrains Mono 12px.
 - Health column: Status Badge (HEALTHY/DEGRADED/DOWN using success/warning/error colors).
-- Policy column: text badge (`PREFERRED` / `FALLBACK` / `DISABLED`) in mono 11px.
+- Policy column: text badge (`PREFERRED` / `FALLBACK` / `DISABLED`) in mono 12px.
 - No edit controls, no toggle controls — explicitly read-only.
 
 **Routing Policy Block**
 - Glass Panel below table. HUD label `ROUTING POLICY`.
-- Read-only key-value pairs: JetBrains Mono 13px. Format: `KEY: value`.
+- Read-only key-value pairs: JetBrains Mono 12px. Format: `KEY: value`.
 - Example: `TASK_CLASS_FAST: gpt-4o-mini`, `TASK_CLASS_DEEP: claude-sonnet-4-6`.
 
 **Audit Visibility Block**
 - HUD label `AUDIT VISIBILITY`.
-- For each recent run: `RUN ID → MODEL ID` in mono. Linked to Runs surface.
+- For each recent run: `RUN ID → MODEL ID` in mono 12px. Linked to Runs surface.
 - Shows last 10 entries. "VIEW ALL IN RUNS" secondary ghost link.
 
 ---
@@ -400,7 +399,7 @@ Source: DESIGN.md §7 SSE Event Stream Entry + CONTEXT.md COCKPIT-02/03.
 
 - Connection: `EventSource` to `GET /v1/runs/{id}/stream` on `127.0.0.1:8484`.
 - On open: container border-left activates Cyber Blue (`#00F0FF`), `LIVE` badge appears.
-- `LIVE` badge: JetBrains Mono 11px uppercase, `#00F0FF`, `background: rgba(0,240,255,0.12)`, `border: 1px solid rgba(0,240,255,0.35)`, `border-radius: 4px`.
+- `LIVE` badge: JetBrains Mono 12px uppercase, `#00F0FF`, `background: rgba(0,240,255,0.12)`, `border: 1px solid rgba(0,240,255,0.35)`, `border-radius: 4px`, `padding: 4px 8px`.
 - Live pulse: `LIVE` badge has a single `opacity: 1 → 0.5 → 1` CSS animation, `1.5s infinite`, only when connected. No other idle animations.
 - On `end` event received or run reaches terminal state: SSE closes, `LIVE` badge replaced by run status badge, Cyber Blue container border removed.
 - Reconnect on disconnect: single retry after 2000ms. If retry fails, show `STREAM INTERRUPTED — reconnecting` in error crimson at top of stream container.
@@ -511,7 +510,7 @@ Source: DESIGN.md §8 HUD Voice & Copy Rules + CONTEXT.md.
 
 | Action | Confirmation Approach | Confirmation Copy |
 |--------|----------------------|------------------|
-| CANCEL RUN | Inline banner below controls bar (no modal) | `CONFIRM CANCEL: This will halt the active run and mark it PARTIAL. Action is irreversible.` — buttons: `CONFIRM CANCEL` (danger) + `ABORT` (secondary) |
+| CANCEL RUN | Inline banner below controls bar (no modal) | `CONFIRM CANCEL: This will halt the active run and mark it PARTIAL. Action is irreversible.` — buttons: `CONFIRM CANCEL` (danger) + `KEEP RUN` (secondary) |
 
 No other destructive actions in v1.0 cockpit. (Delete mission, delete wiki page → Phase 10 with proper audit chain.)
 
@@ -586,11 +585,11 @@ Minimum requirements (operator tool, single-user local — full WCAG 2.1 AA is P
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** approved 2026-06-11
