@@ -1,0 +1,26 @@
+[workspace]
+resolver = "2"
+members = ["crates/atlas-gateway"]
+
+# Future crates per D-022 cementation ladder:
+#   L1: atlas-policy, atlas-state
+#   L2: atlas-cli, atlas-runtime
+#   L3: atlas-wiki
+
+[workspace.package]
+edition = "2021"
+authors = ["L2 Systems"]
+repository = "local"
+
+[workspace.dependencies]
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# D-022 budgets: release binary < 20 MB, lean by default.
+[profile.release]
+lto = "thin"
+strip = true
+codegen-units = 1
