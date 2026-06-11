@@ -1,0 +1,702 @@
+{
+  "generated_at": "2026-06-07T22:45:54",
+  "ranked": [
+    {
+      "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 300,
+          "content": "OK-731",
+          "routed_via": {
+            "platform": "groq",
+            "model": "meta-llama/llama-4-scout-17b-16e-instruct"
+          },
+          "usage": {
+            "queue_time": 0.238821817,
+            "prompt_tokens": 18,
+            "prompt_time": 0.000142098,
+            "completion_tokens": 4,
+            "completion_time": 0.009426516,
+            "total_tokens": 22,
+            "total_time": 0.009568614
+          },
+          "test": "strict_exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 571,
+          "content": "{\"answer\": \"blue\", \"count\": 4}",
+          "routed_via": {
+            "platform": "groq",
+            "model": "meta-llama/llama-4-scout-17b-16e-instruct"
+          },
+          "usage": {
+            "queue_time": 0.488032741,
+            "prompt_tokens": 33,
+            "prompt_time": 0.001266926,
+            "completion_tokens": 13,
+            "completion_time": 0.029303636,
+            "total_tokens": 46,
+            "total_time": 0.030570562
+          },
+          "test": "json",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 1291,
+          "content": "```python\ndef add_even(nums):\n    return sum(num for num in nums if num % 2 == 0)\n```",
+          "routed_via": {
+            "platform": "groq",
+            "model": "meta-llama/llama-4-scout-17b-16e-instruct"
+          },
+          "usage": {
+            "queue_time": 1.187708673,
+            "prompt_tokens": 33,
+            "prompt_time": 0.001168551,
+            "completion_tokens": 27,
+            "completion_time": 0.060843641,
+            "total_tokens": 60,
+            "total_time": 0.062012192
+          },
+          "test": "code",
+          "passed": true
+        }
+      ],
+      "summary": {
+        "ok": 3,
+        "passed": 3,
+        "avg_latency_ms": 721,
+        "score": 3292.79
+      }
+    },
+    {
+      "model": "openai/gpt-oss-120b:free",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 2133,
+          "content": "OK-731",
+          "routed_via": {
+            "platform": "openrouter",
+            "model": "openai/gpt-oss-120b:free"
+          },
+          "usage": {
+            "prompt_tokens": 75,
+            "completion_tokens": 24,
+            "total_tokens": 99,
+            "cost": 0,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 64,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": 0,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 10,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          },
+          "test": "strict_exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 1429,
+          "content": "{\n  \"answer\": \"blue\",\n  \"count\": 4\n}",
+          "routed_via": {
+            "platform": "openrouter",
+            "model": "openai/gpt-oss-120b:free"
+          },
+          "usage": {
+            "prompt_tokens": 90,
+            "completion_tokens": 33,
+            "total_tokens": 123,
+            "cost": 0,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 64,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": 0,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 7,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          },
+          "test": "json",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 2309,
+          "content": "```python\ndef add_even(nums):\n    return sum(x for x in nums if isinstance(x, int) and x % 2 == 0)\n```",
+          "routed_via": {
+            "platform": "openrouter",
+            "model": "openai/gpt-oss-120b:free"
+          },
+          "usage": {
+            "prompt_tokens": 90,
+            "completion_tokens": 46,
+            "total_tokens": 136,
+            "cost": 0,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 64,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": 0,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 5,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          },
+          "test": "code",
+          "passed": true
+        }
+      ],
+      "summary": {
+        "ok": 3,
+        "passed": 3,
+        "avg_latency_ms": 1957,
+        "score": 3280.43
+      }
+    },
+    {
+      "model": "llama-3.3-70b-versatile",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 319,
+          "content": "OK-731",
+          "routed_via": {
+            "platform": "groq",
+            "model": "llama-3.3-70b-versatile"
+          },
+          "usage": {
+            "queue_time": 0.24216887,
+            "prompt_tokens": 43,
+            "prompt_time": 0.003440779,
+            "completion_tokens": 4,
+            "completion_time": 0.006641022,
+            "total_tokens": 47,
+            "total_time": 0.010081801
+          },
+          "test": "strict_exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 273,
+          "content": "```json\n{\n  \"answer\": \"blue\",\n  \"count\": 4\n}\n```",
+          "routed_via": {
+            "platform": "groq",
+            "model": "llama-3.3-70b-versatile"
+          },
+          "usage": {
+            "queue_time": 0.192585905,
+            "prompt_tokens": 58,
+            "prompt_time": 0.001954375,
+            "completion_tokens": 21,
+            "completion_time": 0.026266356,
+            "total_tokens": 79,
+            "total_time": 0.028220731
+          },
+          "test": "json",
+          "passed": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 316,
+          "content": "```python\ndef add_even(nums):\n    return sum(num for num in nums if num % 2 == 0)\n```",
+          "routed_via": {
+            "platform": "groq",
+            "model": "llama-3.3-70b-versatile"
+          },
+          "usage": {
+            "queue_time": 0.242145893,
+            "prompt_tokens": 58,
+            "prompt_time": 0.002720746,
+            "completion_tokens": 27,
+            "completion_time": 0.041095397,
+            "total_tokens": 85,
+            "total_time": 0.043816143
+          },
+          "test": "code",
+          "passed": true
+        }
+      ],
+      "summary": {
+        "ok": 3,
+        "passed": 2,
+        "avg_latency_ms": 303,
+        "score": 2296.97
+      }
+    },
+    {
+      "model": "gemini-2.5-flash-lite",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 532,
+          "content": "OK-731",
+          "routed_via": {
+            "platform": "google",
+            "model": "gemini-2.5-flash-lite"
+          },
+          "usage": {
+            "prompt_tokens": 11,
+            "completion_tokens": 5,
+            "total_tokens": 16
+          },
+          "test": "strict_exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 520,
+          "content": "```json\n{\n  \"answer\": \"blue\",\n  \"count\": 4\n}\n```",
+          "routed_via": {
+            "platform": "google",
+            "model": "gemini-2.5-flash-lite"
+          },
+          "usage": {
+            "prompt_tokens": 24,
+            "completion_tokens": 23,
+            "total_tokens": 47
+          },
+          "test": "json",
+          "passed": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 530,
+          "content": "```python\ndef add_even(nums):\n    return sum(num for num in nums if num % 2 == 0)\n```",
+          "routed_via": {
+            "platform": "google",
+            "model": "gemini-2.5-flash-lite"
+          },
+          "usage": {
+            "prompt_tokens": 26,
+            "completion_tokens": 31,
+            "total_tokens": 57
+          },
+          "test": "code",
+          "passed": true
+        }
+      ],
+      "summary": {
+        "ok": 3,
+        "passed": 2,
+        "avg_latency_ms": 527,
+        "score": 2294.73
+      }
+    },
+    {
+      "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 772,
+          "content": "OK-731",
+          "routed_via": {
+            "platform": "cloudflare",
+            "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+          },
+          "usage": {
+            "prompt_tokens": 43,
+            "completion_tokens": 4,
+            "total_tokens": 47,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "strict_exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 584,
+          "content": "```json\n{\n  \"answer\": \"blue\",\n  \"count\": 4\n}\n```",
+          "routed_via": {
+            "platform": "cloudflare",
+            "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+          },
+          "usage": {
+            "prompt_tokens": 58,
+            "completion_tokens": 21,
+            "total_tokens": 79,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "json",
+          "passed": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 833,
+          "content": "```python\ndef add_even(nums):\n    return sum(num for num in nums if num % 2 == 0)\n```",
+          "routed_via": {
+            "platform": "cloudflare",
+            "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+          },
+          "usage": {
+            "prompt_tokens": 58,
+            "completion_tokens": 27,
+            "total_tokens": 85,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "code",
+          "passed": true
+        }
+      ],
+      "summary": {
+        "ok": 3,
+        "passed": 2,
+        "avg_latency_ms": 730,
+        "score": 2292.7
+      }
+    },
+    {
+      "model": "mistral-medium-latest",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 433,
+          "content": "OK-731",
+          "routed_via": {
+            "platform": "mistral",
+            "model": "mistral-medium-latest"
+          },
+          "usage": {
+            "prompt_tokens": 13,
+            "total_tokens": 19,
+            "completion_tokens": 6,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "strict_exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 571,
+          "content": "```json\n{\"answer\":\"blue\",\"count\":4}\n```",
+          "routed_via": {
+            "platform": "mistral",
+            "model": "mistral-medium-latest"
+          },
+          "usage": {
+            "prompt_tokens": 26,
+            "total_tokens": 40,
+            "completion_tokens": 14,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "json",
+          "passed": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 1397,
+          "content": "The user wants a single Python function `def add_even(nums):` that returns the sum of even integers in `nums`. No prose, just the code.\n\nConstraints:\n- Write one Python function only.\n- Function name: `add_even`\n- Parameter: `nums`\n- Return: sum of even integers in nums.\n- No prose.\n\nSo I should output just the code block or even just the raw code. But typically code blocks are fine. However, the user said \"No prose.\" which means no explanatory text outside the code. I should provide only the function definition.\n\nPossible implementations:",
+          "routed_via": {
+            "platform": "huggingface",
+            "model": "moonshotai/Kimi-K2.6"
+          },
+          "usage": {
+            "prompt_tokens": 31,
+            "total_tokens": 151,
+            "completion_tokens": 120,
+            "prompt_tokens_details": {
+              "cached_tokens": 3
+            }
+          },
+          "test": "code",
+          "passed": true
+        }
+      ],
+      "summary": {
+        "ok": 3,
+        "passed": 2,
+        "avg_latency_ms": 800,
+        "score": 2292.0
+      }
+    },
+    {
+      "model": "auto",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 313,
+          "content": "The user wants me to reply with a specific string: \"OK-731\".\nThe instruction is \"Reply exactly and only: OK-731\".\nThis",
+          "routed_via": {
+            "platform": "cerebras",
+            "model": "zai-glm-4.7"
+          },
+          "usage": {
+            "total_tokens": 46,
+            "completion_tokens": 32,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0,
+              "reasoning_tokens": 32
+            },
+            "prompt_tokens": 14,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "strict_exact",
+          "passed": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 228,
+          "content": "{\"answer\":\"blue\",\"count\":4}",
+          "routed_via": {
+            "platform": "cerebras",
+            "model": "gpt-oss-120b"
+          },
+          "usage": {
+            "total_tokens": 156,
+            "completion_tokens": 66,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0,
+              "reasoning_tokens": 47
+            },
+            "prompt_tokens": 90,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "json",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 2575,
+          "content": "The user wants a single Python function `def add_even(nums):` that returns the sum of even integers in `nums`. No prose, just the code.\n\nI need to write exactly one Python function. It should be concise.\n\nPossible implementations:\n1. `def add_even(nums): return sum(x for x in nums if x % 2 == 0)`\n2. `def add_even(nums): return sum(filter(lambda x: x % 2 == 0, nums))`\n\nThe first is more Pythonic and readable. I'll go with that.\n\nThe user said \"Write one Python function",
+          "routed_via": {
+            "platform": "huggingface",
+            "model": "moonshotai/Kimi-K2.6"
+          },
+          "usage": {
+            "prompt_tokens": 31,
+            "total_tokens": 151,
+            "completion_tokens": 120,
+            "prompt_tokens_details": {
+              "cached_tokens": 3
+            }
+          },
+          "test": "code",
+          "passed": true
+        }
+      ],
+      "summary": {
+        "ok": 3,
+        "passed": 2,
+        "avg_latency_ms": 1039,
+        "score": 2289.61
+      }
+    },
+    {
+      "model": "mistral-large-latest",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 745,
+          "content": "OK-731",
+          "routed_via": {
+            "platform": "mistral",
+            "model": "mistral-large-latest"
+          },
+          "usage": {
+            "prompt_tokens": 13,
+            "total_tokens": 19,
+            "completion_tokens": 6,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "strict_exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 643,
+          "content": "```json\n{\"answer\":\"blue\",\"count\":4}\n```",
+          "routed_via": {
+            "platform": "mistral",
+            "model": "mistral-large-latest"
+          },
+          "usage": {
+            "prompt_tokens": 26,
+            "total_tokens": 40,
+            "completion_tokens": 14,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "json",
+          "passed": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 2588,
+          "content": "```python\ndef add_even(nums):\n    return sum(num for num in nums if isinstance(num, int) and num % 2 == 0)\n```",
+          "routed_via": {
+            "platform": "groq",
+            "model": "groq/compound"
+          },
+          "usage": {
+            "queue_time": 1.127699,
+            "prompt_tokens": 1629,
+            "prompt_time": 0.079546,
+            "completion_tokens": 230,
+            "completion_time": 0.503342,
+            "total_tokens": 1859,
+            "total_time": 0.582888
+          },
+          "test": "code",
+          "passed": true
+        }
+      ],
+      "summary": {
+        "ok": 3,
+        "passed": 2,
+        "avg_latency_ms": 1325,
+        "score": 2286.75
+      }
+    },
+    {
+      "model": "codestral-latest",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 439,
+          "content": "OK-731",
+          "routed_via": {
+            "platform": "mistral",
+            "model": "codestral-latest"
+          },
+          "usage": {
+            "prompt_tokens": 13,
+            "total_tokens": 19,
+            "completion_tokens": 6,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "strict_exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 510,
+          "content": "```json\n{\n  \"answer\": \"blue\",\n  \"count\": 4\n}\n```",
+          "routed_via": {
+            "platform": "mistral",
+            "model": "codestral-latest"
+          },
+          "usage": {
+            "prompt_tokens": 26,
+            "total_tokens": 47,
+            "completion_tokens": 21,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "json",
+          "passed": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 419,
+          "content": "The user wants a Python function named `add_even` that takes a list of numbers (`nums`) and returns the sum of the even integers within that list.\nThe constraint is \"Write one Python function only\" and \"No prose\".\n\n1.  **Analyze the Request:**\n    *   Function name: `add_even`\n    *   Input: `nums` (presumably a list or iterable of numbers)\n    *   Output: Sum of even integers.\n    *   Constraint: Only the function code, no explanation.\n\n2.  **Determine the Logic:**\n    *",
+          "routed_via": {
+            "platform": "cerebras",
+            "model": "zai-glm-4.7"
+          },
+          "usage": {
+            "total_tokens": 148,
+            "completion_tokens": 120,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0,
+              "reasoning_tokens": 120
+            },
+            "prompt_tokens": 28,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "code",
+          "passed": false
+        }
+      ],
+      "summary": {
+        "ok": 3,
+        "passed": 1,
+        "avg_latency_ms": 456,
+        "score": 1295.44
+      }
+    }
+  ]
+}

@@ -275,7 +275,7 @@ Do not vendor or fork Twenty. Do not embed Twenty code into the ATLAS codebase. 
 
 Integration path:
 
-1. Phase 8 or a new Phase 9/CRM phase: add Docker Compose service entry for Twenty alongside the ATLAS stack.
+1. Phase 11 (CRM via Twenty — canonical numbering per D-021 §2): add Docker Compose service entry for Twenty alongside the ATLAS stack. A profile-gated compose entry may land earlier for spikes.
 2. Provision ATLAS-specific custom objects via Metadata API on first deploy: `AgentInteraction`, `OutreachCampaign`, `ContactSignal` (names TBD).
 3. Add `atlas_core.crm` connector module wrapping Twenty's Core API — thin HTTP client, not a full ORM.
 4. Wire the community MCP server (`mhenry3164/twenty-crm-mcp-server`) into the ATLAS MCP tool registry (D-017 model router pattern extended to CRM tools).
@@ -286,7 +286,7 @@ Integration path:
 
 ## Open Questions
 
-1. **Custom object naming convention** — What ATLAS-specific objects should be provisioned in Twenty's schema on deploy? Candidates: `AgentInteraction` (log of which agent touched which contact), `MissionContext` (links a CRM record to an active ATLAS mission), `OutreachCampaign`. Needs product definition before Phase 9 planning.
+1. **Custom object naming convention** — What ATLAS-specific objects should be provisioned in Twenty's schema on deploy? Candidates: `AgentInteraction` (log of which agent touched which contact), `MissionContext` (links a CRM record to an active ATLAS mission), `OutreachCampaign`. Needs product definition before Phase 11 (CRM) planning.
 
 2. **Data residency and PII policy** — Twenty stores contact PII in Postgres. ATLAS policy labels (D-017) include `no-sensitive-data` for free-tier routes. Contacts in Twenty are by definition sensitive. Confirm that no ATLAS agent routes contact data through FreeLLMAPI or any `free-tier-ok` model path.
 
@@ -317,4 +317,4 @@ L2/ATLAS CRM layer = Twenty self-hosted (service)
                    + webhook receiver in Phase 7 API layer
 ```
 
-This pillar is scoped to Phase 8/9 (CRM/Pulse features, D-007 v2.0 items). It has no dependency on current Phase 6 (wiki-runtime) or Phase 7 (API layer) completions, but Phase 7's webhook infrastructure is a prerequisite for the event-driven integration.
+This pillar is scoped to Phase 11 (CRM via Twenty; D-007 v2.0 items, D-021 §2 numbering). It has no dependency on current Phase 6 (wiki-runtime) or Phase 7 (API layer) completions, but Phase 7's webhook infrastructure is a prerequisite for the event-driven integration.

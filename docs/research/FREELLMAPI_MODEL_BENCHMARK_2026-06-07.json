@@ -1,0 +1,1361 @@
+{
+  "base": "http://127.0.0.1:3001/v1",
+  "generated_at": "2026-06-07T22:44:34",
+  "ranked": [
+    {
+      "requested_model": "llama-3.3-70b-versatile",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 288,
+          "content": "ATLAS_BENCH_OK",
+          "routed_via": {
+            "platform": "groq",
+            "model": "llama-3.3-70b-versatile"
+          },
+          "usage": {
+            "queue_time": 0.193086776,
+            "prompt_tokens": 49,
+            "prompt_time": 0.002199933,
+            "completion_tokens": 6,
+            "completion_time": 0.010480719,
+            "total_tokens": 55,
+            "total_time": 0.012680652
+          },
+          "test": "exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 213,
+          "content": "red=7 blue=1",
+          "routed_via": {
+            "platform": "groq",
+            "model": "llama-3.3-70b-versatile"
+          },
+          "usage": {
+            "queue_time": 0.153570486,
+            "prompt_tokens": 74,
+            "prompt_time": 0.002878478,
+            "completion_tokens": 7,
+            "completion_time": 0.009877802,
+            "total_tokens": 81,
+            "total_time": 0.01275628
+          },
+          "test": "reasoning",
+          "passed": true
+        }
+      ],
+      "summary": {
+        "ok_count": 2,
+        "pass_count": 2,
+        "avg_latency_ms": 250,
+        "score": 2197.5
+      }
+    },
+    {
+      "requested_model": "meta-llama/llama-4-scout-17b-16e-instruct",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 304,
+          "content": "ATLAS_BENCH_OK",
+          "routed_via": {
+            "platform": "groq",
+            "model": "meta-llama/llama-4-scout-17b-16e-instruct"
+          },
+          "usage": {
+            "queue_time": 0.240295961,
+            "prompt_tokens": 24,
+            "prompt_time": 0.000115698,
+            "completion_tokens": 7,
+            "completion_time": 0.016243111,
+            "total_tokens": 31,
+            "total_time": 0.016358809
+          },
+          "test": "exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 310,
+          "content": "red=7 blue=1",
+          "routed_via": {
+            "platform": "groq",
+            "model": "meta-llama/llama-4-scout-17b-16e-instruct"
+          },
+          "usage": {
+            "queue_time": 0.240798028,
+            "prompt_tokens": 49,
+            "prompt_time": 0.000289897,
+            "completion_tokens": 7,
+            "completion_time": 0.016850254,
+            "total_tokens": 56,
+            "total_time": 0.017140151
+          },
+          "test": "reasoning",
+          "passed": true
+        }
+      ],
+      "summary": {
+        "ok_count": 2,
+        "pass_count": 2,
+        "avg_latency_ms": 307,
+        "score": 2196.93
+      }
+    },
+    {
+      "requested_model": "codestral-latest",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 382,
+          "content": "ATLAS_BENCH_OK",
+          "routed_via": {
+            "platform": "mistral",
+            "model": "codestral-latest"
+          },
+          "usage": {
+            "prompt_tokens": 18,
+            "total_tokens": 26,
+            "completion_tokens": 8,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 368,
+          "content": "red=7 blue=1",
+          "routed_via": {
+            "platform": "mistral",
+            "model": "codestral-latest"
+          },
+          "usage": {
+            "prompt_tokens": 44,
+            "total_tokens": 51,
+            "completion_tokens": 7,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "reasoning",
+          "passed": true
+        }
+      ],
+      "summary": {
+        "ok_count": 2,
+        "pass_count": 2,
+        "avg_latency_ms": 375,
+        "score": 2196.25
+      }
+    },
+    {
+      "requested_model": "mistral-medium-latest",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 408,
+          "content": "ATLAS_BENCH_OK",
+          "routed_via": {
+            "platform": "mistral",
+            "model": "mistral-medium-latest"
+          },
+          "usage": {
+            "prompt_tokens": 18,
+            "total_tokens": 26,
+            "completion_tokens": 8,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 425,
+          "content": "red=7 blue=1",
+          "routed_via": {
+            "platform": "mistral",
+            "model": "mistral-medium-latest"
+          },
+          "usage": {
+            "prompt_tokens": 44,
+            "total_tokens": 51,
+            "completion_tokens": 7,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "reasoning",
+          "passed": true
+        }
+      ],
+      "summary": {
+        "ok_count": 2,
+        "pass_count": 2,
+        "avg_latency_ms": 416,
+        "score": 2195.84
+      }
+    },
+    {
+      "requested_model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 467,
+          "content": "ATLAS_BENCH_OK",
+          "routed_via": {
+            "platform": "cloudflare",
+            "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+          },
+          "usage": {
+            "prompt_tokens": 49,
+            "completion_tokens": 6,
+            "total_tokens": 55,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 376,
+          "content": "red=7 blue=1",
+          "routed_via": {
+            "platform": "cloudflare",
+            "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+          },
+          "usage": {
+            "prompt_tokens": 74,
+            "completion_tokens": 7,
+            "total_tokens": 81,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "reasoning",
+          "passed": true
+        }
+      ],
+      "summary": {
+        "ok_count": 2,
+        "pass_count": 2,
+        "avg_latency_ms": 422,
+        "score": 2195.78
+      }
+    },
+    {
+      "requested_model": "mistral-large-latest",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 643,
+          "content": "ATLAS_BENCH_OK",
+          "routed_via": {
+            "platform": "mistral",
+            "model": "mistral-large-latest"
+          },
+          "usage": {
+            "prompt_tokens": 18,
+            "total_tokens": 26,
+            "completion_tokens": 8,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 619,
+          "content": "red=7 blue=1",
+          "routed_via": {
+            "platform": "mistral",
+            "model": "mistral-large-latest"
+          },
+          "usage": {
+            "prompt_tokens": 44,
+            "total_tokens": 51,
+            "completion_tokens": 7,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "reasoning",
+          "passed": true
+        }
+      ],
+      "summary": {
+        "ok_count": 2,
+        "pass_count": 2,
+        "avg_latency_ms": 631,
+        "score": 2193.69
+      }
+    },
+    {
+      "requested_model": "gemini-2.5-flash-lite",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 682,
+          "content": "ATLAS_BENCH_OK",
+          "routed_via": {
+            "platform": "google",
+            "model": "gemini-2.5-flash-lite"
+          },
+          "usage": {
+            "prompt_tokens": 16,
+            "completion_tokens": 7,
+            "total_tokens": 23
+          },
+          "test": "exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 619,
+          "content": "red=7 blue=1",
+          "routed_via": {
+            "platform": "google",
+            "model": "gemini-2.5-flash-lite"
+          },
+          "usage": {
+            "prompt_tokens": 42,
+            "completion_tokens": 6,
+            "total_tokens": 48
+          },
+          "test": "reasoning",
+          "passed": true
+        }
+      ],
+      "summary": {
+        "ok_count": 2,
+        "pass_count": 2,
+        "avg_latency_ms": 650,
+        "score": 2193.5
+      }
+    },
+    {
+      "requested_model": "Qwen/Qwen3-Coder-Next",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 1271,
+          "content": "ATLAS_BENCH_OK",
+          "routed_via": {
+            "platform": "huggingface",
+            "model": "Qwen/Qwen3-Coder-Next"
+          },
+          "usage": {
+            "prompt_tokens": 22,
+            "completion_tokens": 6,
+            "total_tokens": 28,
+            "prompt_tokens_details": {
+              "audio_tokens": 0,
+              "cached_tokens": 0,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "text_tokens": 0,
+              "image_tokens": 0,
+              "video_tokens": 0
+            },
+            "completion_tokens_details": null
+          },
+          "test": "exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 1067,
+          "content": "red=7 blue=1",
+          "routed_via": {
+            "platform": "huggingface",
+            "model": "Qwen/Qwen3-Coder-Next"
+          },
+          "usage": {
+            "prompt_tokens": 47,
+            "completion_tokens": 7,
+            "total_tokens": 54,
+            "prompt_tokens_details": null,
+            "completion_tokens_details": null
+          },
+          "test": "reasoning",
+          "passed": true
+        }
+      ],
+      "summary": {
+        "ok_count": 2,
+        "pass_count": 2,
+        "avg_latency_ms": 1169,
+        "score": 2188.31
+      }
+    },
+    {
+      "requested_model": "groq/compound-mini",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 1367,
+          "content": "The user wants me to reply with a specific token: \"ATLAS_BENCH_OK\".",
+          "routed_via": {
+            "platform": "google",
+            "model": "gemma-4-26b-a4b-it"
+          },
+          "usage": {
+            "prompt_tokens": 16,
+            "completion_tokens": 0,
+            "total_tokens": 37
+          },
+          "test": "exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 1994,
+          "content": "red=7 blue=1",
+          "routed_via": {
+            "platform": "openrouter",
+            "model": "openrouter/owl-alpha"
+          },
+          "usage": {
+            "prompt_tokens": 132,
+            "completion_tokens": 7,
+            "total_tokens": 139,
+            "cost": 0,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": 0,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          },
+          "test": "reasoning",
+          "passed": true
+        }
+      ],
+      "summary": {
+        "ok_count": 2,
+        "pass_count": 2,
+        "avg_latency_ms": 1680,
+        "score": 2183.2
+      }
+    },
+    {
+      "requested_model": "openai/gpt-oss-120b:free",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 1629,
+          "content": "ATLAS_BENCH_OK",
+          "routed_via": {
+            "platform": "openrouter",
+            "model": "openai/gpt-oss-120b:free"
+          },
+          "usage": {
+            "prompt_tokens": 82,
+            "completion_tokens": 29,
+            "total_tokens": 111,
+            "cost": 0,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 64,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": 0,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 11,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          },
+          "test": "exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 2287,
+          "content": "red=7 blue=1",
+          "routed_via": {
+            "platform": "openrouter",
+            "model": "openai/gpt-oss-120b:free"
+          },
+          "usage": {
+            "prompt_tokens": 107,
+            "completion_tokens": 55,
+            "total_tokens": 162,
+            "cost": 0,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 64,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": 0,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 26,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          },
+          "test": "reasoning",
+          "passed": true
+        }
+      ],
+      "summary": {
+        "ok_count": 2,
+        "pass_count": 2,
+        "avg_latency_ms": 1958,
+        "score": 2180.42
+      }
+    },
+    {
+      "requested_model": "qwen/qwen3-next-80b-a3b-instruct:free",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 803,
+          "content": "The user wants me to reply with exactly the token \"ATLAS_BENCH_OK\" and nothing else. No extra whitespace",
+          "routed_via": {
+            "platform": "huggingface",
+            "model": "moonshotai/Kimi-K2.6"
+          },
+          "usage": {
+            "prompt_tokens": 22,
+            "total_tokens": 46,
+            "completion_tokens": 24,
+            "prompt_tokens_details": {
+              "cached_tokens": 21
+            }
+          },
+          "test": "exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 4259,
+          "content": "red=7 blue=1",
+          "routed_via": {
+            "platform": "openrouter",
+            "model": "openrouter/owl-alpha"
+          },
+          "usage": {
+            "prompt_tokens": 132,
+            "completion_tokens": 7,
+            "total_tokens": 139,
+            "cost": 0,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 128,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": 0,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          },
+          "test": "reasoning",
+          "passed": true
+        }
+      ],
+      "summary": {
+        "ok_count": 2,
+        "pass_count": 2,
+        "avg_latency_ms": 2531,
+        "score": 2174.69
+      }
+    },
+    {
+      "requested_model": "zai-glm-4.7",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 296,
+          "content": "The user wants me to reply with a specific token: \"ATLAS_BENCH_OK\".\nThe instruction is explicit: \"",
+          "routed_via": {
+            "platform": "cerebras",
+            "model": "zai-glm-4.7"
+          },
+          "usage": {
+            "total_tokens": 43,
+            "completion_tokens": 24,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0,
+              "reasoning_tokens": 24
+            },
+            "prompt_tokens": 19,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 233,
+          "content": "1.  **Analyze the Request:**\n    *   Initial state: 3 red balls, 2 blue balls.\n    *   Action 1: Add 4 red balls.\n    *   Action 2: Remove",
+          "routed_via": {
+            "platform": "cerebras",
+            "model": "zai-glm-4.7"
+          },
+          "usage": {
+            "total_tokens": 92,
+            "completion_tokens": 48,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0,
+              "reasoning_tokens": 48
+            },
+            "prompt_tokens": 44,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "reasoning",
+          "passed": false
+        }
+      ],
+      "summary": {
+        "ok_count": 2,
+        "pass_count": 1,
+        "avg_latency_ms": 264,
+        "score": 1197.36
+      }
+    },
+    {
+      "requested_model": "openai-fast",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 315,
+          "content": "The user wants me to reply with a specific token: \"ATLAS_BENCH_OK\".\nThe instruction is explicit: \"",
+          "routed_via": {
+            "platform": "cerebras",
+            "model": "zai-glm-4.7"
+          },
+          "usage": {
+            "total_tokens": 43,
+            "completion_tokens": 24,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0,
+              "reasoning_tokens": 24
+            },
+            "prompt_tokens": 19,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 247,
+          "content": "1.  **Analyze the Request:**\n    *   Initial state: 3 red balls, 2 blue balls.\n    *   Action 1: Add 4 red balls.\n    *   Action 2: Remove",
+          "routed_via": {
+            "platform": "cerebras",
+            "model": "zai-glm-4.7"
+          },
+          "usage": {
+            "total_tokens": 92,
+            "completion_tokens": 48,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0,
+              "reasoning_tokens": 48
+            },
+            "prompt_tokens": 44,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "reasoning",
+          "passed": false
+        }
+      ],
+      "summary": {
+        "ok_count": 2,
+        "pass_count": 1,
+        "avg_latency_ms": 281,
+        "score": 1197.19
+      }
+    },
+    {
+      "requested_model": "gpt-oss-120b",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 241,
+          "content": "The user asks: \"Reply with exactly this token and nothing else: ATLAS_BENCH_OK\".",
+          "routed_via": {
+            "platform": "cerebras",
+            "model": "gpt-oss-120b"
+          },
+          "usage": {
+            "total_tokens": 106,
+            "completion_tokens": 24,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0,
+              "reasoning_tokens": 21
+            },
+            "prompt_tokens": 82,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 348,
+          "content": "We need to compute final counts. Initially: red=3, blue=2. Add 4 red balls => red=7, blue=2. Then remove 1 blue ball => red=7, blue=1",
+          "routed_via": {
+            "platform": "cerebras",
+            "model": "gpt-oss-120b"
+          },
+          "usage": {
+            "total_tokens": 155,
+            "completion_tokens": 48,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0,
+              "reasoning_tokens": 45
+            },
+            "prompt_tokens": 107,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "reasoning",
+          "passed": false
+        }
+      ],
+      "summary": {
+        "ok_count": 2,
+        "pass_count": 1,
+        "avg_latency_ms": 294,
+        "score": 1197.06
+      }
+    },
+    {
+      "requested_model": "qwen/qwen3-32b",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 350,
+          "content": "<think>\nOkay, the user wants me to reply with exactly \"ATLAS_BENCH_OK\" and nothing else. Let",
+          "routed_via": {
+            "platform": "groq",
+            "model": "qwen/qwen3-32b"
+          },
+          "usage": {
+            "queue_time": 0.275175063,
+            "prompt_tokens": 22,
+            "prompt_time": 0.000723928,
+            "completion_tokens": 24,
+            "completion_time": 0.029986786,
+            "total_tokens": 46,
+            "total_time": 0.030710714
+          },
+          "test": "exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 380,
+          "content": "<think>\nOkay, let's see. There's a box with some balls. Initially, it has 3 red balls and 2 blue balls. Then I add 4 red balls. So, first, I need to calculate the new",
+          "routed_via": {
+            "platform": "groq",
+            "model": "qwen/qwen3-32b"
+          },
+          "usage": {
+            "queue_time": 0.274132455,
+            "prompt_tokens": 47,
+            "prompt_time": 0.002108096,
+            "completion_tokens": 48,
+            "completion_time": 0.074276306,
+            "total_tokens": 95,
+            "total_time": 0.076384402
+          },
+          "test": "reasoning",
+          "passed": false
+        }
+      ],
+      "summary": {
+        "ok_count": 2,
+        "pass_count": 1,
+        "avg_latency_ms": 365,
+        "score": 1196.35
+      }
+    },
+    {
+      "requested_model": "@cf/openai/gpt-oss-120b",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 529,
+          "content": "The user wants me to reply with a specific token: \"ATLAS_BENCH_OK\".\nThe instruction is explicit: \"",
+          "routed_via": {
+            "platform": "cerebras",
+            "model": "zai-glm-4.7"
+          },
+          "usage": {
+            "total_tokens": 43,
+            "completion_tokens": 24,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0,
+              "reasoning_tokens": 24
+            },
+            "prompt_tokens": 19,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 652,
+          "content": "The user wants me to calculate the final counts of red and blue balls after a series of operations.\n\nInitial state:\n- Red balls: 3\n- Blue balls: 2\n\nOperations:\n1. Add 4 red balls: Red",
+          "routed_via": {
+            "platform": "huggingface",
+            "model": "moonshotai/Kimi-K2.6"
+          },
+          "usage": {
+            "prompt_tokens": 47,
+            "total_tokens": 95,
+            "completion_tokens": 48,
+            "prompt_tokens_details": {
+              "cached_tokens": 46
+            }
+          },
+          "test": "reasoning",
+          "passed": false
+        }
+      ],
+      "summary": {
+        "ok_count": 2,
+        "pass_count": 1,
+        "avg_latency_ms": 590,
+        "score": 1194.1
+      }
+    },
+    {
+      "requested_model": "moonshotai/Kimi-K2.6",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 665,
+          "content": "The user wants me to reply with exactly the token \"ATLAS_BENCH_OK\" and nothing else. No extra whitespace",
+          "routed_via": {
+            "platform": "huggingface",
+            "model": "moonshotai/Kimi-K2.6"
+          },
+          "usage": {
+            "prompt_tokens": 22,
+            "total_tokens": 46,
+            "completion_tokens": 24,
+            "prompt_tokens_details": {
+              "cached_tokens": 21
+            }
+          },
+          "test": "exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 692,
+          "content": "The user wants me to calculate the final counts of red and blue balls after a series of operations.\n\nInitial state:\n- Red balls: 3\n- Blue balls: 2\n\nOperations:\n1. Add 4 red balls",
+          "routed_via": {
+            "platform": "huggingface",
+            "model": "moonshotai/Kimi-K2.6"
+          },
+          "usage": {
+            "prompt_tokens": 47,
+            "total_tokens": 95,
+            "completion_tokens": 48,
+            "prompt_tokens_details": {
+              "cached_tokens": 3
+            }
+          },
+          "test": "reasoning",
+          "passed": false
+        }
+      ],
+      "summary": {
+        "ok_count": 2,
+        "pass_count": 1,
+        "avg_latency_ms": 678,
+        "score": 1193.22
+      }
+    },
+    {
+      "requested_model": "qwen/qwen3-coder:free",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 1155,
+          "content": "The user wants me to reply with exactly the token \"ATLAS_BENCH_OK\" and nothing else. No extra whitespace",
+          "routed_via": {
+            "platform": "huggingface",
+            "model": "moonshotai/Kimi-K2.6"
+          },
+          "usage": {
+            "prompt_tokens": 22,
+            "total_tokens": 46,
+            "completion_tokens": 24,
+            "prompt_tokens_details": {
+              "cached_tokens": 3
+            }
+          },
+          "test": "exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 607,
+          "content": "The user wants me to calculate the final counts of red and blue balls after a series of operations.\n\nInitial state:\n- Red balls: 3\n- Blue balls: 2\n\nOperations:\n1. Add 4 red balls: Red",
+          "routed_via": {
+            "platform": "huggingface",
+            "model": "moonshotai/Kimi-K2.6"
+          },
+          "usage": {
+            "prompt_tokens": 47,
+            "total_tokens": 95,
+            "completion_tokens": 48,
+            "prompt_tokens_details": {
+              "cached_tokens": 3
+            }
+          },
+          "test": "reasoning",
+          "passed": false
+        }
+      ],
+      "summary": {
+        "ok_count": 2,
+        "pass_count": 1,
+        "avg_latency_ms": 881,
+        "score": 1191.19
+      }
+    },
+    {
+      "requested_model": "stepfun/step-3.7-flash:free",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 274,
+          "content": "The user asks: \"Reply with exactly this token and nothing else: ATLAS_BENCH_OK\".",
+          "routed_via": {
+            "platform": "cerebras",
+            "model": "gpt-oss-120b"
+          },
+          "usage": {
+            "total_tokens": 106,
+            "completion_tokens": 24,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0,
+              "reasoning_tokens": 21
+            },
+            "prompt_tokens": 82,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 1636,
+          "content": "The user wants me to calculate the final counts of red and blue balls after a series of operations.\n\nInitial state:\n- Red balls: 3\n- Blue balls: 2\n\nOperations:\n1. Add 4 red balls",
+          "routed_via": {
+            "platform": "huggingface",
+            "model": "moonshotai/Kimi-K2.6"
+          },
+          "usage": {
+            "prompt_tokens": 47,
+            "total_tokens": 95,
+            "completion_tokens": 48,
+            "prompt_tokens_details": {
+              "cached_tokens": 46
+            }
+          },
+          "test": "reasoning",
+          "passed": false
+        }
+      ],
+      "summary": {
+        "ok_count": 2,
+        "pass_count": 1,
+        "avg_latency_ms": 955,
+        "score": 1190.45
+      }
+    },
+    {
+      "requested_model": "deepseek-ai/DeepSeek-V4-Flash",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 1416,
+          "content": "We need to reply with exactly the token \"ATLAS_BENCH_OK\" and nothing else. The user instruction is",
+          "routed_via": {
+            "platform": "huggingface",
+            "model": "deepseek-ai/DeepSeek-V4-Flash"
+          },
+          "usage": {
+            "prompt_tokens": 19,
+            "total_tokens": 43,
+            "completion_tokens": 24,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 1414,
+          "content": "We are given: \"A box has 3 red balls and 2 blue balls. I add 4 red balls, then remove 1 blue ball. Reply with only the final counts as: red=X blue=Y\"\n\nSo initial",
+          "routed_via": {
+            "platform": "huggingface",
+            "model": "deepseek-ai/DeepSeek-V4-Flash"
+          },
+          "usage": {
+            "prompt_tokens": 44,
+            "total_tokens": 92,
+            "completion_tokens": 48,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "reasoning",
+          "passed": false
+        }
+      ],
+      "summary": {
+        "ok_count": 2,
+        "pass_count": 1,
+        "avg_latency_ms": 1415,
+        "score": 1185.85
+      }
+    },
+    {
+      "requested_model": "@cf/zai-org/glm-4.7-flash",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 2597,
+          "content": "ATLAS_BENCH_OK",
+          "routed_via": {
+            "platform": "groq",
+            "model": "groq/compound"
+          },
+          "usage": {
+            "queue_time": 1.250027,
+            "prompt_tokens": 958,
+            "prompt_time": 0.03951,
+            "completion_tokens": 242,
+            "completion_time": 0.513474,
+            "total_tokens": 1200,
+            "total_time": 0.552984
+          },
+          "test": "exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 328,
+          "content": "We need to compute final counts. Initially: red=3, blue=2. Add 4 red balls => red=7, blue=2. Then remove 1 blue ball => red=7, blue=1",
+          "routed_via": {
+            "platform": "cerebras",
+            "model": "gpt-oss-120b"
+          },
+          "usage": {
+            "total_tokens": 155,
+            "completion_tokens": 48,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0,
+              "reasoning_tokens": 45
+            },
+            "prompt_tokens": 107,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "reasoning",
+          "passed": false
+        }
+      ],
+      "summary": {
+        "ok_count": 2,
+        "pass_count": 1,
+        "avg_latency_ms": 1462,
+        "score": 1185.38
+      }
+    },
+    {
+      "requested_model": "z-ai/glm-4.5-air:free",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 1497,
+          "content": "We are given a specific instruction: \"Reply with exactly this token and nothing else: ATLAS_BENCH_OK",
+          "routed_via": {
+            "platform": "openrouter",
+            "model": "z-ai/glm-4.5-air:free"
+          },
+          "usage": {
+            "prompt_tokens": 19,
+            "completion_tokens": 24,
+            "total_tokens": 43,
+            "cost": 0,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 4,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": 0,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 26,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          },
+          "test": "exact",
+          "passed": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 3201,
+          "content": "First, the box starts with 3 red balls and 2 blue balls. So, initial state: red = 3, blue = 2.\n\nThen, I add 4 red balls. Adding red balls means I'm",
+          "routed_via": {
+            "platform": "openrouter",
+            "model": "z-ai/glm-4.5-air:free"
+          },
+          "usage": {
+            "prompt_tokens": 44,
+            "completion_tokens": 48,
+            "total_tokens": 92,
+            "cost": 0,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 4,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": 0,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 47,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          },
+          "test": "reasoning",
+          "passed": false
+        }
+      ],
+      "summary": {
+        "ok_count": 2,
+        "pass_count": 1,
+        "avg_latency_ms": 2349,
+        "score": 1176.51
+      }
+    },
+    {
+      "requested_model": "gemini-2.5-flash",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 13083,
+          "content": "AT",
+          "routed_via": {
+            "platform": "google",
+            "model": "gemini-3-flash-preview"
+          },
+          "usage": {
+            "prompt_tokens": 16,
+            "completion_tokens": 1,
+            "total_tokens": 36
+          },
+          "test": "exact",
+          "passed": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 4869,
+          "content": "**Reasoning**\n\n- Initial contents: 3 red balls, 2 blue balls.  \n- Add 4 red balls: \\(3 + 4 = 7\\) red balls.  \n- Remove 1 blue ball: \\(2 - 1 = 1\\) blue ball.  \n\n**Final counts**\n\nred=7 blue=1",
+          "routed_via": {
+            "platform": "groq",
+            "model": "groq/compound"
+          },
+          "usage": {
+            "queue_time": 1.896456,
+            "prompt_tokens": 2499,
+            "prompt_time": 0.120747,
+            "completion_tokens": 561,
+            "completion_time": 1.215849,
+            "total_tokens": 3060,
+            "total_time": 1.336598
+          },
+          "test": "reasoning",
+          "passed": true
+        }
+      ],
+      "summary": {
+        "ok_count": 2,
+        "pass_count": 1,
+        "avg_latency_ms": 8976,
+        "score": 1110.24
+      }
+    },
+    {
+      "requested_model": "gemini-3.5-flash",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 1178,
+          "content": "AT",
+          "routed_via": {
+            "platform": "google",
+            "model": "gemini-3.5-flash"
+          },
+          "usage": {
+            "prompt_tokens": 16,
+            "completion_tokens": 1,
+            "total_tokens": 36
+          },
+          "test": "exact",
+          "passed": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 1267,
+          "content": "red=",
+          "routed_via": {
+            "platform": "google",
+            "model": "gemini-3.5-flash"
+          },
+          "usage": {
+            "prompt_tokens": 42,
+            "completion_tokens": 1,
+            "total_tokens": 85
+          },
+          "test": "reasoning",
+          "passed": false
+        }
+      ],
+      "summary": {
+        "ok_count": 2,
+        "pass_count": 0,
+        "avg_latency_ms": 1222,
+        "score": 187.78
+      }
+    }
+  ]
+}
