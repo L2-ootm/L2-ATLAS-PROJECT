@@ -31,6 +31,15 @@ try:
 except ImportError:
     pass  # wiki service not installed — skip wiki subcommands gracefully
 
+from atlas_runtime.cli.foundation import foundation_app
+app.add_typer(foundation_app, name="foundation")
+
+from atlas_runtime.cli.models import models_app
+app.add_typer(models_app, name="models")
+
+from atlas_runtime.cli.channels import channels_app
+app.add_typer(channels_app, name="channels")
+
 # Module-level lock singleton (monkeypatched in tests via _get_lock)
 _LOCK = threading.Lock()
 
