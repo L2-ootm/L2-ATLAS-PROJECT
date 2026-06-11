@@ -1,0 +1,13 @@
+[package]
+name = "atlas-gateway"
+version = "0.1.0"
+description = "L2 ATLAS API gateway — first native crate (D-022 L0). Reads SQLite directly; writes dispatch via the `atlas` CLI contract."
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+axum.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+rusqlite.workspace = true
