@@ -1,0 +1,981 @@
+{
+  "generated_at": "2026-06-07T22:54:29",
+  "ranked": [
+    {
+      "model": "nemotron-3-ultra-free",
+      "intended_platform": "opencode",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 1817,
+          "content": "ZEN_KILO_OK",
+          "routed_via": {
+            "platform": "groq",
+            "model": "groq/compound"
+          },
+          "usage": {
+            "queue_time": 0.975329,
+            "prompt_tokens": 925,
+            "prompt_time": 0.043061,
+            "completion_tokens": 344,
+            "completion_time": 0.717265,
+            "total_tokens": 1269,
+            "total_time": 0.760328
+          },
+          "test": "exact",
+          "passed": true,
+          "routed_requested_family": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 2965,
+          "content": "**Reasoning**\n\n1. **Start time:** 09:15  \n2. **Add the hours:** 09:15 + 2 hours = 11:15  \n3. **Add the minutes:** 11:15 + 35 minutes = 11:50  \n\n**Final time:** **11:50**",
+          "routed_via": {
+            "platform": "groq",
+            "model": "groq/compound"
+          },
+          "usage": {
+            "queue_time": 1.061996,
+            "prompt_tokens": 1655,
+            "prompt_time": 0.088231,
+            "completion_tokens": 496,
+            "completion_time": 1.072841,
+            "total_tokens": 2151,
+            "total_time": 1.161072
+          },
+          "test": "reason",
+          "passed": true,
+          "routed_requested_family": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 283,
+          "content": "function twice(x) {\n    return x * 2;\n}",
+          "routed_via": {
+            "platform": "cerebras",
+            "model": "gpt-oss-120b"
+          },
+          "usage": {
+            "total_tokens": 156,
+            "completion_tokens": 70,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0,
+              "reasoning_tokens": 47
+            },
+            "prompt_tokens": 86,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "code",
+          "passed": true,
+          "routed_requested_family": false
+        }
+      ],
+      "summary": {
+        "ok": 3,
+        "passed": 3,
+        "same_family": 0,
+        "avg_latency_ms": 1688,
+        "score": 3283.12
+      }
+    },
+    {
+      "model": "mimo-v2.5-free",
+      "intended_platform": "opencode",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 2039,
+          "content": "The user wants me to reply with a specific string: \"ZEN_KILO_OK\".\nThe instruction is \"Reply exactly and only:",
+          "routed_via": {
+            "platform": "google",
+            "model": "gemma-4-26b-a4b-it"
+          },
+          "usage": {
+            "prompt_tokens": 12,
+            "completion_tokens": 0,
+            "total_tokens": 41
+          },
+          "test": "exact",
+          "passed": false,
+          "routed_requested_family": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 1134,
+          "content": "We need to add 2 hours 35 minutes to 09:15. 09:15 + 2 hours = 11:15, then +35 minutes = 11:50. So final time is 11:50",
+          "routed_via": {
+            "platform": "huggingface",
+            "model": "deepseek-ai/DeepSeek-V4-Flash"
+          },
+          "usage": {
+            "prompt_tokens": 29,
+            "total_tokens": 77,
+            "completion_tokens": 48,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "reason",
+          "passed": true,
+          "routed_requested_family": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 2482,
+          "content": "*   Goal: Write a JavaScript function `twice(x)` that returns `x * 2`.\n    *   Constraint 1: Return *only* JavaScript code.\n    *   Constraint 2: No markdown (no backticks, no language identifiers).\n\n    *   `function twice(x) { return x * 2; }`\n    *   Or arrow function: `const twice = x => x * 2;",
+          "routed_via": {
+            "platform": "google",
+            "model": "gemma-4-26b-a4b-it"
+          },
+          "usage": {
+            "prompt_tokens": 20,
+            "completion_tokens": 0,
+            "total_tokens": 113
+          },
+          "test": "code",
+          "passed": true,
+          "routed_requested_family": false
+        }
+      ],
+      "summary": {
+        "ok": 3,
+        "passed": 2,
+        "same_family": 0,
+        "avg_latency_ms": 1885,
+        "score": 2281.15
+      }
+    },
+    {
+      "model": "big-pickle",
+      "intended_platform": "opencode",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 240,
+          "content": "The user says: \"Reply exactly and only: ZEN_KILO_OK\". So they want the assistant to output exactly that string, no extra",
+          "routed_via": {
+            "platform": "cerebras",
+            "model": "gpt-oss-120b"
+          },
+          "usage": {
+            "total_tokens": 109,
+            "completion_tokens": 32,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0,
+              "reasoning_tokens": 29
+            },
+            "prompt_tokens": 77,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "exact",
+          "passed": false,
+          "routed_requested_family": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 15306,
+          "content": "We need to add 2h 35m to 09:15. 09:15 + 2h = 11:15. +35m = 11:50. So answer: 11:",
+          "routed_via": {
+            "platform": "cerebras",
+            "model": "gpt-oss-120b"
+          },
+          "usage": {
+            "total_tokens": 140,
+            "completion_tokens": 48,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0,
+              "reasoning_tokens": 45
+            },
+            "prompt_tokens": 92,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "reason",
+          "passed": true,
+          "routed_requested_family": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 244,
+          "content": "function twice(x) {\n    return x * 2;\n}",
+          "routed_via": {
+            "platform": "cerebras",
+            "model": "gpt-oss-120b"
+          },
+          "usage": {
+            "total_tokens": 156,
+            "completion_tokens": 70,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0,
+              "reasoning_tokens": 47
+            },
+            "prompt_tokens": 86,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "code",
+          "passed": true,
+          "routed_requested_family": false
+        }
+      ],
+      "summary": {
+        "ok": 3,
+        "passed": 2,
+        "same_family": 0,
+        "avg_latency_ms": 5263,
+        "score": 2247.37
+      }
+    },
+    {
+      "model": "stepfun/step-3.7-flash:free",
+      "intended_platform": "kilo",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 1290,
+          "content": "Got it, let's see. The user said to reply exactly and only ZEN_KILO_OK. So I just need to output that string, nothing",
+          "routed_via": {
+            "platform": "kilo",
+            "model": "stepfun/step-3.7-flash:free"
+          },
+          "usage": {
+            "prompt_tokens": 23,
+            "completion_tokens": 32,
+            "total_tokens": 55,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          },
+          "test": "exact",
+          "passed": false,
+          "routed_requested_family": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 2287,
+          "content": "Got it, let's calculate this. First, start time is 09:15. Add 2 hours first, that's 11:15. Then add 35 minutes. 15 + 35 is 50, so",
+          "routed_via": {
+            "platform": "kilo",
+            "model": "stepfun/step-3.7-flash:free"
+          },
+          "usage": {
+            "prompt_tokens": 37,
+            "completion_tokens": 48,
+            "total_tokens": 85,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          },
+          "test": "reason",
+          "passed": false,
+          "routed_requested_family": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 3047,
+          "content": "Got it, let's see. The user wants a JavaScript function called twice that takes x and returns x multiplied by 2. No markdown, just the code. So first, function declaration: function twice(x) { return x * 2; } Wait, is that all? Yeah, that's straightforward. Let me make sure there's no extra stuff. Yep, that's exactly what's needed. No markdown, just the code. Alright, output",
+          "routed_via": {
+            "platform": "kilo",
+            "model": "stepfun/step-3.7-flash:free"
+          },
+          "usage": {
+            "prompt_tokens": 31,
+            "completion_tokens": 96,
+            "total_tokens": 127,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          },
+          "test": "code",
+          "passed": true,
+          "routed_requested_family": true
+        }
+      ],
+      "summary": {
+        "ok": 3,
+        "passed": 1,
+        "same_family": 3,
+        "avg_latency_ms": 2208,
+        "score": 1427.92
+      }
+    },
+    {
+      "model": "deepseek-v4-flash-free",
+      "intended_platform": "opencode",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 328,
+          "content": "The user wants me to reply with a specific string: \"ZEN_KILO_OK\".\nThe instruction is \"Reply exactly and only: ZEN_KI",
+          "routed_via": {
+            "platform": "cerebras",
+            "model": "zai-glm-4.7"
+          },
+          "usage": {
+            "total_tokens": 48,
+            "completion_tokens": 32,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0,
+              "reasoning_tokens": 32
+            },
+            "prompt_tokens": 16,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "exact",
+          "passed": false,
+          "routed_requested_family": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 268,
+          "content": "1.  **Analyze the Request:**\n    *   Start time: 09:15\n    *   Duration: 2 hours 35 minutes\n    *   Constraint: Reply *only* in HH:MM format.",
+          "routed_via": {
+            "platform": "cerebras",
+            "model": "zai-glm-4.7"
+          },
+          "usage": {
+            "total_tokens": 78,
+            "completion_tokens": 48,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0,
+              "reasoning_tokens": 48
+            },
+            "prompt_tokens": 30,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "reason",
+          "passed": false,
+          "routed_requested_family": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 490,
+          "content": "1.  **Analyze the Request:**\n    *   Goal: Write a JavaScript function named `twice`.\n    *   Input: `x`.\n    *   Output: `x * 2`.\n    *   Constraint: Return *only* the JavaScript code. No markdown formatting (like backticks or code blocks).\n\n2.  **Drafting the Code:**\n    *   Option 1 (Function Declaration): `function twice(x) { return x *",
+          "routed_via": {
+            "platform": "cerebras",
+            "model": "zai-glm-4.7"
+          },
+          "usage": {
+            "total_tokens": 119,
+            "completion_tokens": 96,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0,
+              "reasoning_tokens": 96
+            },
+            "prompt_tokens": 23,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "code",
+          "passed": true,
+          "routed_requested_family": false
+        }
+      ],
+      "summary": {
+        "ok": 3,
+        "passed": 1,
+        "same_family": 0,
+        "avg_latency_ms": 362,
+        "score": 1296.38
+      }
+    },
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "intended_platform": "kilo",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 2097,
+          "content": "The user says: \"Reply exactly and only: ZEN_KILO_OK\". So we must output exactly that string, no extra spaces, no newline?",
+          "routed_via": {
+            "platform": "openrouter",
+            "model": "nvidia/nemotron-3-super-120b-a12b:free"
+          },
+          "usage": {
+            "prompt_tokens": 27,
+            "completion_tokens": 32,
+            "total_tokens": 59,
+            "cost": 0,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": 0,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 31,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          },
+          "test": "exact",
+          "passed": false,
+          "routed_requested_family": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 941,
+          "content": "11",
+          "routed_via": {
+            "platform": "openrouter",
+            "model": "nvidia/nemotron-3-super-120b-a12b:free"
+          },
+          "usage": {
+            "prompt_tokens": 44,
+            "completion_tokens": 48,
+            "total_tokens": 92,
+            "cost": 0,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": 0,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 25,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          },
+          "test": "reason",
+          "passed": false,
+          "routed_requested_family": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 2883,
+          "content": "function twice(x) {\n  return x * 2;\n}",
+          "routed_via": {
+            "platform": "openrouter",
+            "model": "nvidia/nemotron-3-super-120b-a12b:free"
+          },
+          "usage": {
+            "prompt_tokens": 35,
+            "completion_tokens": 69,
+            "total_tokens": 104,
+            "cost": 0,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": 0,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 57,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          },
+          "test": "code",
+          "passed": true,
+          "routed_requested_family": false
+        }
+      ],
+      "summary": {
+        "ok": 3,
+        "passed": 1,
+        "same_family": 0,
+        "avg_latency_ms": 1974,
+        "score": 1280.26
+      }
+    },
+    {
+      "model": "nemotron-3-super-free",
+      "intended_platform": "opencode",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 217,
+          "content": "The user says: \"Reply exactly and only: ZEN_KILO_OK\". So they want the assistant to output exactly that string, no extra",
+          "routed_via": {
+            "platform": "cerebras",
+            "model": "gpt-oss-120b"
+          },
+          "usage": {
+            "total_tokens": 109,
+            "completion_tokens": 32,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0,
+              "reasoning_tokens": 29
+            },
+            "prompt_tokens": 77,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "exact",
+          "passed": false,
+          "routed_requested_family": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 4660,
+          "content": "**Reasoning**\n\n1. Start time: 09:15.  \n2. Duration to add: 2 hours 35 minutes.  \n\nAdd the hours:\n- 09:15 + 2 hours = 11:15.\n\nAdd the minutes:\n- 11:15 + 35 minutes = 11:50.\n\nNo overflow beyond 60 minutes occurs, so the final time is **11:50**.\n\n**Final time:**  \n**11:50**",
+          "routed_via": {
+            "platform": "groq",
+            "model": "groq/compound"
+          },
+          "usage": {
+            "queue_time": 2.131258,
+            "prompt_tokens": 2347,
+            "prompt_time": 0.110874,
+            "completion_tokens": 562,
+            "completion_time": 1.213276,
+            "total_tokens": 2909,
+            "total_time": 1.324151
+          },
+          "test": "reason",
+          "passed": true,
+          "routed_requested_family": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 4788,
+          "content": "Okay, the user wants a JavaScript function called twice that returns x multiplied by 2. Let me think. So, the function should take a parameter x and return x*2. That's straightforward.\n\nWait, do I need to consider any edge cases? Like if x is not a number? But the user didn't specify, so maybe just a simple function. Let me check the requirements again. They said to return only the JavaScript code, no markdown. So",
+          "routed_via": {
+            "platform": "kilo",
+            "model": "poolside/laguna-m.1:free"
+          },
+          "usage": {
+            "prompt_tokens": 32,
+            "completion_tokens": 96,
+            "total_tokens": 128,
+            "cost": 0,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 5,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": 0,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 96,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          },
+          "test": "code",
+          "passed": false,
+          "routed_requested_family": false
+        }
+      ],
+      "summary": {
+        "ok": 3,
+        "passed": 1,
+        "same_family": 0,
+        "avg_latency_ms": 3222,
+        "score": 1267.78
+      }
+    },
+    {
+      "model": "poolside/laguna-m.1:free",
+      "intended_platform": "kilo",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 2230,
+          "content": "Okay, the user wants me to reply with exactly \"ZEN_KILO_OK\" and nothing else. Let me make sure I understand the request correctly",
+          "routed_via": {
+            "platform": "openrouter",
+            "model": "poolside/laguna-m.1:free"
+          },
+          "usage": {
+            "prompt_tokens": 25,
+            "completion_tokens": 32,
+            "total_tokens": 57,
+            "cost": 0,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 6,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": 0,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 32,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          },
+          "test": "exact",
+          "passed": false,
+          "routed_requested_family": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 1793,
+          "content": "Okay, let's see. The task starts at 09:15 and takes 2 hours and 35 minutes. I need to find the final time. Hmm, adding time. Alright, first, I'll start",
+          "routed_via": {
+            "platform": "openrouter",
+            "model": "poolside/laguna-m.1:free"
+          },
+          "usage": {
+            "prompt_tokens": 41,
+            "completion_tokens": 48,
+            "total_tokens": 89,
+            "cost": 0,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 5,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": 0,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 48,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          },
+          "test": "reason",
+          "passed": false,
+          "routed_requested_family": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 8492,
+          "content": "Okay, the user wants a JavaScript function called twice that takes a parameter x and returns x multiplied by 2. Let me think. So, the function should be straightforward. I need to make sure the syntax is correct. The function declaration would be function twice(x) { return x * 2; }, right? Let me check if there's any possible mistake here. Oh, maybe they want it in arrow function syntax? But the question just says \"function twice(x",
+          "routed_via": {
+            "platform": "openrouter",
+            "model": "poolside/laguna-m.1:free"
+          },
+          "usage": {
+            "prompt_tokens": 32,
+            "completion_tokens": 96,
+            "total_tokens": 128,
+            "cost": 0,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 5,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": 0,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 96,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          },
+          "test": "code",
+          "passed": true,
+          "routed_requested_family": false
+        }
+      ],
+      "summary": {
+        "ok": 3,
+        "passed": 1,
+        "same_family": 0,
+        "avg_latency_ms": 4172,
+        "score": 1258.28
+      }
+    },
+    {
+      "model": "minimax-m3-free",
+      "intended_platform": "opencode",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 282,
+          "content": "The user wants me to reply with a specific string: \"ZEN_KILO_OK\".\nThe instruction is \"Reply exactly and only: ZEN_KI",
+          "routed_via": {
+            "platform": "cerebras",
+            "model": "zai-glm-4.7"
+          },
+          "usage": {
+            "total_tokens": 48,
+            "completion_tokens": 32,
+            "completion_tokens_details": {
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0,
+              "reasoning_tokens": 32
+            },
+            "prompt_tokens": 16,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          },
+          "test": "exact",
+          "passed": false,
+          "routed_requested_family": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 13351,
+          "content": "The user wants me to calculate the end time of a task that starts at 09:15 and takes 2 hours and 35 minutes.\n\nStart time: 09:15\nDuration: 2h 35m\n\nCalculation:",
+          "routed_via": {
+            "platform": "huggingface",
+            "model": "moonshotai/Kimi-K2.6"
+          },
+          "usage": {
+            "prompt_tokens": 33,
+            "total_tokens": 81,
+            "completion_tokens": 48,
+            "prompt_tokens_details": {
+              "cached_tokens": 32
+            }
+          },
+          "test": "reason",
+          "passed": false,
+          "routed_requested_family": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 3323,
+          "content": "The user wants only JavaScript code for a function `twice(x)` that returns `x*2`. No markdown formatting. So I should output just the raw code without backticks, without explanation, just the function definition.\n\nLet me provide:\nfunction twice(x) { return x * 2; }\n\nOr arrow function:\nconst twice = x => x * 2;\n\nEither is fine. I'll go with a standard function declaration as it's most straightforward and matches the naming convention",
+          "routed_via": {
+            "platform": "huggingface",
+            "model": "moonshotai/Kimi-K2.6"
+          },
+          "usage": {
+            "prompt_tokens": 27,
+            "total_tokens": 123,
+            "completion_tokens": 96,
+            "prompt_tokens_details": {
+              "cached_tokens": 26
+            }
+          },
+          "test": "code",
+          "passed": true,
+          "routed_requested_family": false
+        }
+      ],
+      "summary": {
+        "ok": 3,
+        "passed": 1,
+        "same_family": 0,
+        "avg_latency_ms": 5652,
+        "score": 1243.48
+      }
+    },
+    {
+      "model": "poolside/laguna-xs.2:free",
+      "intended_platform": "kilo",
+      "tests": [
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 527,
+          "content": "ZEN_KILO",
+          "routed_via": {
+            "platform": "openrouter",
+            "model": "poolside/laguna-xs.2:free"
+          },
+          "usage": {
+            "prompt_tokens": 62,
+            "completion_tokens": 32,
+            "total_tokens": 94,
+            "cost": 0,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 32,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": 0,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 25,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          },
+          "test": "exact",
+          "passed": false,
+          "routed_requested_family": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 647,
+          "content": "Okay, the user wants me to calculate the end time of a task. Let me start by parsing the given information. The task starts at 09:15 and lasts for 2 hours and 35 minutes. I",
+          "routed_via": {
+            "platform": "openrouter",
+            "model": "poolside/laguna-xs.2:free"
+          },
+          "usage": {
+            "prompt_tokens": 78,
+            "completion_tokens": 48,
+            "total_tokens": 126,
+            "cost": 0,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 32,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": 0,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 48,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          },
+          "test": "reason",
+          "passed": false,
+          "routed_requested_family": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "latency_ms": 874,
+          "content": "",
+          "routed_via": {
+            "platform": "openrouter",
+            "model": "poolside/laguna-xs.2:free"
+          },
+          "usage": {
+            "prompt_tokens": 69,
+            "completion_tokens": 96,
+            "total_tokens": 165,
+            "cost": 0,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 32,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": 0,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 94,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          },
+          "test": "code",
+          "passed": false,
+          "routed_requested_family": false
+        }
+      ],
+      "summary": {
+        "ok": 3,
+        "passed": 0,
+        "same_family": 0,
+        "avg_latency_ms": 683,
+        "score": 293.17
+      }
+    }
+  ]
+}

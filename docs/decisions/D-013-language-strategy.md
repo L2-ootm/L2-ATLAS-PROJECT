@@ -115,5 +115,5 @@ Not acceptable without a new decision:
 | Phase 2 (Schemas) | Use Pydantic v2 frozen models with JSON-stable `model_dump()` — this IS the migration contract |
 | Phase 4 (Audit Bus) | Python Hermes plugin layer — permanent; Rust migration does not apply here |
 | Phase 5–6 (Mission/Wiki) | Design for clean JSON contracts so Rust parser can consume same data |
-| Phase 7+ (API Gateway) | Consider Rust from the start if performance requirements are clear |
+| Phase 7+ (API Gateway) | **Resolved by D-022 (2026-06-10): Rust from the start** — axum/rusqlite gateway is the first `native/atlas-core-rs` crate; cementation timing is no longer open |
 | Native layer | Already Rust by D-005 |

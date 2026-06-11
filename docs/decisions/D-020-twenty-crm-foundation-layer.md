@@ -57,9 +57,9 @@ Twenty runs as a Docker Compose sidecar alongside ATLAS. ATLAS agents interact w
 ## Phase Impact
 
 - **Phase 7 (API Gateway):** add `/webhooks/twenty` receiver endpoint
-- **Phase 8 (Cockpit):** CRM panel reads from Twenty via ATLAS API layer
-- **New Phase (post-8):** CRM/Pulse feature set — contact memory, relationship graph, outreach campaigns
+- **Phase 11 (CRM via Twenty, v2.0 — per D-021):** CRM cockpit panel + CRM/Pulse feature set — contact memory, relationship integration, outreach campaigns. _(Superseded: an earlier revision placed the CRM panel in Phase 8; D-021 §2 moved it to Phase 11 — NATIVE_COCKPIT_STRATEGY and D-007 both bar CRM surfaces from the v1.0 cockpit.)_
 - D-007 status: CRM after cockpit still holds; Twenty is the resolved substrate
+- Boundary vs. memory framework (D-021 §4): Twenty is the system of record for external relationship data; Layer 4 graph memory (v2.0) is a local derived graph over ATLAS-native entities that references Twenty records by ID, never duplicates them
 
 ---
 
