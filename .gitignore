@@ -25,3 +25,20 @@ Thumbs.db
 # Local-only files
 docs/private/
 
+
+# Twenty CRM sidecar — fetched upstream files + local secrets (script-managed, never commit)
+infra/compose/twenty/
+
+# Generated test/coverage artifacts (PRODUCTION_REPO_STRUCTURE §4.5)
+.coverage
+coverage.json
+coverage_branch.json
+htmlcov/
+.pytest_cache/
+
+# Rust build output
+target/
+
+# Runtime artifacts directory (kept via artifacts/.gitignore)
+artifacts/*
+!artifacts/.gitignore

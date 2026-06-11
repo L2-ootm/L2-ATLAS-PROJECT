@@ -1,0 +1,4 @@
+# Runtime outputs live here (coverage, run exports, reports).
+# The directory is kept; its contents are not source.
+*
+!.gitignore

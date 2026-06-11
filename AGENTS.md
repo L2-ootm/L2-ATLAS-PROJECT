@@ -21,9 +21,12 @@ Separate:
 3. runtime execution;
 4. cockpit UI.
 
-## Language rule (D-013)
+## Language rule (D-013, cementation timing resolved by D-022)
 
 Prototype in Python. Cement in Rust. Avoid C unless necessary.
+D-022 (accepted 2026-06-10) makes Rust-first immediate for all new
+infrastructure: Phase 7 gateway is Rust; new Python is confined to the
+Hermes-derived foundation surface, LLM adapters, and throwaway scripts.
 
 - Python is the current orchestration layer and is **permanent for the Hermes plugin API**.
 - The critical runtime (CLI, policy, executor, mission parser, state) will migrate to Rust module by module after behavior is validated in Python.
