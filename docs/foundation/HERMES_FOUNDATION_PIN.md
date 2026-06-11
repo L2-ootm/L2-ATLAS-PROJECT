@@ -1,7 +1,13 @@
 # Hermes Foundation Pin
 
 Date: 2026-06-04
-Status: pinned (vendoring method deferred — see below).
+Status: pinned and **vendored** (2026-06-10, D-021 §9 — vendoring decision below is resolved).
+
+> **Vendoring resolution (2026-06-10):** vendored subtree chosen. The pinned clone
+> is vendored at `foundation/atlas-hermes/` (excluding `.git/` and `website/`),
+> with `foundation/ATTRIBUTION.md` and `foundation/DIVERGENCE_LOG.md` governing
+> all changes. `_EXTERNAL_REPOS/hermes-agent` remains the read-only reference
+> clone for upstream diffing. The divergence policy below still binds.
 
 ## Pin (verified against the live local install 2026-06-04)
 
