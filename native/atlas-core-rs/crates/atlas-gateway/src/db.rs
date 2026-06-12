@@ -203,6 +203,85 @@ pub fn list_wiki_pages(path: &Path, limit: i64) -> Result<Vec<Value>, DbError> {
     Ok(rows)
 }
 
+/// Wiki page detail by slug. Returns `None` when slug is unknown (not DbError).
+/// Provenance is sourced from `memory_provenance` via `item_id = slug`; if the
+/// table is absent or no rows exist the field is `null` (never a DbError).
+pub fn get_wiki_page(path: &Path, slug: &str) -> Result<Option<Value>, DbError> {
+    let conn = open_ro(path)?;
+    let sql = "SELECT slug, title, body, created_at, updated_at FROM wiki_pages WHERE slug = ?1";
+    let page = match conn.query_row(sql, [slug], |row| {
+        Ok(json!({
+            "slug": row.get::<_, String>(0)?,
+            "title": row.get::<_, String>(1)?,
+            "body": row.get::<_, String>(2)?,
+            "created_at": row.get::<_, String>(3)?,
+            "updated_at": row.get::<_, String>(4)?,
+        }))
+    }) {
+        Ok(v) => v,
+        Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(None),
+        Err(e) => return Err(e.into()),
+    };
+
+    // Attempt to fetch the most recent provenance record. The table may not
+    // exist yet (fresh databases), so any error is silently treated as absent.
+    let provenance: Option<Value> = conn
+        .query_row(
+            "SELECT run_id, source_id, operator_id, sensitivity, written_at \
+             FROM memory_provenance \
+             WHERE item_id = ?1 \
+             ORDER BY written_at DESC \
+             LIMIT 1",
+            [slug],
+            |row| {
+                Ok(json!({
+                    "run_id": row.get::<_, Option<String>>(0)?,
+                    "source_id": row.get::<_, Option<String>>(1)?,
+                    "operator_id": row.get::<_, Option<String>>(2)?,
+                    "sensitivity": row.get::<_, String>(3)?,
+                    "written_at": row.get::<_, String>(4)?,
+                }))
+            },
+        )
+        .ok();
+
+    let mut obj = page;
+    obj["provenance"] = serde_json::to_value(provenance).unwrap_or(Value::Null);
+    Ok(Some(obj))
+}
+
+/// Model registry list ordered by model_id. Returns `Ok(vec![])` when the
+/// `model_registry` table does not exist (no models registered yet) so the
+/// gateway never 503s on a fresh deployment.
+pub fn list_models(path: &Path, limit: i64) -> Result<Vec<Value>, DbError> {
+    let conn = open_ro(path)?;
+    let mut stmt = match conn.prepare(
+        "SELECT model_id, provider, source, first_seen, last_seen, active \
+         FROM model_registry \
+         ORDER BY model_id \
+         LIMIT ?1",
+    ) {
+        Ok(s) => s,
+        Err(rusqlite::Error::SqliteFailure(_, Some(ref msg))) if msg.contains("no such table") => {
+            return Ok(vec![]);
+        }
+        Err(e) => return Err(e.into()),
+    };
+    let rows = stmt
+        .query_map([limit], |row| {
+            Ok(json!({
+                "model_id": row.get::<_, String>(0)?,
+                "provider": row.get::<_, String>(1)?,
+                "source": row.get::<_, String>(2)?,
+                "first_seen": row.get::<_, String>(3)?,
+                "last_seen": row.get::<_, String>(4)?,
+                "active": row.get::<_, i64>(5)? != 0,
+            }))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
 /// Read-only DB probe for /health: "ok" | "absent" | "error".
 pub fn status(path: &Path) -> &'static str {
     match open_ro(path) {
