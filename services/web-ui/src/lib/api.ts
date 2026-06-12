@@ -131,6 +131,17 @@ export function streamRun(
 
 // ── Wiki endpoints ────────────────────────────────────────────────────────────
 
+export interface ProvenanceRecord {
+	sha256: string;
+	ingested_at: string;
+	layer: number;
+	lint_status: string;
+}
+
+export interface WikiPageDetail extends WikiPage {
+	provenance: ProvenanceRecord | null;
+}
+
 export async function listWikiPages(limit = 50): Promise<{ pages: WikiPage[]; count: number }> {
 	return apiFetch(`/v1/wiki/pages?limit=${limit}`);
 }
@@ -141,6 +152,32 @@ export async function searchWiki(
 ): Promise<{ query: string; results: WikiPage[] }> {
 	const limitParam = limit !== undefined ? `&limit=${limit}` : '';
 	return apiFetch(`/v1/wiki/search?q=${encodeURIComponent(q)}${limitParam}`);
+}
+
+export async function getWikiPage(slug: string): Promise<{ page: WikiPageDetail }> {
+	return apiFetch(`/v1/wiki/pages/${encodeURIComponent(slug)}`);
+}
+
+export async function createWikiPage(
+	slug: string,
+	title: string,
+	body: string,
+	layer?: number
+): Promise<{ page: WikiPageDetail }> {
+	return apiFetch('/v1/wiki/pages', {
+		method: 'POST',
+		body: JSON.stringify({ slug, title, body, ...(layer !== undefined ? { layer } : {}) })
+	});
+}
+
+export async function updateWikiPage(
+	slug: string,
+	updates: { title?: string; body?: string; layer?: number }
+): Promise<{ page: WikiPageDetail }> {
+	return apiFetch(`/v1/wiki/pages/${encodeURIComponent(slug)}`, {
+		method: 'PUT',
+		body: JSON.stringify(updates)
+	});
 }
 
 // ── Health ────────────────────────────────────────────────────────────────────
