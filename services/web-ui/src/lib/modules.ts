@@ -1,4 +1,5 @@
-import type { ComponentType } from 'svelte';
+import type { Component } from 'svelte';
+import type { LucideProps } from '@lucide/svelte';
 
 export type ModuleStatus = 'active' | 'beta' | 'planned';
 
@@ -6,7 +7,7 @@ export interface CockpitModule {
 	id: string;
 	label: string;
 	route: string;
-	icon: ComponentType;
+	icon: Component<LucideProps>;
 	status: ModuleStatus;
 	ariaLabel: string;
 }
@@ -14,7 +15,7 @@ export interface CockpitModule {
 // Registry is the single source of truth for sidebar navigation.
 // Future modules register here — no shell rewiring required.
 // Each entry must have a corresponding route under src/routes/.
-import { Activity, BookOpen, Cpu, Map } from 'lucide-svelte';
+import { Activity, BookOpen, Cpu, Map } from '@lucide/svelte';
 
 export const cockpitModules: CockpitModule[] = [
 	{
