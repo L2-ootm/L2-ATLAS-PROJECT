@@ -11,6 +11,7 @@ T-06-13: Registered into atlas_runtime via try/except ImportError.
 """
 from __future__ import annotations
 
+import os
 import pathlib
 import sqlite3
 import threading
@@ -50,8 +51,17 @@ def _get_lock() -> threading.Lock:
 
 
 def _get_wiki_dir() -> pathlib.Path:
-    """Return the wiki directory (resolved at call time, not module load time)."""
-    return pathlib.Path.cwd() / "wiki"
+    """Return the wiki directory (resolved at call time, not module load time).
+
+    ATLAS_WIKI_DIR overrides the CWD-relative default — required when the CLI
+    is dispatched by another process (e.g. the gateway) whose working directory
+    is not the project root. The directory is created if missing so index/log
+    writes never fail on a fresh checkout.
+    """
+    override = os.environ.get("ATLAS_WIKI_DIR")
+    wiki_dir = pathlib.Path(override) if override else pathlib.Path.cwd() / "wiki"
+    wiki_dir.mkdir(parents=True, exist_ok=True)
+    return wiki_dir
 
 
 # ---------------------------------------------------------------------------
