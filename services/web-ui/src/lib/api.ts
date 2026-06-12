@@ -26,18 +26,27 @@ export interface Run {
 }
 
 export interface AuditEvent {
-	rowid: number;
+	id: string;
+	/** Monotonic rowid cursor — pagination key and stable list identity. */
+	cursor: number;
 	run_id: string;
 	event_type: string;
-	payload: string;
-	created_at: string;
+	/** Structured event payload (audit_events.data JSON column). */
+	data: unknown;
+	timestamp: string;
+	session_id: string | null;
+	task_id: string | null;
+	tool_call_id: string | null;
+	tool_name: string | null;
+	duration_ms: number | null;
+	policy_result: string | null;
 }
 
 export interface WikiPage {
 	slug: string;
 	title: string;
-	body: string;
-	layer: number;
+	/** Present on detail responses; list/search responses omit it. */
+	body?: string;
 	created_at: string;
 	updated_at: string;
 }
@@ -131,11 +140,13 @@ export function streamRun(
 
 // ── Wiki endpoints ────────────────────────────────────────────────────────────
 
+/** Mirrors memory_provenance row exposed by the gateway page-detail endpoint. */
 export interface ProvenanceRecord {
-	sha256: string;
-	ingested_at: string;
-	layer: number;
-	lint_status: string;
+	run_id: string | null;
+	operator_id: string | null;
+	source_id: string | null;
+	sensitivity: string;
+	written_at: string;
 }
 
 export interface WikiPageDetail extends WikiPage {
@@ -161,18 +172,17 @@ export async function getWikiPage(slug: string): Promise<{ page: WikiPageDetail 
 export async function createWikiPage(
 	slug: string,
 	title: string,
-	body: string,
-	layer?: number
+	body: string
 ): Promise<{ page: WikiPageDetail }> {
 	return apiFetch('/v1/wiki/pages', {
 		method: 'POST',
-		body: JSON.stringify({ slug, title, body, ...(layer !== undefined ? { layer } : {}) })
+		body: JSON.stringify({ slug, title, body })
 	});
 }
 
 export async function updateWikiPage(
 	slug: string,
-	updates: { title?: string; body?: string; layer?: number }
+	updates: { title?: string; body?: string }
 ): Promise<{ page: WikiPageDetail }> {
 	return apiFetch(`/v1/wiki/pages/${encodeURIComponent(slug)}`, {
 		method: 'PUT',

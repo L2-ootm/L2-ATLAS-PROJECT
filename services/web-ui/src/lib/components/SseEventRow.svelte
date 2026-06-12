@@ -52,10 +52,15 @@
 
 	const typeColor = $derived(getEventTypeColor(event.event_type));
 	const rowBg = $derived(isErrorEvent(event.event_type) ? 'rgba(255,0,85,0.04)' : 'transparent');
-	const timestamp = $derived(formatTimestamp(event.created_at));
-	const displayPayload = $derived(
-		expanded ? event.payload : truncate(event.payload, 120)
-	);
+	const timestamp = $derived(formatTimestamp(event.timestamp));
+	const payloadText = $derived.by(() => {
+		const tool = event.tool_name ? `${event.tool_name} ` : '';
+		const policy = event.policy_result ? ` [${event.policy_result.toUpperCase()}]` : '';
+		const data =
+			event.data == null ? '' : typeof event.data === 'string' ? event.data : JSON.stringify(event.data);
+		return `${tool}${data}${policy}`;
+	});
+	const displayPayload = $derived(expanded ? payloadText : truncate(payloadText, 120));
 </script>
 
 <div

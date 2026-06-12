@@ -116,9 +116,9 @@
 		}
 
 		// Mark as new for animation
-		newEventIds = new Set([...newEventIds, evt.rowid]);
+		newEventIds = new Set([...newEventIds, evt.cursor]);
 		setTimeout(() => {
-			newEventIds = new Set([...newEventIds].filter(id => id !== evt.rowid));
+			newEventIds = new Set([...newEventIds].filter(id => id !== evt.cursor));
 		}, 300);
 
 		// Auto-scroll if at bottom
@@ -567,8 +567,8 @@
 			</div>
 		{/if}
 
-		{#each filteredEvents as evt (evt.rowid)}
-			<SseEventRow event={evt} isNew={newEventIds.has(evt.rowid)} />
+		{#each filteredEvents as evt (evt.cursor)}
+			<SseEventRow event={evt} isNew={newEventIds.has(evt.cursor)} />
 		{/each}
 	</div>
 {/if}
