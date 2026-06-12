@@ -4,6 +4,7 @@
 	import HudLabel from '$lib/components/HudLabel.svelte';
 	import GlassPanel from '$lib/components/GlassPanel.svelte';
 	import MissionRow from '$lib/components/MissionRow.svelte';
+	import CreateMissionModal from '$lib/components/CreateMissionModal.svelte';
 	import { listMissions } from '$lib/api';
 	import type { Mission } from '$lib/api';
 
@@ -159,6 +160,8 @@
 		</div>
 	{/if}
 </section>
+
+<CreateMissionModal open={showModal} onClose={() => (showModal = false)} onCreated={handleCreated} />
 
 <style>
 	.btn-primary {
