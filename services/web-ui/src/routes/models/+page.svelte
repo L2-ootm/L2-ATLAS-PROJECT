@@ -4,7 +4,7 @@
 	// D-017: read-only in v1.0 — no mutation controls rendered.
 	import { onMount } from 'svelte';
 	import type { ModelEntry, Run } from '$lib/api';
-	import { listModels, listMissions, getMission } from '$lib/api';
+	import { listModels, listMissions, getMission, ApiError } from '$lib/api';
 	import HudLabel from '$lib/components/HudLabel.svelte';
 	import GlassPanel from '$lib/components/GlassPanel.svelte';
 	import ModelRow from '$lib/components/ModelRow.svelte';
@@ -26,7 +26,12 @@
 			models = res.models;
 		} catch (err_) {
 			const msg = err_ instanceof Error ? err_.message : String(err_);
-			error = 'GATEWAY OFFLINE — 127.0.0.1:8484 not responding. Start the atlas-gateway process.';
+			// listModels already degrades 404/503 to an empty list — anything
+			// reaching here is a real gateway error (5xx) or a network failure.
+			error =
+				err_ instanceof ApiError
+					? `GATEWAY ERROR ${err_.status} — model registry request failed.`
+					: 'GATEWAY OFFLINE — 127.0.0.1:8484 not responding. Start the atlas-gateway process.';
 			console.error('[models] listModels error:', msg);
 		} finally {
 			loading = false;

@@ -34,9 +34,15 @@
 	let apiError = $state('');
 	let fieldErrors = $state<Record<string, string>>({});
 
+	/** Mirror the wiki service's slug normalization (lower, trim, spaces→dashes)
+	 *  so the slug the operator sees matches what the backend stores. */
+	function normalizeSlug(raw: string): string {
+		return raw.toLowerCase().trim().replaceAll(' ', '-');
+	}
+
 	function validate(): boolean {
 		const errors: Record<string, string> = {};
-		if (mode === 'create' && !slug.trim()) errors.slug = 'Slug is required';
+		if (mode === 'create' && !normalizeSlug(slug)) errors.slug = 'Slug is required';
 		if (!title.trim()) errors.title = 'Title is required';
 		if (!body.trim()) errors.body = 'Content is required';
 		fieldErrors = errors;
@@ -50,7 +56,8 @@
 		try {
 			let result: { page: WikiPageDetail };
 			if (mode === 'create') {
-				result = await createWikiPage(slug.trim(), title.trim(), body);
+				slug = normalizeSlug(slug);
+				result = await createWikiPage(slug, title.trim(), body);
 			} else {
 				result = await updateWikiPage(initialSlug, { title: title.trim(), body });
 			}

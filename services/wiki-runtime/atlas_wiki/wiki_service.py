@@ -148,7 +148,9 @@ def ingest_source(
     )
 
     # Step 3: copy file to wiki_dir/raw/ BEFORE acquiring lock
+    # (_get_wiki_dir only creates wiki_dir itself — raw/ may not exist yet)
     raw_dest = wiki_dir / "raw" / f"{source.id}_{resolved.name}"
+    raw_dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(str(resolved), str(raw_dest))
 
     # Step 4: upsert sources row inside lock (preserve ID on re-ingest)
@@ -353,7 +355,7 @@ def semantic_search(
         conn.enable_load_extension(True)
         sqlite_vec.load(conn)
         conn.enable_load_extension(False)
-    except (ImportError, Exception):
+    except Exception:
         print(
             "sqlite-vec not loaded — semantic search unavailable; using FTS5 fallback"
         )

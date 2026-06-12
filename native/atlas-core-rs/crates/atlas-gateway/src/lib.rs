@@ -11,7 +11,7 @@ use axum::http::{header, HeaderValue, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
-use axum::{routing::{get, post, put}, Json, Router};
+use axum::{routing::{get, post}, Json, Router};
 use futures_util::stream::Stream;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -288,6 +288,23 @@ async fn run_stream(
                     }
                     let terminal = !matches!(status.as_deref(), Some("running") | Some("pending"));
                     if terminal && !had_events {
+                        // Final drain: events committed between the events-read
+                        // and the status-read above would otherwise be dropped
+                        // from the live stream.
+                        let (db_path, run_id, cursor) =
+                            (s.db_path.clone(), s.run_id.clone(), s.cursor);
+                        if let Ok(Ok((late, late_cursor))) = tokio::task::spawn_blocking(
+                            move || db::list_events(&db_path, &run_id, cursor, 500),
+                        )
+                        .await
+                        {
+                            s.cursor = late_cursor;
+                            for ev in late {
+                                s.pending.push_back(
+                                    Event::default().event("audit").data(ev.to_string()),
+                                );
+                            }
+                        }
                         s.pending.push_back(
                             Event::default()
                                 .event("end")
@@ -297,6 +314,8 @@ async fn run_stream(
                     }
                 }
                 // DB went away mid-stream (or task panic): report and close.
+                // Named "stream_error" — a plain "error" event name collides
+                // with the EventSource transport-error event on the client.
                 Ok(Err(e)) => {
                     let msg = match e {
                         db::DbError::Absent => "db_unavailable".to_string(),
@@ -304,7 +323,7 @@ async fn run_stream(
                     };
                     s.pending.push_back(
                         Event::default()
-                            .event("error")
+                            .event("stream_error")
                             .data(json!({"error": msg}).to_string()),
                     );
                     s.done = true;
@@ -312,7 +331,7 @@ async fn run_stream(
                 Err(e) => {
                     s.pending.push_back(
                         Event::default()
-                            .event("error")
+                            .event("stream_error")
                             .data(json!({"error": e.to_string()}).to_string()),
                     );
                     s.done = true;
@@ -339,8 +358,25 @@ async fn wiki_pages(
 // Write dispatch (POST routes — delegate to `atlas` CLI, no Rust business logic)
 // ---------------------------------------------------------------------------
 
+/// Upper bound on a single CLI dispatch — a hung `atlas` process (DB lock
+/// contention, stdin prompt) must not hang the HTTP request forever.
+const DISPATCH_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Reject empty/whitespace user input destined for CLI positional arguments.
+/// Values starting with `-` are also rejected: even behind a `--` separator
+/// they read as options to a human and signal a malformed request.
+fn require_arg(value: &str, what: &'static str) -> Result<(), ApiError> {
+    if value.trim().is_empty() {
+        return Err(ApiError::BadRequest(what));
+    }
+    Ok(())
+}
+
 /// Dispatch a write to the `atlas` CLI. Returns trimmed stdout on success or
-/// ApiError on non-zero exit / spawn failure.
+/// ApiError on non-zero exit / spawn failure / timeout.
+///
+/// Callers pass user-controlled values AFTER a `--` separator so click/typer
+/// never parses request data as options (argument-injection guard).
 async fn dispatch_atlas(
     atlas_cmd: &[String],
     args: &[&str],
@@ -355,9 +391,12 @@ async fn dispatch_atlas(
     for arg in args {
         cmd.arg(arg);
     }
-    let output = cmd.output().await.map_err(|e| {
-        ApiError::Internal(format!("failed to spawn atlas: {e}"))
-    })?;
+    // Dropping the output() future on timeout kills the child.
+    cmd.kill_on_drop(true);
+    let output = tokio::time::timeout(DISPATCH_TIMEOUT, cmd.output())
+        .await
+        .map_err(|_| ApiError::Internal("atlas command timed out".into()))?
+        .map_err(|e| ApiError::Internal(format!("failed to spawn atlas: {e}")))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(ApiError::Internal(format!(
@@ -379,6 +418,7 @@ async fn create_mission(
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
     let title = body.title;
     let intent = body.intent.unwrap_or_default();
+    require_arg(&title, "title must be non-empty")?;
     let id = dispatch_atlas(
         &state.atlas_cmd,
         &["mission", "create", "--title", &title, "--intent", &intent],
@@ -402,9 +442,10 @@ async fn start_run(
     State(state): State<AppState>,
     AxPath(mission_id): AxPath<String>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
+    require_arg(&mission_id, "mission id must be non-empty")?;
     let run_id = dispatch_atlas(
         &state.atlas_cmd,
-        &["mission", "run", &mission_id],
+        &["mission", "run", "--", &mission_id],
     )
     .await?;
     let path = state.db_path.clone();
@@ -448,13 +489,16 @@ async fn wiki_create(
     let slug = body.slug;
     let title = body.title;
     let content = body.body;
-    dispatch_atlas(
+    require_arg(&slug, "slug must be non-empty")?;
+    // The CLI normalizes the slug (lowercase, spaces→dashes) and echoes the
+    // canonical form to stdout — read back with THAT, not the request slug.
+    let canonical = dispatch_atlas(
         &state.atlas_cmd,
-        &["wiki", "update", &slug, "--title", &title, "--body", &content],
+        &["wiki", "update", "--title", &title, "--body", &content, "--", &slug],
     )
     .await?;
     let path = state.db_path.clone();
-    let slug_clone = slug.clone();
+    let slug_clone = if canonical.is_empty() { slug.clone() } else { canonical };
     let found = blocking(move || db::get_wiki_page(&path, &slug_clone)).await?;
     match found {
         Some(page) => Ok((StatusCode::CREATED, Json(json!({ "page": page })))),
@@ -491,7 +535,7 @@ async fn wiki_update(
         .unwrap_or_else(|| current["body"].as_str().unwrap_or("").to_string());
     dispatch_atlas(
         &state.atlas_cmd,
-        &["wiki", "update", &slug, "--title", &merged_title, "--body", &merged_body],
+        &["wiki", "update", "--title", &merged_title, "--body", &merged_body, "--", &slug],
     )
     .await?;
     let path = state.db_path.clone();
@@ -528,7 +572,8 @@ async fn cancel_run(
     State(state): State<AppState>,
     AxPath(id): AxPath<String>,
 ) -> ApiResult {
-    dispatch_atlas(&state.atlas_cmd, &["mission", "cancel", &id]).await?;
+    require_arg(&id, "mission id must be non-empty")?;
+    dispatch_atlas(&state.atlas_cmd, &["mission", "cancel", "--", &id]).await?;
     let path = state.db_path.clone();
     let id_clone = id.clone();
     let found = blocking(move || db::get_mission(&path, &id_clone)).await?;
@@ -588,17 +633,27 @@ async fn cors(req: Request, next: Next) -> Response {
         .map(|o| allowed_origins().iter().any(|a| a == o))
         .unwrap_or(false);
 
-    let mut res = if req.method() == Method::OPTIONS {
+    // Only short-circuit genuine CORS preflights; a plain OPTIONS request
+    // (no Access-Control-Request-Method) still reaches the router.
+    let is_preflight = req.method() == Method::OPTIONS
+        && req
+            .headers()
+            .contains_key(header::ACCESS_CONTROL_REQUEST_METHOD);
+    let mut res = if is_preflight {
         StatusCode::NO_CONTENT.into_response()
     } else {
         next.run(req).await
     };
 
+    // Vary on Origin unconditionally (append, not insert) — responses to
+    // disallowed/absent origins must not be cacheable across origins either.
+    res.headers_mut()
+        .append(header::VARY, HeaderValue::from_static("Origin"));
+
     if allowed {
         let headers = res.headers_mut();
         // Unwrap is safe: origin was already validated as a present header value.
         headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin.unwrap());
-        headers.insert(header::VARY, HeaderValue::from_static("Origin"));
         headers.insert(
             header::ACCESS_CONTROL_ALLOW_METHODS,
             HeaderValue::from_static("GET, POST, PUT, OPTIONS"),

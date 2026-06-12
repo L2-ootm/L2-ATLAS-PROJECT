@@ -7,10 +7,8 @@
 	import SseEventRow from '$lib/components/SseEventRow.svelte';
 	import LiveBadge from '$lib/components/LiveBadge.svelte';
 	import RunTimeline from '$lib/components/RunTimeline.svelte';
-	import { getRun, getRunEvents } from '$lib/api';
+	import { getRun, getRunEvents, cancelRun, GATEWAY } from '$lib/api';
 	import type { Run, AuditEvent } from '$lib/api';
-
-	const GATEWAY = 'http://127.0.0.1:8484';
 
 	// ── URL param ─────────────────────────────────────────────────────────────
 	let id = $derived($page.params.id ?? '');
@@ -25,7 +23,16 @@
 	let cancelError: string | null = $state(null);
 	let newEventIds = $state(new Set<number>());
 	let streamError: string | null = $state(null);
+	let exportError: string | null = $state(null);
 	let filterType = $state('ALL');
+
+	// 1s tick so the elapsed display advances while a run is live (Date.now()
+	// alone is not reactive).
+	let nowTick = $state(Date.now());
+
+	// Highest event cursor seen — SSE reconnects resume from here so the
+	// gateway never replays the stream (duplicate cursors crash the keyed each).
+	let lastCursor = 0;
 
 	// ── DOM refs ──────────────────────────────────────────────────────────────
 	let scrollContainer: HTMLDivElement | undefined = $state(undefined);
@@ -73,7 +80,7 @@
 	function getElapsedText(): string {
 		if (!run) return '';
 		const start = new Date(run.started_at).getTime();
-		const end = run.finished_at ? new Date(run.finished_at).getTime() : Date.now();
+		const end = run.finished_at ? new Date(run.finished_at).getTime() : nowTick;
 		const diffMs = end - start;
 		if (diffMs < 0) return '0.0s';
 		const diffSec = diffMs / 1000;
@@ -105,6 +112,11 @@
 	}
 
 	function addEvent(evt: AuditEvent): void {
+		// Dedupe guard: a reconnect (or gateway replay) must never produce
+		// duplicate cursors — the keyed each on evt.cursor would crash.
+		if (evt.cursor <= lastCursor) return;
+		lastCursor = evt.cursor;
+
 		const wasAtBottom = isAtBottom();
 
 		// Push new event
@@ -132,13 +144,22 @@
 		closeSse();
 		reconnectAttempted = false;
 		streamError = null;
+		connectSse(runId);
+	}
 
-		const source = new EventSource(`${GATEWAY}/v1/runs/${encodeURIComponent(runId)}/stream`);
+	function connectSse(runId: string): void {
+		// Resume from the last seen cursor — a reconnect must continue the
+		// stream, not replay it from rowid 0.
+		const source = new EventSource(
+			`${GATEWAY}/v1/runs/${encodeURIComponent(runId)}/stream?after=${lastCursor}`
+		);
 		sseSource = source;
 
 		source.onopen = () => {
 			sseConnected = true;
 			streamError = null;
+			// A successful open re-arms the single-retry budget for the next blip.
+			reconnectAttempted = false;
 		};
 
 		source.addEventListener('audit', (evt: MessageEvent) => {
@@ -166,16 +187,24 @@
 			}
 		});
 
-		source.addEventListener('error', (evt: MessageEvent) => {
-			// Gateway-level error event
+		// Gateway-level failures arrive as the named "stream_error" event —
+		// a plain "error" name would collide with transport errors below.
+		source.addEventListener('stream_error', (evt: MessageEvent) => {
 			try {
 				const errData = JSON.parse(evt.data) as { error: string };
 				streamError = errData.error ?? 'STREAM ERROR';
 			} catch {
 				streamError = 'STREAM ERROR — unknown gateway error';
 			}
+			// The gateway closes the stream after this event; close the source
+			// so the browser's auto-reconnect does not kick in.
+			sseConnected = false;
+			source.close();
+			sseSource = null;
 		});
 
+		// Transport-level error: retry once per disconnection, resuming from
+		// lastCursor.
 		source.onerror = () => {
 			sseConnected = false;
 			source.close();
@@ -184,46 +213,9 @@
 			if (!reconnectAttempted) {
 				reconnectAttempted = true;
 				streamError = 'STREAM INTERRUPTED — reconnecting in 2s. If this persists, check gateway health.';
-				reconnectTimer = setTimeout(() => {
-					// Single retry
-					const retrySource = new EventSource(`${GATEWAY}/v1/runs/${encodeURIComponent(runId)}/stream`);
-					sseSource = retrySource;
-
-					retrySource.onopen = () => {
-						sseConnected = true;
-						streamError = null;
-					};
-
-					retrySource.addEventListener('audit', (e: MessageEvent) => {
-						try {
-							const data = JSON.parse(e.data) as AuditEvent;
-							addEvent(data);
-						} catch {
-							// ignore
-						}
-					});
-
-					retrySource.addEventListener('end', (e: MessageEvent) => {
-						sseConnected = false;
-						retrySource.close();
-						sseSource = null;
-						try {
-							const endData = JSON.parse(e.data) as { status: string };
-							if (run && endData.status) {
-								run = { ...run, status: endData.status, finished_at: run.finished_at ?? new Date().toISOString() };
-							}
-						} catch {
-							getRun(runId).then(r => { run = r.run; }).catch(() => {});
-						}
-					});
-
-					retrySource.onerror = () => {
-						sseConnected = false;
-						retrySource.close();
-						sseSource = null;
-						streamError = 'STREAM INTERRUPTED — reconnecting in 2s. If this persists, check gateway health.';
-					};
-				}, 2000);
+				reconnectTimer = setTimeout(() => connectSse(runId), 2000);
+			} else {
+				streamError = 'STREAM DISCONNECTED — refresh the page to reconnect.';
 			}
 		};
 	}
@@ -245,10 +237,10 @@
 		let cursor: number | undefined = undefined;
 		let allEvents: AuditEvent[] = [];
 		let iterations = 0;
-		const MAX_ITERATIONS = 20; // guard: up to 1000 * 20 = 20000 events
+		const MAX_ITERATIONS = 20; // guard: 1000/page * 20 = up to 20000 events
 
 		while (iterations < MAX_ITERATIONS) {
-			const result = await getRunEvents(runId, cursor);
+			const result = await getRunEvents(runId, cursor, 1000);
 			allEvents = [...allEvents, ...result.events];
 			if (!result.next_cursor || result.events.length === 0) break;
 			cursor = result.next_cursor;
@@ -256,6 +248,9 @@
 		}
 
 		events = allEvents.slice(-500); // apply DOM cap on initial load too
+		if (events.length > 0) {
+			lastCursor = events[events.length - 1].cursor;
+		}
 		scrollToBottom();
 	}
 
@@ -264,21 +259,13 @@
 		if (!run) return;
 		cancelError = null;
 		try {
-			const resp = await fetch(`${GATEWAY}/v1/missions/${encodeURIComponent(run.mission_id)}/cancel`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' }
-			});
-			if (!resp.ok) {
-				const text = await resp.text().catch(() => resp.statusText);
-				cancelError = `CANCEL FAILED — ${text}`;
-				return;
-			}
+			await cancelRun(run.mission_id);
 			showCancelConfirm = false;
-			// Optimistically update run status; will be corrected by SSE end event
-			if (run) {
-				run = { ...run, status: 'PARTIAL' };
-			}
 			closeSse();
+			// Re-fetch: the backend records the authoritative terminal status —
+			// never guess it client-side.
+			const result = await getRun(run.id);
+			run = result.run;
 		} catch (e) {
 			cancelError = `CANCEL FAILED — ${e instanceof Error ? e.message : String(e)}`;
 		}
@@ -287,32 +274,57 @@
 	// ── EXPORT JSONL ──────────────────────────────────────────────────────────
 	async function exportJsonl(): Promise<void> {
 		if (!run) return;
-		// Fetch all events via paginated API
-		let cursor: number | undefined = undefined;
-		let allEvents: AuditEvent[] = [];
-		let iterations = 0;
-		const MAX_ITERATIONS = 100;
+		exportError = null;
+		try {
+			// Fetch all events via paginated API
+			let cursor: number | undefined = undefined;
+			let allEvents: AuditEvent[] = [];
+			let iterations = 0;
+			const MAX_ITERATIONS = 100; // 1000/page — cap at 100k events
+			let truncated = false;
 
-		while (iterations < MAX_ITERATIONS) {
-			const result = await getRunEvents(run.id, cursor);
-			allEvents = [...allEvents, ...result.events];
-			if (!result.next_cursor || result.events.length === 0) break;
-			cursor = result.next_cursor;
-			iterations++;
+			for (;;) {
+				if (iterations >= MAX_ITERATIONS) {
+					truncated = true;
+					break;
+				}
+				const result = await getRunEvents(run.id, cursor, 1000);
+				allEvents = [...allEvents, ...result.events];
+				if (!result.next_cursor || result.events.length === 0) break;
+				cursor = result.next_cursor;
+				iterations++;
+			}
+
+			const lines = allEvents.map(e => JSON.stringify(e));
+			if (truncated) {
+				// Audit exports must never truncate silently
+				lines.push(
+					JSON.stringify({
+						_export_warning: `TRUNCATED — pagination cap reached after ${allEvents.length} events`
+					})
+				);
+				exportError = `EXPORT TRUNCATED — pagination cap reached after ${allEvents.length} events.`;
+			}
+			const blob = new Blob([lines.join('\n')], { type: 'application/x-ndjson' });
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = `run-${run.id}-audit.jsonl`;
+			a.click();
+			URL.revokeObjectURL(url);
+		} catch (e) {
+			exportError = `EXPORT FAILED — ${e instanceof Error ? e.message : String(e)}`;
 		}
-
-		const jsonl = allEvents.map(e => JSON.stringify(e)).join('\n');
-		const blob = new Blob([jsonl], { type: 'application/x-ndjson' });
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement('a');
-		a.href = url;
-		a.download = `run-${run.id}-audit.jsonl`;
-		a.click();
-		URL.revokeObjectURL(url);
 	}
 
 	// ── Mount / Destroy ───────────────────────────────────────────────────────
+	let tickInterval: ReturnType<typeof setInterval> | null = null;
+
 	onMount(async () => {
+		tickInterval = setInterval(() => {
+			nowTick = Date.now();
+		}, 1000);
+
 		const runId: string = $page.params.id ?? '';
 		if (!runId) {
 			error = 'INVALID RUN ID — missing parameter';
@@ -338,6 +350,7 @@
 
 	onDestroy(() => {
 		closeSse();
+		if (tickInterval !== null) clearInterval(tickInterval);
 	});
 </script>
 
@@ -488,7 +501,7 @@
 			"
 		>
 			<p style="font-family: var(--l2-font-sans); font-size: 14px; font-weight: 400; color: #E0E0E0; margin: 0 0 12px 0;">
-				CONFIRM CANCEL: This will halt the active run and mark it PARTIAL. Action is irreversible.
+				CONFIRM CANCEL: This halts ALL active runs of this mission (not just this one). Action is irreversible.
 			</p>
 			{#if cancelError}
 				<p style="font-family: var(--l2-font-mono); font-size: 12px; color: #FF0055; margin: 0 0 8px 0; text-transform: uppercase;">
@@ -532,6 +545,13 @@
 				</button>
 			</div>
 		</div>
+	{/if}
+
+	<!-- Export error banner -->
+	{#if exportError}
+		<p style="font-family: var(--l2-font-mono); font-size: 12px; color: #FF0055; margin: 0 0 8px 0; padding: 8px 12px; background: rgba(255,0,85,0.08); border: 1px solid rgba(255,0,85,0.20); border-radius: 2px; text-transform: uppercase;">
+			{exportError}
+		</p>
 	{/if}
 
 	<!-- SSE stream container -->
