@@ -101,4 +101,4 @@ This document evolves at phase transitions and milestone boundaries.
 2. Archive milestone artifacts
 3. Update Context with current state
 
-_Last updated: 2026-06-11 — Phases 1–6 complete and verified. Foundation vendored + rebranded (DIV-F-001..006). Rust toolchain unblocked; atlas-gateway crate builds green (2.53 MB release, /health verified). Phase 7 (Rust API Gateway + SSE) is next._
+_Last updated: 2026-06-12 — Phases 1–8 complete and verified. Phase 8 shipped the operator cockpit: SvelteKit/Svelte 5 web app (adapter-static, native-portable for the Phase 10 Tauri shell) with four surfaces — missions (list/create/detail), runs (live SSE audit stream + completed trail + JSONL export), wiki (FTS search, viewer, create/edit, provenance), and read-only model registry — against the atlas-gateway on 127.0.0.1:8484. COCKPIT-01..06 validated end-to-end in a live browser (12ms DOMContentLoaded vs 2s budget). Gateway gained CORS allowlist, dispatch timeouts, and wiki write endpoints. Operational requirement: launch gateway with ATLAS_CLI and ATLAS_WIKI_DIR env vars; apply infra/migrations 0001-0003 on fresh installs. Phase 9 (skill-inventory) is next._
