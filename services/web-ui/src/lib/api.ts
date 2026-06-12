@@ -180,6 +180,52 @@ export async function updateWikiPage(
 	});
 }
 
+// ── Model registry ────────────────────────────────────────────────────────────
+
+/**
+ * Mirrors actual model_registry schema from 0003_model_registry.sql.
+ * Columns: model_id / provider / source / first_seen / last_seen / active
+ * Plan-spec fields (tier / health / policy / updated_at) are not in the DB;
+ * tier and health are derived client-side when absent from the API response.
+ */
+export interface ModelEntry {
+	model_id: string;
+	provider: string;
+	/** source URI / registry path */
+	source: string;
+	first_seen: string;
+	last_seen: string;
+	/** 1 = active, 0 = inactive */
+	active: number;
+	/** Optional fields the gateway may add in the future */
+	tier?: string;
+	health?: string;
+	policy?: string;
+}
+
+/**
+ * GET /v1/models — returns { models, count }.
+ * Degrades gracefully: returns empty list on 404/503 so the models page renders
+ * an empty state instead of throwing.
+ */
+export async function listModels(): Promise<{ models: ModelEntry[]; count: number }> {
+	try {
+		return await apiFetch<{ models: ModelEntry[]; count: number }>('/v1/models');
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		// Degrade gracefully on gateway-down / table-absent errors
+		if (
+			msg.includes('503') ||
+			msg.includes('404') ||
+			msg.includes('Failed to fetch') ||
+			msg.includes('GATEWAY ERROR')
+		) {
+			return { models: [], count: 0 };
+		}
+		throw err;
+	}
+}
+
 // ── Health ────────────────────────────────────────────────────────────────────
 
 export async function checkHealth(): Promise<{ status: string; db: string }> {
