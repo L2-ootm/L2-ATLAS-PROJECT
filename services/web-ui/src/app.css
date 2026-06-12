@@ -1,0 +1,36 @@
+@import './lib/tokens.css';
+@import './lib/tailwind-v4.css';
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html,
+body,
+#svelte {
+	background-color: var(--l2-void-page);
+	color: var(--l2-fg-1);
+	font-family: var(--l2-font-sans);
+	min-height: 100vh;
+	margin: 0;
+	padding: 0;
+}
+
+/* Focus ring — accessible, L2-branded */
+:focus-visible {
+	outline: 2px solid rgba(127, 0, 255, 0.6);
+	outline-offset: 2px;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+	}
+}
