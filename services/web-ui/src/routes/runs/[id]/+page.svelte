@@ -50,9 +50,11 @@
 	}
 
 	function checkIsTerminal(r: Run | null): boolean {
+		// Terminal = any non-active state. The runtime writes succeeded/failed/
+		// cancelled; enumerating them here would hide the audit trail export for
+		// any status this list lags behind (e.g. cancelled was missed before).
 		if (!r) return false;
-		const s = r.status.toUpperCase();
-		return s === 'SUCCEEDED' || s === 'FAILED' || s === 'PARTIAL';
+		return !checkIsActive(r);
 	}
 
 	function getTimelineProgress(r: Run | null): number {
