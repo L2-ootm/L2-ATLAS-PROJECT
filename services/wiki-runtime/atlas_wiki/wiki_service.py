@@ -32,6 +32,47 @@ from atlas_wiki import provenance_service
 # Private helpers
 # ---------------------------------------------------------------------------
 
+OPERATOR_RUN_ID = "operator"
+
+
+def _ensure_operator_run(conn: sqlite3.Connection, lock: threading.Lock) -> None:
+    """Idempotently create the synthetic operator mission/run pair.
+
+    Operator-initiated wiki writes carry run_id="operator", but
+    audit_events.run_id is NOT NULL REFERENCES runs(id). On a fresh database
+    no such run exists, so every operator write would fail the foreign key
+    check. Bootstrap the pseudo-run lazily rather than relaxing the schema —
+    the audit chain stays referentially intact.
+    """
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    with lock:
+        with conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO missions(id, title, intent, status, project, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    OPERATOR_RUN_ID,
+                    "Operator console",
+                    "Synthetic mission for operator-initiated writes outside agent runs",
+                    "archived",
+                    "",
+                    now,
+                    now,
+                ),
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO runs(id, mission_id, session_id, status, started_at, summary) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    OPERATOR_RUN_ID,
+                    OPERATOR_RUN_ID,
+                    OPERATOR_RUN_ID,
+                    "completed",
+                    now,
+                    "Synthetic run recording operator-initiated writes",
+                ),
+            )
+
 
 def _update_index(wiki_dir: pathlib.Path, conn: sqlite3.Connection) -> None:
     """Rewrite wiki_dir/index.md from DB state — all pages ordered by slug."""
@@ -80,6 +121,11 @@ def ingest_source(
     5. After lock exits, emit wiki_update AuditEvent (T-06-08 emit-after-lock).
     6. Return Source.
     """
+    # Operator-initiated writes need the synthetic operator run to satisfy
+    # audit_events.run_id FK on fresh databases.
+    if run_id == OPERATOR_RUN_ID:
+        _ensure_operator_run(conn, lock)
+
     # Step 1: path traversal guard (T-06-05)
     resolved = pathlib.Path(path).resolve()
     if not resolved.is_file():
@@ -182,6 +228,11 @@ def update_wiki_page(
     6. Update wiki/index.md and append to wiki/log.md.
     7. Return WikiPage.
     """
+    # Operator-initiated writes need the synthetic operator run to satisfy
+    # audit_events.run_id FK on fresh databases.
+    if run_id == OPERATOR_RUN_ID:
+        _ensure_operator_run(conn, lock)
+
     # Step 1: slug normalization
     slug = slug.lower().strip().replace(" ", "-")
 
