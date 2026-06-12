@@ -6,8 +6,9 @@
 
 pub mod db;
 
-use axum::extract::{Path as AxPath, Query, State};
-use axum::http::StatusCode;
+use axum::extract::{Path as AxPath, Query, Request, State};
+use axum::http::{header, HeaderValue, Method, StatusCode};
+use axum::middleware::{self, Next};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::{routing::{get, post, put}, Json, Router};
@@ -16,6 +17,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::VecDeque;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -543,6 +545,77 @@ async fn cancel_run(
 }
 
 // ---------------------------------------------------------------------------
+// CORS (cockpit dev/preview + Phase 10 Tauri shell are cross-origin)
+// ---------------------------------------------------------------------------
+
+/// Allowed browser origins. The gateway binds loopback-only, but browsers on
+/// the same machine enforce the same-origin policy, so the cockpit served
+/// from the Vite dev/preview server (or the Tauri WebView in Phase 10) needs
+/// explicit CORS grants. An allowlist — never a wildcard — keeps arbitrary
+/// websites from scripting the local API (DNS-rebinding / drive-by-localhost).
+/// Extend via ATLAS_CORS_ORIGINS (comma-separated).
+fn allowed_origins() -> &'static Vec<String> {
+    static ORIGINS: OnceLock<Vec<String>> = OnceLock::new();
+    ORIGINS.get_or_init(|| {
+        let mut origins: Vec<String> = [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:4173",
+            "http://127.0.0.1:4173",
+            "tauri://localhost",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        if let Ok(extra) = std::env::var("ATLAS_CORS_ORIGINS") {
+            origins.extend(
+                extra
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(String::from),
+            );
+        }
+        origins
+    })
+}
+
+async fn cors(req: Request, next: Next) -> Response {
+    let origin = req.headers().get(header::ORIGIN).cloned();
+    let allowed = origin
+        .as_ref()
+        .and_then(|o| o.to_str().ok())
+        .map(|o| allowed_origins().iter().any(|a| a == o))
+        .unwrap_or(false);
+
+    let mut res = if req.method() == Method::OPTIONS {
+        StatusCode::NO_CONTENT.into_response()
+    } else {
+        next.run(req).await
+    };
+
+    if allowed {
+        let headers = res.headers_mut();
+        // Unwrap is safe: origin was already validated as a present header value.
+        headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin.unwrap());
+        headers.insert(header::VARY, HeaderValue::from_static("Origin"));
+        headers.insert(
+            header::ACCESS_CONTROL_ALLOW_METHODS,
+            HeaderValue::from_static("GET, POST, PUT, OPTIONS"),
+        );
+        headers.insert(
+            header::ACCESS_CONTROL_ALLOW_HEADERS,
+            HeaderValue::from_static("content-type"),
+        );
+        headers.insert(
+            header::ACCESS_CONTROL_MAX_AGE,
+            HeaderValue::from_static("3600"),
+        );
+    }
+    res
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -560,5 +633,6 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/wiki/pages/{slug}", get(wiki_page_detail).put(wiki_update))
         .route("/v1/wiki/search", get(wiki_search))
         .route("/v1/models", get(models_list))
+        .layer(middleware::from_fn(cors))
         .with_state(state)
 }
