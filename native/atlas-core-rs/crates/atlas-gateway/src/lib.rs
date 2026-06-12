@@ -10,7 +10,7 @@ use axum::extract::{Path as AxPath, Query, State};
 use axum::http::StatusCode;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
-use axum::{routing::{get, post}, Json, Router};
+use axum::{routing::{get, post, put}, Json, Router};
 use futures_util::stream::Stream;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -417,6 +417,132 @@ async fn start_run(
 }
 
 // ---------------------------------------------------------------------------
+// Wiki write + detail handlers (Phase 8 — D-022 dispatch pattern)
+// ---------------------------------------------------------------------------
+
+async fn wiki_page_detail(
+    State(state): State<AppState>,
+    AxPath(slug): AxPath<String>,
+) -> ApiResult {
+    let path = state.db_path.clone();
+    let found = blocking(move || db::get_wiki_page(&path, &slug)).await?;
+    match found {
+        Some(page) => Ok(Json(json!({ "page": page }))),
+        None => Err(ApiError::NotFound("wiki page")),
+    }
+}
+
+#[derive(Deserialize)]
+struct CreateWikiPageBody {
+    slug: String,
+    title: String,
+    body: String,
+}
+
+async fn wiki_create(
+    State(state): State<AppState>,
+    Json(body): Json<CreateWikiPageBody>,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    let slug = body.slug;
+    let title = body.title;
+    let content = body.body;
+    dispatch_atlas(
+        &state.atlas_cmd,
+        &["wiki", "update", &slug, "--title", &title, "--body", &content],
+    )
+    .await?;
+    let path = state.db_path.clone();
+    let slug_clone = slug.clone();
+    let found = blocking(move || db::get_wiki_page(&path, &slug_clone)).await?;
+    match found {
+        Some(page) => Ok((StatusCode::CREATED, Json(json!({ "page": page })))),
+        None => Err(ApiError::Internal(format!(
+            "wiki page '{slug}' created but not found in db"
+        ))),
+    }
+}
+
+#[derive(Deserialize)]
+struct UpdateWikiPageBody {
+    title: Option<String>,
+    body: Option<String>,
+}
+
+async fn wiki_update(
+    State(state): State<AppState>,
+    AxPath(slug): AxPath<String>,
+    Json(body): Json<UpdateWikiPageBody>,
+) -> ApiResult {
+    // Read current page to merge optional fields.
+    let path = state.db_path.clone();
+    let slug_clone = slug.clone();
+    let current = blocking(move || db::get_wiki_page(&path, &slug_clone)).await?;
+    let current = match current {
+        Some(p) => p,
+        None => return Err(ApiError::NotFound("wiki page")),
+    };
+    let merged_title = body
+        .title
+        .unwrap_or_else(|| current["title"].as_str().unwrap_or("").to_string());
+    let merged_body = body
+        .body
+        .unwrap_or_else(|| current["body"].as_str().unwrap_or("").to_string());
+    dispatch_atlas(
+        &state.atlas_cmd,
+        &["wiki", "update", &slug, "--title", &merged_title, "--body", &merged_body],
+    )
+    .await?;
+    let path = state.db_path.clone();
+    let slug_clone = slug.clone();
+    let found = blocking(move || db::get_wiki_page(&path, &slug_clone)).await?;
+    match found {
+        Some(page) => Ok(Json(json!({ "page": page }))),
+        None => Err(ApiError::Internal(format!(
+            "wiki page '{slug}' updated but not found in db"
+        ))),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Model registry handler (Phase 8 — D-017 read-only model panel)
+// ---------------------------------------------------------------------------
+
+async fn models_list(
+    State(state): State<AppState>,
+    Query(params): Query<ListParams>,
+) -> ApiResult {
+    let path = state.db_path.clone();
+    let limit = clamp_limit(params.limit, 100, 500);
+    let models = blocking(move || db::list_models(&path, limit)).await?;
+    let count = models.len();
+    Ok(Json(json!({ "models": models, "count": count })))
+}
+
+// ---------------------------------------------------------------------------
+// Run cancel handler (Phase 8 — Surface 2 run monitoring)
+// ---------------------------------------------------------------------------
+
+async fn cancel_run(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+) -> ApiResult {
+    dispatch_atlas(&state.atlas_cmd, &["mission", "cancel", &id]).await?;
+    let path = state.db_path.clone();
+    let id_clone = id.clone();
+    let found = blocking(move || db::get_mission(&path, &id_clone)).await?;
+    match found {
+        Some((mission, runs)) => Ok(Json(json!({
+            "mission": mission,
+            "runs": runs,
+            "message": "run cancelled",
+        }))),
+        None => Err(ApiError::Internal(format!(
+            "mission '{id}' cancel dispatched but not found in db"
+        ))),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -426,10 +552,13 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/missions", get(missions_list).post(create_mission))
         .route("/v1/missions/{id}", get(mission_detail))
         .route("/v1/missions/{id}/run", post(start_run))
+        .route("/v1/missions/{id}/cancel", post(cancel_run))
         .route("/v1/runs/{id}", get(run_detail))
         .route("/v1/runs/{id}/events", get(run_events))
         .route("/v1/runs/{id}/stream", get(run_stream))
-        .route("/v1/wiki/pages", get(wiki_pages))
+        .route("/v1/wiki/pages", get(wiki_pages).post(wiki_create))
+        .route("/v1/wiki/pages/{slug}", get(wiki_page_detail).put(wiki_update))
         .route("/v1/wiki/search", get(wiki_search))
+        .route("/v1/models", get(models_list))
         .with_state(state)
 }
