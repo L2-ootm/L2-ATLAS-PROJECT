@@ -312,7 +312,7 @@ Plans:
 | 5. Mission & Run Lifecycle | 4/4 | Complete    | 2026-06-08 |
 | 6. LLM Wiki Runtime | 6/6 | Complete   | 2026-06-08 |
 | 7. API Gateway | SC complete | Complete | 2026-06-11 |
-| 8. WebUI Operator Cockpit | 6/6 | Complete   | 2026-06-12 |
+| 8. WebUI Operator Cockpit | 6/6 | Complete    | 2026-06-12 |
 | 9. Skill Inventory & Classification | 0/0 | Not started | - |
 
 ---

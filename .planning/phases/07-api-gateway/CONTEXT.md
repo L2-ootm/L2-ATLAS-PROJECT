@@ -71,6 +71,10 @@ Phase 7 satisfies the API surface required by COCKPIT-01..06 (Phase 8).
 
 ---
 
+## Low-model stabilization backlog
+
+A bounded cleanup plan for minor remaining risks is documented at `07-LOW-MODEL-STABILIZATION-PLAN.md`. It covers `.gitattributes`, `docs/qa/VALIDATION_INDEX.md`, supersession headers for old architecture docs, wiki/raw ingestion rules, and a Podman/Twenty validation note. It is intentionally safe for a standard coding model and must not implement Phase 7 endpoints or modify the vendored foundation.
+
 ## What NOT to Build
 
 - Do not build the cockpit frontend — that is Phase 8.
