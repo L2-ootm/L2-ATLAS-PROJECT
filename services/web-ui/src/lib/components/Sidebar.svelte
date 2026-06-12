@@ -4,19 +4,20 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { cockpitModules } from '$lib/modules.js';
 	import { checkHealth } from '$lib/api.js';
+	import { sidebar } from '$lib/ui-state.svelte.js';
 
-	// ── Collapse state ────────────────────────────────────────────────────────
-	let expanded = $state(false);
-
+	// ── Collapse state (shared with +layout so main content shifts) ──────────
 	onMount(() => {
 		const saved = localStorage.getItem('atlas-sidebar-expanded');
-		if (saved !== null) expanded = saved === 'true';
+		if (saved !== null) sidebar.expanded = saved === 'true';
 	});
 
 	function toggleExpanded(): void {
-		expanded = !expanded;
-		localStorage.setItem('atlas-sidebar-expanded', String(expanded));
+		sidebar.expanded = !sidebar.expanded;
+		localStorage.setItem('atlas-sidebar-expanded', String(sidebar.expanded));
 	}
+
+	const expanded = $derived(sidebar.expanded);
 
 	// ── Gateway health ────────────────────────────────────────────────────────
 	let gatewayOnline = $state<boolean | null>(null);
