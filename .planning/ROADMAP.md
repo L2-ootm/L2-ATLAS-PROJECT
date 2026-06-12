@@ -275,7 +275,7 @@ Plans:
 7. No Electron dependency in package.json.
 8. Cockpit renders without errors in latest Chrome and Firefox.
 
-**Plans:** 4/6 plans executed
+**Plans:** 5/6 plans executed
 **UI hint:** yes
 
 ---
@@ -312,7 +312,7 @@ Plans:
 | 5. Mission & Run Lifecycle | 4/4 | Complete    | 2026-06-08 |
 | 6. LLM Wiki Runtime | 6/6 | Complete   | 2026-06-08 |
 | 7. API Gateway | SC complete | Complete | 2026-06-11 |
-| 8. WebUI Operator Cockpit | 4/6 | In Progress|  |
+| 8. WebUI Operator Cockpit | 5/6 | In Progress|  |
 | 9. Skill Inventory & Classification | 0/0 | Not started | - |
 
 ---

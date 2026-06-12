@@ -48,7 +48,7 @@ Status: Active
 - [x] **COCKPIT-01**: User can view a list of missions (with status, created timestamp) from the web cockpit.
 - [x] **COCKPIT-02**: User can view the real-time audit event stream for an active run.
 - [x] **COCKPIT-03**: User can view the full audit trail for a completed run.
-- [ ] **COCKPIT-04**: User can browse and search wiki pages from the cockpit.
+- [x] **COCKPIT-04**: User can browse and search wiki pages from the cockpit.
 - [x] **COCKPIT-05**: User can create and launch a mission from the cockpit UI.
 - [ ] **COCKPIT-06**: Cockpit loads in < 2 seconds on a local machine (no Electron startup tax).
 
@@ -124,7 +124,7 @@ Status: Active
 | COCKPIT-01 | Phase 8 | Complete |
 | COCKPIT-02 | Phase 8 | Complete |
 | COCKPIT-03 | Phase 8 | Complete |
-| COCKPIT-04 | Phase 8 | Pending |
+| COCKPIT-04 | Phase 8 | Complete |
 | COCKPIT-05 | Phase 8 | Complete |
 | COCKPIT-06 | Phase 8 | Pending |
 | SKILLS-01 | Phase 9 | Pending |
