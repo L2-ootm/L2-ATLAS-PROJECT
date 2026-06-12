@@ -18,7 +18,7 @@
 - [x] **Phase 5: Mission & Run Lifecycle** - Core mission state machine: create, execute, complete, cancel (completed 2026-06-08)
 - [x] **Phase 6: LLM Wiki Runtime** - Wiki ingest, update, query, and lint pipeline (completed 2026-06-08)
 - [x] **Phase 7: API Gateway (Rust)** - Typed REST API (+ SSE event stream) exposing all mission, run, audit, and wiki operations — first `native/atlas-core-rs` crate (D-022) (completed 2026-06-11)
-- [ ] **Phase 8: Operator Cockpit (web-first, native-portable)** - SvelteKit cockpit: mission management, run monitoring, audit viewer, wiki browser, model panel (D-021: native shell moved to Phase 10/v1.1)
+- [x] **Phase 8: Operator Cockpit (web-first, native-portable)** - SvelteKit cockpit: mission management, run monitoring, audit viewer, wiki browser, model panel (D-021: native shell moved to Phase 10/v1.1) (completed 2026-06-12)
 - [ ] **Phase 9: Skill Inventory & Classification** - Complete classified skill inventory for curated default skill pack
 
 ### Candidate Sidecar Spikes
@@ -275,7 +275,7 @@ Plans:
 7. No Electron dependency in package.json.
 8. Cockpit renders without errors in latest Chrome and Firefox.
 
-**Plans:** 5/6 plans executed
+**Plans:** 6/6 plans complete
 **UI hint:** yes
 
 ---
@@ -312,7 +312,7 @@ Plans:
 | 5. Mission & Run Lifecycle | 4/4 | Complete    | 2026-06-08 |
 | 6. LLM Wiki Runtime | 6/6 | Complete   | 2026-06-08 |
 | 7. API Gateway | SC complete | Complete | 2026-06-11 |
-| 8. WebUI Operator Cockpit | 5/6 | In Progress|  |
+| 8. WebUI Operator Cockpit | 6/6 | Complete   | 2026-06-12 |
 | 9. Skill Inventory & Classification | 0/0 | Not started | - |
 
 ---

@@ -50,7 +50,7 @@ Status: Active
 - [x] **COCKPIT-03**: User can view the full audit trail for a completed run.
 - [x] **COCKPIT-04**: User can browse and search wiki pages from the cockpit.
 - [x] **COCKPIT-05**: User can create and launch a mission from the cockpit UI.
-- [ ] **COCKPIT-06**: Cockpit loads in < 2 seconds on a local machine (no Electron startup tax).
+- [x] **COCKPIT-06**: Cockpit loads in < 2 seconds on a local machine (no Electron startup tax).
 
 ## SKILLS — Skill & Workflow Registry
 
@@ -126,7 +126,7 @@ Status: Active
 | COCKPIT-03 | Phase 8 | Complete |
 | COCKPIT-04 | Phase 8 | Complete |
 | COCKPIT-05 | Phase 8 | Complete |
-| COCKPIT-06 | Phase 8 | Pending |
+| COCKPIT-06 | Phase 8 | Complete |
 | SKILLS-01 | Phase 9 | Pending |
 | SKILLS-02 | Phase 9 | Pending |
 | SKILLS-03 | Phase 9 | Pending |
