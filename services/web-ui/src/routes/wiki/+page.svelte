@@ -263,7 +263,6 @@
 						initialSlug={formMode === 'edit' ? (activePage?.slug ?? '') : ''}
 						initialTitle={formMode === 'edit' ? (activePage?.title ?? '') : ''}
 						initialBody={formMode === 'edit' ? (activePage?.body ?? '') : ''}
-						initialLayer={formMode === 'edit' ? (activePage?.layer ?? 4) : 4}
 						onSaved={handleFormSaved}
 						onDiscard={handleFormDiscard}
 					/>

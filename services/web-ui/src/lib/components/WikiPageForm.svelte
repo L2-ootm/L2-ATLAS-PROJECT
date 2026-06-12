@@ -10,7 +10,6 @@
 		initialSlug?: string;
 		initialTitle?: string;
 		initialBody?: string;
-		initialLayer?: number;
 		onSaved: (page: WikiPageDetail) => void;
 		onDiscard: () => void;
 	}
@@ -20,20 +19,9 @@
 		initialSlug = '',
 		initialTitle = '',
 		initialBody = '',
-		initialLayer = 4,
 		onSaved,
 		onDiscard
 	}: Props = $props();
-
-	// Layer options per AGENT_MEMORY_FRAMEWORK_STRATEGY
-	const layerOptions = [
-		{ value: 1, label: '1 — PERCEPTION' },
-		{ value: 2, label: '2 — WORKING' },
-		{ value: 3, label: '3 — EPISODIC' },
-		{ value: 4, label: '4 — SEMANTIC' },
-		{ value: 5, label: '5 — PROCEDURAL' },
-		{ value: 6, label: '6 — META' }
-	];
 
 	// Form fields: initialized from props once (editable by user thereafter).
 	// untrack() prevents Svelte from tracking the prop reference in $state initialization,
@@ -41,7 +29,6 @@
 	let slug = $state(untrack(() => initialSlug));
 	let title = $state(untrack(() => initialTitle));
 	let body = $state(untrack(() => initialBody));
-	let layer = $state(untrack(() => initialLayer));
 
 	let saving = $state(false);
 	let apiError = $state('');
@@ -63,9 +50,9 @@
 		try {
 			let result: { page: WikiPageDetail };
 			if (mode === 'create') {
-				result = await createWikiPage(slug.trim(), title.trim(), body, layer);
+				result = await createWikiPage(slug.trim(), title.trim(), body);
 			} else {
-				result = await updateWikiPage(initialSlug, { title: title.trim(), body, layer });
+				result = await updateWikiPage(initialSlug, { title: title.trim(), body });
 			}
 			onSaved(result.page);
 		} catch (err) {
@@ -80,7 +67,6 @@
 		slug = initialSlug;
 		title = initialTitle;
 		body = initialBody;
-		layer = initialLayer;
 		fieldErrors = {};
 		apiError = '';
 		onDiscard();
@@ -197,27 +183,6 @@
 					{fieldErrors.body}
 				</p>
 			{/if}
-		</div>
-
-		<!-- LAYER select -->
-		<div>
-			<label
-				for="wiki-layer"
-				style="display: block; font-family: var(--l2-font-mono); font-size: 12px; text-transform: uppercase; letter-spacing: 0.2em; color: var(--l2-fg-2); margin-bottom: 4px;"
-			>
-				LAYER
-			</label>
-			<select
-				id="wiki-layer"
-				bind:value={layer}
-				style="{inputStyle} cursor: pointer;"
-				onfocus={(e) => { (e.currentTarget as HTMLSelectElement).style.cssText += inputFocusStyle; }}
-				onblur={(e) => { (e.currentTarget as HTMLSelectElement).style.cssText = inputStyle + ' cursor: pointer;'; }}
-			>
-				{#each layerOptions as opt (opt.value)}
-					<option value={opt.value}>{opt.label}</option>
-				{/each}
-			</select>
 		</div>
 
 		<!-- API error -->

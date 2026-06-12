@@ -103,7 +103,7 @@
 			);
 	}
 
-	const renderedBody = $derived(page ? renderMarkdown(page.body) : '');
+	const renderedBody = $derived(page ? renderMarkdown(page.body ?? '') : '');
 </script>
 
 {#if page === null}
@@ -163,7 +163,7 @@
 			<HudLabel>SOURCE:</HudLabel>
 			<span style="font-family: var(--l2-font-mono); font-size: 12px; color: #505050; font-variant-numeric: tabular-nums;">
 				{#if page.provenance}
-					{page.provenance.sha256.slice(0, 16)}
+					{page.provenance.source_id ?? page.provenance.run_id ?? '—'}
 				{:else}
 					—
 				{/if}

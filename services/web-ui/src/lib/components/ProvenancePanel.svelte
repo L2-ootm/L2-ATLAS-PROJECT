@@ -2,7 +2,6 @@
 	import type { ProvenanceRecord } from '$lib/api';
 	import GlassPanel from './GlassPanel.svelte';
 	import HudLabel from './HudLabel.svelte';
-	import StatusBadge from './StatusBadge.svelte';
 
 	interface Props {
 		provenance: ProvenanceRecord | null;
@@ -10,12 +9,16 @@
 
 	let { provenance }: Props = $props();
 
-	function lintStatusVariant(lint: string): string {
-		const upper = lint.toUpperCase();
-		if (upper === 'PASS' || upper === 'PASSED' || upper === 'OK') return 'SUCCEEDED';
-		if (upper === 'FAIL' || upper === 'FAILED' || upper === 'ERROR') return 'FAILED';
-		return 'PARTIAL';
-	}
+	const rows = $derived.by(() => {
+		if (provenance === null) return [];
+		return [
+			{ label: 'RUN ID', value: provenance.run_id ?? '—' },
+			{ label: 'OPERATOR', value: provenance.operator_id ?? '—' },
+			{ label: 'SOURCE', value: provenance.source_id ?? '—' },
+			{ label: 'SENSITIVITY', value: provenance.sensitivity.toUpperCase() },
+			{ label: 'WRITTEN', value: provenance.written_at }
+		];
+	});
 </script>
 
 <!-- ProvenancePanel: expands below wiki page viewer content (max-height CSS transition) -->
@@ -31,36 +34,16 @@
 			<HudLabel>NO PROVENANCE DATA</HudLabel>
 		{:else}
 			<div style="display: flex; flex-direction: column; gap: 8px;">
-				<div style="display: flex; align-items: flex-start; gap: 12px;">
-					<span
-						style="font-family: var(--l2-font-mono); font-size: 12px; color: var(--l2-fg-2); text-transform: uppercase; letter-spacing: 0.2em; min-width: 96px; flex-shrink: 0;"
-					>SHA256</span>
-					<span
-						style="font-family: var(--l2-font-mono); font-size: 12px; color: var(--l2-fg-1); word-break: break-all; font-variant-numeric: tabular-nums;"
-					>{provenance.sha256}</span>
-				</div>
-				<div style="display: flex; align-items: center; gap: 12px;">
-					<span
-						style="font-family: var(--l2-font-mono); font-size: 12px; color: var(--l2-fg-2); text-transform: uppercase; letter-spacing: 0.2em; min-width: 96px; flex-shrink: 0;"
-					>INGESTED</span>
-					<span
-						style="font-family: var(--l2-font-mono); font-size: 12px; color: var(--l2-fg-3); font-variant-numeric: tabular-nums;"
-					>{provenance.ingested_at}</span>
-				</div>
-				<div style="display: flex; align-items: center; gap: 12px;">
-					<span
-						style="font-family: var(--l2-font-mono); font-size: 12px; color: var(--l2-fg-2); text-transform: uppercase; letter-spacing: 0.2em; min-width: 96px; flex-shrink: 0;"
-					>LAYER</span>
-					<span
-						style="font-family: var(--l2-font-mono); font-size: 12px; color: var(--l2-fg-1); font-variant-numeric: tabular-nums;"
-					>{provenance.layer}</span>
-				</div>
-				<div style="display: flex; align-items: center; gap: 12px;">
-					<span
-						style="font-family: var(--l2-font-mono); font-size: 12px; color: var(--l2-fg-2); text-transform: uppercase; letter-spacing: 0.2em; min-width: 96px; flex-shrink: 0;"
-					>LINT STATUS</span>
-					<StatusBadge status={lintStatusVariant(provenance.lint_status)} />
-				</div>
+				{#each rows as row (row.label)}
+					<div style="display: flex; align-items: flex-start; gap: 12px;">
+						<span
+							style="font-family: var(--l2-font-mono); font-size: 12px; color: var(--l2-fg-2); text-transform: uppercase; letter-spacing: 0.2em; min-width: 96px; flex-shrink: 0;"
+						>{row.label}</span>
+						<span
+							style="font-family: var(--l2-font-mono); font-size: 12px; color: var(--l2-fg-1); word-break: break-all; font-variant-numeric: tabular-nums;"
+						>{row.value}</span>
+					</div>
+				{/each}
 			</div>
 		{/if}
 	</GlassPanel>
