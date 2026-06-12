@@ -15,9 +15,9 @@
 	 * Map model_registry `health` field to StatusBadge status string.
 	 * DB values: "healthy" | "degraded" | "down"
 	 * StatusBadge variants: SUCCEEDED | PARTIAL | FAILED
-	 * Falls back to SUCCEEDED when field absent (active=1 means healthy).
+	 * Falls back to SUCCEEDED when field absent (active means healthy).
 	 */
-	function healthToStatus(health: string | undefined, active: number): string {
+	function healthToStatus(health: string | undefined, active: boolean): string {
 		if (!health) {
 			// Derive from `active` flag when health field absent
 			return active ? 'SUCCEEDED' : 'FAILED';

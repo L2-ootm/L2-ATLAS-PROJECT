@@ -3,7 +3,7 @@
 	// Two-column layout: 280px scrollable page list + flex-1 page viewer
 	// FTS search debounced 300ms, GitBranch provenance toggle, create/edit form
 	import { onMount } from 'svelte';
-	import type { WikiPage, WikiPageDetail } from '$lib/api';
+	import type { WikiPage, WikiPageDetail, WikiSearchResult } from '$lib/api';
 	import { listWikiPages, searchWiki, getWikiPage } from '$lib/api';
 	import { Search } from '@lucide/svelte';
 	import HudLabel from '$lib/components/HudLabel.svelte';
@@ -14,14 +14,17 @@
 	// ── State ────────────────────────────────────────────────────────────────────
 	let pages = $state<WikiPage[]>([]);
 	let searchQuery = $state('');
-	let searchResults = $state<WikiPage[] | null>(null);
+	let searchResults = $state<WikiSearchResult[] | null>(null);
 	let activePage = $state<WikiPageDetail | null>(null);
 	let showForm = $state(false);
 	let formMode = $state<'create' | 'edit'>('create');
 	let loadError = $state('');
 
-	// Debounce timer (300ms — per spec: wiki FTS search debounce)
-	let debounceTimer = $state(0);
+	// Debounce timer handle (300ms — per spec: wiki FTS search debounce).
+	// Plain variable, NOT $state: the $effect below both reads and writes it,
+	// and a $state read+write inside the same effect re-triggers the effect
+	// until Svelte aborts with effect_update_depth_exceeded.
+	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
 	// ── Lifecycle ────────────────────────────────────────────────────────────────
 	onMount(async () => {
@@ -40,18 +43,15 @@
 		const q = searchQuery;
 
 		// Cancel previous debounce timer (300ms debounce)
-		if (debounceTimer) {
-			clearTimeout(debounceTimer);
-		}
+		clearTimeout(debounceTimer);
 
 		if (!q.trim()) {
 			searchResults = null;
-			debounceTimer = 0;
 			return;
 		}
 
 		// Set new 300ms debounce timer
-		debounceTimer = window.setTimeout(async () => {
+		debounceTimer = setTimeout(async () => {
 			try {
 				const res = await searchWiki(q);
 				searchResults = res.results;
@@ -59,22 +59,12 @@
 				searchResults = [];
 			}
 		}, 300);
+
+		return () => clearTimeout(debounceTimer);
 	});
 
 	// ── Handlers ─────────────────────────────────────────────────────────────────
-	async function handleSelectPage(page: WikiPage) {
-		try {
-			const res = await getWikiPage(page.slug);
-			activePage = res.page;
-			searchQuery = '';
-			searchResults = null;
-		} catch (err) {
-			const msg = err instanceof Error ? err.message : String(err);
-			loadError = msg;
-		}
-	}
-
-	async function handleSelectFromSearch(page: WikiPage) {
+	async function handleSelectPage(page: { slug: string }) {
 		try {
 			const res = await getWikiPage(page.slug);
 			activePage = res.page;
@@ -97,13 +87,11 @@
 	}
 
 	function handleFormSaved(page: WikiPageDetail) {
-		if (formMode === 'edit') {
-			// Replace existing page in list
-			pages = pages.map((p) => (p.slug === page.slug ? page : p));
-		} else {
-			// Prepend new page to list
-			pages = [page, ...pages];
-		}
+		// Dedupe regardless of mode: the gateway POST is an upsert, so "create"
+		// with an existing slug succeeds — prepending unconditionally would put
+		// duplicate slugs in the keyed each and crash the list.
+		const exists = pages.some((p) => p.slug === page.slug);
+		pages = exists ? pages.map((p) => (p.slug === page.slug ? page : p)) : [page, ...pages];
 		activePage = page;
 		showForm = false;
 	}
@@ -222,11 +210,11 @@
 							role="button"
 							tabindex="0"
 							aria-label="Open wiki page: {result.title}"
-							onclick={() => handleSelectFromSearch(result)}
+							onclick={() => handleSelectPage(result)}
 							onkeydown={(e) => {
 								if (e.key === 'Enter' || e.key === ' ') {
 									e.preventDefault();
-									handleSelectFromSearch(result);
+									handleSelectPage(result);
 								}
 							}}
 							style="display: grid; grid-template-columns: 1fr 160px 80px; gap: 12px; padding: 4px 12px; height: 48px; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer; transition: background 80ms ease;"
@@ -235,7 +223,8 @@
 						>
 							<span style="font-family: var(--l2-font-sans); font-size: 16px; color: var(--l2-fg-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{result.title}</span>
 							<span style="font-family: var(--l2-font-mono); font-size: 12px; color: var(--l2-fg-3); font-variant-numeric: tabular-nums;">{result.updated_at}</span>
-							<span style="font-family: var(--l2-font-mono); font-size: 12px; color: var(--l2-fg-3);">—</span>
+							<!-- bm25 rank: more negative = better match; show magnitude -->
+							<span style="font-family: var(--l2-font-mono); font-size: 12px; color: var(--l2-fg-3); font-variant-numeric: tabular-nums;">{Math.abs(result.score).toFixed(2)}</span>
 						</div>
 					{/each}
 				</div>

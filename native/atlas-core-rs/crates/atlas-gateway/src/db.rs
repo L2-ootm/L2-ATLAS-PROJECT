@@ -152,14 +152,13 @@ pub fn list_events(
     Ok((events, cursor))
 }
 
-/// Quote every token so FTS5 operators/hyphens are treated literally
-/// (same hyphen-query pitfall already fixed in the Python wiki CLI).
+/// Quote the whole input as a single FTS5 phrase with `""` doubling — the
+/// exact escaping the Python wiki CLI uses (wiki_service.py), so the same
+/// query returns the same results through both surfaces. A doubled-quote
+/// phrase is always syntactically valid, so user input can never produce an
+/// FTS syntax error here.
 fn fts_quote(query: &str) -> String {
-    query
-        .split_whitespace()
-        .map(|t| format!("\"{}\"", t.replace('"', "")))
-        .collect::<Vec<_>>()
-        .join(" ")
+    format!("\"{}\"", query.replace('"', "\"\""))
 }
 
 pub fn wiki_search(path: &Path, query: &str, limit: i64) -> Result<Vec<Value>, DbError> {

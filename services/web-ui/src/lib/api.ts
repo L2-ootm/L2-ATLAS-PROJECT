@@ -1,7 +1,7 @@
 // ATLAS Cockpit — API client targeting Phase 7 gateway
 // Base: http://127.0.0.1:8484
 
-const GATEWAY = 'http://127.0.0.1:8484';
+export const GATEWAY = 'http://127.0.0.1:8484';
 
 // ── Type definitions (mirror db.rs mission_row / run_row) ─────────────────────
 
@@ -53,14 +53,27 @@ export interface WikiPage {
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
 
+/** Non-2xx gateway response. `status` lets callers branch on specific codes. */
+export class ApiError extends Error {
+	constructor(
+		public readonly status: number,
+		message: string
+	) {
+		super(message);
+		this.name = 'ApiError';
+	}
+}
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-	const response = await fetch(`${GATEWAY}${path}`, {
-		headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-		...init
-	});
+	// Only attach a content-type when there is a body — a JSON header on GETs
+	// makes every request non-simple and forces a CORS preflight round-trip.
+	const headers: HeadersInit = init?.body
+		? { 'Content-Type': 'application/json', ...(init?.headers ?? {}) }
+		: { ...(init?.headers ?? {}) };
+	const response = await fetch(`${GATEWAY}${path}`, { ...init, headers });
 	if (!response.ok) {
 		const text = await response.text().catch(() => response.statusText);
-		throw new Error(`GATEWAY ERROR ${response.status} — ${path}: ${text}`);
+		throw new ApiError(response.status, `GATEWAY ERROR ${response.status} — ${path}: ${text}`);
 	}
 	return response.json() as Promise<T>;
 }
@@ -99,43 +112,25 @@ export async function getRun(id: string): Promise<{ run: Run }> {
 
 export async function getRunEvents(
 	id: string,
-	after?: number
+	after?: number,
+	limit?: number
 ): Promise<{ run_id: string; events: AuditEvent[]; next_cursor: number }> {
-	const query = after !== undefined ? `?after=${after}` : '';
+	const params = new URLSearchParams();
+	if (after !== undefined) params.set('after', String(after));
+	if (limit !== undefined) params.set('limit', String(limit));
+	const query = params.size > 0 ? `?${params.toString()}` : '';
 	return apiFetch(`/v1/runs/${encodeURIComponent(id)}/events${query}`);
 }
 
 /**
- * Stream run events via SSE.
- * Returns a close function.
+ * Cancel a mission's active runs.
+ * Note: the gateway dispatches `atlas mission cancel`, which halts EVERY
+ * running run of the mission, not a single run.
  */
-export function streamRun(
-	id: string,
-	onEvent: (e: AuditEvent) => void,
-	onEnd: (status: string) => void,
-	onError: (msg: string) => void
-): () => void {
-	const source = new EventSource(`${GATEWAY}/v1/runs/${encodeURIComponent(id)}/stream`);
-
-	source.addEventListener('audit', (evt: MessageEvent) => {
-		try {
-			const data = JSON.parse(evt.data) as AuditEvent;
-			onEvent(data);
-		} catch {
-			onError(`Failed to parse SSE event: ${evt.data}`);
-		}
+export async function cancelRun(missionId: string): Promise<{ status: string }> {
+	return apiFetch(`/v1/missions/${encodeURIComponent(missionId)}/cancel`, {
+		method: 'POST'
 	});
-
-	source.addEventListener('end', (evt: MessageEvent) => {
-		source.close();
-		onEnd(evt.data ?? 'SUCCEEDED');
-	});
-
-	source.addEventListener('error', () => {
-		onError('STREAM INTERRUPTED — reconnecting in 2s. If this persists, check gateway health.');
-	});
-
-	return () => source.close();
 }
 
 // ── Wiki endpoints ────────────────────────────────────────────────────────────
@@ -157,10 +152,19 @@ export async function listWikiPages(limit = 50): Promise<{ pages: WikiPage[]; co
 	return apiFetch(`/v1/wiki/pages?limit=${limit}`);
 }
 
+/** Mirrors the gateway's FTS search row: snippet + rank score, no created_at. */
+export interface WikiSearchResult {
+	slug: string;
+	title: string;
+	snippet: string;
+	score: number;
+	updated_at: string;
+}
+
 export async function searchWiki(
 	q: string,
 	limit?: number
-): Promise<{ query: string; results: WikiPage[] }> {
+): Promise<{ query: string; results: WikiSearchResult[] }> {
 	const limitParam = limit !== undefined ? `&limit=${limit}` : '';
 	return apiFetch(`/v1/wiki/search?q=${encodeURIComponent(q)}${limitParam}`);
 }
@@ -205,8 +209,8 @@ export interface ModelEntry {
 	source: string;
 	first_seen: string;
 	last_seen: string;
-	/** 1 = active, 0 = inactive */
-	active: number;
+	/** db.rs emits a JSON boolean (`active != 0`). */
+	active: boolean;
 	/** Optional fields the gateway may add in the future */
 	tier?: string;
 	health?: string;
@@ -215,21 +219,15 @@ export interface ModelEntry {
 
 /**
  * GET /v1/models — returns { models, count }.
- * Degrades gracefully: returns empty list on 404/503 so the models page renders
- * an empty state instead of throwing.
+ * Degrades gracefully ONLY on 404 (endpoint/table absent) and 503 (db
+ * unavailable): those render as the empty-registry state. Every other failure
+ * (500s, network errors) is rethrown so the page shows its error banner.
  */
 export async function listModels(): Promise<{ models: ModelEntry[]; count: number }> {
 	try {
 		return await apiFetch<{ models: ModelEntry[]; count: number }>('/v1/models');
 	} catch (err) {
-		const msg = err instanceof Error ? err.message : String(err);
-		// Degrade gracefully on gateway-down / table-absent errors
-		if (
-			msg.includes('503') ||
-			msg.includes('404') ||
-			msg.includes('Failed to fetch') ||
-			msg.includes('GATEWAY ERROR')
-		) {
+		if (err instanceof ApiError && (err.status === 404 || err.status === 503)) {
 			return { models: [], count: 0 };
 		}
 		throw err;
