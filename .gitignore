@@ -1,6 +1,9 @@
 # External repo audit copies — never commit
 _EXTERNAL_REPOS/
 
+# Visual brainstorming companion (local only)
+.superpowers/
+
 # Python
 __pycache__/
 *.py[cod]
@@ -35,6 +38,9 @@ coverage.json
 coverage_branch.json
 htmlcov/
 .pytest_cache/
+
+# Playwright CLI session logs (console/page snapshots, audit jsonl) — local only
+.playwright-cli/
 
 # Rust build output
 target/
