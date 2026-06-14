@@ -7,7 +7,13 @@ Date: 2026-06-11 · Status: living readiness note (update at phase transitions)
 - Toolchain: cargo/rustc 1.96.0 + VS Build Tools C++ workload verified —
   `cargo build -p atlas-gateway` green (debug and release).
 - First crate live: `native/atlas-core-rs/crates/atlas-gateway/` serves
-  `GET /health` on 127.0.0.1:8484; release binary 2.53 MB (<20 MB budget).
+  the Phase 7 read surface on 127.0.0.1:8484: `GET /health`,
+  `/v1/missions`, `/v1/missions/{id}`, `/v1/runs/{id}`,
+  `/v1/runs/{id}/events` (rowid cursor), `/v1/wiki/search?q=` (FTS5,
+  quoted tokens), and `GET /v1/runs/{id}/stream` SSE (rowid-cursor poll
+  ≤500 ms, `end` event on terminal runs). 15 integration tests seeded
+  from the real `infra/migrations/0001_core.sql`; release binary <20 MB
+  budget holds.
 - Data layer: migrations 0001–0003 (core, provenance, model_registry);
   WAL enabled; service layer (mission/run/audit/wiki) complete with 118
   green tests across the three suites.
@@ -25,17 +31,19 @@ Date: 2026-06-11 · Status: living readiness note (update at phase transitions)
 
 ## What Phase 7 must build (canonical: ROADMAP Phase 7 + phase CONTEXT.md)
 
-1. REST endpoints: missions (create/list), runs (start/status), audit
-   events (list), wiki (pages/search) — reads via direct SQLite read-only
-   connections.
+1. ~~REST read endpoints~~ DONE: missions (list/detail), runs
+   (detail/events), wiki search — direct SQLite read-only connections,
+   structured errors, DB absence → 503 `db_unavailable`.
 2. Writes dispatched through the `atlas` CLI contract (no business logic in
-   Rust).
-3. `GET /runs/{id}/stream` SSE via rowid-cursor poll (≤500 ms).
-4. JSON Schema contract tests against atlas-core exports (D-012).
-5. Budget verification: binary <20 MB, idle RSS <80 MB.
+   Rust) — mission create / run start REMAIN.
+3. ~~`GET /runs/{id}/stream` SSE via rowid-cursor poll (≤500 ms)~~ DONE
+   (skeleton; live-run latency measurement remains).
+4. JSON Schema contract tests against atlas-core exports (D-012) — REMAIN.
+5. Budget verification: binary <20 MB holds; idle RSS <80 MB unmeasured.
 
-First exposure order for the gateway: `/health` (done) → missions list →
-run detail + events → SSE stream → wiki search → mission create/run writes.
+First exposure order for the gateway: `/health` (done) → missions list
+(done) → run detail + events (done) → SSE stream (done) → wiki search
+(done) → mission create/run writes (next).
 
 ## What must be true before Phase 8 starts
 
