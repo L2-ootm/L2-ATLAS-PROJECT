@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Operator Cockpit MVP
 status: ready_to_plan
-last_updated: 2026-06-12T19:09:21.522Z
-last_activity: 2026-06-12
+last_updated: 2026-06-14T00:00:00.000Z
+last_activity: 2026-06-14
 progress:
-  total_phases: 10
-  completed_phases: 7
+  total_phases: 9
+  completed_phases: 8
   total_plans: 31
   completed_plans: 29
-  percent: 70
-stopped_at: Phase 08 complete (6/6) — ready to discuss Phase 09
+  percent: 89
+stopped_at: Phase 08 complete (6/6) + Phase 08.5 cleanup (state/ownership/tests) — ready to plan Phase 09
 ---
 
 # STATE — L2 ATLAS
@@ -20,9 +20,9 @@ stopped_at: Phase 08 complete (6/6) — ready to discuss Phase 09
 
 Phase: 09
 Plan: Not started
-Next: Execute Phase 08 (WebUI Operator Cockpit, SvelteKit/Svelte 5, D-021)
+Next: Plan Phase 09 (Skill Inventory & Classification — doc-only, see CONTEXT.md)
 Status: Ready to plan
-Last activity: 2026-06-12
+Last activity: 2026-06-14
 
 ## Accumulated Context
 
@@ -109,8 +109,9 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 | 4 | ATLAS Event Bus & Audit Core | Done | 2026-06-07 |
 | 5 | Mission & Run Lifecycle | Done | 2026-06-08 |
 | 6 | LLM Wiki Runtime | Done | 2026-06-08 |
-| 7 | API Gateway | Pending | — |
-| 8 | WebUI Operator Cockpit | Pending | — |
+| 7 | API Gateway (Rust) | Done | 2026-06-11 |
+| 8 | WebUI Operator Cockpit | Done | 2026-06-12 |
+| 8.5 | State cleanup + ownership + missing tests | Done | 2026-06-14 |
 | 9 | Skill Inventory & Classification | Pending | — |
 
 ## Performance Metrics
