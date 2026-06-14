@@ -427,3 +427,237 @@ async fn start_run_atlas_not_found_is_500() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
 }
+
+// ===========================================================================
+// Phase 08.5 — coverage for the four Phase 8 gateway surfaces that shipped
+// untested (wiki create/update/detail, models, cancel) + a fresh multi-
+// migration DB read smoke. Closes Phase 8 judge-report item 5 + item 7.
+// ===========================================================================
+
+const MIGRATION_0002: &str =
+    include_str!("../../../../../infra/migrations/0002_wiki_provenance.sql");
+const MIGRATION_0003: &str =
+    include_str!("../../../../../infra/migrations/0003_model_registry.sql");
+
+/// seeded_db + 0002 (provenance) + 0003 (model_registry) and one model row.
+fn seeded_db_all(dir: &tempfile::TempDir) -> PathBuf {
+    let path = seeded_db(dir);
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    conn.execute_batch(MIGRATION_0002).unwrap();
+    conn.execute_batch(MIGRATION_0003).unwrap();
+    conn.execute_batch(
+        "INSERT INTO model_registry
+            (model_id, provider, source, first_seen, last_seen, active)
+         VALUES
+            ('gpt-test', 'openai', 'manual',
+             '2026-06-01T00:00:00Z', '2026-06-10T00:00:00Z', 1);",
+    )
+    .unwrap();
+    path
+}
+
+async fn put_json(router: &axum::Router, uri: &str, body: Value) -> (StatusCode, Value) {
+    let bytes = serde_json::to_vec(&body).unwrap();
+    let resp = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(uri)
+                .header("content-type", "application/json")
+                .body(Body::from(bytes))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = resp.status();
+    let body_bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let body: Value = serde_json::from_slice(&body_bytes).unwrap_or(Value::Null);
+    (status, body)
+}
+
+// --- GET /v1/wiki/pages/{slug} ---------------------------------------------
+
+#[tokio::test]
+async fn wiki_page_detail_returns_page() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_app(seeded_db(&dir));
+    let (status, body) = get_json(&router, "/v1/wiki/pages/atlas-gateway").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["page"]["slug"], "atlas-gateway");
+    assert_eq!(body["page"]["title"], "ATLAS Gateway");
+}
+
+#[tokio::test]
+async fn wiki_page_detail_unknown_is_404() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_app(seeded_db(&dir));
+    let (status, body) = get_json(&router, "/v1/wiki/pages/nope").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body["error"]["code"], "not_found");
+}
+
+// --- POST /v1/wiki/pages (create via atlas CLI dispatch) -------------------
+
+#[tokio::test]
+async fn wiki_create_dispatches_and_returns_201() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let db_path = seeded_db(&dir);
+    // The CLI echoes the canonical slug; point the stub at the existing page so
+    // the handler's read-back (by canonical slug) succeeds.
+    let router = test_app_with_stub(db_path, "atlas-gateway", &stub_dir);
+    let (status, body) = post_json(
+        &router,
+        "/v1/wiki/pages",
+        json!({ "slug": "Atlas Gateway", "title": "ATLAS Gateway", "body": "hello" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(body["page"]["slug"], "atlas-gateway");
+}
+
+#[tokio::test]
+async fn wiki_create_empty_slug_is_400() {
+    let dir = tempfile::tempdir().unwrap();
+    // Rejected by require_arg before any dispatch — no stub needed.
+    let router = test_app(seeded_db(&dir));
+    let (status, body) = post_json(
+        &router,
+        "/v1/wiki/pages",
+        json!({ "slug": "", "title": "t", "body": "b" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "bad_request");
+}
+
+// --- PUT /v1/wiki/pages/{slug} (update via atlas CLI dispatch) -------------
+
+#[tokio::test]
+async fn wiki_update_dispatches_and_returns_200() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let db_path = seeded_db(&dir);
+    let router = test_app_with_stub(db_path, "atlas-gateway", &stub_dir);
+    let (status, body) = put_json(
+        &router,
+        "/v1/wiki/pages/atlas-gateway",
+        json!({ "title": "New Title" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["page"]["slug"], "atlas-gateway");
+}
+
+#[tokio::test]
+async fn wiki_update_unknown_slug_is_404() {
+    let dir = tempfile::tempdir().unwrap();
+    // Unknown slug 404s on the read-current step, before any dispatch.
+    let router = test_app(seeded_db(&dir));
+    let (status, body) = put_json(
+        &router,
+        "/v1/wiki/pages/nope",
+        json!({ "title": "x" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body["error"]["code"], "not_found");
+}
+
+// --- GET /v1/models ---------------------------------------------------------
+
+#[tokio::test]
+async fn models_list_absent_table_returns_empty() {
+    let dir = tempfile::tempdir().unwrap();
+    // seeded_db applies 0001 only — model_registry table does not exist.
+    // The gateway must degrade to an empty list, never 503, on a fresh deploy.
+    let router = test_app(seeded_db(&dir));
+    let (status, body) = get_json(&router, "/v1/models").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["count"], 0);
+    assert_eq!(body["models"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn models_list_returns_rows() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_app(seeded_db_all(&dir));
+    let (status, body) = get_json(&router, "/v1/models").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["count"], 1);
+    assert_eq!(body["models"][0]["model_id"], "gpt-test");
+    assert_eq!(body["models"][0]["active"], true);
+}
+
+// --- POST /v1/missions/{id}/cancel (dispatch via atlas CLI) ----------------
+
+#[tokio::test]
+async fn cancel_run_dispatches_and_returns_200() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let db_path = seeded_db(&dir);
+    let router = test_app_with_stub(db_path, "r1", &stub_dir);
+    let resp = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/missions/m1/cancel")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(body["mission"]["id"], "m1");
+    assert_eq!(body["message"], "run cancelled");
+}
+
+#[tokio::test]
+async fn cancel_run_atlas_not_found_is_500() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = app(AppState {
+        db_path: seeded_db(&dir),
+        atlas_cmd: vec!["__nonexistent_atlas_binary__".to_string()],
+    });
+    let resp = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/missions/m1/cancel")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+// --- Fresh multi-migration DB read smoke (judge item 7) --------------------
+
+#[tokio::test]
+async fn fresh_multi_migration_db_serves_all_read_surfaces() {
+    // A freshly migrated DB (0001+0002+0003) must serve every read surface
+    // without 503/500 — the fresh-DB blind spot called out in the Phase 8
+    // judge report. One GET per gateway read surface, all expected 200.
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_app(seeded_db_all(&dir));
+    for uri in [
+        "/health",
+        "/v1/missions",
+        "/v1/missions/m1",
+        "/v1/runs/r1",
+        "/v1/runs/r1/events",
+        "/v1/wiki/pages",
+        "/v1/wiki/pages/atlas-gateway",
+        "/v1/wiki/search?q=gateway",
+        "/v1/models",
+    ] {
+        let (status, _) = get_json(&router, uri).await;
+        assert_eq!(status, StatusCode::OK, "read surface {uri} did not return 200");
+    }
+}
