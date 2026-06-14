@@ -437,3 +437,71 @@ def test_provenance_get(
     assert len(records) >= 1, "Expected at least 1 provenance record after update_wiki_page"
     assert records[0].layer == "WIKI"
     assert records[0].item_id == "provenance-test"
+
+
+# ---------------------------------------------------------------------------
+# Fresh-DB operator bootstrap smoke (Phase 8 judge-report item 7 regression)
+# ---------------------------------------------------------------------------
+
+
+def test_operator_write_on_fresh_db_bootstraps_run(
+    db: sqlite3.Connection,
+    lock: threading.Lock,
+    wiki_dir: pathlib.Path,
+) -> None:
+    """An operator-initiated wiki write must succeed on a fresh DB with no runs.
+
+    Regression for Phase 8 judge-report item 7: operator writes carry
+    run_id='operator', but audit_events.run_id is NOT NULL REFERENCES runs(id).
+    This test deliberately omits the `run_id` fixture, so no mission/run is
+    pre-seeded — the write must lazily bootstrap the synthetic operator run
+    rather than fail the foreign-key check.
+    """
+    # Pre-condition: truly fresh — no runs exist.
+    assert db.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 0
+
+    page = wiki_service.update_wiki_page(
+        db,
+        lock,
+        slug="operator-note",
+        title="Operator Note",
+        body="Written directly by the operator on a fresh database.",
+        run_id=wiki_service.OPERATOR_RUN_ID,
+        wiki_dir=wiki_dir,
+    )
+
+    row = db.execute(
+        "SELECT slug FROM wiki_pages WHERE slug=?", (page.slug,)
+    ).fetchone()
+    assert row is not None, "wiki page not persisted"
+    op_run = db.execute(
+        "SELECT id FROM runs WHERE id=?", (wiki_service.OPERATOR_RUN_ID,)
+    ).fetchone()
+    assert op_run is not None, "synthetic operator run was not bootstrapped"
+    audit = db.execute(
+        "SELECT COUNT(*) FROM audit_events WHERE run_id=?",
+        (wiki_service.OPERATOR_RUN_ID,),
+    ).fetchone()[0]
+    assert audit >= 1, "operator wiki_update did not emit an audit event"
+
+
+def test_operator_write_bootstrap_is_idempotent(
+    db: sqlite3.Connection,
+    lock: threading.Lock,
+    wiki_dir: pathlib.Path,
+) -> None:
+    """Repeated operator writes on a fresh DB reuse one synthetic operator run."""
+    for slug in ("first-op-note", "second-op-note"):
+        wiki_service.update_wiki_page(
+            db,
+            lock,
+            slug=slug,
+            title=slug,
+            body="operator body content",
+            run_id=wiki_service.OPERATOR_RUN_ID,
+            wiki_dir=wiki_dir,
+        )
+    runs = db.execute(
+        "SELECT COUNT(*) FROM runs WHERE id=?", (wiki_service.OPERATOR_RUN_ID,)
+    ).fetchone()[0]
+    assert runs == 1, "operator run must be bootstrapped exactly once"
