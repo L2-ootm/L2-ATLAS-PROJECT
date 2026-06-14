@@ -1,13 +1,5 @@
 # ATLAS Wiki Index
 
-> Last updated: 2026-06-04
-
-## Entities
-
-## Concepts
-
-## Decisions
-
-## Workflows
-
-## Queries
+- [browser-created-page] Browser Created Page
+- [cockpit-e2e] Cockpit E2E Notes
+- [review-fix-smoke] Smoke Test v2
