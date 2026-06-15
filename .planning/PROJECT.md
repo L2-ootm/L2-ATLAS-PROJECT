@@ -8,20 +8,26 @@ L2 ATLAS is an AI Company Operating Cockpit: a system for managing autonomous ag
 
 **Technology foundation:** ATLAS is an L2-owned operator cockpit/runtime built by evolving the Hermes Agent foundation (vendored at `foundation/atlas-hermes/`, MIT, v0.14.0) into an ATLAS-branded harness, then adding mission, audit, policy, wiki, memory, router, gateway, and cockpit layers around that evolved foundation (D-018).
 
-## Current Milestone: v1.0 — Operator Cockpit MVP
+## Current State
 
-**Goal:** Ship the first closed operator loop — create mission → run through the ATLAS runtime built from the evolved Hermes foundation → capture audit trail → file artifacts to LLM Wiki → display in web cockpit.
+**v1.0 — Operator Cockpit MVP: SHIPPED 2026-06-15** (tag `v1.0`). The first closed
+operator loop is live: create mission → run through the ATLAS runtime (vendored Hermes
+foundation) → structured audit trail → LLM Wiki → web cockpit. 34/34 requirements
+complete; assisted manual operator UAT passed (`APPROVED_FOR_V1_ARCHIVE`). See
+`.planning/MILESTONES.md` and `.planning/milestones/v1.0-*`.
 
-**Target features:**
-- Hermes foundation clone & extension-point audit
-- Core domain schemas (Pydantic v2) + SQLite migration
-- Research closure (WebUI framework decision, CRM/Pulse intake)
-- ATLAS event bus + audit core
-- Mission & run lifecycle (create/execute/cancel/complete)
-- LLM Wiki runtime (ingest/query/update/lint)
-- API gateway (Rust — axum + rusqlite, D-022; first crate `atlas-gateway` builds green)
-- Web operator cockpit (mission management, run monitoring, wiki browser)
-- Skill inventory & classification
+Delivered surfaces: vendored Hermes foundation (audit + extension surfaces) · Pydantic
+v2 + SQLite (WAL/FTS5) data contract · audit-first event bus · mission/run lifecycle ·
+LLM Wiki runtime · Rust `atlas-gateway` (axum/rusqlite, SSE, loopback-only) · SvelteKit
+operator cockpit · classified skill packs + public hardening (fonts self-hosted; unsafe
+default skills quarantined). Pre-public-publish follow-ups tracked in
+`docs/operations/PUBLIC_RELEASE_HARDENING.md §4`.
+
+## Next Milestone: v1.1 — Native Cockpit Shell
+
+**Goal:** Wrap the Phase 8 cockpit in a Tauri 2 / Rust native shell — PTY/terminal pane,
+OS keychain, native approvals, IPC capability model, threat-model gate (D-021 §2).
+Scope is defined via `/gsd-new-milestone`.
 
 ## Architecture
 
@@ -61,11 +67,14 @@ wiki/                persistent markdown KB
 | D-021 | Web-first Phase 8; native shell = Phase 10 (v1.1); canonical phase numbering; 6-layer memory canon; two-layer branding (L2 brand = experience layer + vendored Hermes foundation, sidecars stay upstream); FreeLLMAPI fork triggers | accepted |
 | D-022 | Rust-first cementation: all new components Rust; Phase 7 gateway is Rust (axum/rusqlite); Python confined to Hermes foundation surface, LLM adapters, scripts; L0–L5 port ladder; budgets (CLI <100ms/<50MB, daemon <80MB idle) | accepted |
 
-## Active Requirements
+## Requirements
 
-See `.planning/REQUIREMENTS.md` for full REQ-ID list.
+**v1.0 — Validated (shipped):** all 34 v1.0 REQ-IDs across FOUNDATION, SCHEMA, RUNTIME,
+WIKI, AUDIT, COCKPIT, SKILLS, RESEARCH. Archived at
+`.planning/milestones/v1.0-REQUIREMENTS.md`.
 
-Summary: 30 requirements across FOUNDATION, SCHEMA, RUNTIME, WIKI, AUDIT, COCKPIT, SKILLS, RESEARCH categories.
+**v1.1+ — Active:** defined via `/gsd-new-milestone` (NATIVE-01..03 are candidates;
+PULSE/CRM deferred to v2.0). A fresh `.planning/REQUIREMENTS.md` is created at that point.
 
 ## Source Assets
 
@@ -101,4 +110,7 @@ This document evolves at phase transitions and milestone boundaries.
 2. Archive milestone artifacts
 3. Update Context with current state
 
-_Last updated: 2026-06-12 — Phases 1–8 complete and verified. Phase 8 shipped the operator cockpit: SvelteKit/Svelte 5 web app (adapter-static, native-portable for the Phase 10 Tauri shell) with four surfaces — missions (list/create/detail), runs (live SSE audit stream + completed trail + JSONL export), wiki (FTS search, viewer, create/edit, provenance), and read-only model registry — against the atlas-gateway on 127.0.0.1:8484. COCKPIT-01..06 validated end-to-end in a live browser (12ms DOMContentLoaded vs 2s budget). Gateway gained CORS allowlist, dispatch timeouts, and wiki write endpoints. Operational requirement: launch gateway with ATLAS_CLI and ATLAS_WIKI_DIR env vars; apply infra/migrations 0001-0003 on fresh installs. Phase 9 (skill-inventory) is next._
+_Last updated: 2026-06-15 after v1.0 milestone — Operator Cockpit MVP shipped and
+archived (tag `v1.0`). All 10 phases (1–9.5) complete; 34/34 requirements validated;
+assisted manual operator UAT passed (`APPROVED_FOR_V1_ARCHIVE`, with F1 remote-fonts
+fixed in-session). Next: `/gsd-new-milestone` to scope v1.1 (Native Cockpit Shell)._

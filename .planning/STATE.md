@@ -2,28 +2,42 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Operator Cockpit MVP
-status: ready_to_verify
-last_updated: 2026-06-15T00:00:00.000Z
-last_activity: 2026-06-15
+status: Awaiting next milestone
+last_updated: "2026-06-15T17:41:36.005Z"
+last_activity: 2026-06-15 — Milestone v1.0 completed and archived
 progress:
-  total_phases: 10
-  completed_phases: 9
+  total_phases: 11
+  completed_phases: 11
   total_plans: 33
-  completed_plans: 31
-  percent: 95
-stopped_at: Phase 09.5 hardening executed (READY for v1.0 archive); manual operator UAT is the remaining human gate
+  completed_plans: 33
+  percent: 100
 ---
 
 # STATE — L2 ATLAS
 
 ## Current Position
 
-Phase: 09.5
-Plan: 09.5 executed
-Next: Manual operator UAT via MANUAL_TEST_GUIDE.md, then gsd-complete-milestone / v1.0 archive.
-Status: Hardening executed — READY for v1.0 archive; automated gates green; manual UAT pending
-Last activity: 2026-06-15
-Note: ~22 pre-existing dirty files predate the Phase 09.5 session and are NOT part of the hardening change set (see 09.5-SUMMARY.md).
+Phase: Milestone v1.0 complete (tag `v1.0`)
+Plan: —
+Status: Awaiting next milestone — run `/gsd-new-milestone` to scope v1.1 (Native Cockpit Shell)
+Last activity: 2026-06-15 — Milestone v1.0 completed and archived
+
+## Project Reference
+
+See: `.planning/PROJECT.md` (updated 2026-06-15) · `.planning/MILESTONES.md`
+
+**Core value:** A serious, auditable AI operating system for technical founders/operators.
+**Current focus:** Planning next milestone (v1.1 Native Cockpit Shell).
+
+## Deferred Items
+
+Acknowledged at milestone close on 2026-06-15:
+
+| Category | Item | Status |
+|---|---|---|
+| verification | Phase 08 `08-VERIFICATION.md` | human_needed — satisfied by 09.5 manual operator UAT (all Phase 8 cockpit surfaces exercised end-to-end) |
+| uat | Phase 08 `08-HUMAN-UAT.md` | passed (0 pending) — superseded by 09.5 UAT |
+| public-release | `PUBLIC_RELEASE_HARDENING.md §4` items 1–5, 7–8 | bounded, pre-public-publish / post-v1.0 (item 6 fonts RESOLVED) |
 
 ## Accumulated Context
 
@@ -123,3 +137,8 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 |-------|------|----------|-------|
 | Phase 08-cockpit P05 | 25m | 2 tasks | 6 files |
 | Phase 08-cockpit P06 | 90min | 2 tasks | 4 files |
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone
+- Visual CLI inspection guide added: `docs/operations/CLI_VISUAL_MANUAL.md`
