@@ -2,12 +2,12 @@
 
 ## Decision
 
-Not every existing Hermes/OpenClaw/L2 skill should ship as-is. ATLAS needs a polished skill/workflow layer with product-grade metadata, scopes, tests, safety classification, and UI discoverability.
+Not every existing Hermes/imported/L2 skill should ship as-is. ATLAS needs a polished skill/workflow layer with product-grade metadata, scopes, tests, safety classification, and UI discoverability.
 
 ## Skill sources
 
 - Hermes installed skills: `<USER_HOME>/AppData/Local/hermes/skills`
-- OpenClaw/GSD imported skills
+- GSD/imported skills
 - `l2-agent-skills`
 - L2 MIND
 - L2-BOT harness runbooks

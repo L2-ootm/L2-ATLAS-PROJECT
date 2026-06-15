@@ -6,7 +6,7 @@ Date: 2026-06-08
 
 ATLAS has a stronger architecture path now:
 
-- **Hermes/OpenClaw/GSD** provide agent runtime, skills, workflows, tools, orchestration, and execution discipline.
+- **Hermes/GSD/imported skill packs** provide agent runtime, skills, workflows, tools, orchestration, and execution discipline.
 - **ATLAS core** provides mission/run lifecycle, audit events, policy, wiki/memory, source registry, and product-specific operating model.
 - **Odysseus** provides reference ambition for a broad local AI workspace and security/threat-model lessons.
 - **Terax** provides the strongest current reference for a Rust-native, lightweight, AI-native desktop operator surface.

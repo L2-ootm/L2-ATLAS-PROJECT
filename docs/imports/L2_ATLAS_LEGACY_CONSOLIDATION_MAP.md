@@ -89,7 +89,7 @@ How it maps:
 
 - Merge conceptually with Hermes skills.
 - Avoid building a second incompatible skill system.
-- ATLAS should define a skill/procedure layer that can wrap Hermes skills, OpenClaw/GSD skills, and L2-specific runbooks.
+- ATLAS should define a skill/procedure layer that can wrap Hermes skills, GSD and imported skills, and L2-specific runbooks.
 
 Import classification: **concept donor**.
 

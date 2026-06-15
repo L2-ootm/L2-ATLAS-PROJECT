@@ -70,7 +70,7 @@ Terax is a lightweight terminal-first AI-native development workspace. It should
 
 ## Integration recommendation
 
-Use Terax as a donor/reference pillar for an ATLAS desktop cockpit spike, not as the foundation runtime. ATLAS should remain a mission-oriented platform with Hermes/OpenClaw-style runtime concepts, wiki/memory, skills, channels, cron, and subagents. Terax contributes the native desktop/operator surface and cross-platform PTY lessons.
+Use Terax as a donor/reference pillar for an ATLAS desktop cockpit spike, not as the foundation runtime. ATLAS should remain a mission-oriented platform with Hermes-style runtime concepts, wiki/memory, skills, channels, cron, and subagents. Terax contributes the native desktop/operator surface and cross-platform PTY lessons.
 
 Recommended path:
 

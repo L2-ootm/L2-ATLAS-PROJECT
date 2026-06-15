@@ -8,8 +8,8 @@ It starts:
   3. registers the mock provider as a custom endpoint through the dashboard API;
   4. calls FreeLLMAPI's /v1/models and /v1/chat/completions with model=auto.
 
-Expected use from repo root:
-  python scripts/freellmapi_closed_env_smoke.py --freellmapi <USER_HOME>/AppData/Local/Temp/freellmapi
+Expected use from repo root (point --freellmapi at your local FreeLLMAPI clone):
+  python scripts/freellmapi_closed_env_smoke.py --freellmapi <path-to-freellmapi-clone>
 """
 from __future__ import annotations
 

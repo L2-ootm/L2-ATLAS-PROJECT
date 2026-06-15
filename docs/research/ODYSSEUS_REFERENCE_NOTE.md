@@ -33,7 +33,7 @@ Do not copy code until:
 - Does it solve agent memory/context differently?
 - Does it have good task/workflow primitives?
 - Does it contain patterns for local OS integration?
-- What does it do better than Hermes/OpenClaw/L2-Atlas?
+- What does it do better than Hermes/imported patterns/L2-Atlas?
 - What should ATLAS copy conceptually vs ignore?
 
 ## Output required

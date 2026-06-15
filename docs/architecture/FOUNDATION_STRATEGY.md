@@ -36,7 +36,7 @@ ATLAS adds the product/runtime layer:
 - stronger mission model;
 - richer subagent orchestration;
 - L2 MIND decision engine;
-- L2 workflow skills and GSD/OpenClaw patterns;
+- L2 workflow skills and GSD/imported workflow patterns;
 - L2-BOT harness integration;
 - LLM Wiki knowledge runtime;
 - pulse monitoring;

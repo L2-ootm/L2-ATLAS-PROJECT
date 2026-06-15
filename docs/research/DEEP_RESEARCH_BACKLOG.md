@@ -72,7 +72,7 @@ Questions:
 - How to capture sessions, tool calls, outputs, costs, memory changes?
 - How to expose Hermes profiles in ATLAS UI?
 - What Hermes features should be product-surfaced first: tools, skills, cron, MCP, gateway, memory, sessions?
-- What Hermes lacks that OpenClaw/GSD fixes?
+- What Hermes lacks that GSD/imported workflow patterns fix?
 
 Output:
 - `docs/architecture/HERMES_ADAPTER.md`
@@ -82,7 +82,7 @@ Output:
 
 ---
 
-## R2 — OpenClaw / GSD workflow research
+## R2 — GSD / imported workflow research
 
 Questions:
 - Which planning/execution/review patterns are superior to Hermes defaults?
@@ -166,7 +166,7 @@ Output:
 Sources:
 - Hermes gateway;
 - L2-BOT;
-- OpenClaw channel patterns;
+- imported channel/gateway patterns;
 - OpenWA;
 - Baileys / official Meta API options.
 

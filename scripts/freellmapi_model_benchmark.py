@@ -8,13 +8,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sqlite3
+import tempfile
 import time
 from pathlib import Path
 from urllib import request, error
 
-DEFAULT_DB = Path("<USER_HOME>/AppData/Local/Temp/freellmapi/server/data/freeapi.db")
+# Local FreeLLMAPI intake clone. Override with FREELLMAPI_DIR; defaults to a
+# generic temp location so no machine-specific home path is baked into the repo.
+FREELLMAPI_DIR = Path(os.environ.get("FREELLMAPI_DIR", Path(tempfile.gettempdir()) / "freellmapi"))
+DEFAULT_DB = FREELLMAPI_DIR / "server" / "data" / "freeapi.db"
 DEFAULT_BASE = "http://127.0.0.1:3001/v1"
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 CANDIDATES = [
     # Paid/free-key providers user configured
@@ -114,7 +120,7 @@ def main() -> int:
     ap.add_argument("--db", default=str(DEFAULT_DB))
     ap.add_argument("--base", default=DEFAULT_BASE)
     ap.add_argument("--timeout", type=int, default=45)
-    ap.add_argument("--out", default="<USER_HOME>/Desktop/Projects/L2-ATLAS-PROJECT/docs/research/FREELLMAPI_MODEL_BENCHMARK_2026-06-07.json")
+    ap.add_argument("--out", default=str(REPO_ROOT / "docs/research/FREELLMAPI_MODEL_BENCHMARK_2026-06-07.json"))
     args = ap.parse_args()
 
     key = get_key(Path(args.db))
