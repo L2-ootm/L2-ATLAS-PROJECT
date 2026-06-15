@@ -14,6 +14,20 @@ env/
 .env
 *.env
 
+# JavaScript / frontend dependencies and generated output
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.svelte-kit/
+.next/
+.vercel/
+
+# Build output — do not commit new generated bundles unless explicitly approved
+build/
+dist/
+
 # Secrets and state
 auth.json
 *.db
