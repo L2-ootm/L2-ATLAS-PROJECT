@@ -23,11 +23,25 @@ operator cockpit · classified skill packs + public hardening (fonts self-hosted
 default skills quarantined). Pre-public-publish follow-ups tracked in
 `docs/operations/PUBLIC_RELEASE_HARDENING.md §4`.
 
-## Next Milestone: v1.1 — Native Cockpit Shell
+## Current Milestone: v1.1 — ATLAS Agent Harness & Native Operator Shell
 
-**Goal:** Wrap the Phase 8 cockpit in a Tauri 2 / Rust native shell — PTY/terminal pane,
-OS keychain, native approvals, IPC capability model, threat-model gate (D-021 §2).
-Scope is defined via `/gsd-new-milestone`.
+**Goal:** Make ATLAS credible as a local AI operator runtime — a Hermes-class ATLAS TUI, ATLAS-owned authentication, real provider/model discovery, agentic chat over the vendored Hermes foundation, and a Tauri 2 native shell hosting cockpit + PTY — not merely a native wrapper around the v1.0 cockpit.
+
+**Target features:**
+- **TUI** — ATLAS-branded terminal UI (transcript, composer, streaming, tool/subagent activity, model/auth status bar, mission context, session resume, clean exit).
+- **CLI** — `atlas` entrypoint with branded command tree; `atlas chat -q` one-shot + interactive; `atlas doctor` readiness; secret-safe output.
+- **AUTH** — ATLAS-owned auth store under `~/.atlas` (atomic write + cross-process lock + redacted status); Codex detected **read-only**, `~/.codex` never mutated; OS keychain deferred to Future.
+- **PROVIDERS / MODELS** — provider ≠ credential ≠ runtime ≠ model ≠ route registry; merged discovery; `atlas models list --all` with source/status/auth; cockpit Models page reflects real status.
+- **AGENT** — thin ATLAS runtime adapter over Hermes AIAgent; audit metadata on model calls; tool-approval gates preserved. Live chat tries the OpenAI/Codex-compatible lane **first**, then auto-falls back through any other configured provider that actually responds (health-aware cascade, not fixed priority).
+- **NATIVE** — Tauri 2 shell (no Electron), embeds SvelteKit cockpit, PTY terminal pane runs `atlas`, capability-scoped IPC + threat model, local-first.
+- **SECURITY / AUDIT / UX / DOCS** — redaction tests, OAuth-callback + native-IPC threat models, ATLAS skin/banner/error-remediation copy, operator runbooks.
+
+**Locked scope decisions (2026-06-15, this milestone):**
+- Codex/OpenAI OAuth: **read-only detection only**; ATLAS stores its own credentials in `~/.atlas`. OAuth-protocol reuse is out of scope unless a later spike proves it feasible.
+- Canonical live-response lane: **OpenAI/Codex-compatible first**, then automatic fallback through other working providers (order = whatever responds, not a fixed priority).
+- Auth storage maturity: **file-store first** (atomic + lock + redaction); OS keychain integration deferred.
+
+**Reason for scope:** post-v1.0 CLI/TUI/auth inspection showed the archived CLI is an operational service CLI, not a complete ATLAS/Hermes-derived harness. See `.planning/reports/v1-cli-agentic-gap-2026-06-15.md` and the prep set under `.planning/prep/` (index in `prep/README.md`).
 
 ## Architecture
 
@@ -73,8 +87,9 @@ wiki/                persistent markdown KB
 WIKI, AUDIT, COCKPIT, SKILLS, RESEARCH. Archived at
 `.planning/milestones/v1.0-REQUIREMENTS.md`.
 
-**v1.1+ — Active:** defined via `/gsd-new-milestone` (NATIVE-01..03 are candidates;
-PULSE/CRM deferred to v2.0). A fresh `.planning/REQUIREMENTS.md` is created at that point.
+**v1.1 — Active:** TUI / CLI / AUTH / PROVIDERS / MODELS / AGENT / NATIVE / SECURITY /
+AUDIT / UX / DOCS categories, scoped in `.planning/REQUIREMENTS.md` (created this
+milestone). PULSE/CRM remain deferred to v2.0.
 
 ## Source Assets
 
@@ -110,7 +125,8 @@ This document evolves at phase transitions and milestone boundaries.
 2. Archive milestone artifacts
 3. Update Context with current state
 
-_Last updated: 2026-06-15 after v1.0 milestone — Operator Cockpit MVP shipped and
-archived (tag `v1.0`). All 10 phases (1–9.5) complete; 34/34 requirements validated;
-assisted manual operator UAT passed (`APPROVED_FOR_V1_ARCHIVE`, with F1 remote-fonts
-fixed in-session). Next: `/gsd-new-milestone` to scope v1.1 (Native Cockpit Shell)._
+_Last updated: 2026-06-15 — v1.1 milestone started (ATLAS Agent Harness & Native
+Operator Shell). Scope locked from the `.planning/prep/` set with three operator
+decisions (Codex read-only, OpenAI-first fallback cascade, file-store-first auth).
+Phase numbering continues from v1.0 — v1.1 begins at Phase 10. Next: requirements →
+roadmap → `/gsd-discuss-phase 10`._

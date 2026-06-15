@@ -1,33 +1,33 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: Operator Cockpit MVP
-status: Awaiting next milestone
-last_updated: "2026-06-15T17:41:36.005Z"
-last_activity: 2026-06-15 — Milestone v1.0 completed and archived
+milestone: v1.1
+milestone_name: ATLAS Agent Harness & Native Operator Shell
+status: planning
+last_updated: "2026-06-15T18:28:51.876Z"
+last_activity: 2026-06-15
 progress:
-  total_phases: 11
-  completed_phases: 11
-  total_plans: 33
-  completed_plans: 33
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # STATE — L2 ATLAS
 
 ## Current Position
 
-Phase: Milestone v1.0 complete (tag `v1.0`)
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone — run `/gsd-new-milestone` to scope v1.1 (Native Cockpit Shell)
-Last activity: 2026-06-15 — Milestone v1.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-06-15 — Milestone v1.1 started
 
 ## Project Reference
 
 See: `.planning/PROJECT.md` (updated 2026-06-15) · `.planning/MILESTONES.md`
 
 **Core value:** A serious, auditable AI operating system for technical founders/operators.
-**Current focus:** Planning next milestone (v1.1 Native Cockpit Shell).
+**Current focus:** Preparing v1.1 (ATLAS Agent Harness & Native Operator Shell).
 
 ## Deferred Items
 
@@ -140,5 +140,8 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Start the next milestone with `/gsd-new-milestone v1.1 — ATLAS Agent Harness & Native Operator Shell`
+- Use `.planning/prep/README.md` as the preparation index; extra-marathon scope is in `.planning/prep/v1.1-extra-marathon-scope.md`.
 - Visual CLI inspection guide added: `docs/operations/CLI_VISUAL_MANUAL.md`
+- Post-v1.0 gap report added: `.planning/reports/v1-cli-agentic-gap-2026-06-15.md`
+- Required v1.1 additions now explicitly include Hermes-class ATLAS TUI, ATLAS-owned auth store/flows, Codex read-only detection without mutation, provider/model/runtime registry, agentic chat, and native shell/PTY.
