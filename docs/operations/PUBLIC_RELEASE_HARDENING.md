@@ -96,9 +96,14 @@ DB or session logs are tracked.
 | 3 | No `atlas db init` bootstrap command | Low | Documented stand-in in `RUNNING.md` §1; create a real bootstrap command in a future phase. | Post-v1.0 |
 | 4 | Offensive skills (B2) lack an authorization gate | Medium | Add an acknowledgement gate before load; never list in default manifests. | Post-v1.0 (not default-loaded, so not a v1.0 blocker) |
 | 5 | `ATLAS_DB` honoured by gateway but not by `atlas` CLI | Low | Documented in `RUNNING.md`; make CLI DB path env-configurable in a future phase. | Post-v1.0 |
+| 6 | ~~Cockpit `@import`s remote Google Fonts~~ | ~~Medium~~ | **RESOLVED 2026-06-15** — fonts self-hosted via `@fontsource/*` (Inter/JetBrains Mono/Orbitron); remote `@import` removed; build verified with zero CDN references. Found + fixed in 09.5 manual UAT (F1). | Done |
+| 7 | Dynamic routes return HTTP 404 status under static hosting | Low | Configure the production static host's SPA fallback (serve index/`200.html` with 200). SPA still renders; cosmetic status only (09.5 UAT F2). | Release packaging step |
+| 8 | Prebuilt `atlas-gateway.exe` can go stale vs source | Low | RUNNING.md §2 should instruct operators to `cargo build --release` rather than trust an existing binary; the 06-11 binary predated the CORS layer (09.5 UAT F3). Local-only. | Post-v1.0 |
 
-None of the above block a v1.0 archive. Items 1–2 must be honoured at the moment of
-actual public publish (a packaging step), not by editing the working tree now.
+Items 1–5 do not block a v1.0 archive. Item 6 (remote fonts) does not block the
+internal archive but must be closed before the public/open-source publish. Items 1–2
+and 6–7 must be honoured at the moment of actual public publish (a packaging step),
+not by editing the working tree now.
 
 ---
 

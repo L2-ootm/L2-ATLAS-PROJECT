@@ -62,3 +62,6 @@ target/
 # Runtime artifacts directory (kept via artifacts/.gitignore)
 artifacts/*
 !artifacts/.gitignore
+
+# UAT / Playwright screenshot evidence (transient, not archived)
+output/
