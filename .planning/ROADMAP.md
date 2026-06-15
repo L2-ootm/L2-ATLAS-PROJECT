@@ -52,6 +52,12 @@ Post-v1.0 inspection showed the archived CLI is a thin operational surface, not 
 3. `0004_registry_v2.sql` schema drafted (provider/model_v2/route tables) with composite key and source-scoped deactivation.
 4. OAuth-callback and native-IPC threat-model drafts written; fallback-cascade spec (error classification table) committed.
 
+**Plans:** 3 plans (Wave 1, parallel — design docs are independent).
+Plans:
+- [ ] 10.0-01-PLAN.md — Auth-store + adapter-boundary design docs + fallback-cascade contract (LANDMINE 1/2/3/6/7; DIVERGENCE_LOG D-LOG-002 back-fill)
+- [ ] 10.0-02-PLAN.md — 0004_registry_v2.sql additive migration + mirrored Pydantic schema (LANDMINE 4; no-DROP, VIEW note, no-FK)
+- [ ] 10.0-03-PLAN.md — OAuth-callback + native-IPC threat-model drafts (LANDMINE 5; constant-time state, PTY-byte-channel)
+
 #### Phase 10.1: ATLAS-Owned Auth Store & Codex Detection
 **Goal:** A secure, ATLAS-owned credential store with read-only Codex detection and proven no-leak/no-mutation guarantees.
 **Requirements:** AUTH-01, AUTH-02, AUTH-03, AUTH-04, AUTH-05, AUTH-06, AUTH-07, AUTH-08, CLI-06, SEC-01, SEC-02, SEC-03, SEC-05
