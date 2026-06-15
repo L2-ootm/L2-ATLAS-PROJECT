@@ -20,7 +20,7 @@
 - [x] **Phase 7: API Gateway (Rust)** - Typed REST API (+ SSE event stream) exposing all mission, run, audit, and wiki operations — first `native/atlas-core-rs` crate (D-022) (completed 2026-06-11)
 - [x] **Phase 8: Operator Cockpit (web-first, native-portable)** - SvelteKit cockpit: mission management, run monitoring, audit viewer, wiki browser, model panel (D-021: native shell moved to Phase 10/v1.1) (completed 2026-06-12)
 - [x] **Phase 8.5: State Cleanup + Ownership + Missing Tests** - Microphase: reconciled STATE.md, parked the off-roadmap module/installer/L2-BOT subsystem on branch `feat/integrations-module-catalog`, added the 4 untested Phase 8 gateway surfaces + fresh-DB bootstrap regression (gateway 26→37, wiki 31→33). See `phases/08.5-cleanup/08.5-SUMMARY.md` (completed 2026-06-14)
-- [ ] **Phase 9: Skill Inventory & Classification** - Complete classified skill inventory for curated default skill pack
+- [x] **Phase 9: Skill Inventory & Classification** - Complete classified skill inventory for curated default skill pack (completed 2026-06-15, `docs/imports/SKILL_INVENTORY.md`)
 
 ### Candidate Sidecar Spikes
 
@@ -298,7 +298,7 @@ Plans:
 5. No personal/private skill paths are referenced in any public-facing manifest.
 6. Skill registry loads all core + operator pack skills without error on a clean Hermes install.
 
-**Plans:** TBD
+**Plans:** 1/1 complete — see `phases/09-skill-inventory/09-01-PLAN.md`, `VERIFICATION.md`, and `docs/imports/SKILL_INVENTORY.md`.
 
 ---
 
@@ -314,7 +314,7 @@ Plans:
 | 6. LLM Wiki Runtime | 6/6 | Complete   | 2026-06-08 |
 | 7. API Gateway | SC complete | Complete | 2026-06-11 |
 | 8. WebUI Operator Cockpit | 6/6 | Complete    | 2026-06-12 |
-| 9. Skill Inventory & Classification | 0/0 | Not started | - |
+| 9. Skill Inventory & Classification | 1/1 | Complete    | 2026-06-15 |
 
 ---
 

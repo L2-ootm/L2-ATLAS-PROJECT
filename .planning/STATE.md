@@ -2,27 +2,27 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Operator Cockpit MVP
-status: ready_to_plan
-last_updated: 2026-06-14T00:00:00.000Z
-last_activity: 2026-06-14
+status: milestone_complete
+last_updated: 2026-06-15T00:00:00.000Z
+last_activity: 2026-06-15
 progress:
   total_phases: 9
-  completed_phases: 8
-  total_plans: 31
-  completed_plans: 29
-  percent: 89
-stopped_at: Phase 08 complete (6/6) + Phase 08.5 cleanup (state/ownership/tests) — ready to plan Phase 09
+  completed_phases: 9
+  total_plans: 32
+  completed_plans: 30
+  percent: 100
+stopped_at: Phase 09 complete (skill inventory & classification) — v1.0 milestone phases all done
 ---
 
 # STATE — L2 ATLAS
 
 ## Current Position
 
-Phase: 09
-Plan: Not started
-Next: Plan Phase 09 (Skill Inventory & Classification — doc-only, see CONTEXT.md)
-Status: Ready to plan
-Last activity: 2026-06-14
+Phase: 09 (complete)
+Plan: 09-01 done
+Next: v1.0 milestone phases complete. Options: gsd-complete-milestone (archive v1.0) → plan v1.1 Phase 10 (Native Cockpit Shell). Public-hardening follow-ups from Phase 09 (godmode/obliteratus quarantine) tracked in SKILL_INVENTORY §10.
+Status: Milestone v1.0 phases complete
+Last activity: 2026-06-15
 
 ## Accumulated Context
 
@@ -57,6 +57,7 @@ Last activity: 2026-06-14
 - D-020: Twenty CRM adopted as external self-hosted service pillar — Docker Compose sidecar; ATLAS integrates via Core API, Metadata API, MCP server, webhooks; AGPL-3.0 sidecar-only (no copyleft obligation); CRM/Pulse features land post-Phase 8; D-007 CRM-after-cockpit ordering preserved
 - License confirmation (Phase 4.5): all four reference pillars confirmed permissive — Terax Apache-2.0, Odysseus MIT, Hermes MIT, FreeLLMAPI MIT. No copyleft obligation.
 - D-022 (2026-06-10): Rust-first cementation policy — resolves D-013 open timing; Phase 7 gateway is Rust (axum + rusqlite, first native/atlas-core-rs crate; reads direct SQLite, writes via `atlas` CLI contract, SSE via rowid poll); Python confined to Hermes foundation surface + LLM adapters + scripts; L0–L5 cementation ladder ends with Rust harness core strangling the Python agent loop (v2.x); budgets locked (CLI <100ms/<50MB, daemon <80MB idle, binary <20MB)
+- D-008 satisfied (2026-06-15, Phase 9): `docs/imports/SKILL_INVENTORY.md` classifies ~266 skills across 7 source groups. ATLAS Core Pack = 7 credential-free public-safe skills; Developer Operator Pack = ~18 opt-in; L2 Systems Pack = 9 l2-internal/personal-private (public_safe: false). Release blockers logged: `red-teaming/godmode` + `inference/obliteratus` ship in the vendored *default* tree (must quarantine before public distribution); `l2-mind`/`vault-scan` never ship. GSD classified external-reference (build framework, not shipped).
 - D-021 (2026-06-10): v1.0 sequencing + branding consolidation — Phase 8 web-first (native shell → Phase 10/v1.1); canonical phase numbering (9 skills, 10 native shell, 11 CRM/Twenty, 12 Pulse); memory framework = 6 layers (AGENT_MEMORY_FRAMEWORK_STRATEGY.md canonical); Twenty = external relationship system of record, Layer 4 graph = local derived index referencing Twenty by ID; Terax reuse architecture-level only; FreeLLMAPI fork triggers defined (2-of-4 criteria); two-layer branding policy (L2/ATLAS brand = experience layer + vendored Hermes-derived foundation; sidecars stay pinned upstream unbranded); Hermes vendored to foundation/atlas-hermes with ATTRIBUTION + DIVERGENCE_LOG (D-018 implementation start)
 
 ### Known blockers
@@ -112,7 +113,7 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 | 7 | API Gateway (Rust) | Done | 2026-06-11 |
 | 8 | WebUI Operator Cockpit | Done | 2026-06-12 |
 | 8.5 | State cleanup + ownership + missing tests | Done | 2026-06-14 |
-| 9 | Skill Inventory & Classification | Pending | — |
+| 9 | Skill Inventory & Classification | Done | 2026-06-15 |
 
 ## Performance Metrics
 
