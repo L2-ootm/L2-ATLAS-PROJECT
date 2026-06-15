@@ -6,7 +6,7 @@ status: planning
 last_updated: "2026-06-15T18:28:51.876Z"
 last_activity: 2026-06-15
 progress:
-  total_phases: 0
+  total_phases: 7
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,17 +17,17 @@ progress:
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 10.0 — Harness Architecture & Threat-Model Design (not started)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-06-15 — Milestone v1.1 started
+Status: Roadmap created (7 phases, 55 requirements, research-informed). Ready to plan Phase 10.0.
+Last activity: 2026-06-15 — Milestone v1.1 scoped: research synthesized, REQUIREMENTS.md + ROADMAP.md written
 
 ## Project Reference
 
 See: `.planning/PROJECT.md` (updated 2026-06-15) · `.planning/MILESTONES.md`
 
 **Core value:** A serious, auditable AI operating system for technical founders/operators.
-**Current focus:** Preparing v1.1 (ATLAS Agent Harness & Native Operator Shell).
+**Current focus:** Executing v1.1 (ATLAS Agent Harness & Native Operator Shell) — next: plan Phase 10.0.
 
 ## Deferred Items
 
@@ -83,6 +83,8 @@ Acknowledged at milestone close on 2026-06-15:
 ### New candidate spikes
 
 - 2026-06-07: FreeLLMAPI integration spike report added at `docs/research/FREELLMAPI_INTEGRATION_SPIKE_2026-06-07.md`. Closed-env mock provider and real Kilo keyless provider smoke tests passed. Recommendation: sidecar OpenAI-compatible free-tier gateway first; consider Phase 4.5 / Phase 5 routing integration, not direct vendoring.
+
+- 2026-06-15: Agent-Reach candidate tool intake added at `docs/research/AGENT_REACH_INTEGRATION_INTAKE_2026-06-15.md`. Updated per Davi direction: treat Agent-Reach as an ATLAS internet capability layer; document all CLI functions and plan `atlas reach` wrappers/TUI readiness. Credential/platform volatility notes are implementation constraints, not adoption blockers.
 
 ### Pending todos
 
