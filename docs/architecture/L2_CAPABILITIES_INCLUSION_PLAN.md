@@ -6,7 +6,7 @@ L2 ATLAS must consolidate the useful operating assets Davi already created:
 
 - Hermes foundation;
 - L2 skills;
-- OpenClaw/GSD workflows;
+- GSD/imported workflow patterns;
 - L2 MIND;
 - L2-BOT harness;
 - L2-Atlas Mission OS;
@@ -23,7 +23,7 @@ Sources:
 
 - Hermes skills under `C:/Users/Davi/AppData/Local/hermes/skills`.
 - `l2-agent-skills` repo.
-- OpenClaw/GSD imported skills.
+- GSD/imported skills.
 - L2 MIND.
 - Program/application operations skills.
 - L2 nightly brief / candidate reports / outreach workflows.

@@ -6,7 +6,7 @@
 
 | # | Criterion | Status | Evidence |
 |---|---|---|---|
-| 1 | `docs/imports/SKILL_INVENTORY.md` exists; every skill/family from Hermes skills dir, l2-agent-skills, and OpenClaw/GSD imports listed with name, path/source, description, class, public-safe, polish-required | **PASS** | Artifact present, 10 sections; SG-1..SG-7 cover 90+84 Hermes + ~70 GSD + 13 design/meta + 6 L2 + 3 L2-brand (~266 inspected). Per-skill rows for decision-relevant skills; family rows for bulk (permitted granularity). |
+| 1 | `docs/imports/SKILL_INVENTORY.md` exists; every skill/family from Hermes skills dir, l2-agent-skills, and imported GSD and legacy skill packs listed with name, path/source, description, class, public-safe, polish-required | **PASS** | Artifact present, 10 sections; SG-1..SG-7 cover 90+84 Hermes + ~70 GSD + 13 design/meta + 6 L2 + 3 L2-brand (~266 inspected). Per-skill rows for decision-relevant skills; family rows for bulk (permitted granularity). |
 | 2 | Core ATLAS Pack skills have complete metadata (name, version, class, autonomy_level, risk, requires_tools, requires_secrets, verification, public_safe: true) | **PASS** | §4 YAML: 7 Core skills, all fields present, all `public_safe: true`, all `requires_secrets: none`. |
 | 3 | Developer Operator Pack same metadata schema, public_safe: true | **PASS** | §5.2 table + §4 schema; ~18 operator skills, public_safe: true, credentialed where noted. |
 | 4 | L2 Systems Pack classified l2-internal, public_safe: false | **PASS** | §5.7 YAML + table: 9 members, l2-internal/personal-private, all `public_safe: false`. |

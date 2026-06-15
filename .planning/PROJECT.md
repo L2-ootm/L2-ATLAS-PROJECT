@@ -73,7 +73,7 @@ Summary: 30 requirements across FOUNDATION, SCHEMA, RUNTIME, WIKI, AUDIT, COCKPI
 - `L2-Atlas/src/atlas_core` — donor modules (mission_control, execution/policy, logging/jsonl_logger, runtime)
 - `L2-atlas-hermes` — recovery/snapshot discipline reference
 - `L2-BOT` — Discord/channel harness reference
-- `l2-agent-skills`, OpenClaw/GSD — skill sources
+- `l2-agent-skills`, GSD/imported skill packs — skill sources
 
 ## Non-Negotiables
 

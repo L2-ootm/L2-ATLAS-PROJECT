@@ -100,7 +100,7 @@ Status: locked for MVP.
 
 ## D-008 — Skill polishing before shipping
 
-Decision: Existing Hermes/OpenClaw/L2 skills must be classified and polished before becoming ATLAS-grade.
+Decision: Existing Hermes/imported/L2 skills must be classified and polished before becoming ATLAS-grade.
 
 Skill classes:
 - core;

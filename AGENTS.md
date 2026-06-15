@@ -2,7 +2,7 @@
 
 ## Mission
 
-Build L2 ATLAS as an AI operator/company cockpit using Hermes as the main runtime foundation and L2/OpenClaw assets as reusable modules.
+Build L2 ATLAS as an AI operator/company cockpit using Hermes as the main runtime foundation and L2 and imported skill assets as reusable modules.
 
 ## Non-negotiables
 

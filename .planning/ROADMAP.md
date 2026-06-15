@@ -21,6 +21,7 @@
 - [x] **Phase 8: Operator Cockpit (web-first, native-portable)** - SvelteKit cockpit: mission management, run monitoring, audit viewer, wiki browser, model panel (D-021: native shell moved to Phase 10/v1.1) (completed 2026-06-12)
 - [x] **Phase 8.5: State Cleanup + Ownership + Missing Tests** - Microphase: reconciled STATE.md, parked the off-roadmap module/installer/L2-BOT subsystem on branch `feat/integrations-module-catalog`, added the 4 untested Phase 8 gateway surfaces + fresh-DB bootstrap regression (gateway 26→37, wiki 31→33). See `phases/08.5-cleanup/08.5-SUMMARY.md` (completed 2026-06-14)
 - [x] **Phase 9: Skill Inventory & Classification** - Complete classified skill inventory for curated default skill pack (completed 2026-06-15, `docs/imports/SKILL_INVENTORY.md`)
+- [x] **Phase 9.5: v1.0 Public Hardening & Manual Acceptance** - Hardening pass executed 2026-06-15: godmode/obliteratus quarantined out of default tree (DIVERGENCE_LOG D-LOG-001), secret/path scan (no real secrets; 2 scripts de-personalised), all v1.0 tests green (120 Python + 37 Rust + web check/build + fresh-DB smoke), RUNNING.md + PUBLIC_RELEASE_HARDENING.md + MANUAL_TEST_GUIDE.md authored. **READY for v1.0 archive**; manual operator UAT is the remaining human gate. See `phases/09.5-public-hardening/09.5-SUMMARY.md`.
 
 ### Candidate Sidecar Spikes
 
@@ -291,7 +292,7 @@ Plans:
 
 **Success Criteria** (what must be TRUE):
 
-1. `docs/imports/SKILL_INVENTORY.md` exists with every skill from Hermes skills dir, l2-agent-skills, and OpenClaw/GSD imports listed with: name, path, description, class (core/operator/l2-internal/personal-private/experimental/deprecated), public-safe flag, polish-required flag.
+1. `docs/imports/SKILL_INVENTORY.md` exists with every skill from Hermes skills dir, l2-agent-skills, and imported GSD and legacy skill packs listed with: name, path, description, class (core/operator/l2-internal/personal-private/experimental/deprecated), public-safe flag, polish-required flag.
 2. Core ATLAS Pack skills have complete metadata (name, version, class, autonomy_level, risk, requires_tools, requires_secrets, verification steps, public_safe: true).
 3. Developer Operator Pack skills have the same metadata and are marked public_safe: true.
 4. L2 Systems Pack skills classified l2-internal and public_safe: false.
@@ -299,6 +300,27 @@ Plans:
 6. Skill registry loads all core + operator pack skills without error on a clean Hermes install.
 
 **Plans:** 1/1 complete — see `phases/09-skill-inventory/09-01-PLAN.md`, `VERIFICATION.md`, and `docs/imports/SKILL_INVENTORY.md`.
+
+---
+
+### Phase 9.5: v1.0 Public Hardening & Manual Acceptance
+
+**Goal:** Run an ultra-hardening pass before v1.0 archive or public/open-source release: security scan, unsafe skill quarantine, naming/branding cleanup, automated tests, manual UAT guide, edge-case matrix, idempotency/antifragility review, and public-readiness evidence.
+
+**Depends on:** Phase 9
+
+**Requirements:** HARDEN-01, HARDEN-02, HARDEN-03, HARDEN-04, HARDEN-05, HARDEN-06
+
+**Success Criteria** (what must be TRUE):
+
+1. Unsafe/default-shipped skills surfaced in Phase 9 (`godmode`, `obliteratus`, `vault-scan`, dual-use offensive skills) are quarantined, excluded, or explicitly gated; any vendored divergence is logged.
+2. Imported SG-3/SG-4 skills have a precise ATLAS naming/alias plan; public pack names describe capability rather than import origin.
+3. Public repo scan reports no real secrets, runtime DBs, sessions, private personal data, or accidental local artifacts.
+4. v1.0 automated tests pass or are explicitly documented as not applicable: Python core/runtime/wiki, Rust gateway, web UI build/check, fresh DB smoke.
+5. `docs/operations/RUNNING.md` and `.planning/phases/09.5-public-hardening/MANUAL_TEST_GUIDE.md` exist and are usable by Davi without hidden tribal knowledge.
+6. Edge-case and idempotency/antifragility review covers mission/run/wiki/audit/SSE/manual UI surfaces.
+
+**Plans:** planned — see `phases/09.5-public-hardening/09.5-PLAN.md`.
 
 ---
 
@@ -315,6 +337,7 @@ Plans:
 | 7. API Gateway | SC complete | Complete | 2026-06-11 |
 | 8. WebUI Operator Cockpit | 6/6 | Complete    | 2026-06-12 |
 | 9. Skill Inventory & Classification | 1/1 | Complete    | 2026-06-15 |
+| 9.5 v1.0 Public Hardening & Manual Acceptance | executed | Executed (UAT pending) | 2026-06-15 |
 
 ---
 
@@ -346,6 +369,7 @@ Phase 6 (Wiki Runtime) ───────────────────
 Phase 7 (API) ──────────────────────────────────────► Phase 8
 Phase 8 (Cockpit) — ships MVP loop end-to-end
 Phase 9 (Skills) — parallel to 4–8, not blocking
+Phase 9.5 (Hardening) — public/open-source release gate before v1.0 archive
 ```
 
 Phases 1–3 are foundation/audit — no shipped service code, only docs + schemas.

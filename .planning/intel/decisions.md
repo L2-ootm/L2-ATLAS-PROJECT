@@ -13,7 +13,7 @@ D-004  LLM Wiki is first-class runtime (raw sources immutable, wiki pages agent-
 D-005  Desktop/native layer is Rust-first. Electron is a negative baseline, not the default.
 D-006  WebUI framework OPEN — SvelteKit/Svelte 5 vs Next.js/React; requires spike before build.
 D-007  CRM is NOT first implementation surface. Comes after mission/run/audit/wiki/cockpit loop.
-D-008  Existing Hermes/OpenClaw/L2 skills must be classified and polished before becoming ATLAS-grade (classes: core, operator, l2-internal, personal/private, experimental, deprecated).
+D-008  Existing Hermes/imported/L2 skills must be classified and polished before becoming ATLAS-grade (classes: core, operator, l2-internal, personal/private, experimental, deprecated).
 D-009  Native voice/STT/TTS/overlay is a differentiator but NOT a first MVP blocker.
 D-010  CRM/Pulse/Channels dedicated research still missing (open — intake brief created).
 D-011  Canonical repo layout: foundation/ + packages/atlas-core + services/* + apps/* + infra/ + native/  (ratified 2026-06-04)

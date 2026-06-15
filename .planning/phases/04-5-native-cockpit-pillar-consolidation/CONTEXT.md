@@ -34,7 +34,7 @@ Terax AI was identified as a high-signal reference for a Rust-native desktop ope
 |--------|------|
 | Terax AI (`crynta/terax-ai`) | Implementation reference: Tauri/Rust shell, PTY/session, keychain, approval flows, cross-platform native |
 | Odysseus (`pewdiepie-archdaemon/odysseus`) | Product/security reference: workspace ambition, threat model, admin/non-admin capability discipline |
-| Hermes/OpenClaw/GSD | Runtime execution: tools, skills, orchestration, workflow discipline |
+| Hermes/GSD/imported skill packs | Runtime execution: tools, skills, orchestration, workflow discipline |
 | ATLAS core | Mission/run lifecycle, audit event bus, policy, wiki/memory — the brain that does not change |
 
 ---

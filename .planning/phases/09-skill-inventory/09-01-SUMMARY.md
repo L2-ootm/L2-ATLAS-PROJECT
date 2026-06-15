@@ -10,7 +10,7 @@ reachable skill. Covers ~266 skills across 7 source groups:
 
 - **SG-1/SG-2** Vendored Hermes foundation (90 default + 84 optional) — the canonical public surface.
 - **SG-3** GSD framework (~70) — classified `external-reference` (ATLAS's build framework, not shipped).
-- **SG-4** OpenClaw design/meta (13) — external-reference/experimental; 2 map to L2.
+- **SG-4** Imported design/meta (13) — external-reference/experimental; 2 map to L2.
 - **SG-5/SG-6** L2 packs (6 loop-engineering + 3 brand/mind) — l2-internal / personal-private.
 
 ## Pack design

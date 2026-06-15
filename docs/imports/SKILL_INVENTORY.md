@@ -74,8 +74,8 @@ because per-skill rows there add length without changing any packaging decision.
 |---|---|---|---|---|
 | SG-1 | Hermes foundation — default skills | `foundation/atlas-hermes/skills/` (vendored, in-repo) | 90 | Full category map + frontmatter shortlist |
 | SG-2 | Hermes foundation — optional skills | `foundation/atlas-hermes/optional-skills/` (vendored, in-repo) | 84 | Full category map + frontmatter shortlist |
-| SG-3 | GSD workflow framework | OpenClaw import (operator install) | ~70 | Enumerated by name; classified as a framework group |
-| SG-4 | OpenClaw design/meta skills | OpenClaw import (operator install) | 13 | Enumerated by name; classified per family |
+| SG-3 | GSD workflow framework | operator skill import | ~70 | Enumerated by name; classified as a framework group |
+| SG-4 | Imported design/meta skills | operator skill import | 13 | Enumerated by name; classified per family |
 | SG-5 | L2 loop-engineering pack | local L2 Hermes pack (operator-private install) | 6 | Frontmatter via L2 registry (source-inventory only) |
 | SG-6 | L2 Systems brand/mind skills | operator Claude skills (private) | 3 | Names + purpose (source-inventory only) |
 | SG-7 | Security / offensive (dual-use) | within SG-1/SG-2 (`red-teaming`, `security`, `research/osint`) | ~7 | Flagged individually |
@@ -240,8 +240,8 @@ Rationale for inclusions and notable exclusions:
 | email/himalaya, note-taking/obsidian, smart-home/openhue, social-media/xurl, gaming/*, yuanbao | SG-1 | external-reference | yes | no | n/a | Niche/personal integrations. | Keep upstream. |
 | data-science/jupyter-live-kernel | SG-1 | operator | yes | no | light | (Promoted to Operator Pack — see §5.2.) | — |
 | dogfood (exploratory web QA) | SG-1 | experimental | yes | no | medium | Strong fit for ATLAS UAT, but browser-harness dependent. | Re-evaluate for Operator Pack after a parity test. |
-| inference/obliteratus (abliterate refusals) | SG-1 | deprecated | needs-redaction | no | heavy | Model-safety circumvention. | Exclude from ATLAS distribution (see §6 B4). |
-| red-teaming/godmode (LLM jailbreak) | SG-1 | deprecated | no | no | heavy | Jailbreak skill in the **default** tree. | **Release blocker** — remove/quarantine (see §6 B1). |
+| mlops/inference/obliteratus (abliterate refusals) | SG-1 | deprecated | needs-redaction | no | heavy | Model-safety circumvention. | RESOLVED (Phase 9.5): quarantined to `foundation/atlas-hermes/quarantined-skills/obliteratus` (see §6 B4). |
+| red-teaming/godmode (LLM jailbreak) | SG-1 | deprecated | no | no | heavy | Jailbreak skill, formerly in the **default** tree. | RESOLVED (Phase 9.5): quarantined to `foundation/atlas-hermes/quarantined-skills/godmode` (see §6 B1). |
 
 ### 5.4 Hermes foundation — optional skills (SG-2) — family level
 
@@ -268,7 +268,7 @@ Rationale for inclusions and notable exclusions:
 | GSD review/quality (gsd-code-review, gsd-ui-review, gsd-secure-phase, gsd-eval-review, gsd-audit-*) | SG-3 | external-reference | yes | no | n/a | Same as above. | Keep as build framework. |
 | GSD namespace routers (gsd-ns-*) + utilities (gsd-stats, gsd-health, gsd-cleanup, gsd-config, …) | SG-3 | external-reference | yes | no | n/a | Internal tooling for this repo's workflow. | Keep as build framework. |
 
-### 5.6 OpenClaw design/meta skills (SG-4, 13) — per family
+### 5.6 Imported design/meta skills (SG-4, 13) — per family
 
 | Skill | Source | Class | Public-safe | Default-pack | Polish | Reason | Action |
 |---|---|---|---|---|---|---|---|
@@ -331,11 +331,11 @@ l2_systems_pack:
 
 | ID | Blocker | Where | Severity | Why it blocks public release | Required action |
 |---|---|---|---|---|---|
-| B1 | `red-teaming/godmode` (LLM jailbreak) ships in the **default** skills tree | `foundation/atlas-hermes/skills/red-teaming/godmode` (20 KB SKILL.md, confirmed present) | High | An ATLAS public default that includes a jailbreak skill is a reputational and policy non-starter; it loads on any clean install of the vendored foundation. | Remove from the vendored default tree (or quarantine under an explicitly-gated `optional-skills/security/` path) and record the divergence in `foundation/atlas-hermes/DIVERGENCE_LOG.md`. Exclude from every ATLAS manifest. |
+| B1 | `red-teaming/godmode` (LLM jailbreak) shipped in the **default** skills tree | was `foundation/atlas-hermes/skills/red-teaming/godmode` | High | An ATLAS public default that includes a jailbreak skill is a reputational and policy non-starter; it loaded on any clean install of the vendored foundation. | **RESOLVED (Phase 9.5):** quarantined to `foundation/atlas-hermes/quarantined-skills/godmode` (non-load path); empty `red-teaming/` removed; divergence recorded in `DIVERGENCE_LOG.md` D-LOG-001. Excluded from every ATLAS manifest. |
 | B2 | Dual-use offensive skills | `optional-skills/security/{web-pentest,sherlock,oss-forensics}`, `optional-skills/research/{osint-investigation,domain-intel}` | Medium | Acceptable as *opt-in* with authorization, but must never reach a default pack and need an explicit authorization/consent gate. | Keep opt-in only; add an authorization-acknowledgement gate before load; never list in Core/Operator manifests. |
 | B3 | Personal/private skills must not be path-referenced publicly | `l2-mind` (personal-private); all SG-5/SG-6 L2 skills | High | Success criterion 5: no personal/private skill paths in any public-facing manifest; `l2-mind` encodes a personal framework. | Reference L2 skills by name + generic source label only (done in this doc). Exclude `l2-mind` entirely from public output. Never emit absolute local paths. |
-| B4 | `inference/obliteratus` (abliterate model refusals) | `foundation/atlas-hermes/skills/inference/obliteratus` | Medium | Model-safety circumvention; same family as B1. | Exclude from ATLAS distribution; document in DIVERGENCE_LOG. |
-| B5 | `vault-scan` scans secret stores | SG-4 (OpenClaw import) | Medium | Security-sensitive; could surface secrets if shipped/auto-run. | Internal-only; do not bundle; security-audit before any reuse. |
+| B4 | `obliteratus` (abliterate model refusals) | was `foundation/atlas-hermes/skills/mlops/inference/obliteratus` | Medium | Model-safety circumvention; same family as B1. | **RESOLVED (Phase 9.5):** quarantined to `foundation/atlas-hermes/quarantined-skills/obliteratus`; documented in `DIVERGENCE_LOG.md` D-LOG-001. |
+| B5 | `vault-scan` scans secret stores | SG-4 (operator skill import) | Medium | Security-sensitive; could surface secrets if shipped/auto-run. | Internal-only; do not bundle; security-audit before any reuse. |
 
 > None of these block **Phase 9 itself** (a classification document). They are blockers for a
 > future *public distribution* milestone, surfaced now so the curation decisions are on record.
@@ -344,13 +344,17 @@ l2_systems_pack:
 
 ## 7. Redaction / polish queue
 
+Public-facing naming note: several SG-3/SG-4 imported skills still carry legacy/import-origin names or overly broad names from their source environment. Before any ATLAS public pack ships, those skills need a precise ATLAS naming pass: names should describe the capability and pack placement, not the historical import source. This is tracked for Phase 9.5 public hardening.
+
 | Item | Current state | Needed before public ship | Effort |
 |---|---|---|---|
+| Imported skill names | Some SG-3/SG-4 names preserve import-origin or broad labels | Rename/alias to precise ATLAS capability names; avoid source-brand leakage in public pack names | medium |
 | Core Pack metadata headers | Hermes-native frontmatter only | Add ATLAS fields (version, class, autonomy_level, risk, verification, public_safe) | light ×7 |
 | `llm-wiki` ↔ ATLAS Wiki runtime | Standalone skill | Reconcile with the native Wiki API contract (D-004) so the skill drives the real runtime | medium |
 | L2 pack skills | Contain L2/client/TDS-specific examples (per L2 registry note) | Sanitize private/client details before any extraction; keep `public_safe: false` until then | medium ×6 |
 | `l2-mind` | Personal decision framework | Keep excluded from all public output (no redaction makes it public-safe) | n/a (exclude) |
-| `godmode`, `obliteratus`, `vault-scan` | Present in source trees | Remove/quarantine + DIVERGENCE_LOG entry | heavy ×3 |
+| `godmode`, `obliteratus` | DONE (Phase 9.5): quarantined out of default tree + DIVERGENCE_LOG D-LOG-001 | — | done |
+| `vault-scan` | Reference-only; not physically present in repo | Keep excluded from all manifests (no file to move) | n/a |
 | `dogfood` / `playwright` UAT skills | Two overlapping browser-harness skills | Pick one, verify against ATLAS browser harness, add metadata | medium |
 | Offensive security skills (B2) | Opt-in, no gate | Add authorization-acknowledgement gate | medium |
 
@@ -392,9 +396,9 @@ operator-facing content.
 
 ## 10. Next actions
 
-1. **(Blocker B1/B4)** Quarantine `red-teaming/godmode` and `inference/obliteratus` out of the
-   vendored default tree and add `DIVERGENCE_LOG.md` entries. Owner: a future *public-hardening*
-   phase, not Phase 9.
+1. ~~**(Blocker B1/B4)** Quarantine `red-teaming/godmode` and `inference/obliteratus` out of the
+   vendored default tree and add `DIVERGENCE_LOG.md` entries.~~ **DONE in Phase 9.5** — both moved
+   to `foundation/atlas-hermes/quarantined-skills/`; `DIVERGENCE_LOG.md` D-LOG-001 records it.
 2. **Author the Core Pack manifest** (machine-readable) from §4 when a skill-registry loader
    exists — deferred: building the loader/registry is explicitly out of Phase 9 scope.
 3. **Reconcile `llm-wiki`** with the native ATLAS Wiki runtime contract (D-004) before
@@ -416,7 +420,7 @@ operator-facing content.
 | SG-1 Hermes default | 90 | 7 core, 11 operator, 1 experimental, 2 deprecated, rest external-reference |
 | SG-2 Hermes optional | 84 | 7 operator, ~5 experimental (dual-use), rest external-reference |
 | SG-3 GSD framework | ~70 | external-reference (build framework, not shipped) |
-| SG-4 OpenClaw design/meta | 13 | external-reference / experimental; 2 map to L2 |
+| SG-4 Imported design/meta | 13 | external-reference / experimental; 2 map to L2 |
 | SG-5 L2 loop-engineering | 6 | l2-internal |
 | SG-6 L2 brand/mind | 3 | l2-internal (2) + personal-private (1) |
 | **Total inspected** | **~266** | 7 core · ~18 operator · 9 l2/private · ~10 experimental · 3 deprecated · rest external-reference |

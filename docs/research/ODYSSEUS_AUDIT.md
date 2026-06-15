@@ -126,7 +126,7 @@ The Odysseus threat model explicitly lists open gaps (documentation cut off, but
 | Odysseus feature | Relevance to ATLAS | Priority |
 |-----------------|--------------------|----------|
 | Chat with multiple providers | ATLAS model router (D-017) — provider selection concept | Phase 7 |
-| Agent with MCP + opencode | Hermes/OpenClaw execution — already covered | — |
+| Agent with MCP + opencode | Hermes/agent execution — already covered | — |
 | Cookbook (model discovery via llmfit) | ATLAS model registry discovery — model recommendation concept | Phase 7 |
 | Deep Research mode | Future: multi-step research runs via ATLAS missions | v2.0 |
 | Memory/Skills (ChromaDB + fastembed) | ATLAS wiki (Phase 6) — vector search via sqlite-vec; ChromaDB is a reference not a replacement | Phase 6 |

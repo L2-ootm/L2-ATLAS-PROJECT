@@ -2,27 +2,28 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Operator Cockpit MVP
-status: milestone_complete
+status: ready_to_verify
 last_updated: 2026-06-15T00:00:00.000Z
 last_activity: 2026-06-15
 progress:
-  total_phases: 9
+  total_phases: 10
   completed_phases: 9
-  total_plans: 32
-  completed_plans: 30
-  percent: 100
-stopped_at: Phase 09 complete (skill inventory & classification) — v1.0 milestone phases all done
+  total_plans: 33
+  completed_plans: 31
+  percent: 95
+stopped_at: Phase 09.5 hardening executed (READY for v1.0 archive); manual operator UAT is the remaining human gate
 ---
 
 # STATE — L2 ATLAS
 
 ## Current Position
 
-Phase: 09 (complete)
-Plan: 09-01 done
-Next: v1.0 milestone phases complete. Options: gsd-complete-milestone (archive v1.0) → plan v1.1 Phase 10 (Native Cockpit Shell). Public-hardening follow-ups from Phase 09 (godmode/obliteratus quarantine) tracked in SKILL_INVENTORY §10.
-Status: Milestone v1.0 phases complete
+Phase: 09.5
+Plan: 09.5 executed
+Next: Manual operator UAT via MANUAL_TEST_GUIDE.md, then gsd-complete-milestone / v1.0 archive.
+Status: Hardening executed — READY for v1.0 archive; automated gates green; manual UAT pending
 Last activity: 2026-06-15
+Note: ~22 pre-existing dirty files predate the Phase 09.5 session and are NOT part of the hardening change set (see 09.5-SUMMARY.md).
 
 ## Accumulated Context
 
@@ -114,6 +115,7 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 | 8 | WebUI Operator Cockpit | Done | 2026-06-12 |
 | 8.5 | State cleanup + ownership + missing tests | Done | 2026-06-14 |
 | 9 | Skill Inventory & Classification | Done | 2026-06-15 |
+| 9.5 | v1.0 Public Hardening & Manual Acceptance | Executed (UAT pending) | 2026-06-15 |
 
 ## Performance Metrics
 
