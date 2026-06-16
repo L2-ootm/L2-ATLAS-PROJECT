@@ -41,3 +41,42 @@ unchanged. Upstream history is **not** rewritten (Phase 9.5 non-goal). See
 
 **Net effect:** the vendored default tree no longer ships a jailbreak or an
 abliteration skill. Blockers B1 and B4 are resolved for distribution purposes.
+
+---
+
+### D-LOG-002 — `atlas_audit` bundled plugin shim (back-filled Phase 10.0, 2026-06-16)
+
+**Type:** foundation extension-point / registered-plugin shim
+**Driver:** ATLAS audit emission AGNT-04, AUD-01/02 (Phase 10.2); D-021 §9 two-layer
+branding; D-018 evolved-foundation discipline.
+
+`foundation/atlas-hermes/plugins/atlas_audit/__init__.py` is a one-line delegation
+shim that loads the ATLAS audit bus into every Hermes foundation boot:
+
+```python
+from atlas_audit import register  # noqa: F401
+```
+
+This shim makes `atlas_audit` a **bundled plugin** of the evolved foundation so the
+audit bus registers on every agent boot without per-machine project-plugin opt-in.
+The canonical implementation lives in the `atlas_audit` package under
+`services/agent-runtime/` — the foundation's shim delegates into it. The foundation
+itself contains no audit logic; it only carries the one-line bridge.
+
+**Why a plugin shim and not a direct import:** the one-way dependency rule
+(`services/agent-runtime` depends on `foundation/`, never the reverse) means the
+foundation cannot `import atlas_audit` directly in its core code without inverting
+the dependency direction. The registered-plugin mechanism is the sanctioned path for
+foundation→ATLAS references and is the precedent for any future v1.1 extension
+points (AGNT-01 hard gate: extend via hooks, never rewrite the agent loop).
+
+**Naming note:** earlier planning notes referenced this divergence as `DIV-F-002`.
+That label does not appear in this log and is **not** the canonical id scheme. The
+canonical scheme is `D-LOG-NNN` (this file). Downstream phases (10.2+) must use
+`D-LOG-NNN` exclusively.
+
+**Net effect:** ATLAS audit events (`model_call_start`, `model_call_end`,
+`provider_fallback`) are emitted on every agent conversation without requiring the
+operator to manually register the plugin. Foundation stays upstream-mergeable: the
+shim is additive and the upstream Hermes plugin-loader ignores unknown plugins
+gracefully.
