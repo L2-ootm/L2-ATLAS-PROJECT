@@ -41,7 +41,7 @@ Thumbs.db
 
 # Local-only files
 docs/private/
-
+CLAUDE-FABLE-5.md
 
 # Twenty CRM sidecar — fetched upstream files + local secrets (script-managed, never commit)
 infra/compose/twenty/
