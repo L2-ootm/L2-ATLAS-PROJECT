@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Native Operator Shell
-status: completed
-last_updated: "2026-06-16T02:42:25.301Z"
-last_activity: 2026-06-16 -- Phase 10.0 marked complete
+status: in_progress
+last_updated: "2026-06-16T03:02:09Z"
+last_activity: 2026-06-16 -- Hardening + cleaning pass; STATE reconciled to ROADMAP (Phase 10.0 complete, 10.1 next)
 progress:
   total_phases: 7
   completed_phases: 1
@@ -17,17 +17,17 @@ progress:
 
 ## Current Position
 
-Phase: 10.0 — COMPLETE
-Plan: 3 of 3 (complete)
-Status: Phase 10.0 complete
-Last activity: 2026-06-16 -- Phase 10.0 marked complete
+Phase: 10.0 — COMPLETE (3/3 plans). Next: Phase 10.1 — ATLAS-Owned Auth Store & Codex Detection (not started, critical path)
+Plan: 10.0 closed; 10.1 not yet planned
+Status: v1.1 in progress — 1/7 phases complete (14%)
+Last activity: 2026-06-16 -- Hardening + cleaning pass; STATE reconciled to ROADMAP
 
 ## Project Reference
 
 See: `.planning/PROJECT.md` (updated 2026-06-15) · `.planning/MILESTONES.md`
 
 **Core value:** A serious, auditable AI operating system for technical founders/operators.
-**Current focus:** Phase 10.0 — harness-architecture-threat-model-design
+**Current focus:** Phase 10.1 — ATLAS-owned auth store & Codex detection (10.0 design phase complete)
 
 ## Deferred Items
 
@@ -132,6 +132,7 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 | 8.5 | State cleanup + ownership + missing tests | Done | 2026-06-14 |
 | 9 | Skill Inventory & Classification | Done | 2026-06-15 |
 | 9.5 | v1.0 Public Hardening & Manual Acceptance | Executed (UAT pending) | 2026-06-15 |
+| 10.0 | Harness Architecture & Threat-Model Design (v1.1) | Done | 2026-06-16 |
 
 ## Performance Metrics
 
@@ -145,7 +146,7 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 
 ## Operator Next Steps
 
-- Start the next milestone with `/gsd-new-milestone v1.1 — ATLAS Agent Harness & Native Operator Shell`
+- v1.1 is underway (Phase 10.0 design complete). Continue at Phase 10.1 with `/gsd-discuss-phase 10.1` then `/gsd-plan-phase 10.1` (auth store is the critical path).
 - Use `.planning/prep/README.md` as the preparation index; extra-marathon scope is in `.planning/prep/v1.1-extra-marathon-scope.md`.
 - Visual CLI inspection guide added: `docs/operations/CLI_VISUAL_MANUAL.md`
 - Post-v1.0 gap report added: `.planning/reports/v1-cli-agentic-gap-2026-06-15.md`
