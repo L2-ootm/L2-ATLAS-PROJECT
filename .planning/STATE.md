@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Native Operator Shell
 status: executing
-last_updated: "2026-06-15T22:59:56.448Z"
-last_activity: 2026-06-15 -- Phase 10.0 planning complete
+last_updated: "2026-06-16T02:17:24.359Z"
+last_activity: 2026-06-16
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 3
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -17,17 +17,17 @@ progress:
 
 ## Current Position
 
-Phase: 10.0 — Harness Architecture & Threat-Model Design (not started)
-Plan: —
+Phase: 10.0 (harness-architecture-threat-model-design) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-06-15 -- Phase 10.0 planning complete
+Last activity: 2026-06-16 -- Phase 10.0 Plan 01 complete (AUTH_STORE_DESIGN, ADAPTER_BOUNDARY_DESIGN, FALLBACK_CASCADE, D-LOG-002)
 
 ## Project Reference
 
 See: `.planning/PROJECT.md` (updated 2026-06-15) · `.planning/MILESTONES.md`
 
 **Core value:** A serious, auditable AI operating system for technical founders/operators.
-**Current focus:** Executing v1.1 (ATLAS Agent Harness & Native Operator Shell) — next: plan Phase 10.0.
+**Current focus:** Phase 10.0 — harness-architecture-threat-model-design
 
 ## Deferred Items
 
@@ -139,6 +139,7 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 |-------|------|----------|-------|
 | Phase 08-cockpit P05 | 25m | 2 tasks | 6 files |
 | Phase 08-cockpit P06 | 90min | 2 tasks | 4 files |
+| Phase 10.0 P01 | 7m | 3 tasks | 4 files |
 
 ## Operator Next Steps
 
@@ -147,3 +148,10 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 - Visual CLI inspection guide added: `docs/operations/CLI_VISUAL_MANUAL.md`
 - Post-v1.0 gap report added: `.planning/reports/v1-cli-agentic-gap-2026-06-15.md`
 - Required v1.1 additions now explicitly include Hermes-class ATLAS TUI, ATLAS-owned auth store/flows, Codex read-only detection without mutation, provider/model/runtime registry, agentic chat, and native shell/PTY.
+
+## Decisions
+
+- [Phase ?]: AUTH_STORE: cross-process OS-handle lock (not os.replace) is the no-corruption guarantee on Windows
+- [Phase ?]: ADAPTER: cascade is adapter-driven (not Hermes fallback_model); error classification + audit stay in ATLAS code
+- [Phase ?]: DIVERGENCE_LOG: canonical scheme D-LOG-NNN; DIV-F-* superseded; atlas_audit back-filled as D-LOG-002
+- [Phase ?]: FALLBACK_CASCADE: 400 needs body inspection (ambiguous=HALT/LANDMINE 6); garbled responses are CASCADE-class (LANDMINE 7)
