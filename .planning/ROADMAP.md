@@ -57,7 +57,7 @@ Post-v1.0 inspection showed the archived CLI is a thin operational surface, not 
 **Plans:** 3 plans (Wave 1, parallel — design docs are independent).Plans:
 
 - [ ] 10.0-01-PLAN.md — Auth-store + adapter-boundary design docs + fallback-cascade contract (LANDMINE 1/2/3/6/7; DIVERGENCE_LOG D-LOG-002 back-fill)
-- [ ] 10.0-02-PLAN.md — 0004_registry_v2.sql additive migration + mirrored Pydantic schema (LANDMINE 4; no-DROP, VIEW note, no-FK)
+- [x] 10.0-02-PLAN.md — 0004_registry_v2.sql additive migration + mirrored Pydantic schema (LANDMINE 4; no-DROP, VIEW note, no-FK) ✓ 2026-06-16
 - [ ] 10.0-03-PLAN.md — OAuth-callback + native-IPC threat-model drafts (LANDMINE 5; constant-time state, PTY-byte-channel)
 
 #### Phase 10.1: ATLAS-Owned Auth Store & Codex Detection

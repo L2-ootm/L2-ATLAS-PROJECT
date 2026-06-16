@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Native Operator Shell
 status: executing
-last_updated: "2026-06-16T02:17:24.359Z"
+last_updated: "2026-06-16T02:26:52.792Z"
 last_activity: 2026-06-16
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -18,9 +18,9 @@ progress:
 ## Current Position
 
 Phase: 10.0 (harness-architecture-threat-model-design) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
-Last activity: 2026-06-16 -- Phase 10.0 Plan 01 complete (AUTH_STORE_DESIGN, ADAPTER_BOUNDARY_DESIGN, FALLBACK_CASCADE, D-LOG-002)
+Last activity: 2026-06-16 -- Phase 10.0 Plan 02 complete (0004_registry_v2.sql + registry_v2.py schemas)
 
 ## Project Reference
 
@@ -140,6 +140,7 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 | Phase 08-cockpit P05 | 25m | 2 tasks | 6 files |
 | Phase 08-cockpit P06 | 90min | 2 tasks | 4 files |
 | Phase 10.0 P01 | 7m | 3 tasks | 4 files |
+| Phase 10.0 P02 | 8min | 2 tasks | 3 files |
 
 ## Operator Next Steps
 
@@ -155,3 +156,7 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 - [Phase ?]: ADAPTER: cascade is adapter-driven (not Hermes fallback_model); error classification + audit stay in ATLAS code
 - [Phase ?]: DIVERGENCE_LOG: canonical scheme D-LOG-NNN; DIV-F-* superseded; atlas_audit back-filled as D-LOG-002
 - [Phase ?]: FALLBACK_CASCADE: 400 needs body inspection (ambiguous=HALT/LANDMINE 6); garbled responses are CASCADE-class (LANDMINE 7)
+- [10.0-02]: SCHEMA-02: 0004 migration is additive; legacy model_registry (0003) untouched until 10.3 gateway reader cutover
+- [10.0-02]: SCHEMA-03: route_policy is schema-only in v1.1 (LANDMINE 4); routing enforcement deferred to v1.2 ROUTE-01/02
+- [10.0-02]: SCHEMA-04: FK not enforced on model_registry_v2.provider_id in v1.1; hard FK deferred to v1.2
+- [10.0-02]: SCHEMA-05: compat VIEW (model_registry AS SELECT from model_registry_v2) is recommended 10.3 cutover; drafted as SQL comment only
