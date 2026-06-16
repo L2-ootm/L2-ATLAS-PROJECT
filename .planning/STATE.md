@@ -3,24 +3,24 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Native Operator Shell
 status: executing
-last_updated: "2026-06-16T02:26:52.792Z"
+last_updated: "2026-06-16T03:15:00.000Z"
 last_activity: 2026-06-16
 progress:
   total_phases: 7
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 2
-  percent: 0
+  completed_plans: 3
+  percent: 14
 ---
 
 # STATE — L2 ATLAS
 
 ## Current Position
 
-Phase: 10.0 (harness-architecture-threat-model-design) — EXECUTING
-Plan: 3 of 3
-Status: Ready to execute
-Last activity: 2026-06-16 -- Phase 10.0 Plan 02 complete (0004_registry_v2.sql + registry_v2.py schemas)
+Phase: 10.0 (harness-architecture-threat-model-design) — COMPLETE
+Plan: 3 of 3 (complete)
+Status: Phase 10.0 done; next phase is 10.1 (auth store implementation)
+Last activity: 2026-06-16 -- Phase 10.0 Plan 03 complete (OAUTH_CALLBACK_THREAT_MODEL.md + NATIVE_IPC_THREAT_MODEL.md)
 
 ## Project Reference
 
@@ -141,6 +141,7 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 | Phase 08-cockpit P06 | 90min | 2 tasks | 4 files |
 | Phase 10.0 P01 | 7m | 3 tasks | 4 files |
 | Phase 10.0 P02 | 8min | 2 tasks | 3 files |
+| Phase 10.0 P03 | 12min | 2 tasks | 2 files |
 
 ## Operator Next Steps
 
@@ -160,3 +161,7 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 - [10.0-02]: SCHEMA-03: route_policy is schema-only in v1.1 (LANDMINE 4); routing enforcement deferred to v1.2 ROUTE-01/02
 - [10.0-02]: SCHEMA-04: FK not enforced on model_registry_v2.provider_id in v1.1; hard FK deferred to v1.2
 - [10.0-02]: SCHEMA-05: compat VIEW (model_registry AS SELECT from model_registry_v2) is recommended 10.3 cutover; drafted as SQL comment only
+- [10.0-03]: OAUTH: deferred for v1.1 (SEC-05); gate spec committed with 9 hard gates; hmac.compare_digest is the constant-time state comparison requirement
+- [10.0-03]: IPC: Tauri 2 deny-by-default; PTY transports bytes not command strings (LANDMINE 5 NAT-03 hard gate)
+- [10.0-03]: IPC: pty_open fixed argv (atlas tui --profile <id>); profile_id validated against known profiles, never free-form
+- [10.0-03]: IPC: gateway 127.0.0.1:8484 is loopback HTTP, NOT an IPC surface; no capability grant needed

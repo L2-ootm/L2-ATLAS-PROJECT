@@ -58,7 +58,7 @@ Post-v1.0 inspection showed the archived CLI is a thin operational surface, not 
 
 - [ ] 10.0-01-PLAN.md — Auth-store + adapter-boundary design docs + fallback-cascade contract (LANDMINE 1/2/3/6/7; DIVERGENCE_LOG D-LOG-002 back-fill)
 - [x] 10.0-02-PLAN.md — 0004_registry_v2.sql additive migration + mirrored Pydantic schema (LANDMINE 4; no-DROP, VIEW note, no-FK) ✓ 2026-06-16
-- [ ] 10.0-03-PLAN.md — OAuth-callback + native-IPC threat-model drafts (LANDMINE 5; constant-time state, PTY-byte-channel)
+- [x] 10.0-03-PLAN.md — OAuth-callback + native-IPC threat-model drafts (LANDMINE 5; constant-time state, PTY-byte-channel) ✓ 2026-06-16
 
 #### Phase 10.1: ATLAS-Owned Auth Store & Codex Detection
 
@@ -149,7 +149,7 @@ Post-v1.0 inspection showed the archived CLI is a thin operational surface, not 
 | 8.5 State Cleanup + Ownership + Tests | v1.0 | — | Complete | 2026-06-14 |
 | 9. Skill Inventory & Classification | v1.0 | 1/1 | Complete | 2026-06-15 |
 | 9.5 Public Hardening & Manual Acceptance | v1.0 | — | Complete | 2026-06-15 |
-| 10.0 Harness Architecture & Threat-Model Design | v1.1 | 0/? | Not started | — |
+| 10.0 Harness Architecture & Threat-Model Design | v1.1 | 3/3 | Complete | 2026-06-16 |
 | 10.1 ATLAS-Owned Auth Store & Codex Detection | v1.1 | 0/? | Not started | — |
 | 10.2 Agentic Chat CLI & Runtime Adapter | v1.1 | 0/? | Not started | — |
 | 10.3 Provider/Model Discovery & Cockpit Truth | v1.1 | 0/? | Not started | — |
