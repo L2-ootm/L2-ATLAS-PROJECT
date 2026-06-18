@@ -171,6 +171,35 @@ export async function registerProject(
 	});
 }
 
+// ── Module endpoints (Decision 3b — optional activatable modules) ─────────────
+
+/** An optional, activatable ATLAS module (e.g. cashflow). Mirrors db.rs module_row. */
+export interface Module {
+	id: string;
+	name: string;
+	description: string;
+	status: 'active' | 'inactive';
+	activated_at: string | null;
+}
+
+/** List optional modules. A pre-0007 gateway (no route/table) renders empty. */
+export async function listModules(): Promise<{ modules: Module[]; count: number }> {
+	try {
+		return await apiFetch<{ modules: Module[]; count: number }>('/v1/modules');
+	} catch (err) {
+		if (err instanceof ApiError && (err.status === 404 || err.status === 503)) {
+			return { modules: [], count: 0 };
+		}
+		throw err;
+	}
+}
+
+/** Activate or deactivate a module; returns the updated row. */
+export async function setModuleActive(id: string, active: boolean): Promise<{ module: Module }> {
+	const action = active ? 'activate' : 'deactivate';
+	return apiFetch(`/v1/modules/${encodeURIComponent(id)}/${action}`, { method: 'POST' });
+}
+
 // ── Run endpoints ────────────────────────────────────────────────────────────
 
 /**
