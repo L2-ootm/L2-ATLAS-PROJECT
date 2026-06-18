@@ -33,6 +33,35 @@ In-flight (ahead of spine, operator-directed): 10.0.3 ATLAS Identity & Cockpit R
   (output/react-pivot/). Svelte cockpit stays live until React reaches route parity.
 Last activity: 2026-06-17 -- React pivot scaffolded; Dashboard surface builds + renders (proof shots)
 
+### Operator big-plan progress (2026-06-18, web-ui-react)
+- **P1 GlassTopo (DONE+verified):** signature frosted-glass-over-glowing-topo surface
+  (`src/components/GlassTopo.tsx`). RETUNED to match the L2 reference: resting field is now the
+  star (dense cellSize 9, freq 0.015, restingOpacity 0.82, 8 levels), thin frost (blur 3px),
+  tight bloom (drop-shadow 2px), vignette. Crisp glowing contour map through frost — not smoke.
+  Applied to New-Mission modal (ai/violet), Mission hero (info), Run hero (good when live),
+  Projects modal (good/green ≈ reference). Shots: output/playwright/glasstopo-v2-modal-final.png,
+  projects-create-modal-green.png.
+- **P2 Private repo (DONE):** github.com/L2-ootm/L2-ATLAS-PROJECT private; secrets gate clean.
+- **P3 Folder-backed Projects (DONE, full stack, verified):**
+  - DB: `infra/migrations/0005_projects.sql` — projects table (IF NOT EXISTS) + `missions.project_id`
+    (bare ADD COLUMN, mirrors the 0002 additive pattern; fresh-apply convention — NO tracked runner
+    built, that remains the slated `atlas db init` gap).
+  - Schema: `Project` model + `Mission.project_id` in `packages/atlas-core/.../core.py`.
+  - Service/CLI: `atlas_runtime/project_service.py` (create-in-folder / register-existing / get /
+    list, path validation, dup-path reject) + `mission_service.create_mission(project_id=…)` +
+    CLI `atlas project create|register|list` + `mission create --project`.
+  - Gateway (Rust): `GET /v1/projects`, `POST /v1/projects` (create), `POST /v1/projects/register`,
+    `GET /v1/projects/{id}` (+ its missions); graceful pre-0005 fallback; MISSION_COLS untouched.
+  - React: `/projects` route + STRUCTURE nav (FolderGit2) + api client + create/register modal +
+    optional project picker on New-Mission. Shots: output/playwright/projects-page.png.
+  - Verified: agent-runtime 26 + atlas-core 33 pytest green (conftest now applies ALL migrations;
+    drift guards updated for project_id); fresh-DB P3 smoke 10/10; cargo test 34+3 green; web
+    check/lint/build green. **Gateway exe NOT yet rebuilt** (running instance locks it) — restart
+    the gateway to serve /v1/projects live.
+- **P4 Modular agents (NOT STARTED — next session):** Claude Agent SDK via the user's LOCAL Claude
+  Code session (subscription auth, not API key) — DE-RISK AUTH FIRST; then AgentRuntime ABC
+  (Native|ClaudeCode), `runs.agent_runtime` (0006), `--agent` CLI/gateway, Console agent-tabs.
+
 ## Project Reference
 
 See: `.planning/PROJECT.md` (updated 2026-06-15) · `.planning/MILESTONES.md`
@@ -153,9 +182,34 @@ Acknowledged at milestone close on 2026-06-15:
   .abg-* CSS in app.css; pointer sets --cursor-angle/--edge-proximity, wedge lights the edge nearest
   the cursor. Applied to the New Mission modal (violet, AI-authoring context). tsc/build green,
   visually verified (output/playwright/modal-borderglow-tuned.png). Reusable for future modals.
-  NEXT (operator-directed): contextual topo color + behavior-complexity systems (semantic
-  data-topo→color/behavior driving the ambient + per-surface fields). Then operator UAT + Audit
-  Ledger (+/v1/audit/events) / Codex / Models / Integrations / System.
+  GLASSTOPO (2026-06-18): frosted-glass-over-topo surface ported from L2 Systems Design System
+  (topo_engine.js / topo_patterns.html .ti-shell). New component web-ui-react/src/components/
+  GlassTopo.tsx — per-panel vivid topo field (tone-tinted resting lattice + glow) behind a
+  backdrop-filter blur(11px) saturate(1.4) glass layer, so terrain glows THROUGH the frost; slow
+  ambient orbit + pointer reactivity for the fluidic feel; prefers-reduced-motion → static. Applied
+  to translucent set: New Mission modal (violet/ai), Mission hero (info), Run hero (good when live).
+  Full-takeover/dense surfaces stay opaque. tsc/lint/build GREEN; modal verified
+  (output/playwright/glasstopo-modal2.png).
+  PRIVATE REPO (2026-06-18): github.com/L2-ootm/L2-ATLAS-PROJECT created PRIVATE via gh; pushed
+  main (3761 files). .gitignore hardened (added atlas.cmd, .claude/). Secret gate clean — remote
+  has no .env/.key/.pem/.db/atlas.cmd/.claude (only .env.example template). Commit c520ece.
+
+  BIG PLAN (operator-approved 2026-06-18, "everything one big plan"; plan file
+  ~/.claude/plans/session-wrap-the-atlas-vivid-river.md). P1 glass-topo ✅ + P2 private repo ✅ DONE.
+  REMAINING (each multi-session, backend-heavy):
+  P3 — Folder-backed Projects (full vision): projects table maps to a working dir; create-in-folder
+  + register existing folder; missions run in project cwd. Stack: migration 0005 (projects +
+  missions.project_id FK — NOTE: ALTER ADD COLUMN is non-idempotent in SQLite; VERIFY the migration
+  runner tracks applied files before adding, or boot breaks), Project schema in packages/atlas-core,
+  project_service.py + mission_service(--project) + run_service(cwd) + CLI project group
+  (services/agent-runtime), Rust gateway CRUD in atlas-gateway lib.rs+db.rs, React /projects route+
+  nav+api+folder-path UI.
+  P4 — Modular agents: AgentRuntime ABC (NativeAtlas | ClaudeCode). ClaudeCodeAgent uses the Claude
+  Agent SDK driven by the USER'S LOCAL Claude Code session (subscription auth, NOT an API key —
+  must behave like the `claude` they run on their PC). DE-RISK FIRST: confirm the SDK honors local
+  session auth before building UI. runs.agent_runtime column (migration 0006), CLI/gateway --agent,
+  Console agent-tabs (NATIVE | CLAUDE CODE) reusing useRunStream+SSE for live logs; flip Console nav
+  planned→active. NEXT SESSION: build P3 end-to-end (verify migration runner first), then P4.
   ODYSSEUS BASELINE doc'd (phase 10.0.3 dir / ODYSSEUS-PAGE-BASELINE.md): reference pillar's 8
   surfaces mapped to our IA. Biggest GAP = a CONSOLE/CHAT surface (direct conversational agent
   interaction, every turn audited) — Odysseus leads with it, we lack it; reuses our SSE+ledger
