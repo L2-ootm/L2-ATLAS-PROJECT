@@ -15,12 +15,15 @@ export function glassPanel(extra?: CSSProperties): CSSProperties {
 	return {
 		border: '1px solid var(--l2-hairline)',
 		borderRadius: 2,
-		// Translucent pane so the living TopoField reads THROUGH the frost; a faint
-		// diagonal specular sheen sells the glass without making it opaque.
+		// Tinted pane that sits CLEARLY above the living TopoField — the terrain only
+		// faintly refracts through, it no longer washes across the surface. A faint
+		// diagonal specular sheen still sells the glass; the url() displacement + frost
+		// keep the refraction. Opacity raised (was 0.18/0.24) per the "panels too
+		// transparent" direction so data reads on a real surface, not raw terrain.
 		background:
-			'linear-gradient(125deg, rgba(237,234,224,0.05) 0%, transparent 28%, transparent 75%, rgba(237,234,224,0.022) 100%), linear-gradient(180deg, rgba(20,24,33,0.18), rgba(10,13,18,0.24))',
-		backdropFilter: `blur(8px) url(#${GLASS_DISPLACE_ID}) saturate(1.45) brightness(1.03)`,
-		WebkitBackdropFilter: 'blur(8px) saturate(1.45) brightness(1.03)',
+			'linear-gradient(125deg, rgba(237,234,224,0.06) 0%, transparent 30%, transparent 74%, rgba(237,234,224,0.025) 100%), linear-gradient(180deg, rgba(20,24,33,0.74), rgba(10,13,18,0.82))',
+		backdropFilter: `blur(11px) url(#${GLASS_DISPLACE_ID}) saturate(1.4) brightness(1.02)`,
+		WebkitBackdropFilter: 'blur(11px) saturate(1.4) brightness(1.02)',
 		// No heavy inner shadow — that was reading as "solid". Top specular + soft lift.
 		boxShadow: 'inset 0 1px 0 rgba(237,234,224,0.07), 0 8px 30px rgba(0,0,0,0.28)',
 		...extra

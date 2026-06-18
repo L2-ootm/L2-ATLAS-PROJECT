@@ -318,7 +318,7 @@ function ProjectModal({ mode, onClose, onCreated }: { mode: Mode; onClose: () =>
 	return (
 		<div
 			onClick={onClose}
-			style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'grid', placeItems: 'center', background: 'rgba(5,6,10,0.6)', backdropFilter: 'blur(4px)' }}
+			style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'grid', placeItems: 'center', background: 'rgba(4,5,9,0.86)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' }}
 		>
 			<div onClick={(e) => e.stopPropagation()} style={{ width: 'min(560px, 92vw)' }}>
 				<BorderGlow
