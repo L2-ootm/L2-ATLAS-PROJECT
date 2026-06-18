@@ -17,10 +17,14 @@ import os
 import pathlib
 import shutil
 import subprocess
+import sys
 import time
 import urllib.request
 
 from atlas_runtime.db import MIGRATIONS_DIR
+
+# services/agent-runtime (so the gateway's spawned CLI can import atlas_runtime).
+_AGENT_RUNTIME_DIR = pathlib.Path(__file__).resolve().parents[1]
 
 GATEWAY_URL = os.environ.get("ATLAS_GATEWAY_URL", "http://127.0.0.1:8484")
 PID_FILE = pathlib.Path.home() / ".atlas" / "gateway.pid"
@@ -48,6 +52,23 @@ def health_ok(timeout: float = 1.0) -> bool:
         return False
 
 
+def _child_env() -> dict[str, str]:
+    """Env for the spawned gateway. When the operator hasn't set ATLAS_CLI and the
+    interpreter path has no spaces, inject a working multi-token ATLAS_CLI (the
+    gateway splits it on whitespace) + PYTHONPATH so the gateway can dispatch
+    writes (mission/module/etc.) without `atlas` being installed on PATH yet.
+    A spaced interpreter path falls back to the installed `atlas` on PATH.
+    """
+    env = os.environ.copy()
+    if "ATLAS_CLI" not in env and " " not in sys.executable:
+        env["ATLAS_CLI"] = f"{sys.executable} -m atlas_runtime.cli.main"
+        existing = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = (
+            f"{_AGENT_RUNTIME_DIR}{os.pathsep}{existing}" if existing else str(_AGENT_RUNTIME_DIR)
+        )
+    return env
+
+
 def start_command_hint() -> str:
     """The exact terminal command to start the gateway (shown in the offline UI)."""
     return "atlas gateway start"
@@ -72,7 +93,11 @@ def start(poll_seconds: float = 15.0) -> tuple[bool, str]:
     else:
         kwargs["start_new_session"] = True
     proc = subprocess.Popen(
-        [binary], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kwargs
+        [binary],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        env=_child_env(),
+        **kwargs,
     )
     PID_FILE.parent.mkdir(parents=True, exist_ok=True)
     PID_FILE.write_text(str(proc.pid))

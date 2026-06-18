@@ -62,10 +62,21 @@ fn project_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
     }))
 }
 
+fn module_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
+    Ok(json!({
+        "id": row.get::<_, String>(0)?,
+        "name": row.get::<_, String>(1)?,
+        "description": row.get::<_, String>(2)?,
+        "status": row.get::<_, String>(3)?,
+        "activated_at": row.get::<_, Option<String>>(4)?,
+    }))
+}
+
 const MISSION_COLS: &str = "id, title, intent, status, project, created_at, updated_at";
 const RUN_COLS: &str =
     "id, mission_id, session_id, status, started_at, finished_at, summary, agent_runtime";
 const PROJECT_COLS: &str = "id, name, root_path, created_at, updated_at";
+const MODULE_COLS: &str = "id, name, description, status, activated_at";
 
 pub fn list_missions(path: &Path, limit: i64) -> Result<Vec<Value>, DbError> {
     let conn = open_ro(path)?;
@@ -133,6 +144,38 @@ pub fn get_project(path: &Path, id: &str) -> Result<Option<(Value, Vec<Value>)>,
         .query_map([id], mission_row)?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(Some((project, missions)))
+}
+
+/// Optional modules ordered by id ASC. Returns `Ok(vec![])` when the `modules`
+/// table does not exist yet (pre-0007 DB) so the gateway never 503s.
+pub fn list_modules(path: &Path) -> Result<Vec<Value>, DbError> {
+    let conn = open_ro(path)?;
+    let sql = format!("SELECT {MODULE_COLS} FROM modules ORDER BY id ASC");
+    let mut stmt = match conn.prepare(&sql) {
+        Ok(s) => s,
+        Err(rusqlite::Error::SqliteFailure(_, Some(ref msg))) if msg.contains("no such table") => {
+            return Ok(vec![]);
+        }
+        Err(e) => return Err(e.into()),
+    };
+    let rows = stmt
+        .query_map([], module_row)?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+/// Single module by id. `None` when unknown or the `modules` table is absent.
+pub fn get_module(path: &Path, id: &str) -> Result<Option<Value>, DbError> {
+    let conn = open_ro(path)?;
+    let sql = format!("SELECT {MODULE_COLS} FROM modules WHERE id = ?1");
+    match conn.query_row(&sql, [id], module_row) {
+        Ok(v) => Ok(Some(v)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(rusqlite::Error::SqliteFailure(_, Some(ref msg))) if msg.contains("no such table") => {
+            Ok(None)
+        }
+        Err(e) => return Err(e.into()),
+    }
 }
 
 pub fn get_run(path: &Path, id: &str) -> Result<Option<Value>, DbError> {
