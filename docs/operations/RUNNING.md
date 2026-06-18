@@ -33,22 +33,12 @@ The `atlas` CLI and the gateway both expect the schema to already exist at
 auto-applies migrations.** On a brand-new checkout you must apply them once, or
 the first `atlas mission create` fails with `no such table: missions`.
 
-Apply every migration in order:
+Apply every pending migration with the runner (idempotent, non-destructive — safe
+to re-run; adopts a drifted/hand-patched DB and stamps it):
 
 ```bash
-python - <<'PY'
-import pathlib, sqlite3
-db = pathlib.Path.home() / ".atlas" / "atlas.db"
-db.parent.mkdir(parents=True, exist_ok=True)
-conn = sqlite3.connect(str(db))
-conn.execute("PRAGMA journal_mode=WAL")
-conn.execute("PRAGMA foreign_keys = ON")
-root = pathlib.Path(".").resolve()
-for sql in sorted((root / "infra" / "migrations").glob("*.sql")):
-    conn.executescript(sql.read_text(encoding="utf-8"))
-    print("applied", sql.name)
-conn.commit(); conn.close()
-PY
+atlas db init      # apply pending migrations to ~/.atlas/atlas.db
+atlas db status    # [x] applied / [ ] pending, per migration
 ```
 
 To verify the schema + full loop end-to-end against a throwaway DB (does not touch
@@ -58,14 +48,23 @@ To verify the schema + full loop end-to-end against a throwaway DB (does not tou
 python scripts/fresh_db_smoke.py   # prints "SMOKE PASSED"
 ```
 
-> Follow-up (carried to a future phase): there is no `atlas db init` / bootstrap
-> command yet. The block above is the documented stand-in.
+> One-shot install: `scripts/install-atlas-cli.ps1` runs the editable installs,
+> `atlas db init`, and a `atlas --help` check — after it, `atlas` is on PATH and
+> the DB is bootstrapped.
 
 ---
 
 ## 2. Start the gateway
 
-Release binary (already built at `native/atlas-core-rs/target/release/atlas-gateway.exe`):
+Simplest — the lifecycle primitive (idempotent; locates the binary, spawns it
+detached, waits for `/health`, and injects a working `ATLAS_CLI` so the gateway
+can dispatch writes):
+
+```bash
+atlas gateway start    # also: atlas gateway status | atlas gateway stop
+```
+
+Release binary directly (already built at `native/atlas-core-rs/target/release/atlas-gateway.exe`):
 
 ```bash
 ./native/atlas-core-rs/target/release/atlas-gateway.exe
