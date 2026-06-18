@@ -1,0 +1,39 @@
+{
+  "name": "atlas-cockpit-react",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "check": "tsc -b --noEmit"
+  },
+  "dependencies": {
+    "@fontsource/cinzel": "^5.2.8",
+    "@fontsource/cormorant-garamond": "^5.2.11",
+    "@fontsource/inter": "^5.2.8",
+    "@fontsource/jetbrains-mono": "^5.2.8",
+    "lucide-react": "^1.20.0",
+    "ogl": "^1.0.11",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router-dom": "^7.18.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@tailwindcss/vite": "^4.3.1",
+    "@types/node": "^25.9.3",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.0.2",
+    "eslint": "^10.5.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.3",
+    "globals": "^17.6.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.61.1",
+    "vite": "^8.0.16"
+  }
+}

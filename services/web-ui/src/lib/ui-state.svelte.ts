@@ -4,5 +4,5 @@
 
 export const sidebar = $state({ expanded: false });
 
-export const SIDEBAR_WIDTH_COLLAPSED = 56;
-export const SIDEBAR_WIDTH_EXPANDED = 200;
+export const SIDEBAR_WIDTH_COLLAPSED = 64;
+export const SIDEBAR_WIDTH_EXPANDED = 224;
