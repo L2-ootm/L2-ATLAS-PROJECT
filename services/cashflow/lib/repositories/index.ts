@@ -1,16 +1,33 @@
 /**
  * Repositories — Barrel Export & Singleton Instances
- * 
- * Ponto central para acessar todos os repositórios.
- * Quando migrarmos para Supabase, basta trocar as implementações aqui.
+ *
+ * Backend is SELECTABLE at startup (ATLAS Decision 3b / Decision 4): Supabase when
+ * configured (NEXT_PUBLIC_SUPABASE_URL + ANON_KEY present), otherwise the local
+ * SQLite backend. Set ATLAS_CASHFLOW_DB=local to force SQLite even when Supabase
+ * env is present. Both backends apply their schema non-destructively on first use.
  */
 
+import { isSupabaseConfigured } from '../supabase';
 import { SupabaseClientRepository } from './supabase/client';
 import { SupabaseExpenseRepository } from './supabase/expense';
 import { SupabaseInvoiceRepository } from './supabase/invoice';
 import { SupabasePartnerRepository } from './supabase/partner';
 import { SupabaseUsageRepository } from './supabase/usage';
 import { SupabaseResearchRepository } from './supabase/research';
+import { SqliteClientRepository } from './sqlite/client';
+import { SqliteExpenseRepository } from './sqlite/expense';
+import { SqliteInvoiceRepository } from './sqlite/invoice';
+import { SqlitePartnerRepository } from './sqlite/partner';
+import { SqliteUsageRepository } from './sqlite/usage';
+import { SqliteResearchRepository } from './sqlite/research';
+import type {
+  IClientRepository,
+  IExpenseRepository,
+  IInvoiceRepository,
+  IPartnerRepository,
+  IUsageRepository,
+  IResearchRepository,
+} from './types';
 
 // Export interfaces
 export type {
@@ -24,13 +41,32 @@ export type {
   ResearchJob
 } from './types';
 
-// Singleton instances — Supabase implementations
-export const clientRepo = new SupabaseClientRepository();
-export const expenseRepo = new SupabaseExpenseRepository();
-export const invoiceRepo = new SupabaseInvoiceRepository();
-export const partnerRepo = new SupabasePartnerRepository();
-export const usageRepo = new SupabaseUsageRepository();
-export const researchRepo = new SupabaseResearchRepository();
+// Backend selection: explicit override (ATLAS_CASHFLOW_DB) wins, else auto-detect.
+const forced = process.env.ATLAS_CASHFLOW_DB?.toLowerCase();
+const useSupabase = forced === 'supabase' || (forced !== 'local' && isSupabaseConfigured());
+
+// Singleton instances — chosen backend.
+export const clientRepo: IClientRepository = useSupabase
+  ? new SupabaseClientRepository()
+  : new SqliteClientRepository();
+export const expenseRepo: IExpenseRepository = useSupabase
+  ? new SupabaseExpenseRepository()
+  : new SqliteExpenseRepository();
+export const invoiceRepo: IInvoiceRepository = useSupabase
+  ? new SupabaseInvoiceRepository()
+  : new SqliteInvoiceRepository();
+export const partnerRepo: IPartnerRepository = useSupabase
+  ? new SupabasePartnerRepository()
+  : new SqlitePartnerRepository();
+export const usageRepo: IUsageRepository = useSupabase
+  ? new SupabaseUsageRepository()
+  : new SqliteUsageRepository();
+export const researchRepo: IResearchRepository = useSupabase
+  ? new SupabaseResearchRepository()
+  : new SqliteResearchRepository();
+
+/** Which data backend is active — surfaced to the UI / ATLAS System page. */
+export const activeBackend: 'supabase' | 'local' = useSupabase ? 'supabase' : 'local';
 
 /**
  * Gera um resumo financeiro agregado.

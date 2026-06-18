@@ -9,7 +9,8 @@ const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
-// Initialize database schema
+// Initialize database schema. Additive + NON-DESTRUCTIVE — every statement is
+// CREATE TABLE IF NOT EXISTS, so first-time setup never drops or truncates data.
 export function initDB() {
     db.exec(`
     CREATE TABLE IF NOT EXISTS Client (

@@ -18,6 +18,19 @@ Next.js 16 (App Router) + React 19 + Tailwind 4. DB backend is a **repository-to
 `supabase/schema.sql`. Also ships MCP (`lib/mcp`), webhooks (`lib/webhooks`), a FinOps
 engine (`lib/engine`), and `@opengsd/gsd-core`.
 
+## DB backend selection (local ↔ Supabase)
+
+The repository layer (`lib/repositories/index.ts`) selects its backend at startup:
+- **Supabase** when configured (`NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY`).
+- **Local SQLite** (`better-sqlite3`, `dev.db`) otherwise.
+- Force either with **`ATLAS_CASHFLOW_DB=local|supabase`** (overrides auto-detect).
+
+Both backends apply their schema **non-destructively** on first use (`CREATE TABLE IF NOT
+EXISTS` only — never drops/truncates). The local SQLite backend lives in
+`lib/repositories/sqlite/` (6 repos implementing the same interfaces as `supabase/`),
+backed by the schema in `lib/db/index.ts`. `activeBackend` is exported for surfacing in
+the UI. Verified end-to-end on the local backend (client/expense/partner round-trips).
+
 ## How it integrates with ATLAS
 - **Activatable module:** off by default; toggled in the cockpit System page (persisted
   in the ATLAS `modules` table). When active it appears in the cockpit sidebar and its
