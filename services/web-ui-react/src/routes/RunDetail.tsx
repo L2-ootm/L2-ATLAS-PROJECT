@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Ban, Download } from 'lucide-react';
 import { Page } from '../components/Page';
-import { GlassPanel, HudLabel, StatusBadge } from '../components/hud';
+import { AgentBadge, GlassPanel, HudLabel, StatusBadge } from '../components/hud';
 import LiveBadge from '../components/LiveBadge';
 import RunTimeline from '../components/RunTimeline';
 import GlowBorder from '../components/GlowBorder';
@@ -210,6 +210,7 @@ export default function RunDetail() {
 						</Link>
 					)}
 					<StatusBadge status={stream.status} />
+					{run?.agent_runtime && <AgentBadge agent={run.agent_runtime} />}
 					{run && (
 						<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 11, color: 'var(--l2-fg-3)', fontVariantNumeric: 'tabular-nums' }}>
 							STARTED {fmt(run.started_at)}

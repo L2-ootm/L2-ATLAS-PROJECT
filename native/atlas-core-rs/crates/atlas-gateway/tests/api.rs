@@ -11,11 +11,15 @@ use std::path::PathBuf;
 use tower::util::ServiceExt;
 
 const MIGRATION_0001: &str = include_str!("../../../../../infra/migrations/0001_core.sql");
+// 0006 adds runs.agent_runtime (TEXT NOT NULL DEFAULT 'native'), which RUN_COLS
+// now selects — the seed DB must apply it so the runs read surface stays valid.
+const MIGRATION_0006: &str = include_str!("../../../../../infra/migrations/0006_agent_runtime.sql");
 
 fn seeded_db(dir: &tempfile::TempDir) -> PathBuf {
     let path = dir.path().join("atlas.db");
     let conn = rusqlite::Connection::open(&path).unwrap();
     conn.execute_batch(MIGRATION_0001).unwrap();
+    conn.execute_batch(MIGRATION_0006).unwrap();
     conn.execute_batch(
         "INSERT INTO missions VALUES
             ('m1', 'First mission', 'ship it', 'completed', 'atlas',
@@ -24,7 +28,7 @@ fn seeded_db(dir: &tempfile::TempDir) -> PathBuf {
              '2026-06-02T10:00:00Z', '2026-06-02T10:00:00Z');
          INSERT INTO runs VALUES
             ('r1', 'm1', 'sess-1', 'succeeded',
-             '2026-06-01T10:00:00Z', '2026-06-01T10:30:00Z', 'done');
+             '2026-06-01T10:00:00Z', '2026-06-01T10:30:00Z', 'done', 'native');
          INSERT INTO audit_events
             (id, run_id, event_type, tool_name, timestamp, duration_ms, data)
          VALUES
@@ -405,6 +409,102 @@ async fn start_run_dispatches_to_atlas_and_returns_201() {
     let body: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(body["run"]["id"], "r1");
     assert_eq!(body["run"]["mission_id"], "m1");
+}
+
+/// Build a test app whose atlas stub records its argv (one arg per line) to
+/// `argv_path` before echoing `stub_output`. Lets a test assert exactly which
+/// flags the gateway forwarded to the CLI.
+fn test_app_with_arg_capture(
+    db_path: PathBuf,
+    stub_output: &str,
+    argv_path: &std::path::Path,
+    dir: &tempfile::TempDir,
+) -> axum::Router {
+    let stub = dir.path().join("mock_atlas_argv.py");
+    let argv = argv_path.to_string_lossy().replace('\\', "\\\\");
+    std::fs::write(
+        &stub,
+        format!(
+            "import sys\nopen(r'{argv}', 'w').write('\\n'.join(sys.argv[1:]))\nprint('{out}')\n",
+            argv = argv,
+            out = stub_output.replace('\'', "\\'"),
+        ),
+    )
+    .unwrap();
+    let python = if cfg!(windows) { "python" } else { "python3" };
+    app(AppState {
+        db_path,
+        atlas_cmd: vec![python.to_string(), stub.to_string_lossy().to_string()],
+    })
+}
+
+#[tokio::test]
+async fn start_run_forwards_agent_claude_code() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let db_path = seeded_db(&dir);
+    let argv_path = stub_dir.path().join("argv.txt");
+    let router = test_app_with_arg_capture(db_path, "r1", &argv_path, &stub_dir);
+    let (status, body) = post_json(
+        &router,
+        "/v1/missions/m1/run",
+        json!({ "agent": "claude_code" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(body["run"]["id"], "r1");
+    // The gateway must forward `--agent claude_code` to the CLI.
+    let argv = std::fs::read_to_string(&argv_path).unwrap();
+    let args: Vec<&str> = argv.lines().collect();
+    let idx = args
+        .iter()
+        .position(|a| *a == "--agent")
+        .expect("--agent flag missing from dispatched args");
+    assert_eq!(args.get(idx + 1).copied(), Some("claude_code"));
+}
+
+#[tokio::test]
+async fn start_run_defaults_agent_to_native() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let db_path = seeded_db(&dir);
+    let argv_path = stub_dir.path().join("argv.txt");
+    let router = test_app_with_arg_capture(db_path, "r1", &argv_path, &stub_dir);
+    // Empty body — no agent field. Defaults to "native".
+    let resp = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/missions/m1/run")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let argv = std::fs::read_to_string(&argv_path).unwrap();
+    let args: Vec<&str> = argv.lines().collect();
+    let idx = args
+        .iter()
+        .position(|a| *a == "--agent")
+        .expect("--agent flag missing from dispatched args");
+    assert_eq!(args.get(idx + 1).copied(), Some("native"));
+}
+
+#[tokio::test]
+async fn start_run_invalid_agent_is_400() {
+    let dir = tempfile::tempdir().unwrap();
+    // Rejected before any dispatch — no stub needed.
+    let router = test_app(seeded_db(&dir));
+    let (status, body) = post_json(
+        &router,
+        "/v1/missions/m1/run",
+        json!({ "agent": "rogue_runtime" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "bad_request");
 }
 
 #[tokio::test]

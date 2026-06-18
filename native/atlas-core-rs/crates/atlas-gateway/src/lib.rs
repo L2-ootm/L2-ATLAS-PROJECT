@@ -446,14 +446,34 @@ async fn create_mission(
     }
 }
 
+#[derive(Deserialize, Default)]
+struct StartRunBody {
+    /// Agent runtime selector: "native" (default) or "claude_code". Mirrors the
+    /// `atlas mission run --agent` flag (P4 — modular agents). The gateway stays
+    /// record-only: it dispatches the run row write, never `--execute`.
+    agent: Option<String>,
+}
+
 async fn start_run(
     State(state): State<AppState>,
     AxPath(mission_id): AxPath<String>,
+    // Optional JSON body — an empty body (no agent selection) defaults to "native".
+    body: Option<Json<StartRunBody>>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
     require_arg(&mission_id, "mission id must be non-empty")?;
+    let agent = body
+        .and_then(|Json(b)| b.agent)
+        .map(|a| a.trim().to_string())
+        .filter(|a| !a.is_empty())
+        .unwrap_or_else(|| "native".to_string());
+    if agent != "native" && agent != "claude_code" {
+        return Err(ApiError::BadRequest(
+            "agent must be 'native' or 'claude_code'",
+        ));
+    }
     let run_id = dispatch_atlas(
         &state.atlas_cmd,
-        &["mission", "run", "--", &mission_id],
+        &["mission", "run", "--agent", &agent, "--", &mission_id],
     )
     .await?;
     let path = state.db_path.clone();

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Page } from '../components/Page';
-import { HudLabel, StatusBadge } from '../components/hud';
+import { AgentBadge, HudLabel, StatusBadge } from '../components/hud';
 import LiveBadge from '../components/LiveBadge';
 import GlowBorder from '../components/GlowBorder';
 import { GlassPanel } from '../components/GlassFx';
@@ -159,8 +159,15 @@ function Row({ r, first, onClick }: { r: RunWithMission; first: boolean; onClick
 			<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 12, color: 'var(--l2-fg-2)', fontVariantNumeric: 'tabular-nums' }}>
 				{r.id.slice(0, 8)}
 			</span>
-			<span style={{ color: 'var(--l2-fg-1)', fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-				{r.mission_title}
+			<span style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
+				<span style={{ color: 'var(--l2-fg-1)', fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+					{r.mission_title}
+				</span>
+				{r.agent_runtime && (
+					<span>
+						<AgentBadge agent={r.agent_runtime} />
+					</span>
+				)}
 			</span>
 			<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
 				<StatusBadge status={r.status} />

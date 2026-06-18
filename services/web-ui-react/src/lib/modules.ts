@@ -45,7 +45,7 @@ export const navSections: NavSection[] = [
 		items: [
 			{ id: 'missions', label: 'MISSIONS', route: '/missions', icon: Map, status: 'active', ariaLabel: 'Missions' },
 			{ id: 'runs', label: 'RUNS', route: '/runs', icon: Activity, status: 'active', ariaLabel: 'Runs' },
-			{ id: 'console', label: 'CONSOLE', route: '/console', icon: MessageSquare, status: 'planned', ariaLabel: 'Console (coming in v1.1)' }
+			{ id: 'console', label: 'CONSOLE', route: '/console', icon: MessageSquare, status: 'active', ariaLabel: 'Console' }
 		]
 	},
 	{

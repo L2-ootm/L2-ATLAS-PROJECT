@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
+import { agentRuntimeLabel, type AgentRuntime } from '../lib/api';
 
 // Semantic glow colors (UX-VISUAL-SPEC Law 4 — color is context, never theme).
 export type GlowTone = 'info' | 'ai' | 'good' | 'warn' | 'bad' | 'atlas';
@@ -141,6 +142,37 @@ export function StatusBadge({ status }: { status: string }) {
 			}}
 		>
 			{status.toUpperCase()}
+		</span>
+	);
+}
+
+// ── AgentBadge — which runtime a run was recorded against (P4 modular agents).
+//    Reuses the StatusBadge shape language; color is context (info blue = native
+//    ATLAS, AI purple = the operator's Claude Code session).
+function getAgentStyle(agent: AgentRuntime): BadgeStyle {
+	return agent === 'claude_code'
+		? { background: 'rgba(161,123,255,0.10)', border: 'rgba(161,123,255,0.32)', color: '#A17BFF' }
+		: { background: 'rgba(79,139,255,0.10)', border: 'rgba(79,139,255,0.30)', color: '#4F8BFF' };
+}
+export function AgentBadge({ agent }: { agent: AgentRuntime }) {
+	const s = getAgentStyle(agent);
+	return (
+		<span
+			title={`Agent runtime: ${agentRuntimeLabel(agent)}`}
+			style={{
+				fontFamily: 'var(--l2-font-mono)',
+				fontSize: 10,
+				textTransform: 'uppercase',
+				letterSpacing: '0.14em',
+				padding: '3px 7px',
+				borderRadius: 4,
+				border: `1px solid ${s.border}`,
+				background: s.background,
+				color: s.color,
+				whiteSpace: 'nowrap'
+			}}
+		>
+			{agentRuntimeLabel(agent)}
 		</span>
 	);
 }

@@ -17,18 +17,21 @@ use std::path::PathBuf;
 use tower::util::ServiceExt;
 
 const MIGRATION_0001: &str = include_str!("../../../../../infra/migrations/0001_core.sql");
+// 0006 adds runs.agent_runtime, now part of RUN_COLS — seed DB must apply it.
+const MIGRATION_0006: &str = include_str!("../../../../../infra/migrations/0006_agent_runtime.sql");
 
 fn seeded_db(dir: &tempfile::TempDir) -> PathBuf {
     let path = dir.path().join("atlas.db");
     let conn = rusqlite::Connection::open(&path).unwrap();
     conn.execute_batch(MIGRATION_0001).unwrap();
+    conn.execute_batch(MIGRATION_0006).unwrap();
     conn.execute_batch(
         "INSERT INTO missions VALUES
             ('m1', 'Contract test', 'verify schema', 'completed', 'atlas',
              '2026-06-01T10:00:00Z', '2026-06-01T11:00:00Z');
          INSERT INTO runs VALUES
             ('r1', 'm1', 'sess-1', 'succeeded',
-             '2026-06-01T10:00:00Z', '2026-06-01T10:30:00Z', 'done');
+             '2026-06-01T10:00:00Z', '2026-06-01T10:30:00Z', 'done', 'native');
          INSERT INTO audit_events
             (id, run_id, event_type, tool_name, timestamp, duration_ms, data)
          VALUES
