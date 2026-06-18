@@ -81,7 +81,44 @@ routes). Then the shell wraps a finished product. Keep the `tauri://localhost` C
 
 ---
 
-## Decision 3 — Cashflow: keep standalone, wire via contracts (no monorepo absorption)
+## Decision 3 — SUPERSEDED 2026-06-18 by Decision 3b (operator override)
+
+> The operator directed that cashflow be made **part of ATLAS** — vendored into the repo (separate
+> from its origin), integrated **visually and structurally**, and exposed as an **activatable module**
+> toggled in the System page (not everyone needs it). Cashflow is an L2-owned project, so free use is
+> granted. Decision 3 below (keep standalone, wire only via external contracts) is retained for the
+> rationale but no longer the chosen path. See **Decision 3b**.
+
+## Decision 3b — Cashflow: vendor as an activatable ATLAS module (CHOSEN)
+
+**Decision.** Vendor L2-Cashflow into `services/cashflow` inside the ATLAS repo, **detached from its
+original git remote** (copy tree, drop `.git`, strip bloat). It becomes a first-class but **optional
+module**: off by default, **activated/deactivated from the System page**, persisted in the ATLAS DB
+(`modules` table via the migration runner). When active it surfaces in the cockpit sidebar (visual
+integration) and its backend wiring is live (structural integration).
+
+**Why the override is acceptable under no-bloat:** cashflow is L2-owned and a real product surface the
+operator wants in the cockpit; gating it behind an activation toggle keeps the default install lean
+(the Next.js service isn't built/run unless activated). The cost is stack plurality in the monorepo
+(Node alongside Rust/Python/Vite) — accepted deliberately, contained to `services/cashflow`.
+
+**Shape:**
+- **Module registry** — a `modules` table (id, name, status active|inactive, activated_at) +
+  `module_service.py` (lock-injection pattern) + gateway CRUD (`/v1/modules`, toggle endpoint). The
+  React **System page** lists modules with an activate toggle; the sidebar conditionally renders the
+  Cashflow nav entry when active.
+- **DB backend selectable** (Decision 4) — cashflow's existing repository-toggle becomes a real
+  setting (`ATLAS_CASHFLOW_DB=local|supabase`, surfaced in the System page), with **non-destructive**
+  initial migration (CREATE TABLE IF NOT EXISTS / additive only — never drops or truncates on setup).
+- **Visual** — first cut: cockpit nav entry + a Cashflow route that hosts the vendored app (its own
+  Next.js process when activated, reached from the cockpit). A deeper native React/Vite re-skin to the
+  glass design system is a later milestone (large); flagged, not done now.
+- **Integration** — the MCP/webhooks seams from Decision 3 still apply for agent actuation; vendoring
+  doesn't remove them, it just colocates the code.
+
+---
+
+## Decision 3 (original, retained for rationale) — keep standalone, wire via contracts
 
 **What cashflow is** (cloned for inspection at `c:\Users\Davi\Desktop\Projects\L2-Cashflow`,
 repo `aDuque-L2/L2-Cashflow`, private): a **Next.js 16 (App Router) + React 19 + Tailwind 4**

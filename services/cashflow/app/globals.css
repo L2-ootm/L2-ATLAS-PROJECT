@@ -1,0 +1,286 @@
+@import "tailwindcss";
+
+@theme inline {
+  /* ── Backgrounds ── */
+  --color-bg-base: #0F1117;
+  --color-bg-surface: #1A1D26;
+  --color-bg-card: #1F2230;
+  --color-bg-muted: #252937;
+  --color-bg-hover: #2A2E3D;
+  --color-bg-elevated: #2E3340;
+
+  /* ── Borders ── */
+  --color-border-default: #2E3340;
+  --color-border-subtle: #252937;
+  --color-border-strong: #3D4255;
+
+  /* ── Text ── */
+  --color-text-primary: #F1F3F6;
+  --color-text-secondary: #9CA3B4;
+  --color-text-muted: #5C6478;
+
+  /* ── Primary (Indigo) ── */
+  --color-primary: #6366F1;
+  --color-primary-hover: #818CF8;
+  --color-primary-subtle: rgba(99, 102, 241, 0.12);
+  --color-primary-muted: rgba(99, 102, 241, 0.06);
+
+  /* ── Semantic ── */
+  --color-success: #34D399;
+  --color-success-subtle: rgba(52, 211, 153, 0.12);
+  --color-warning: #FBBF24;
+  --color-warning-subtle: rgba(251, 191, 36, 0.12);
+  --color-danger: #F87171;
+  --color-danger-subtle: rgba(248, 113, 113, 0.12);
+
+  /* ── Fonts ── */
+  --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-jetbrains), 'SF Mono', 'Fira Code', monospace;
+}
+
+:root {
+  --background: #0F1117;
+  --foreground: #F1F3F6;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2E3340;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3D4255;
+}
+
+/* ── Card base border ── */
+.l2-border {
+  border: 1px solid var(--color-border-default);
+}
+
+/* ── Stat card accent variants ── */
+.stat-primary {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-default);
+}
+
+.stat-primary .stat-icon-bg {
+  background: var(--color-primary-subtle);
+}
+
+.stat-primary .stat-icon {
+  color: var(--color-primary);
+}
+
+.stat-success {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-default);
+}
+
+.stat-success .stat-icon-bg {
+  background: var(--color-success-subtle);
+}
+
+.stat-success .stat-icon {
+  color: var(--color-success);
+}
+
+.stat-danger {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-default);
+}
+
+.stat-danger .stat-icon-bg {
+  background: var(--color-danger-subtle);
+}
+
+.stat-danger .stat-icon {
+  color: var(--color-danger);
+}
+
+.stat-warning {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-default);
+}
+
+.stat-warning .stat-icon-bg {
+  background: var(--color-warning-subtle);
+}
+
+.stat-warning .stat-icon {
+  color: var(--color-warning);
+}
+
+/* ── Legacy accent mapping ── */
+.stat-violet { background: var(--color-bg-surface); border: 1px solid var(--color-border-default); }
+.stat-violet .stat-icon-bg { background: var(--color-primary-subtle); }
+.stat-violet .stat-icon { color: var(--color-primary); }
+.stat-cyan { background: var(--color-bg-surface); border: 1px solid var(--color-border-default); }
+.stat-cyan .stat-icon-bg { background: var(--color-primary-subtle); }
+.stat-cyan .stat-icon { color: var(--color-primary); }
+.stat-red { background: var(--color-bg-surface); border: 1px solid var(--color-border-default); }
+.stat-red .stat-icon-bg { background: var(--color-danger-subtle); }
+.stat-red .stat-icon { color: var(--color-danger); }
+.stat-yellow { background: var(--color-bg-surface); border: 1px solid var(--color-border-default); }
+.stat-yellow .stat-icon-bg { background: var(--color-warning-subtle); }
+.stat-yellow .stat-icon { color: var(--color-warning); }
+
+/* ── Category badges ── */
+.cat-software {
+  background: rgba(99, 102, 241, 0.1);
+  color: #818CF8;
+}
+
+.cat-marketing {
+  background: rgba(251, 191, 36, 0.1);
+  color: #FBBF24;
+}
+
+.cat-equipamento {
+  background: rgba(52, 211, 153, 0.1);
+  color: #34D399;
+}
+
+.cat-infraestrutura {
+  background: rgba(148, 163, 184, 0.1);
+  color: #94A3B8;
+}
+
+.cat-pessoal {
+  background: rgba(167, 139, 250, 0.1);
+  color: #A78BFA;
+}
+
+.cat-outros {
+  background: rgba(148, 163, 184, 0.06);
+  color: #64748B;
+}
+
+/* ── Category bar colors ── */
+.bar-software { background: #818CF8; }
+.bar-marketing { background: #FBBF24; }
+.bar-equipamento { background: #34D399; }
+.bar-infraestrutura { background: #94A3B8; }
+.bar-pessoal { background: #A78BFA; }
+.bar-outros { background: #64748B; }
+
+/* ── Active nav item ── */
+.nav-active {
+  background: var(--color-primary-subtle);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  color: var(--color-primary);
+}
+
+/* ── Status badges ── */
+.badge-active {
+  background: var(--color-success-subtle);
+  color: var(--color-success);
+}
+
+.badge-inactive {
+  background: var(--color-bg-muted);
+  color: var(--color-text-muted);
+}
+
+/* ── Primary Button ── */
+.btn-primary {
+  background: var(--color-primary);
+  color: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.btn-primary:hover {
+  background: var(--color-primary-hover);
+}
+
+/* ── Form inputs ── */
+.input-l2 {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-default);
+  color: var(--color-text-primary);
+  transition: border-color 0.2s ease;
+}
+
+.input-l2::placeholder {
+  color: var(--color-text-muted);
+}
+
+.input-l2:focus {
+  border-color: var(--color-primary);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
+/* ── Number & date inputs ── */
+input[type="number"],
+input[type="date"] {
+  accent-color: var(--color-primary);
+  color-scheme: dark;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  opacity: 1;
+  height: 28px;
+  cursor: pointer;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  filter: invert(0.6);
+}
+
+/* ── Animations ── */
+@keyframes l2SlideIn {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-l2-enter {
+  animation: l2SlideIn 300ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes growUp {
+  from {
+    transform: scaleY(0);
+  }
+
+  to {
+    transform: scaleY(1);
+  }
+}
+
+.animate-grow-up {
+  animation: growUp 500ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  transform-origin: bottom;
+}

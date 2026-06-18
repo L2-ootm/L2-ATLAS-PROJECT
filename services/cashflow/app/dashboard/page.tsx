@@ -1,0 +1,185 @@
+"use client";
+
+import { useState, useEffect, useMemo } from "react";
+import { DollarSign, TrendingDown, TrendingUp, Users, Receipt, Wallet, AlertTriangle } from "lucide-react";
+import Link from "next/link";
+import StatCard from "@/components/StatCard";
+import MonthSelector from "@/components/MonthSelector";
+import TokenTracking from "@/components/TokenTracking";
+import GoalRings from "@/components/dashboard/GoalRings";
+import LiveCommandFeed from "@/components/dashboard/LiveCommandFeed";
+import ExpenseDonutChart from "@/components/dashboard/ExpenseDonutChart";
+import TokenHeatmap from "@/components/dashboard/TokenHeatmap";
+import { getClients, getExpenses, getInvoices } from "@/app/actions";
+import { formatCurrency, getMonthYear, formatDate } from "@/lib/utils";
+import { getMonthComparison } from "@/lib/forecast";
+import { getDASValue } from "@/lib/tax";
+import { Invoice } from "@/lib/types";
+
+export default function DashboardPage() {
+    const [month, setMonth] = useState(() => getMonthYear(new Date()));
+    const [clients, setClients] = useState<any[]>([]);
+    const [expenses, setExpenses] = useState<any[]>([]);
+    const [overdueInvoices, setOverdueInvoices] = useState<Invoice[]>([]);
+    const [dueSoonInvoices, setDueSoonInvoices] = useState<Invoice[]>([]);
+    const [allInvoices, setAllInvoices] = useState<Invoice[]>([]);
+
+    useEffect(() => {
+        Promise.all([getClients(), getExpenses(), getInvoices()]).then(([cls, exp, invs]) => {
+            setClients(cls);
+            setExpenses(exp);
+            setAllInvoices(invs);
+
+            const today = new Date();
+            const todayStr = today.toISOString().split("T")[0];
+            const futureDate = new Date(today.getTime() + 7 * 86400000).toISOString().split("T")[0];
+
+            setOverdueInvoices(invs.filter((i: any) => i.status === "pendente" && i.dueDate < todayStr));
+            setDueSoonInvoices(invs.filter((i: any) => i.status === "pendente" && i.dueDate >= todayStr && i.dueDate <= futureDate));
+        });
+    }, []);
+
+    const activeClients = useMemo(() => clients.filter((c) => c.active), [clients]);
+    const monthExpenses = useMemo(() => expenses.filter((e) => e.date.startsWith(month)), [expenses, month]);
+    const revenue = useMemo(() => activeClients.reduce((sum, c) => sum + c.monthlyPayment, 0), [activeClients]);
+    const totalExpenses = useMemo(() => monthExpenses.reduce((sum, e) => sum + e.amount, 0), [monthExpenses]);
+    const profit = revenue - totalExpenses;
+    const margin = revenue > 0 ? ((profit / revenue) * 100).toFixed(1) : "0";
+
+    const expiringContracts = useMemo(() => {
+        const today = new Date();
+        return activeClients.filter((c) => {
+            if (!c.contractMonths || c.contractMonths === 0) return false;
+            const end = new Date(c.startDate);
+            end.setMonth(end.getMonth() + c.contractMonths);
+            const daysRemaining = Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+            return daysRemaining >= 0 && daysRemaining <= 30; // 30 dias de aviso
+        }).map(c => {
+            const end = new Date(c.startDate);
+            end.setMonth(end.getMonth() + (c.contractMonths || 0));
+            const daysRemaining = Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+            return { ...c, endDate: end.toISOString().split("T")[0], daysRemaining };
+        });
+    }, [activeClients]);
+
+    const recentExpenses = useMemo(() => [...expenses].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6), [expenses]);
+
+    const chartData = useMemo(() => {
+        const months: { label: string; key: string; revenue: number; expense: number }[] = [];
+        const now = new Date();
+        for (let i = 5; i >= 0; i--) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const key = getMonthYear(d);
+            const mExp = expenses.filter((e) => e.date.startsWith(key)).reduce((s, e) => s + e.amount, 0);
+            const labels = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+            months.push({ label: labels[d.getMonth()], key, revenue, expense: mExp });
+        }
+        return months;
+    }, [expenses, revenue]);
+
+    const maxBarValue = useMemo(() => Math.max(...chartData.flatMap((d) => [d.revenue, d.expense]), 1), [chartData]);
+
+    const comparison = useMemo(() => getMonthComparison(expenses, activeClients, month, 6), [expenses, activeClients, month]);
+
+    const getClientName = (id: string | null) => !id ? "L2 Geral" : clients.find((c) => c.id === id)?.name || "—";
+
+    const alertInvoices = [...overdueInvoices, ...dueSoonInvoices];
+
+    return (
+        <div className="flex flex-col xl:flex-row gap-6">
+            {/* Main Content Area */}
+            <div className="flex-1 flex flex-col gap-6 min-w-0">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                        <h1 className="text-2xl font-bold tracking-tight" style={{ color: "#F1F3F6" }}>Visão Geral</h1>
+                        <p className="text-sm mt-0.5" style={{ color: "#5C6478" }}>Visão geral financeira da L2</p>
+                    </div>
+                    <MonthSelector value={month} onChange={setMonth} />
+                </div>
+
+                {/* Top Grid: Goal Rings & Stats */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="lg:col-span-1">
+                        <GoalRings revenue={revenue} expenses={totalExpenses} goal={50000} />
+                    </div>
+                    <div className="lg:col-span-2 grid grid-cols-2 gap-4">
+                        <StatCard title="Faturamento" value={formatCurrency(revenue)} icon={DollarSign} accentColor="cyan" />
+                        <StatCard title="Despesas" value={formatCurrency(totalExpenses)} icon={TrendingDown} accentColor="red" />
+                        <StatCard title="Lucro Líquido" value={formatCurrency(profit)} icon={TrendingUp}
+                            accentColor={profit >= 0 ? "violet" : "red"} trend={{ value: `${margin}% margem`, positive: profit >= 0 }} />
+                        <StatCard title="Clientes Ativos" value={String(activeClients.length)} icon={Users} accentColor="cyan" />
+                    </div>
+                </div>
+
+                {/* Data Visualizations */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-auto min-h-[350px]">
+                    <div className="h-full"><ExpenseDonutChart expenses={monthExpenses} /></div>
+                    <div className="h-full"><TokenHeatmap clients={activeClients} invoices={allInvoices} /></div>
+                </div>
+
+                {/* Alerts Section */}
+                {(alertInvoices.length > 0 || expiringContracts.length > 0) && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-2">
+                        {alertInvoices.length > 0 && (
+                            <div className="l2-border rounded-xl p-5" style={{ background: "#1A1D26", borderColor: "rgba(248,113,113,0.2)" }}>
+                                <div className="flex items-center justify-between mb-4">
+                                    <h2 className="text-xs font-semibold uppercase tracking-wider flex items-center gap-2" style={{ color: "#9CA3B4" }}>
+                                        <AlertTriangle className="w-4 h-4" style={{ color: "#F87171" }} /> Faturas Pendentes
+                                    </h2>
+                                    <Link href="/faturas" className="text-[11px] font-medium transition-colors" style={{ color: "#F87171" }}>Ver todas →</Link>
+                                </div>
+                                <div className="space-y-2">
+                                    {overdueInvoices.slice(0, 3).map((inv) => (
+                                        <div key={inv.id} className="flex justify-between items-center p-3 rounded-lg"
+                                            style={{ background: "rgba(248,113,113,0.06)", border: "1px solid rgba(248,113,113,0.15)" }}>
+                                            <div>
+                                                <p className="text-xs font-medium" style={{ color: "#F1F3F6" }}>{inv.clientName}</p>
+                                                <p className="text-[9px] font-mono mt-0.5" style={{ color: "#F87171" }}>ATRASADO</p>
+                                            </div>
+                                            <span className="text-sm font-bold font-mono" style={{ color: "#F1F3F6" }}>{formatCurrency(inv.amount)}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {expiringContracts.length > 0 && (
+                            <div className="l2-border rounded-xl p-5" style={{ background: "#1A1D26", borderColor: "rgba(251,191,36,0.2)" }}>
+                                <div className="flex items-center justify-between mb-4">
+                                    <h2 className="text-xs font-semibold uppercase tracking-wider flex items-center gap-2" style={{ color: "#9CA3B4" }}>
+                                        <AlertTriangle className="w-4 h-4" style={{ color: "#FBBF24" }} /> Vencimento de Contratos
+                                    </h2>
+                                    <Link href="/contratos" className="text-[11px] font-medium transition-colors" style={{ color: "#FBBF24" }}>Ver todos →</Link>
+                                </div>
+                                <div className="space-y-2">
+                                    {expiringContracts.slice(0, 3).sort((a, b) => a.daysRemaining - b.daysRemaining).map((c) => (
+                                        <div key={c.id} className="flex justify-between items-center p-3 rounded-lg"
+                                            style={{ background: "rgba(251,191,36,0.06)", border: "1px solid rgba(251,191,36,0.15)" }}>
+                                            <div>
+                                                <p className="text-xs font-medium" style={{ color: "#F1F3F6" }}>{c.name}</p>
+                                                <p className="text-[9px] font-mono mt-0.5" style={{ color: "#FBBF24" }}>{c.daysRemaining === 0 ? 'HOJE' : `EM ${c.daysRemaining} DIAS`}</p>
+                                            </div>
+                                            <span className="text-sm font-bold font-mono" style={{ color: "#F1F3F6" }}>{formatCurrency(c.monthlyPayment)}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Legacy TokenTracking component integrated */}
+                <div className="mt-4">
+                    <TokenTracking />
+                </div>
+            </div>
+
+            {/* Right Sidebar: Activity Feed */}
+            <div className="w-full xl:w-[320px] 2xl:w-[380px] flex-shrink-0">
+                <div className="sticky top-6 h-[calc(100vh-48px)]">
+                    <LiveCommandFeed expenses={expenses} invoices={allInvoices} />
+                </div>
+            </div>
+        </div>
+    );
+}
