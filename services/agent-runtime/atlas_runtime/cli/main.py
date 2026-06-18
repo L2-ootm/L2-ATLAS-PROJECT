@@ -31,6 +31,8 @@ gateway_app = typer.Typer(name="gateway", help="Gateway lifecycle: start, status
 app.add_typer(gateway_app, name="gateway")
 module_app = typer.Typer(name="module", help="Optional modules: list, activate, deactivate.")
 app.add_typer(module_app, name="module")
+cashflow_app = typer.Typer(name="cashflow", help="Cashflow module process: start, status, stop.")
+app.add_typer(cashflow_app, name="cashflow")
 
 try:
     from atlas_wiki.cli.main import wiki_app
@@ -348,6 +350,46 @@ def module_deactivate(
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1)
     typer.echo(f"{mod.id} {mod.status}")
+
+
+# ---------------------------------------------------------------------------
+# cashflow subcommands — vendored module process control
+# ---------------------------------------------------------------------------
+
+
+@cashflow_app.command("start")
+def cashflow_start(
+    backend: str = typer.Option(
+        "local", "--backend", help="DB backend: local | supabase"
+    ),
+) -> None:
+    """Start the cashflow app with the chosen DB backend."""
+    from atlas_runtime import cashflow_control
+
+    ok, message = cashflow_control.start(backend=backend)
+    typer.echo(message)
+    if not ok:
+        raise typer.Exit(1)
+
+
+@cashflow_app.command("status")
+def cashflow_status() -> None:
+    """Print cashflow process status as 'running|stopped <backend>'."""
+    from atlas_runtime import cashflow_control
+
+    st = cashflow_control.status()
+    typer.echo(f"{'running' if st['running'] else 'stopped'} {st['backend']}")
+
+
+@cashflow_app.command("stop")
+def cashflow_stop() -> None:
+    """Stop the cashflow process started by this CLI."""
+    from atlas_runtime import cashflow_control
+
+    ok, message = cashflow_control.stop()
+    typer.echo(message)
+    if not ok:
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":
