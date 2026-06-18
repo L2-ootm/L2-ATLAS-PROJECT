@@ -29,16 +29,12 @@ MIGRATIONS_DIR = REPO_ROOT / "infra" / "migrations"
 # Make the runtime importable without an editable install being on PATH.
 sys.path.insert(0, str(REPO_ROOT / "services" / "agent-runtime"))
 
-from atlas_runtime import audit_service, mission_service, model_registry, run_service  # noqa: E402
+from atlas_runtime import audit_service, db, mission_service, model_registry, run_service  # noqa: E402
 
 
 def apply_migrations(conn: sqlite3.Connection) -> list[str]:
-    applied = []
-    for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
-        conn.executescript(path.read_text(encoding="utf-8"))
-        applied.append(path.name)
-    conn.commit()
-    return applied
+    # Delegate to the single migration runner (tracker + drift-tolerant + non-destructive).
+    return db.apply_migrations(conn, migrations_dir=MIGRATIONS_DIR)
 
 
 def main() -> int:

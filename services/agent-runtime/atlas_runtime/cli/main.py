@@ -9,13 +9,12 @@ Design:
 """
 from __future__ import annotations
 
-import pathlib
 import sqlite3
 import threading
 
 import typer
 
-from atlas_runtime import mission_service, project_service, run_service
+from atlas_runtime import db, mission_service, project_service, run_service
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -26,6 +25,10 @@ mission_app = typer.Typer(name="mission")
 app.add_typer(mission_app, name="mission")
 project_app = typer.Typer(name="project")
 app.add_typer(project_app, name="project")
+db_app = typer.Typer(name="db", help="Database lifecycle: apply migrations, inspect status.")
+app.add_typer(db_app, name="db")
+gateway_app = typer.Typer(name="gateway", help="Gateway lifecycle: start, status, stop.")
+app.add_typer(gateway_app, name="gateway")
 
 try:
     from atlas_wiki.cli.main import wiki_app
@@ -52,13 +55,13 @@ _LOCK = threading.Lock()
 
 
 def _get_connection() -> sqlite3.Connection:
-    """Return a file-backed SQLite connection with WAL + FK enabled."""
-    db_path = pathlib.Path.home() / ".atlas" / "atlas.db"
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path), check_same_thread=False)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    """Return a file-backed SQLite connection with WAL + FK enabled.
+
+    Delegates to db.connect() — the single connection definition. Does NOT apply
+    migrations (the gateway also opens this DB; schema changes happen only via the
+    explicit `atlas db init`).
+    """
+    return db.connect()
 
 
 def _get_lock() -> threading.Lock:
@@ -234,6 +237,66 @@ def project_list() -> None:
     conn = _get_connection()
     for p in project_service.list_projects(conn):
         typer.echo(f"{p.id}\t{p.name}\t{p.root_path}")
+
+
+# ---------------------------------------------------------------------------
+# db subcommands — migration runner (atlas db init / status)
+# ---------------------------------------------------------------------------
+
+
+@db_app.command("init")
+def db_init() -> None:
+    """Apply all pending migrations to ~/.atlas/atlas.db (idempotent, non-destructive)."""
+    conn = db.connect()
+    applied = db.apply_migrations(conn)
+    if applied:
+        for version in applied:
+            typer.echo(f"applied {version}")
+    else:
+        typer.echo("already up to date")
+
+
+@db_app.command("status")
+def db_status() -> None:
+    """Show each migration as applied [x] or pending [ ]."""
+    conn = db.connect()
+    for version, ok in db.migration_status(conn):
+        typer.echo(f"{'[x]' if ok else '[ ]'} {version}")
+
+
+# ---------------------------------------------------------------------------
+# gateway subcommands — lifecycle primitive (atlas gateway start/status/stop)
+# ---------------------------------------------------------------------------
+
+
+@gateway_app.command("start")
+def gateway_start() -> None:
+    """Start the gateway if not already running; block until healthy."""
+    from atlas_runtime import gateway_control
+
+    ok, message = gateway_control.start()
+    typer.echo(message)
+    if not ok:
+        raise typer.Exit(1)
+
+
+@gateway_app.command("status")
+def gateway_status() -> None:
+    """Print 'online' or 'offline' based on the gateway /health endpoint."""
+    from atlas_runtime import gateway_control
+
+    typer.echo("online" if gateway_control.health_ok() else "offline")
+
+
+@gateway_app.command("stop")
+def gateway_stop() -> None:
+    """Stop a gateway started by this CLI (via its PID file)."""
+    from atlas_runtime import gateway_control
+
+    ok, message = gateway_control.stop()
+    typer.echo(message)
+    if not ok:
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":
