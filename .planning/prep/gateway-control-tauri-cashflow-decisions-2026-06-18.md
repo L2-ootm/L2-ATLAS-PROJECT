@@ -196,6 +196,40 @@ Not done in this session — it's a separate repo and outside the ATLAS tree; aw
 5. **Tauri shell** (Decision 2): deferred until React cockpit parity; then the in-app Start button +
    supervision + bundled installer.
 
+## Progress log (2026-06-18)
+
+Built and verified this session (branch `feat/cockpit-p3-glass-p4`):
+
+- **Visual fixes** (`d4c3085`) — clean modals + panels above terrain (glass canon).
+- **Migration runner + gateway primitive** (`72a4151`) — `atlas_runtime/db.py`
+  (`schema_migrations` tracker, idempotent + drift-tolerant + non-destructive apply),
+  `atlas db init|status`; `atlas_runtime/gateway_control.py` + `atlas gateway
+  start|status|stop`; smoke routed through the runner. Verified: agent-runtime 68→72
+  pass; `atlas db init` adopted the real `~/.atlas/atlas.db` cleanly.
+- **Cashflow vendored** (`2396007`) — `services/cashflow`, detached from origin, bloat
+  stripped (incl. the OOXML skill pack), `VENDORED.md` + hardened `.gitignore`.
+- **Module registry backend** (`2703bed`) — `atlas_core...Module`, `0007_modules.sql`
+  (table + non-destructive cashflow seed), `module_service.py` (idempotent toggle),
+  `atlas module list|activate|deactivate`. Verified: atlas-core 33, agent-runtime 72;
+  real DB shows `cashflow  inactive`.
+
+### Remaining (next slice — UI + Rust)
+
+1. **Gateway endpoints (Rust, `atlas-gateway`):** `GET /v1/modules`, `POST
+   /v1/modules/{id}/activate` + `/deactivate` (shell to `atlas module …` via the
+   existing `dispatch_atlas` guard, or read the DB directly via `db.rs`). Rebuild the
+   release binary (stop the running instance first — it locks the exe). Add Rust tests
+   mirroring the projects endpoints.
+2. **React System page** (replaces the `/system` `<Migrating>` route): gateway status +
+   DB status (`/health`), the modules list with an **activate toggle**, and the
+   **offline panel** (copy `atlas gateway start`; feature-detect `window.__TAURI__` and
+   stub the in-shell Start button for the future Tauri slice).
+3. **Sidebar conditional nav:** render the Cashflow entry only when the module is
+   active; route hosts the vendored Next.js app (its own process) as the first cut.
+4. **Cashflow DB selection (Decision 4):** surface `ATLAS_CASHFLOW_DB=local|supabase`
+   in the System page; ensure cashflow's initial migration is non-destructive
+   (CREATE TABLE IF NOT EXISTS only) on first setup.
+
 ## Constraints honored
 
 No-bloat (defer Tauri; no monorepo absorption; native migrations per app). D-001 (no `foundation/`
