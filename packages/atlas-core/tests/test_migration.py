@@ -64,6 +64,7 @@ def test_missions_column_count(db: sqlite3.Connection) -> None:
 
 
 def test_runs_column_count(db: sqlite3.Connection) -> None:
+    # This fixture applies 0001 only; agent_runtime is added additively in 0006 (P4).
     cols = db.execute("PRAGMA table_info(runs)").fetchall()
     assert len(cols) == 7, f"Expected 7 columns, got {len(cols)}: {[c[1] for c in cols]}"
 
@@ -113,7 +114,9 @@ def test_column_names_match_fields_run(db: sqlite3.Connection) -> None:
 
     cols = {row[1] for row in db.execute("PRAGMA table_info(runs)").fetchall()}
     fields = set(Run.model_fields.keys())
-    assert cols == fields, f"Schema drift — DDL: {cols}, model: {fields}"
+    # agent_runtime is added additively in 0006_agent_runtime.sql (P4); the
+    # 0001-only fixture lacks it, so exclude it from the 0001 drift check.
+    assert cols == fields - {"agent_runtime"}, f"Schema drift — 0001 DDL: {cols}, model: {fields}"
 
 
 def test_column_names_match_fields_audit_event(db: sqlite3.Connection) -> None:

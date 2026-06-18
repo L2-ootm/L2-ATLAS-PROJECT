@@ -34,14 +34,17 @@ def start_run(
     *,
     mission_id: str,
     session_id: Optional[str] = None,
+    agent_runtime: Literal["native", "claude_code"] = "native",
 ) -> Run:
     """Create a Run row, update mission to running, emit tool_call AuditEvent.
+
+    `agent_runtime` records which AgentRuntime will execute the run (P4).
 
     Raises:
         ValueError: If the mission does not exist or is not in pending state.
     """
     # Pydantic-first: construct Run model before any SQL
-    run = Run(mission_id=mission_id, session_id=session_id)
+    run = Run(mission_id=mission_id, session_id=session_id, agent_runtime=agent_runtime)
     run_row = run.model_dump()
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
@@ -59,8 +62,8 @@ def start_run(
                 )
             conn.execute(
                 "INSERT INTO runs"
-                "(id, mission_id, session_id, status, started_at, finished_at, summary) "
-                "VALUES (:id, :mission_id, :session_id, :status, :started_at, :finished_at, :summary)",
+                "(id, mission_id, session_id, status, started_at, finished_at, summary, agent_runtime) "
+                "VALUES (:id, :mission_id, :session_id, :status, :started_at, :finished_at, :summary, :agent_runtime)",
                 run_row,
             )
             conn.execute(

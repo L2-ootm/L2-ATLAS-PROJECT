@@ -17,6 +17,10 @@ atlas = "atlas_runtime.cli.main:app"
 
 [project.optional-dependencies]
 dev = ["pytest>=9.0", "pytest-cov>=7.0"]
+# claude_code AgentRuntime (P4): drives the operator's local Claude Code
+# session. Optional so native-only installs stay lean; lazy-imported in
+# atlas_runtime.agents.claude_code.
+claude = ["claude-agent-sdk>=0.2"]
 
 [tool.hatch.metadata]
 allow-direct-references = true
