@@ -229,15 +229,27 @@ Built and verified this session (branch `feat/cockpit-p3-glass-p4`):
 - **Cashflow hygiene** (`<this commit>`) — dropped unimported scratch + historical
   reports from the vendored module.
 
+### Cashflow DB backend + install — DONE 2026-06-18
+
+- **Selectable backend** (`7f132ee`) — cashflow's repository layer now selects
+  **local SQLite ↔ Supabase** at startup (auto-detect; `ATLAS_CASHFLOW_DB=local|
+  supabase` override). Built the missing `lib/repositories/sqlite/` (6 repos) backed
+  by the existing non-destructive `lib/db` schema; restored `lib/db` eager full schema
+  (enterprise pages depend on it). Verified: tsc clean + live tsx round-trip on local.
+- **Install / PATH** (`<docs commit>`) — RUNNING.md now uses `atlas db init` +
+  `atlas gateway start`; `scripts/install-atlas-cli.ps1` is a one-shot editable
+  install that puts `atlas` on PATH and bootstraps the DB (operator-run).
+
 ### Still remaining
 
-1. **Cashflow DB selection (Decision 4):** surface `ATLAS_CASHFLOW_DB=local|supabase`
-   in the System page; ensure cashflow's initial migration is non-destructive
-   (CREATE TABLE IF NOT EXISTS only) on first setup. (Cashflow already has the
-   repository-toggle; this is wiring the selector + verifying non-destructive setup.)
-2. **PATH install step:** package the `atlas` console script onto PATH (the dev path
-   is bridged by the injected `ATLAS_CLI`; production wants the real install).
-3. **Tauri shell** (Decision 2): deferred until React cockpit parity.
+1. **Live backend switcher in the System page (optional polish):** today the backend
+   is chosen by env at cashflow startup. A live switch requires ATLAS to own the
+   cashflow process env/lifecycle (orchestration) — deferred; the env override +
+   `activeBackend` export are the seam.
+2. **Supabase path exercise:** the Supabase branch is built but untested until creds
+   arrive (go into the auth store, then the cockpit can inject them).
+3. **MCP/webhook agent actuation** of cashflow (the flagship-integration loop).
+4. **Tauri shell** (Decision 2): deferred until React cockpit parity.
 
 ## Constraints honored
 
