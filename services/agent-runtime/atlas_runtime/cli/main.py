@@ -95,13 +95,59 @@ def create(
 @mission_app.command("run")
 def run_mission(
     mission_id: str = typer.Argument(..., help="Mission ID to execute"),
+    agent: str = typer.Option(
+        "native", "--agent", help="Agent runtime to record/use: native | claude_code"
+    ),
+    execute: bool = typer.Option(
+        False,
+        "--execute",
+        help="Execute the run synchronously via the selected agent runtime (blocks)",
+    ),
 ) -> None:
-    """Start a Run for the given mission and print the run ID."""
+    """Start a Run for the given mission and print the run ID.
+
+    With --execute, run it synchronously through the selected agent runtime
+    and emit the audit trail. Without --execute the run is recorded with the
+    chosen runtime but not executed (gateway-safe, non-blocking).
+    """
+    from atlas_runtime.agents import get_agent, known_agents
+
     conn = _get_connection()
     lock = _get_lock()
+
+    if agent not in known_agents():
+        typer.echo(f"Error: unknown agent {agent!r}; known: {known_agents()}", err=True)
+        raise typer.Exit(1)
+
     try:
-        run = run_service.start_run(conn, lock, mission_id=mission_id)
-        typer.echo(run.id)
+        run = run_service.start_run(
+            conn, lock, mission_id=mission_id, agent_runtime=agent
+        )
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(run.id)
+
+    if not execute:
+        return
+
+    try:
+        row = conn.execute(
+            "SELECT intent FROM missions WHERE id=?", (mission_id,)
+        ).fetchone()
+        prompt = row[0] if row and row[0] else ""
+        outcome = get_agent(agent).execute(
+            conn, lock, mission_id=mission_id, run_id=run.id, prompt=prompt
+        )
+        run_service.complete_run(
+            conn,
+            lock,
+            run_id=run.id,
+            mission_id=mission_id,
+            status=outcome.status,
+            summary=outcome.summary,
+        )
+        typer.echo(outcome.status)
     except ValueError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1)

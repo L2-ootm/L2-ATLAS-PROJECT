@@ -94,6 +94,8 @@ class Run(BaseModel):
     )
     finished_at: Optional[datetime.datetime] = None
     summary: str = ""
+    # Which AgentRuntime executed this run (P4 — migration 0006).
+    agent_runtime: Literal["native", "claude_code"] = "native"
 
     @field_serializer("started_at", "finished_at")
     def serialize_dt(self, dt: datetime.datetime | None) -> str | None:
