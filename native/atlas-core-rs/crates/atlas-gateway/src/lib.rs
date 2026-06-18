@@ -410,20 +410,28 @@ async fn dispatch_atlas(
 struct CreateMissionBody {
     title: String,
     intent: Option<String>,
+    /// Optional project id — mission runs in that project's working directory.
+    project: Option<String>,
 }
 
 async fn create_mission(
     State(state): State<AppState>,
     Json(body): Json<CreateMissionBody>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
-    let title = body.title;
-    let intent = body.intent.unwrap_or_default();
+    let title = body.title.clone();
+    let intent = body.intent.clone().unwrap_or_default();
     require_arg(&title, "title must be non-empty")?;
-    let id = dispatch_atlas(
-        &state.atlas_cmd,
-        &["mission", "create", "--title", &title, "--intent", &intent],
-    )
-    .await?;
+    let project = body
+        .project
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let mut args: Vec<&str> = vec!["mission", "create", "--title", &title, "--intent", &intent];
+    if let Some(pid) = project {
+        args.push("--project");
+        args.push(pid);
+    }
+    let id = dispatch_atlas(&state.atlas_cmd, &args).await?;
     let path = state.db_path.clone();
     let id_clone = id.clone();
     let found = blocking(move || db::get_mission(&path, &id_clone)).await?;
@@ -565,6 +573,79 @@ async fn models_list(
 }
 
 // ---------------------------------------------------------------------------
+// Projects handlers (P3 — folder-backed working directories)
+// ---------------------------------------------------------------------------
+
+async fn projects_list(
+    State(state): State<AppState>,
+    Query(params): Query<ListParams>,
+) -> ApiResult {
+    let path = state.db_path.clone();
+    let limit = clamp_limit(params.limit, 100, 500);
+    let projects = blocking(move || db::list_projects(&path, limit)).await?;
+    let count = projects.len();
+    Ok(Json(json!({ "projects": projects, "count": count })))
+}
+
+async fn project_detail(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
+    let path = state.db_path.clone();
+    let found = blocking(move || db::get_project(&path, &id)).await?;
+    match found {
+        Some((project, missions)) => Ok(Json(json!({ "project": project, "missions": missions }))),
+        None => Err(ApiError::NotFound("project")),
+    }
+}
+
+#[derive(Deserialize)]
+struct CreateProjectBody {
+    name: String,
+    path: String,
+}
+
+/// Shared create/register dispatch — `sub` is "create" (mkdir new folder) or
+/// "register" (adopt existing folder). Both go through the `atlas` CLI contract.
+async fn dispatch_project(
+    state: &AppState,
+    sub: &str,
+    name: &str,
+    dir: &str,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    require_arg(name, "name must be non-empty")?;
+    require_arg(dir, "path must be non-empty")?;
+    let id = dispatch_atlas(
+        &state.atlas_cmd,
+        &["project", sub, "--name", name, "--path", dir],
+    )
+    .await?;
+    let path = state.db_path.clone();
+    let id_clone = id.clone();
+    let found = blocking(move || db::get_project(&path, &id_clone)).await?;
+    match found {
+        Some((project, missions)) => Ok((
+            StatusCode::CREATED,
+            Json(json!({ "project": project, "missions": missions })),
+        )),
+        None => Err(ApiError::Internal(format!(
+            "project '{id}' created but not found in db"
+        ))),
+    }
+}
+
+async fn projects_create(
+    State(state): State<AppState>,
+    Json(body): Json<CreateProjectBody>,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    dispatch_project(&state, "create", &body.name, &body.path).await
+}
+
+async fn projects_register(
+    State(state): State<AppState>,
+    Json(body): Json<CreateProjectBody>,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    dispatch_project(&state, "register", &body.name, &body.path).await
+}
+
+// ---------------------------------------------------------------------------
 // Run cancel handler (Phase 8 — Surface 2 run monitoring)
 // ---------------------------------------------------------------------------
 
@@ -688,6 +769,9 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/wiki/pages/{slug}", get(wiki_page_detail).put(wiki_update))
         .route("/v1/wiki/search", get(wiki_search))
         .route("/v1/models", get(models_list))
+        .route("/v1/projects", get(projects_list).post(projects_create))
+        .route("/v1/projects/register", post(projects_register))
+        .route("/v1/projects/{id}", get(project_detail))
         .layer(middleware::from_fn(cors))
         .with_state(state)
 }

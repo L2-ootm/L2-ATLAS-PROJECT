@@ -18,32 +18,32 @@ import uuid
 
 import pytest
 
-MIGRATION_PATH = (
-    pathlib.Path(__file__).parent.parent.parent.parent
-    / "infra"
-    / "migrations"
-    / "0001_core.sql"
+MIGRATIONS_DIR = (
+    pathlib.Path(__file__).parent.parent.parent.parent / "infra" / "migrations"
 )
 
 
 @pytest.fixture(name="db")
 def db_fixture() -> sqlite3.Connection:  # type: ignore[return]
-    """In-memory SQLite with WAL mode, FK enforcement, and core migration applied.
+    """In-memory SQLite with WAL mode, FK enforcement, and ALL migrations applied.
 
-    Raises pytest.fail if infra/migrations/0001_core.sql does not exist, rather
-    than silently returning an empty database (which would cause all downstream
+    Applies every infra/migrations/*.sql in sorted order so the fixture reflects
+    the current schema (project_id, provenance, registry, …) — the same path the
+    fresh-machine bootstrap uses. Raises pytest.fail if no migrations are found,
+    rather than silently returning an empty database (which would cause downstream
     tests to fail with misleading 'no such table' errors instead of a clear cause).
     """
     conn = sqlite3.connect(":memory:")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys = ON")
-    if not MIGRATION_PATH.exists():
+    migrations = sorted(MIGRATIONS_DIR.glob("*.sql"))
+    if not migrations:
         pytest.fail(
-            f"Required migration not found: {MIGRATION_PATH}\n"
-            "Ensure infra/migrations/0001_core.sql exists before running tests."
+            f"No migrations found in: {MIGRATIONS_DIR}\n"
+            "Ensure infra/migrations/*.sql exist before running tests."
         )
-    sql = MIGRATION_PATH.read_text(encoding="utf-8")
-    conn.executescript(sql)
+    for sql_path in migrations:
+        conn.executescript(sql_path.read_text(encoding="utf-8"))
     yield conn
     conn.close()
 

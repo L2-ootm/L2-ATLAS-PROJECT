@@ -6,6 +6,7 @@ import MissionDetail from './routes/MissionDetail';
 import Runs from './routes/Runs';
 import RunDetail from './routes/RunDetail';
 import Console from './routes/Console';
+import Projects from './routes/Projects';
 import Migrating from './routes/Migrating';
 
 // Route manifest. Surfaces marked <Migrating> are still served by the Svelte
@@ -21,6 +22,7 @@ export const routes: RouteObject[] = [
 			{ path: 'runs', element: <Runs /> },
 			{ path: 'runs/:id', element: <RunDetail /> },
 			{ path: 'console', element: <Console /> },
+			{ path: 'projects', element: <Projects /> },
 			{ path: 'audit', element: <Migrating pillar="AUDIT" name="Ledger" /> },
 			{ path: 'wiki', element: <Migrating pillar="STRUCTURE" name="Codex" /> },
 			{ path: 'models', element: <Migrating pillar="STRUCTURE" name="Models" /> },

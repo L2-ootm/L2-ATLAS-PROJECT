@@ -44,6 +44,29 @@ class Mission(BaseModel):
     intent: str = ""
     status: Literal["pending", "running", "succeeded", "failed", "cancelled"] = "pending"
     project: str = ""
+    project_id: Optional[str] = None
+    created_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+    updated_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_dt(self, dt: datetime.datetime | None) -> str | None:
+        """Return ISO 8601 string so model_dump() is JSON-safe."""
+        return None if dt is None else dt.isoformat()
+
+
+class Project(BaseModel):
+    """A folder-backed working directory. Missions linked to a project execute
+    with root_path as their working directory (P3 — DDL in 0005_projects.sql)."""
+
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    root_path: str
     created_at: datetime.datetime = Field(
         default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
@@ -247,6 +270,7 @@ class MemoryProvenance(BaseModel):
 
 __all__ = [
     "Mission",
+    "Project",
     "Run",
     "AuditEvent",
     "ToolCall",

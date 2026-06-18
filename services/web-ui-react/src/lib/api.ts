@@ -15,6 +15,15 @@ export interface Mission {
 	updated_at: string;
 }
 
+/** Folder-backed working directory (P3). Mirrors db.rs project_row. */
+export interface Project {
+	id: string;
+	name: string;
+	root_path: string;
+	created_at: string;
+	updated_at: string;
+}
+
 export interface Run {
 	id: string;
 	mission_id: string;
@@ -90,11 +99,56 @@ export async function getMission(id: string): Promise<{ mission: Mission; runs: 
 
 export async function createMission(
 	title: string,
-	intent: string
+	intent: string,
+	project?: string
 ): Promise<{ mission: Mission; runs: Run[] }> {
+	const body: { title: string; intent: string; project?: string } = { title, intent };
+	if (project) body.project = project;
 	return apiFetch('/v1/missions', {
 		method: 'POST',
-		body: JSON.stringify({ title, intent })
+		body: JSON.stringify(body)
+	});
+}
+
+// ── Project endpoints (P3 — folder-backed working directories) ────────────────
+
+export async function listProjects(limit = 100): Promise<{ projects: Project[]; count: number }> {
+	try {
+		return await apiFetch<{ projects: Project[]; count: number }>(`/v1/projects?limit=${limit}`);
+	} catch (err) {
+		// A pre-0005 gateway (no /v1/projects route) or absent DB renders empty.
+		if (err instanceof ApiError && (err.status === 404 || err.status === 503)) {
+			return { projects: [], count: 0 };
+		}
+		throw err;
+	}
+}
+
+export async function getProject(
+	id: string
+): Promise<{ project: Project; missions: Mission[] }> {
+	return apiFetch(`/v1/projects/${encodeURIComponent(id)}`);
+}
+
+/** Create a NEW project folder (mkdir) and register it. */
+export async function createProject(
+	name: string,
+	path: string
+): Promise<{ project: Project; missions: Mission[] }> {
+	return apiFetch('/v1/projects', {
+		method: 'POST',
+		body: JSON.stringify({ name, path })
+	});
+}
+
+/** Register an EXISTING folder on the machine as a project. */
+export async function registerProject(
+	name: string,
+	path: string
+): Promise<{ project: Project; missions: Mission[] }> {
+	return apiFetch('/v1/projects/register', {
+		method: 'POST',
+		body: JSON.stringify({ name, path })
 	});
 }
 

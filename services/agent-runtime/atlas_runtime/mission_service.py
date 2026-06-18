@@ -24,22 +24,33 @@ def create_mission(
     title: str,
     intent: str = "",
     project: str = "",
+    project_id: Optional[str] = None,
 ) -> Mission:
     """Insert a new Mission row and return the constructed Mission.
 
     Pydantic-first write guard: constructs Mission model before any SQL.
     ValidationError propagates before any DB write if inputs are invalid.
+
+    If project_id is given it must reference an existing project (folder-backed
+    working directory); a ValueError is raised before any write otherwise.
     """
     # Pydantic-first: construct and validate before any SQL
-    mission = Mission(title=title, intent=intent, project=project)
+    mission = Mission(title=title, intent=intent, project=project, project_id=project_id)
     row = mission.model_dump()
 
     with lock:
         with conn:
+            if mission.project_id is not None:
+                exists = conn.execute(
+                    "SELECT 1 FROM projects WHERE id=?", (mission.project_id,)
+                ).fetchone()
+                if exists is None:
+                    raise ValueError(f"unknown project_id: {mission.project_id}")
             conn.execute(
                 "INSERT INTO missions"
-                "(id, title, intent, status, project, created_at, updated_at) "
-                "VALUES (:id, :title, :intent, :status, :project, :created_at, :updated_at)",
+                "(id, title, intent, status, project, project_id, created_at, updated_at) "
+                "VALUES (:id, :title, :intent, :status, :project, :project_id, "
+                ":created_at, :updated_at)",
                 row,
             )
 
