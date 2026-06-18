@@ -240,16 +240,22 @@ Built and verified this session (branch `feat/cockpit-p3-glass-p4`):
   `atlas gateway start`; `scripts/install-atlas-cli.ps1` is a one-shot editable
   install that puts `atlas` on PATH and bootstraps the DB (operator-run).
 
+### Live cashflow process control — DONE 2026-06-18
+
+- `cashflow_control.py` + `atlas cashflow start|status|stop` (`cb7fa34`): detached
+  `npm run dev` with `ATLAS_CASHFLOW_DB`, PID/state file, health probe; taskkill /T
+  drops the node tree on stop.
+- Gateway `/v1/cashflow/status|start|stop` + System-page **Cashflow Process card**
+  (`86e4a9e`): local|supabase segmented selector, Start/Stop, live status, Open link;
+  backend locked while running. Verified **end-to-end live** through the gateway:
+  start → :3000 UP → status running → stop → :3000 down. cargo 42; tsc/eslint/build clean.
+
 ### Still remaining
 
-1. **Live backend switcher in the System page (optional polish):** today the backend
-   is chosen by env at cashflow startup. A live switch requires ATLAS to own the
-   cashflow process env/lifecycle (orchestration) — deferred; the env override +
-   `activeBackend` export are the seam.
-2. **Supabase path exercise:** the Supabase branch is built but untested until creds
-   arrive (go into the auth store, then the cockpit can inject them).
-3. **MCP/webhook agent actuation** of cashflow (the flagship-integration loop).
-4. **Tauri shell** (Decision 2): deferred until React cockpit parity.
+1. **Supabase path exercise:** the Supabase branch is built but untested until creds
+   arrive (go into the auth store, then the cockpit can inject them at start).
+2. **MCP/webhook agent actuation** of cashflow (the flagship-integration loop).
+3. **Tauri shell** (Decision 2): deferred until React cockpit parity.
 
 ## Constraints honored
 
