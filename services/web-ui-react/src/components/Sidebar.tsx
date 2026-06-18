@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { navSections } from '../lib/modules';
-import { checkHealth } from '../lib/api';
+import { ChevronLeft, ChevronRight, Wallet, Boxes, type LucideIcon } from 'lucide-react';
+import { navSections, type CockpitModule, type NavSection } from '../lib/modules';
+import { checkHealth, listModules } from '../lib/api';
+
+// Active optional modules (Decision 3b) render as a dynamic nav section. Map known
+// module ids to an icon; unknown modules fall back to a generic one.
+const MODULE_ICON: Record<string, LucideIcon> = { cashflow: Wallet };
 import { SIDEBAR_WIDTH_COLLAPSED, SIDEBAR_WIDTH_EXPANDED } from '../lib/ui-state';
 import AtlasMark from '../brand/AtlasMark';
 import { Wordmark } from '../brand/Wordmark';
@@ -18,6 +22,8 @@ export default function Sidebar({ expanded, onToggle }: SidebarProps) {
 
 	// ── Gateway health ──────────────────────────────────────────────────────
 	const [gatewayOnline, setGatewayOnline] = useState<boolean | null>(null);
+	// ── Active optional modules (drive the dynamic nav section) ──────────────
+	const [activeModuleNav, setActiveModuleNav] = useState<CockpitModule[]>([]);
 
 	useEffect(() => {
 		let alive = true;
@@ -28,6 +34,24 @@ export default function Sidebar({ expanded, onToggle }: SidebarProps) {
 			} catch {
 				if (alive) setGatewayOnline(false);
 			}
+			try {
+				const { modules } = await listModules();
+				if (!alive) return;
+				setActiveModuleNav(
+					modules
+						.filter((m) => m.status === 'active')
+						.map((m) => ({
+							id: m.id,
+							label: m.name.toUpperCase(),
+							route: `/${m.id}`,
+							icon: MODULE_ICON[m.id] ?? Boxes,
+							status: 'active' as const,
+							ariaLabel: m.name
+						}))
+				);
+			} catch {
+				if (alive) setActiveModuleNav([]);
+			}
 		}
 		void poll();
 		const id = setInterval(() => void poll(), 30_000);
@@ -36,6 +60,12 @@ export default function Sidebar({ expanded, onToggle }: SidebarProps) {
 			clearInterval(id);
 		};
 	}, []);
+
+	// navSections + a dynamic MODULES section when any optional module is active.
+	const sections: NavSection[] =
+		activeModuleNav.length > 0
+			? [...navSections, { pillar: 'MODULES', items: activeModuleNav }]
+			: navSections;
 
 	// Active route: exact match for index/"/", prefix match otherwise.
 	const isActive = (route: string, exact?: boolean) =>
@@ -140,7 +170,7 @@ export default function Sidebar({ expanded, onToggle }: SidebarProps) {
 
 			{/* ── Navigation — pillared (MISSION / AUDIT / STRUCTURE / SYSTEM) ───── */}
 			<div role="navigation" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '8px 0' }}>
-				{navSections.map((section, si) => (
+				{sections.map((section, si) => (
 					<div key={section.pillar ?? 'top'} style={{ marginTop: si === 0 ? 2 : expanded ? 14 : 10 }}>
 						{section.pillar &&
 							(expanded ? (
