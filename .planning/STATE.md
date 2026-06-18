@@ -56,11 +56,33 @@ Last activity: 2026-06-17 -- React pivot scaffolded; Dashboard surface builds + 
     optional project picker on New-Mission. Shots: output/playwright/projects-page.png.
   - Verified: agent-runtime 26 + atlas-core 33 pytest green (conftest now applies ALL migrations;
     drift guards updated for project_id); fresh-DB P3 smoke 10/10; cargo test 34+3 green; web
-    check/lint/build green. **Gateway exe NOT yet rebuilt** (running instance locks it) — restart
-    the gateway to serve /v1/projects live.
-- **P4 Modular agents (NOT STARTED — next session):** Claude Agent SDK via the user's LOCAL Claude
-  Code session (subscription auth, not API key) — DE-RISK AUTH FIRST; then AgentRuntime ABC
-  (Native|ClaudeCode), `runs.agent_runtime` (0006), `--agent` CLI/gateway, Console agent-tabs.
+    check/lint/build green. **LANDED 2026-06-18:** gateway rebuilt, `/v1/projects` live (HTTP 200);
+    committed on branch `feat/cockpit-p3-glass-p4` (0dc0bd3).
+- **P4 Modular agents (DONE — 2026-06-18, branch `feat/cockpit-p3-glass-p4`):**
+  - DE-RISK SPIKE PASSED: `claude-agent-sdk` 0.2.104 runs on the LOCAL `claude` CLI (v2.1.179)
+    session with NO `ANTHROPIC_API_KEY` (subscription auth); structured stream maps to AuditEvents.
+    See memory `p4-agent-sdk-derisk.md`.
+  - Backend (commit 0dc...→ b-slice): `atlas_runtime/agents/` — AgentRuntime ABC + RunOutcome,
+    registry ("native"|"claude_code"), NativeAtlasAgent (audit-parity), ClaudeCodeAgent (SDK,
+    optional dep `atlas-runtime[claude]`, lazy import, stream→emit). Migration 0006
+    `runs.agent_runtime` (NOT NULL DEFAULT 'native') + Run schema field + 0001-scoped drift guards.
+    `start_run(agent_runtime=…)` persists it. CLI `atlas mission run --agent X [--execute]`
+    (--execute runs synchronously via the runtime, then completes the run).
+  - Gateway (Rust) + Console (commit 921eb2e): `POST /v1/missions/{id}/run` accepts
+    `{agent:"native"|"claude_code"}` (default native; 400 invalid; record-only, no --execute),
+    forwards `--agent`; runs expose `agent_runtime`. React NATIVE|CLAUDE CODE selector on
+    MissionDetail → startRun(agent); AgentBadge across Runs/RunDetail/MissionDetail; console nav
+    planned→active; live logs via existing useRunStream+SSE.
+  - Verified: cargo 37+3, agent-runtime 64, atlas-core 33, React tsc/lint/build green; native
+    `--execute` smoke end-to-end (run succeeded, agent_runtime recorded, audit trail emitted).
+  - DEFERRED (next slice): gateway-triggered LONG claude_code runs need async/background execution
+    — the 30s dispatch timeout makes the gateway record-only today; the CLI `--execute` path is the
+    live executor. Console live-stream works for runs an executor drives.
+  - ⚠️ RUNTIME-DB MIGRATION GAP (antifragility finding): there is NO migration runner; existing
+    `~/.atlas/atlas.db` had only 0001-era schema (missing 0005 AND 0006), so committed P3 + P4 were
+    broken at runtime until 0005+0006 were hand-applied this session. The slated `atlas db init`
+    runner is now a real prerequisite — fresh installs get all migrations via bootstrap, but
+    existing DBs silently drift. Build the runner before further schema work.
 
 ## Project Reference
 
@@ -209,7 +231,14 @@ Acknowledged at milestone close on 2026-06-15:
   must behave like the `claude` they run on their PC). DE-RISK FIRST: confirm the SDK honors local
   session auth before building UI. runs.agent_runtime column (migration 0006), CLI/gateway --agent,
   Console agent-tabs (NATIVE | CLAUDE CODE) reusing useRunStream+SSE for live logs; flip Console nav
-  planned→active. NEXT SESSION: build P3 end-to-end (verify migration runner first), then P4.
+  planned→active. DONE 2026-06-18 (see P3/P4 status above). NEXT SESSION: (1) build the `atlas db
+  init` migration runner (runtime-DB drift gap — see P4 finding); (2) async/background run executor
+  so the gateway can drive long claude_code runs; (3) Command Center (agent-driven ops dashboard,
+  Intelligence-Layer — design note in .planning/prep/).
+  Idempotency posture (P4): run creation is replay-guarded by the pending-state precondition (a
+  duplicate run trigger fails start_run while the mission is 'running'); complete_run/cancel_run are
+  guarded by the running-state precondition (no double-terminal); audit emit is fail-open +
+  append-only (partial-failure safe). The real antifragility gap is the missing migration runner.
   ODYSSEUS BASELINE doc'd (phase 10.0.3 dir / ODYSSEUS-PAGE-BASELINE.md): reference pillar's 8
   surfaces mapped to our IA. Biggest GAP = a CONSOLE/CHAT surface (direct conversational agent
   interaction, every turn audited) — Odysseus leads with it, we lack it; reuses our SSE+ledger
