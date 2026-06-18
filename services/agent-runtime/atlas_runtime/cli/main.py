@@ -29,6 +29,8 @@ db_app = typer.Typer(name="db", help="Database lifecycle: apply migrations, insp
 app.add_typer(db_app, name="db")
 gateway_app = typer.Typer(name="gateway", help="Gateway lifecycle: start, status, stop.")
 app.add_typer(gateway_app, name="gateway")
+module_app = typer.Typer(name="module", help="Optional modules: list, activate, deactivate.")
+app.add_typer(module_app, name="module")
 
 try:
     from atlas_wiki.cli.main import wiki_app
@@ -297,6 +299,55 @@ def gateway_stop() -> None:
     typer.echo(message)
     if not ok:
         raise typer.Exit(1)
+
+
+# ---------------------------------------------------------------------------
+# module subcommands — optional activatable modules (atlas module list/activate)
+# ---------------------------------------------------------------------------
+
+
+@module_app.command("list")
+def module_list() -> None:
+    """List modules as 'id<TAB>status<TAB>name'."""
+    from atlas_runtime import module_service
+
+    conn = _get_connection()
+    for mod in module_service.list_modules(conn):
+        typer.echo(f"{mod.id}\t{mod.status}\t{mod.name}")
+
+
+@module_app.command("activate")
+def module_activate(
+    module_id: str = typer.Argument(..., help="Module id to activate (e.g. cashflow)"),
+) -> None:
+    """Activate an optional module."""
+    from atlas_runtime import module_service
+
+    conn = _get_connection()
+    lock = _get_lock()
+    try:
+        mod = module_service.set_active(conn, lock, module_id=module_id, active=True)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"{mod.id} {mod.status}")
+
+
+@module_app.command("deactivate")
+def module_deactivate(
+    module_id: str = typer.Argument(..., help="Module id to deactivate"),
+) -> None:
+    """Deactivate an optional module."""
+    from atlas_runtime import module_service
+
+    conn = _get_connection()
+    lock = _get_lock()
+    try:
+        mod = module_service.set_active(conn, lock, module_id=module_id, active=False)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"{mod.id} {mod.status}")
 
 
 if __name__ == "__main__":
