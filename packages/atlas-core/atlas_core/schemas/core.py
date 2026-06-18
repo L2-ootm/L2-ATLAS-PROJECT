@@ -80,6 +80,25 @@ class Project(BaseModel):
         return None if dt is None else dt.isoformat()
 
 
+class Module(BaseModel):
+    """An optional, activatable ATLAS module (e.g. cashflow). Off by default;
+    toggled from the System page (DDL in 0007_modules.sql — Decision 3b). `id` is
+    a stable slug (not a uuid) so seeds and code can reference it by name."""
+
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    id: str
+    name: str
+    description: str = ""
+    status: Literal["active", "inactive"] = "inactive"
+    activated_at: Optional[datetime.datetime] = None
+
+    @field_serializer("activated_at")
+    def serialize_activated_at(self, dt: datetime.datetime | None) -> str | None:
+        """Return ISO 8601 string so model_dump() is JSON-safe."""
+        return None if dt is None else dt.isoformat()
+
+
 class Run(BaseModel):
     """One execution attempt of a Mission by the agent runtime."""
 
@@ -273,6 +292,7 @@ class MemoryProvenance(BaseModel):
 __all__ = [
     "Mission",
     "Project",
+    "Module",
     "Run",
     "AuditEvent",
     "ToolCall",

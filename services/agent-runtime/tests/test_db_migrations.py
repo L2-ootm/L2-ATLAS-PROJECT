@@ -60,7 +60,10 @@ def test_drifted_db_applies_only_pending(db_path) -> None:
     assert "project_id" not in _cols(conn, "missions")
 
     applied = db.apply_migrations(conn)
-    assert applied == ["0005_projects.sql", "0006_agent_runtime.sql"]
+    expected_pending = [
+        p.name for p in sorted(db.MIGRATIONS_DIR.glob("*.sql")) if p.name >= "0005"
+    ]
+    assert applied == expected_pending
     assert "project_id" in _cols(conn, "missions")
     assert "agent_runtime" in _cols(conn, "runs")
     conn.close()
