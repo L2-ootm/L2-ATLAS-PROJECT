@@ -707,6 +707,48 @@ async fn module_deactivate(State(state): State<AppState>, AxPath(id): AxPath<Str
 }
 
 // ---------------------------------------------------------------------------
+// Cashflow module process control (start/stop the vendored Next.js app)
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct CashflowStartBody {
+    /// "local" | "supabase" — DB backend the cashflow app runs against.
+    backend: Option<String>,
+}
+
+async fn cashflow_status(State(state): State<AppState>) -> ApiResult {
+    // CLI prints "running <backend>" | "stopped <backend>".
+    let out = dispatch_atlas(&state.atlas_cmd, &["cashflow", "status"]).await?;
+    let mut parts = out.split_whitespace();
+    let running = parts.next() == Some("running");
+    let backend = parts.next().unwrap_or("local").to_string();
+    Ok(Json(json!({ "running": running, "backend": backend })))
+}
+
+async fn cashflow_start(
+    State(state): State<AppState>,
+    body: Option<Json<CashflowStartBody>>,
+) -> ApiResult {
+    let backend = body
+        .and_then(|b| b.0.backend)
+        .unwrap_or_else(|| "local".to_string());
+    if backend != "local" && backend != "supabase" {
+        return Err(ApiError::BadRequest("backend must be 'local' or 'supabase'"));
+    }
+    let msg = dispatch_atlas(
+        &state.atlas_cmd,
+        &["cashflow", "start", "--backend", &backend],
+    )
+    .await?;
+    Ok(Json(json!({ "message": msg })))
+}
+
+async fn cashflow_stop(State(state): State<AppState>) -> ApiResult {
+    let msg = dispatch_atlas(&state.atlas_cmd, &["cashflow", "stop"]).await?;
+    Ok(Json(json!({ "message": msg })))
+}
+
+// ---------------------------------------------------------------------------
 // Run cancel handler (Phase 8 — Surface 2 run monitoring)
 // ---------------------------------------------------------------------------
 
@@ -835,6 +877,9 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/modules", get(modules_list))
         .route("/v1/modules/{id}/activate", post(module_activate))
         .route("/v1/modules/{id}/deactivate", post(module_deactivate))
+        .route("/v1/cashflow/status", get(cashflow_status))
+        .route("/v1/cashflow/start", post(cashflow_start))
+        .route("/v1/cashflow/stop", post(cashflow_stop))
         .route("/v1/projects/{id}", get(project_detail))
         .layer(middleware::from_fn(cors))
         .with_state(state)
