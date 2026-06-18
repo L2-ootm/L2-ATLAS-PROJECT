@@ -4,12 +4,15 @@ import { Page } from '../components/Page';
 import { HudLabel, StatusBadge } from '../components/hud';
 import LiveBadge from '../components/LiveBadge';
 import GlowBorder from '../components/GlowBorder';
+import { GlassPanel } from '../components/GlassFx';
 import { listRuns, type RunWithMission } from '../lib/api';
 import sealMark from '../brand/assets/seal.webp';
 
 type Load = { s: 'loading' } | { s: 'ready'; runs: RunWithMission[] } | { s: 'error' };
 
-const GRID = '108px 1fr 110px 150px 96px';
+// STATUS track is wide enough for a running row's two badges (RUNNING + ● LIVE)
+// so they never overflow into the STARTED column.
+const GRID = '104px 1fr 184px 150px 92px';
 const STATUSES = ['ALL', 'PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED', 'PARTIAL'];
 
 function isActive(status: string): boolean {
@@ -91,7 +94,7 @@ export default function Runs() {
 				</div>
 			</div>
 
-			<div style={{ border: '1px solid var(--l2-hairline)', borderRadius: 2, background: 'linear-gradient(180deg, rgba(21,24,32,0.5), rgba(11,13,18,0.5))', overflow: 'hidden' }}>
+			<GlassPanel style={{ overflow: 'hidden' }}>
 				<Header />
 				{load.s === 'loading' && <SkeletonRows />}
 				{load.s === 'error' && <Offline />}
@@ -101,7 +104,7 @@ export default function Runs() {
 					) : (
 						filtered.map((r, i) => <Row key={r.id} r={r} first={i === 0} onClick={() => nav(`/runs/${r.id}`)} />)
 					))}
-			</div>
+			</GlassPanel>
 		</Page>
 	);
 }

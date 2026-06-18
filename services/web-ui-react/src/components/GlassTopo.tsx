@@ -1,36 +1,59 @@
 import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import { createTopoField, type TopoFieldAPI } from '../topo/topoEngine';
 
-// GlassTopo — the signature surface: a vivid topographic field rendered behind a
-// frosted-glass layer, so the terrain glows *through* the blur (fluidic feel).
-// Ported settings from the L2 Systems Design System topo_patterns.html (.ti-shell:
-// backdrop-filter blur(16px) saturate(1.3), translucent navy bg) + a vivid field.
-// The field is the panel's OWN child (works inside modals over a scrim, where the
-// page ambient field is occluded). Pointer drives a fluidic morph; a slow ambient
-// orbit keeps it breathing at rest. prefers-reduced-motion → static lattice.
+// GlassTopo — the signature surface: a dense, uniformly-glowing topographic field
+// rendered behind a frosted-glass layer, so the terrain glows *through* the blur.
+// The reference look (L2 Systems Design System) is a fine green contour map that
+// glows across the WHOLE panel — not a single moving highlight. So here the
+// *resting* field is the star: bright, dense, bloomed, uniform. The pointer / slow
+// ambient orbit only adds a gentle moving accent on top. prefers-reduced-motion →
+// static field (still fully visible). cellSize/levels tuned for density.
 
 export type GlassTone = 'good' | 'ai' | 'info' | 'warn' | 'bad' | 'atlas';
 
+// Bright moving-accent colour (the local bulge glow that follows pointer/orbit).
 const GLOW: Record<GlassTone, string> = {
-	good: 'rgba(70,240,160,0.95)', // emerald
-	ai: 'rgba(161,123,255,0.95)', // violet
-	info: 'rgba(79,139,255,0.95)', // celestial
-	warn: 'rgba(255,200,80,0.95)',
-	bad: 'rgba(255,77,125,0.95)',
-	atlas: 'rgba(224,169,78,0.95)' // bronze
+	good: 'rgba(90,255,180,1)',
+	ai: 'rgba(178,148,255,1)',
+	info: 'rgba(110,165,255,1)',
+	warn: 'rgba(255,205,90,1)',
+	bad: 'rgba(255,100,140,1)',
+	atlas: 'rgba(235,185,110,1)'
 };
 
-// Resting lattice tinted toward the tone (dim) so the WHOLE field reads in the
-// semantic color through the frost — not neutral grey. The orbit/pointer adds a
-// brighter moving glow on top.
+// Resting field colour — now the dominant layer, so it must read as a saturated
+// glowing map (bright + opaque), not a dim grey lattice.
 const RESTING: Record<GlassTone, string> = {
-	good: 'rgba(70,240,160,0.55)',
-	ai: 'rgba(161,123,255,0.55)',
-	info: 'rgba(110,160,235,0.55)',
-	warn: 'rgba(255,200,80,0.5)',
-	bad: 'rgba(255,110,150,0.5)',
-	atlas: 'rgba(224,180,110,0.5)'
+	good: 'rgba(74,235,158,0.92)',
+	ai: 'rgba(168,138,255,0.92)',
+	info: 'rgba(96,156,255,0.92)',
+	warn: 'rgba(255,200,85,0.9)',
+	bad: 'rgba(255,108,148,0.9)',
+	atlas: 'rgba(230,180,110,0.9)'
 };
+
+// Soft bloom colour for the drop-shadow on the field (tight halo — keep lines crisp).
+const BLOOM: Record<GlassTone, string> = {
+	good: 'rgba(74,235,158,0.4)',
+	ai: 'rgba(168,138,255,0.4)',
+	info: 'rgba(96,156,255,0.4)',
+	warn: 'rgba(255,200,85,0.38)',
+	bad: 'rgba(255,108,148,0.38)',
+	atlas: 'rgba(230,180,110,0.38)'
+};
+
+// Faint tone tint mixed into the glass so the frost itself carries the colour.
+const TINT: Record<GlassTone, string> = {
+	good: 'rgba(20,60,44,0.34)',
+	ai: 'rgba(40,30,68,0.34)',
+	info: 'rgba(22,38,72,0.34)',
+	warn: 'rgba(56,46,18,0.32)',
+	bad: 'rgba(60,24,38,0.32)',
+	atlas: 'rgba(54,42,20,0.32)'
+};
+
+// More contour levels = more concentric lines = the dense reference map.
+const LEVELS = [0.18, 0.28, 0.38, 0.48, 0.58, 0.68, 0.78, 0.88];
 
 interface GlassTopoProps {
 	children?: ReactNode;
@@ -72,16 +95,19 @@ export default function GlassTopo({
 				host,
 				viewW: W,
 				viewH: H,
-				cellSize: 15,
+				cellSize: 9,
+				levels: LEVELS,
 				color: RESTING[tone],
 				glowColor: glow,
-				restingOpacity: 0.42,
+				// resting field is the star: dense, bright, uniform, CRISP lines
+				restingOpacity: 0.82,
+				restingWidth: 0.7,
+				// moving accent: a small localised bulge (NOT a panel-wide mask hole)
 				glowOpacity: 0.95,
-				restingWidth: 0.8,
-				glowWidth: 1.4,
-				bulgeStrength: 0.5,
-				hoverRadius: Math.max(W, H) * 0.85,
-				freq: 0.012
+				glowWidth: 1.3,
+				bulgeStrength: 0.55,
+				hoverRadius: 150,
+				freq: 0.015
 			});
 		};
 		build();
@@ -89,9 +115,8 @@ export default function GlassTopo({
 		const ro = new ResizeObserver(build);
 		ro.observe(host);
 
-		// Ambient orbit + pointer reactivity. The engine interpolates toward the
-		// hover target and keeps its rAF alive while the target drifts, so a slow
-		// moving target = a perpetual gentle morph (one rAF, the engine's own).
+		// Ambient orbit + pointer reactivity — a gentle moving highlight over the
+		// already-glowing field. Small hoverRadius keeps it a localised accent.
 		let orbit: ReturnType<typeof setInterval> | null = null;
 		let pointerUntil = 0;
 		const onMove = (e: PointerEvent) => {
@@ -103,13 +128,13 @@ export default function GlassTopo({
 			let t = Math.random() * Math.PI * 2;
 			orbit = setInterval(() => {
 				if (Date.now() < pointerUntil) return; // cursor owns the field while moving
-				t += 0.16;
+				t += 0.14;
 				const W = host.clientWidth || 400;
 				const H = host.clientHeight || 200;
-				const x = W * (0.5 + 0.38 * Math.cos(t));
-				const y = H * (0.5 + 0.42 * Math.sin(t * 0.8));
+				const x = W * (0.5 + 0.4 * Math.cos(t));
+				const y = H * (0.5 + 0.44 * Math.sin(t * 0.8));
 				fieldRef.current?.setHover(x, y, glow);
-			}, 120);
+			}, 130);
 			host.parentElement?.addEventListener('pointermove', onMove);
 		}
 
@@ -130,29 +155,48 @@ export default function GlassTopo({
 				borderRadius: radius,
 				overflow: 'hidden',
 				border: '1px solid var(--l2-hairline)',
+				background: '#06080c',
 				...style
 			}}
 		>
-			{/* topo field — painted behind the glass so the blur frosts it */}
+			{/* topo field — bloomed and painted behind the glass so the blur frosts it */}
 			<div
 				ref={fieldHostRef}
 				aria-hidden="true"
-				style={{ position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none' }}
+				style={{
+					position: 'absolute',
+					inset: 0,
+					zIndex: 0,
+					pointerEvents: 'none',
+					filter: `drop-shadow(0 0 2px ${BLOOM[tone]})`
+				}}
 			/>
-			{/* frosted glass — backdrop-filter blurs the field behind it; content is crisp */}
+			{/* frosted glass — light bg + low blur so the field reads through clearly */}
 			<div
 				style={{
 					position: 'relative',
 					zIndex: 1,
 					borderRadius: radius,
 					padding,
-					background:
-						'linear-gradient(180deg, rgba(17,21,30,0.5), rgba(9,11,16,0.62))',
-					backdropFilter: 'blur(11px) saturate(1.4)',
-					WebkitBackdropFilter: 'blur(11px) saturate(1.4)',
+					background: `linear-gradient(180deg, ${TINT[tone]}, rgba(7,10,15,0.42))`,
+					backdropFilter: 'blur(3px) saturate(1.6)',
+					WebkitBackdropFilter: 'blur(3px) saturate(1.6)',
 					boxShadow: 'inset 0 1px 0 rgba(237,234,224,0.06), 0 2px 0 rgba(0,0,0,0.28)'
 				}}
 			>
+				{/* vignette — darken edges so the glowing field feels centred (reference) */}
+				<span
+					aria-hidden="true"
+					style={{
+						position: 'absolute',
+						inset: 0,
+						borderRadius: radius,
+						background:
+							'radial-gradient(ellipse at center, transparent 42%, rgba(3,5,9,0.55) 100%)',
+						pointerEvents: 'none',
+						zIndex: 1
+					}}
+				/>
 				{accent && (
 					<span
 						aria-hidden="true"
@@ -169,7 +213,7 @@ export default function GlassTopo({
 						}}
 					/>
 				)}
-				{children}
+				<div style={{ position: 'relative', zIndex: 2 }}>{children}</div>
 			</div>
 		</div>
 	);

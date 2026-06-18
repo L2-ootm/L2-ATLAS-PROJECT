@@ -4,6 +4,7 @@ import { ArrowUpRight, Boxes, BookOpen, Activity, Map, type LucideIcon } from 'l
 import { Starfield, CompassStar } from '../brand/filigree';
 import { Wordmark } from '../brand/Wordmark';
 import { StatusBadge } from '../components/hud';
+import { glassPanel } from '../lib/glass';
 import { listMissions, listModels, listWikiPages, checkHealth, type Mission } from '../lib/api';
 import emblemFigure from '../brand/assets/emblem-figure.webp';
 import sealMark from '../brand/assets/seal.webp';
@@ -173,15 +174,12 @@ const STATS: { icon: LucideIcon; label: string; key: keyof TelemetryData; to: st
 function StatRail({ load }: { load: Load }) {
 	return (
 		<div
-			style={{
+			style={glassPanel({
 				marginTop: 16,
 				display: 'grid',
 				gridTemplateColumns: 'repeat(4, 1fr)',
-				border: '1px solid var(--l2-hairline)',
-				borderRadius: 2,
-				background: 'linear-gradient(180deg, rgba(21,24,32,0.6), rgba(11,13,18,0.6))',
 				overflow: 'hidden'
-			}}
+			})}
 		>
 			{STATS.map((s, i) => {
 				const Icon = s.icon;
@@ -258,14 +256,7 @@ function Band({
 	right?: React.ReactNode;
 }) {
 	return (
-		<section
-			data-topo={topo}
-			style={{
-				border: '1px solid var(--l2-hairline)',
-				borderRadius: 2,
-				background: 'linear-gradient(180deg, rgba(21,24,32,0.55), rgba(11,13,18,0.55))'
-			}}
-		>
+		<section data-topo={topo} style={glassPanel({ overflow: 'hidden' })}>
 			<header
 				style={{
 					display: 'flex',

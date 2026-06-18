@@ -15,7 +15,7 @@ import threading
 
 import typer
 
-from atlas_runtime import mission_service, run_service
+from atlas_runtime import mission_service, project_service, run_service
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -24,6 +24,8 @@ from atlas_runtime import mission_service, run_service
 app = typer.Typer()
 mission_app = typer.Typer(name="mission")
 app.add_typer(mission_app, name="mission")
+project_app = typer.Typer(name="project")
+app.add_typer(project_app, name="project")
 
 try:
     from atlas_wiki.cli.main import wiki_app
@@ -73,11 +75,20 @@ def _get_lock() -> threading.Lock:
 def create(
     title: str = typer.Option(..., "--title", help="Mission title"),
     intent: str = typer.Option("", "--intent", help="Mission intent"),
+    project: str = typer.Option(
+        None, "--project", help="Project ID — mission runs in that project's folder"
+    ),
 ) -> None:
     """Create a Mission and print its ID."""
     conn = _get_connection()
     lock = _get_lock()
-    mission = mission_service.create_mission(conn, lock, title=title, intent=intent)
+    try:
+        mission = mission_service.create_mission(
+            conn, lock, title=title, intent=intent, project_id=project
+        )
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
     typer.echo(mission.id)
 
 
@@ -132,6 +143,51 @@ def status(
         typer.echo("not found")
         raise typer.Exit(1)
     typer.echo(row[0])
+
+
+# ---------------------------------------------------------------------------
+# project subcommands
+# ---------------------------------------------------------------------------
+
+
+@project_app.command("create")
+def project_create(
+    name: str = typer.Option(..., "--name", help="Project name"),
+    path: str = typer.Option(..., "--path", help="Folder to create for the project"),
+) -> None:
+    """Create a NEW project folder and register it. Prints the project ID."""
+    conn = _get_connection()
+    lock = _get_lock()
+    try:
+        project = project_service.create_project(conn, lock, name=name, root_path=path)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(project.id)
+
+
+@project_app.command("register")
+def project_register(
+    name: str = typer.Option(..., "--name", help="Project name"),
+    path: str = typer.Option(..., "--path", help="Existing folder to adopt"),
+) -> None:
+    """Register an EXISTING folder as a project. Prints the project ID."""
+    conn = _get_connection()
+    lock = _get_lock()
+    try:
+        project = project_service.register_project(conn, lock, name=name, root_path=path)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(project.id)
+
+
+@project_app.command("list")
+def project_list() -> None:
+    """List all projects as 'id<TAB>name<TAB>root_path'."""
+    conn = _get_connection()
+    for p in project_service.list_projects(conn):
+        typer.echo(f"{p.id}\t{p.name}\t{p.root_path}")
 
 
 if __name__ == "__main__":

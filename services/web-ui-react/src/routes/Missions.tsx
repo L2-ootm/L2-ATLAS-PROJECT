@@ -5,8 +5,8 @@ import { Page } from '../components/Page';
 import { StatusBadge } from '../components/hud';
 import TopoInput from '../components/TopoInput';
 import BorderGlow from '../components/BorderGlow';
-import GlassTopo from '../components/GlassTopo';
-import { listMissions, createMission, type Mission } from '../lib/api';
+import { GlassPanel } from '../components/GlassFx';
+import { listMissions, createMission, listProjects, type Mission, type Project } from '../lib/api';
 import sealMark from '../brand/assets/seal.webp';
 
 type Load = { s: 'loading' } | { s: 'ready'; missions: Mission[]; count: number } | { s: 'error' };
@@ -91,7 +91,7 @@ export default function Missions() {
 			</div>
 
 			{/* table */}
-			<div style={{ border: '1px solid var(--l2-hairline)', borderRadius: 2, background: 'linear-gradient(180deg, rgba(21,24,32,0.5), rgba(11,13,18,0.5))', overflow: 'hidden' }}>
+			<GlassPanel style={{ overflow: 'hidden' }}>
 				<Header />
 				{load.s === 'loading' && <SkeletonRows />}
 				{load.s === 'error' && <Offline />}
@@ -103,7 +103,7 @@ export default function Missions() {
 							<Row key={m.id} m={m} i={i} onClick={() => nav(`/missions/${m.id}`)} />
 						))
 					))}
-			</div>
+			</GlassPanel>
 
 			{creating && (
 				<CreateModal
@@ -299,8 +299,16 @@ function Chip({ children, active, onClick }: { children: React.ReactNode; active
 function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
 	const [title, setTitle] = useState('');
 	const [intent, setIntent] = useState('');
+	const [projectId, setProjectId] = useState('');
+	const [projects, setProjects] = useState<Project[]>([]);
 	const [busy, setBusy] = useState(false);
 	const [err, setErr] = useState<string | null>(null);
+
+	useEffect(() => {
+		void listProjects(100)
+			.then(({ projects }) => setProjects(projects))
+			.catch(() => setProjects([]));
+	}, []);
 
 	async function submit() {
 		if (!title.trim() || !intent.trim()) {
@@ -310,7 +318,7 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
 		setBusy(true);
 		setErr(null);
 		try {
-			const { mission } = await createMission(title.trim(), intent.trim());
+			const { mission } = await createMission(title.trim(), intent.trim(), projectId || undefined);
 			onCreated(mission.id);
 		} catch {
 			setErr('Could not create mission — is the gateway running?');
@@ -332,7 +340,11 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
 				edgeSensitivity={16}
 				style={{ boxShadow: '0 24px 80px rgba(0,0,0,0.6)' }}
 			>
-				<GlassTopo tone="ai" radius={2} accent>
+				<div style={{ position: 'relative', borderRadius: 2, overflow: 'hidden' }}>
+					<span
+						aria-hidden="true"
+						style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, background: 'linear-gradient(90deg, transparent, var(--atlas-bronze) 50%, transparent)', opacity: 0.5, zIndex: 2 }}
+					/>
 				<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid var(--l2-hairline)' }}>
 					<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 11, letterSpacing: '0.22em', color: 'var(--atlas-bronze)' }}>NEW MISSION</span>
 					<button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', color: 'var(--l2-fg-3)', cursor: 'pointer', display: 'flex' }}>
@@ -346,6 +358,33 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
 					<Field label="INTENT">
 						<TopoInput value={intent} onChange={setIntent} placeholder="What should ATLAS accomplish, and why?" tone="ai" multiline rows={4} ariaLabel="Mission intent" />
 					</Field>
+					{projects.length > 0 && (
+						<Field label="PROJECT (OPTIONAL — RUNS IN ITS FOLDER)">
+							<select
+								value={projectId}
+								onChange={(e) => setProjectId(e.target.value)}
+								aria-label="Project"
+								style={{
+									width: '100%',
+									padding: '10px 12px',
+									borderRadius: 2,
+									border: '1px solid var(--l2-hairline)',
+									background: 'rgba(9,11,16,0.6)',
+									color: 'var(--l2-fg-1)',
+									fontFamily: 'var(--l2-font-mono)',
+									fontSize: 12.5,
+									cursor: 'pointer'
+								}}
+							>
+								<option value="">No project (default working directory)</option>
+								{projects.map((p) => (
+									<option key={p.id} value={p.id}>
+										{p.name} — {p.root_path}
+									</option>
+								))}
+							</select>
+						</Field>
+					)}
 					{err && <div style={{ color: 'var(--l2-error)', fontSize: 12, fontFamily: 'var(--l2-font-mono)' }}>{err}</div>}
 				</div>
 				<div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '14px 20px', borderTop: '1px solid var(--l2-hairline)' }}>
@@ -356,7 +395,7 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
 						{busy ? 'CREATING…' : 'CREATE'}
 					</PrimaryButton>
 				</div>
-			</GlassTopo>
+			</div>
 			</BorderGlow>
 			</div>
 		</div>

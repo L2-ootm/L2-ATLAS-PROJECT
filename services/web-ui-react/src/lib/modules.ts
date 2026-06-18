@@ -8,6 +8,7 @@ import {
 	BookOpen,
 	Boxes,
 	Cable,
+	FolderGit2,
 	SlidersHorizontal
 } from 'lucide-react';
 
@@ -56,6 +57,7 @@ export const navSections: NavSection[] = [
 	{
 		pillar: 'STRUCTURE',
 		items: [
+			{ id: 'projects', label: 'PROJECTS', route: '/projects', icon: FolderGit2, status: 'active', ariaLabel: 'Projects' },
 			{ id: 'wiki', label: 'CODEX', route: '/wiki', icon: BookOpen, status: 'active', ariaLabel: 'Codex' },
 			{ id: 'models', label: 'MODELS', route: '/models', icon: Boxes, status: 'active', ariaLabel: 'Model Registry' },
 			{ id: 'integrations', label: 'INTEGRATIONS', route: '/integrations', icon: Cable, status: 'beta', ariaLabel: 'Integrations' }

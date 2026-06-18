@@ -51,8 +51,19 @@ fn run_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
     }))
 }
 
+fn project_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
+    Ok(json!({
+        "id": row.get::<_, String>(0)?,
+        "name": row.get::<_, String>(1)?,
+        "root_path": row.get::<_, String>(2)?,
+        "created_at": row.get::<_, String>(3)?,
+        "updated_at": row.get::<_, String>(4)?,
+    }))
+}
+
 const MISSION_COLS: &str = "id, title, intent, status, project, created_at, updated_at";
 const RUN_COLS: &str = "id, mission_id, session_id, status, started_at, finished_at, summary";
+const PROJECT_COLS: &str = "id, name, root_path, created_at, updated_at";
 
 pub fn list_missions(path: &Path, limit: i64) -> Result<Vec<Value>, DbError> {
     let conn = open_ro(path)?;
@@ -79,6 +90,47 @@ pub fn get_mission(path: &Path, id: &str) -> Result<Option<(Value, Vec<Value>)>,
         .query_map([id], run_row)?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(Some((mission, runs)))
+}
+
+/// Projects ordered by created_at DESC. Returns `Ok(vec![])` when the `projects`
+/// table does not exist yet (pre-0005 DB) so the gateway never 503s.
+pub fn list_projects(path: &Path, limit: i64) -> Result<Vec<Value>, DbError> {
+    let conn = open_ro(path)?;
+    let sql = format!("SELECT {PROJECT_COLS} FROM projects ORDER BY created_at DESC LIMIT ?1");
+    let mut stmt = match conn.prepare(&sql) {
+        Ok(s) => s,
+        Err(rusqlite::Error::SqliteFailure(_, Some(ref msg))) if msg.contains("no such table") => {
+            return Ok(vec![]);
+        }
+        Err(e) => return Err(e.into()),
+    };
+    let rows = stmt
+        .query_map([limit], project_row)?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+/// Project detail plus the missions linked to it. `None` when the project id is
+/// unknown or the `projects` table does not exist yet.
+pub fn get_project(path: &Path, id: &str) -> Result<Option<(Value, Vec<Value>)>, DbError> {
+    let conn = open_ro(path)?;
+    let sql = format!("SELECT {PROJECT_COLS} FROM projects WHERE id = ?1");
+    let project = match conn.query_row(&sql, [id], project_row) {
+        Ok(v) => v,
+        Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(None),
+        Err(rusqlite::Error::SqliteFailure(_, Some(ref msg))) if msg.contains("no such table") => {
+            return Ok(None);
+        }
+        Err(e) => return Err(e.into()),
+    };
+    // A projects row exists ⇒ 0005 was applied ⇒ missions.project_id exists.
+    let sql =
+        format!("SELECT {MISSION_COLS} FROM missions WHERE project_id = ?1 ORDER BY created_at DESC");
+    let mut stmt = conn.prepare(&sql)?;
+    let missions = stmt
+        .query_map([id], mission_row)?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(Some((project, missions)))
 }
 
 pub fn get_run(path: &Path, id: &str) -> Result<Option<Value>, DbError> {

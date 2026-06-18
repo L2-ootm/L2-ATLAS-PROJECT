@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import TopoField from '../components/TopoField';
+import { GlassFilter } from '../components/GlassFx';
 import {
 	SIDEBAR_WIDTH_COLLAPSED,
 	SIDEBAR_WIDTH_EXPANDED,
@@ -30,6 +31,7 @@ export default function Layout() {
 	return (
 		<>
 			<TopoField />
+			<GlassFilter />
 			<div style={{ display: 'flex', minHeight: '100vh', position: 'relative', zIndex: 1 }}>
 				<Sidebar expanded={expanded} onToggle={toggle} />
 				<main
