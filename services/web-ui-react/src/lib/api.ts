@@ -24,6 +24,23 @@ export interface Project {
 	updated_at: string;
 }
 
+/** Agent runtime that executes a run: native ATLAS in-process, or the operator's
+ * local Claude Code session. Mirrors the gateway's `agent` request field /
+ * `agent_runtime` response field (P4 — modular agents). */
+export type AgentRuntime = 'native' | 'claude_code';
+
+/** Human display label for an agent runtime (e.g. "claude_code" → "CLAUDE CODE"). */
+export function agentRuntimeLabel(agent: AgentRuntime): string {
+	switch (agent) {
+		case 'native':
+			return 'NATIVE';
+		case 'claude_code':
+			return 'CLAUDE CODE';
+		default:
+			return String(agent).toUpperCase();
+	}
+}
+
 export interface Run {
 	id: string;
 	mission_id: string;
@@ -32,6 +49,8 @@ export interface Run {
 	started_at: string;
 	finished_at: string | null;
 	summary: string;
+	/** Which runtime this run was recorded against (P4). Older gateways omit it. */
+	agent_runtime?: AgentRuntime;
 }
 
 export interface AuditEvent {
@@ -154,10 +173,15 @@ export async function registerProject(
 
 // ── Run endpoints ────────────────────────────────────────────────────────────
 
-export async function startRun(missionId: string): Promise<{ run: Run }> {
-	return apiFetch(`/v1/missions/${encodeURIComponent(missionId)}/run`, {
-		method: 'POST'
-	});
+/**
+ * Trigger a mission run. `agent` selects the runtime the gateway records the run
+ * against ("native" default | "claude_code"); it is sent in the JSON body only
+ * when provided so a pre-P4 gateway still accepts the bodyless request.
+ */
+export async function startRun(missionId: string, agent?: AgentRuntime): Promise<{ run: Run }> {
+	const init: RequestInit = { method: 'POST' };
+	if (agent) init.body = JSON.stringify({ agent });
+	return apiFetch(`/v1/missions/${encodeURIComponent(missionId)}/run`, init);
 }
 
 export async function getRun(id: string): Promise<{ run: Run }> {

@@ -2,12 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Play, Ban } from 'lucide-react';
 import { Page } from '../components/Page';
-import { GlassPanel, HudLabel, StatusBadge } from '../components/hud';
+import { AgentBadge, GlassPanel, HudLabel, StatusBadge } from '../components/hud';
 import RunTimeline from '../components/RunTimeline';
 import LiveBadge from '../components/LiveBadge';
 import BorderGlow from '../components/BorderGlow';
 import GlassTopo from '../components/GlassTopo';
-import { getMission, startRun, cancelRun, type Mission, type Run } from '../lib/api';
+import { getMission, startRun, cancelRun, type AgentRuntime, type Mission, type Run } from '../lib/api';
 import sealMark from '../brand/assets/seal.webp';
 
 type Load =
@@ -34,6 +34,7 @@ export default function MissionDetail() {
 	const { id = '' } = useParams();
 	const nav = useNavigate();
 	const [load, setLoad] = useState<Load>({ s: 'loading' });
+	const [agent, setAgent] = useState<AgentRuntime>('native');
 	const [launching, setLaunching] = useState(false);
 	const [launchError, setLaunchError] = useState<string | null>(null);
 	const [confirmCancel, setConfirmCancel] = useState(false);
@@ -57,7 +58,7 @@ export default function MissionDetail() {
 		setLaunching(true);
 		setLaunchError(null);
 		try {
-			const { run } = await startRun(load.mission.id);
+			const { run } = await startRun(load.mission.id, agent);
 			nav(`/runs/${run.id}`);
 		} catch (e) {
 			setLaunchError(`RUN LAUNCH FAILED — ${e instanceof Error ? e.message : String(e)}. Mission status reverted.`);
@@ -88,6 +89,7 @@ export default function MissionDetail() {
 			actions={
 				load.s === 'ready' ? (
 					<>
+						<AgentSelect value={agent} onChange={setAgent} disabled={launching} />
 						{hasActive && (
 							<GhostButton icon={<Ban size={15} strokeWidth={1.5} />} onClick={() => setConfirmCancel(true)} danger>
 								Cancel
@@ -265,8 +267,11 @@ function RunRow({ r, first, onClick }: { r: Run; first: boolean; onClick: () => 
 			onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(79,139,255,0.05)')}
 			onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
 		>
-			<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 12, color: 'var(--l2-fg-2)', fontVariantNumeric: 'tabular-nums' }}>
-				{r.id.slice(0, 8)}
+			<span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 5, minWidth: 0 }}>
+				<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 12, color: 'var(--l2-fg-2)', fontVariantNumeric: 'tabular-nums' }}>
+					{r.id.slice(0, 8)}
+				</span>
+				{r.agent_runtime && <AgentBadge agent={r.agent_runtime} />}
 			</span>
 			<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
 				<StatusBadge status={r.status} />
@@ -311,6 +316,59 @@ function PrimaryButton({ children, icon, onClick, disabled }: { children: React.
 			{icon}
 			{children}
 		</button>
+	);
+}
+
+// Segmented control selecting the agent runtime a launched run is recorded
+// against (P4). NATIVE default; CLAUDE CODE routes the run to the operator's
+// local Claude Code session. Matches the Chip/PrimaryButton mono-uppercase law.
+const AGENT_OPTIONS: { value: AgentRuntime; label: string }[] = [
+	{ value: 'native', label: 'NATIVE' },
+	{ value: 'claude_code', label: 'CLAUDE CODE' }
+];
+function AgentSelect({ value, onChange, disabled }: { value: AgentRuntime; onChange: (a: AgentRuntime) => void; disabled?: boolean }) {
+	return (
+		<div
+			role="radiogroup"
+			aria-label="Agent runtime"
+			style={{
+				display: 'inline-flex',
+				padding: 2,
+				gap: 2,
+				borderRadius: 2,
+				border: '1px solid var(--l2-hairline)',
+				background: 'rgba(9,11,16,0.5)',
+				opacity: disabled ? 0.5 : 1
+			}}
+		>
+			{AGENT_OPTIONS.map((opt) => {
+				const on = opt.value === value;
+				return (
+					<button
+						key={opt.value}
+						role="radio"
+						aria-checked={on}
+						disabled={disabled}
+						onClick={() => onChange(opt.value)}
+						style={{
+							padding: '7px 12px',
+							borderRadius: 2,
+							border: '1px solid transparent',
+							background: on ? 'rgba(79,139,255,0.14)' : 'transparent',
+							color: on ? 'var(--atlas-celestial)' : 'var(--l2-fg-3)',
+							fontFamily: 'var(--l2-font-mono)',
+							fontSize: 10,
+							letterSpacing: '0.14em',
+							textTransform: 'uppercase',
+							cursor: disabled ? 'default' : 'pointer',
+							transition: 'background var(--l2-duration-xs) var(--l2-ease), color var(--l2-duration-xs) var(--l2-ease)'
+						}}
+					>
+						{opt.label}
+					</button>
+				);
+			})}
+		</div>
 	);
 }
 

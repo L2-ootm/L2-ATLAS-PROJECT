@@ -48,6 +48,7 @@ fn run_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
         "started_at": row.get::<_, String>(4)?,
         "finished_at": row.get::<_, Option<String>>(5)?,
         "summary": row.get::<_, String>(6)?,
+        "agent_runtime": row.get::<_, String>(7)?,
     }))
 }
 
@@ -62,7 +63,8 @@ fn project_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
 }
 
 const MISSION_COLS: &str = "id, title, intent, status, project, created_at, updated_at";
-const RUN_COLS: &str = "id, mission_id, session_id, status, started_at, finished_at, summary";
+const RUN_COLS: &str =
+    "id, mission_id, session_id, status, started_at, finished_at, summary, agent_runtime";
 const PROJECT_COLS: &str = "id, name, root_path, created_at, updated_at";
 
 pub fn list_missions(path: &Path, limit: i64) -> Result<Vec<Value>, DbError> {
