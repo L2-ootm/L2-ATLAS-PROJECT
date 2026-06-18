@@ -34,9 +34,17 @@ pub struct AppState {
     pub atlas_cmd: Vec<String>,
 }
 
-/// Default atlas CLI path: ATLAS_CLI env var or "atlas" on PATH.
+/// Default atlas CLI invocation from ATLAS_CLI, else "atlas" on PATH.
+///
+/// ATLAS_CLI may be a single program (the installed `atlas` console script on
+/// PATH — the production default) or a multi-token command for dev, e.g.
+/// "<python> -m atlas_runtime.cli.main". Tokens split on whitespace; a path
+/// containing spaces must use the installed single-exe form.
 pub fn default_atlas_cli() -> Vec<String> {
-    vec![std::env::var("ATLAS_CLI").unwrap_or_else(|_| "atlas".to_string())]
+    match std::env::var("ATLAS_CLI") {
+        Ok(v) if !v.trim().is_empty() => v.split_whitespace().map(str::to_string).collect(),
+        _ => vec!["atlas".to_string()],
+    }
 }
 
 /// Resolve the ATLAS SQLite database path: $ATLAS_DB or ~/.atlas/atlas.db
@@ -666,6 +674,39 @@ async fn projects_register(
 }
 
 // ---------------------------------------------------------------------------
+// Modules handlers (Decision 3b — optional activatable modules)
+// ---------------------------------------------------------------------------
+
+async fn modules_list(State(state): State<AppState>) -> ApiResult {
+    let path = state.db_path.clone();
+    let modules = blocking(move || db::list_modules(&path)).await?;
+    let count = modules.len();
+    Ok(Json(json!({ "modules": modules, "count": count })))
+}
+
+/// Toggle a module via the `atlas` CLI (writes go through the CLI contract), then
+/// read the updated row back. `sub` is "activate" or "deactivate".
+async fn module_set_active(state: &AppState, id: &str, sub: &str) -> ApiResult {
+    require_arg(id, "module id must be non-empty")?;
+    dispatch_atlas(&state.atlas_cmd, &["module", sub, "--", id]).await?;
+    let path = state.db_path.clone();
+    let id_clone = id.to_string();
+    let found = blocking(move || db::get_module(&path, &id_clone)).await?;
+    match found {
+        Some(module) => Ok(Json(json!({ "module": module }))),
+        None => Err(ApiError::NotFound("module")),
+    }
+}
+
+async fn module_activate(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
+    module_set_active(&state, &id, "activate").await
+}
+
+async fn module_deactivate(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
+    module_set_active(&state, &id, "deactivate").await
+}
+
+// ---------------------------------------------------------------------------
 // Run cancel handler (Phase 8 — Surface 2 run monitoring)
 // ---------------------------------------------------------------------------
 
@@ -791,6 +832,9 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/models", get(models_list))
         .route("/v1/projects", get(projects_list).post(projects_create))
         .route("/v1/projects/register", post(projects_register))
+        .route("/v1/modules", get(modules_list))
+        .route("/v1/modules/{id}/activate", post(module_activate))
+        .route("/v1/modules/{id}/deactivate", post(module_deactivate))
         .route("/v1/projects/{id}", get(project_detail))
         .layer(middleware::from_fn(cors))
         .with_state(state)

@@ -14,6 +14,8 @@ const MIGRATION_0001: &str = include_str!("../../../../../infra/migrations/0001_
 // 0006 adds runs.agent_runtime (TEXT NOT NULL DEFAULT 'native'), which RUN_COLS
 // now selects — the seed DB must apply it so the runs read surface stays valid.
 const MIGRATION_0006: &str = include_str!("../../../../../infra/migrations/0006_agent_runtime.sql");
+// 0007 adds the optional-modules table (seeds the cashflow module inactive).
+const MIGRATION_0007: &str = include_str!("../../../../../infra/migrations/0007_modules.sql");
 
 fn seeded_db(dir: &tempfile::TempDir) -> PathBuf {
     let path = dir.path().join("atlas.db");
@@ -760,4 +762,32 @@ async fn fresh_multi_migration_db_serves_all_read_surfaces() {
         let (status, _) = get_json(&router, uri).await;
         assert_eq!(status, StatusCode::OK, "read surface {uri} did not return 200");
     }
+}
+
+// --- Modules read surface (Decision 3b — optional activatable modules) -------
+
+#[tokio::test]
+async fn modules_list_returns_seeded_cashflow() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = seeded_db(&dir);
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    conn.execute_batch(MIGRATION_0007).unwrap();
+    drop(conn);
+    let router = test_app(path);
+    let (status, body) = get_json(&router, "/v1/modules").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["count"], 1);
+    assert_eq!(body["modules"][0]["id"], "cashflow");
+    assert_eq!(body["modules"][0]["status"], "inactive");
+}
+
+#[tokio::test]
+async fn modules_list_empty_when_table_absent() {
+    // Pre-0007 DB: the endpoint must return an empty list, never 500.
+    let dir = tempfile::tempdir().unwrap();
+    let path = seeded_db(&dir); // 0007 not applied
+    let router = test_app(path);
+    let (status, body) = get_json(&router, "/v1/modules").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["count"], 0);
 }
