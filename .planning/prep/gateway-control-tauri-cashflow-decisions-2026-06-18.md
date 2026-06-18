@@ -213,22 +213,31 @@ Built and verified this session (branch `feat/cockpit-p3-glass-p4`):
   `atlas module list|activate|deactivate`. Verified: atlas-core 33, agent-runtime 72;
   real DB shows `cashflow  inactive`.
 
-### Remaining (next slice — UI + Rust)
+### UI + Rust slice — DONE 2026-06-18
 
-1. **Gateway endpoints (Rust, `atlas-gateway`):** `GET /v1/modules`, `POST
-   /v1/modules/{id}/activate` + `/deactivate` (shell to `atlas module …` via the
-   existing `dispatch_atlas` guard, or read the DB directly via `db.rs`). Rebuild the
-   release binary (stop the running instance first — it locks the exe). Add Rust tests
-   mirroring the projects endpoints.
-2. **React System page** (replaces the `/system` `<Migrating>` route): gateway status +
-   DB status (`/health`), the modules list with an **activate toggle**, and the
-   **offline panel** (copy `atlas gateway start`; feature-detect `window.__TAURI__` and
-   stub the in-shell Start button for the future Tauri slice).
-3. **Sidebar conditional nav:** render the Cashflow entry only when the module is
-   active; route hosts the vendored Next.js app (its own process) as the first cut.
-4. **Cashflow DB selection (Decision 4):** surface `ATLAS_CASHFLOW_DB=local|supabase`
+- **Gateway endpoints** (`d4df150`) — `GET /v1/modules`, `POST
+  /v1/modules/{id}/activate|deactivate` (writes dispatch to `atlas module …`, read
+  back); `db.rs` list/get tolerant of a pre-0007 DB; `default_atlas_cli()` accepts a
+  multi-token `ATLAS_CLI` and `gateway_control.start()` injects a working one so a
+  primitive-started gateway dispatches writes before the PATH install. +2 Rust tests
+  (cargo **42** pass). Live round-trip verified: start → activate → deactivate → stop.
+- **System page + module UI** (`406095a`) — real `/system` route (gateway/DB status,
+  offline `atlas gateway start` copy-panel with a Tauri-shell stub, modules list with
+  activate/deactivate toggle); `api.ts` `listModules`/`setModuleActive`; Sidebar
+  renders a dynamic MODULES section (Cashflow appears only when active); first-cut
+  Cashflow route embeds the vendored Next.js app. tsc + eslint + vite build green.
+- **Cashflow hygiene** (`<this commit>`) — dropped unimported scratch + historical
+  reports from the vendored module.
+
+### Still remaining
+
+1. **Cashflow DB selection (Decision 4):** surface `ATLAS_CASHFLOW_DB=local|supabase`
    in the System page; ensure cashflow's initial migration is non-destructive
-   (CREATE TABLE IF NOT EXISTS only) on first setup.
+   (CREATE TABLE IF NOT EXISTS only) on first setup. (Cashflow already has the
+   repository-toggle; this is wiring the selector + verifying non-destructive setup.)
+2. **PATH install step:** package the `atlas` console script onto PATH (the dev path
+   is bridged by the injected `ATLAS_CLI`; production wants the real install).
+3. **Tauri shell** (Decision 2): deferred until React cockpit parity.
 
 ## Constraints honored
 
