@@ -200,6 +200,32 @@ export async function setModuleActive(id: string, active: boolean): Promise<{ mo
 	return apiFetch(`/v1/modules/${encodeURIComponent(id)}/${action}`, { method: 'POST' });
 }
 
+/** Cashflow module process state (its own Next.js process on :3000). */
+export interface CashflowStatus {
+	running: boolean;
+	backend: string;
+}
+
+export async function cashflowStatus(): Promise<CashflowStatus> {
+	try {
+		return await apiFetch<CashflowStatus>('/v1/cashflow/status');
+	} catch (err) {
+		if (err instanceof ApiError && (err.status === 404 || err.status === 503)) {
+			return { running: false, backend: 'local' };
+		}
+		throw err;
+	}
+}
+
+/** Start the cashflow app against the chosen DB backend. */
+export async function cashflowStart(backend: 'local' | 'supabase'): Promise<{ message: string }> {
+	return apiFetch('/v1/cashflow/start', { method: 'POST', body: JSON.stringify({ backend }) });
+}
+
+export async function cashflowStop(): Promise<{ message: string }> {
+	return apiFetch('/v1/cashflow/stop', { method: 'POST' });
+}
+
 // ── Run endpoints ────────────────────────────────────────────────────────────
 
 /**
