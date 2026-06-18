@@ -34,3 +34,26 @@ body,
 		transition-duration: 0.01ms !important;
 	}
 }
+
+/* ==========================================================================
+   FX layer — diegetic effects (signal over decoration). Each carries meaning:
+   live state, focus, depth, reveal. See .planning/research/ui-effects/.
+   ========================================================================== */
+
+/* Rotating angle for the conic glow border (border-glow / electric-border). */
+@property --atlas-glow-angle {
+	syntax: '<angle>';
+	initial-value: 0deg;
+	inherits: false;
+}
+@keyframes atlas-glow-spin {
+	to { --atlas-glow-angle: 360deg; }
+}
+@keyframes atlas-blur-in {
+	from { filter: blur(10px); opacity: 0; transform: translateY(6px); }
+	to { filter: blur(0); opacity: 1; transform: none; }
+}
+@keyframes atlas-pulse-soft {
+	0%, 100% { opacity: 0.55; }
+	50% { opacity: 1; }
+}

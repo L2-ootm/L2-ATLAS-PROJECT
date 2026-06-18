@@ -3,7 +3,8 @@
 ## Milestones
 
 - ✅ **v1.0 Operator Cockpit MVP** — Phases 1–9.5 (shipped 2026-06-15)
-- 🔨 **v1.1 ATLAS Agent Harness & Native Operator Shell** — Phases 10.0–10.6 (scoped 2026-06-15)
+- 🔨 **v1.0.5 Mass-Adoption Launch Wedge** — Phases 10.0.1–10.0.6 (inserted 2026-06-16, active)
+- ⏸ **v1.1 ATLAS Agent Harness & Native Operator Shell** — Phases 10.0 (done), 10.1–10.6 (paused until v1.0.5 ships)
 - 📋 **v2.0 CRM, Pulse & Voice** — Phases 11–14 (planned)
 
 ## Phases
@@ -33,16 +34,6 @@ Requirements: `.planning/milestones/v1.0-REQUIREMENTS.md`
 
 </details>
 
-### 🔨 v1.1 ATLAS Agent Harness & Native Operator Shell (Phases 10.0–10.6)
-
-Post-v1.0 inspection showed the archived CLI is a thin operational surface, not a complete ATLAS/Hermes-derived agent harness. v1.1 builds the owned harness — TUI, auth, provider/model registry, agentic chat — and then a native shell that wraps a *real* harness, not an empty one.
-
-**Research:** `.planning/research/SUMMARY.md` (STACK/FEATURES/ARCHITECTURE/PITFALLS). **Prep:** `.planning/prep/README.md`. **Requirements:** `.planning/REQUIREMENTS.md` (55 REQ-IDs).
-
-**Locked decisions:** Codex read-only detection only; OpenAI/Codex-compatible lane first then health-aware fallback; file-store-first auth (keychain deferred). Adapt the Hermes Ink TUI (no Rust rewrite); agent adapter is Python over Hermes AIAgent via the stdio JSON-RPC `tui_gateway`; Rust owns the provider-probe layer + Tauri shell.
-
-**Dependency spine:** 10.0 design → 10.1 auth (critical path) → 10.2 chat + 10.3 discovery → 10.4 TUI → 10.5 native shell (**hard-gated on 10.2 + 10.4**) → 10.6 integration/UAT.
-
 #### Phase 10.0: Harness Architecture & Threat-Model Design
 
 **Goal:** Commit the auth-store layout, adapter boundary, registry schema, and security threat models before any harness code is written.
@@ -59,6 +50,115 @@ Post-v1.0 inspection showed the archived CLI is a thin operational surface, not 
 - [x] 10.0-01-PLAN.md — Auth-store + adapter-boundary design docs + fallback-cascade contract (LANDMINE 1/2/3/6/7; DIVERGENCE_LOG D-LOG-002 back-fill)
 - [x] 10.0-02-PLAN.md — 0004_registry_v2.sql additive migration + mirrored Pydantic schema (LANDMINE 4; no-DROP, VIEW note, no-FK) ✓ 2026-06-16
 - [x] 10.0-03-PLAN.md — OAuth-callback + native-IPC threat-model drafts (LANDMINE 5; constant-time state, PTY-byte-channel) ✓ 2026-06-16
+
+### 🔨 v1.0.5 Mass-Adoption Launch Wedge (Phases 10.0.1–10.0.6)
+
+Source: `l2_atlas_30_day_mass_adoption_wedge_plan.md`. v1.0 already shipped the wedge plan's P0 architecture (mission system, runtime, audit bus, artifact store, LLM Wiki, gateway/SSE, WebUI cockpit) — this milestone closes the remaining gaps between what shipped and what a public launch needs: repo trust signals, a one-command install, the missing cockpit pages, developer-facing integrations + extensibility, demo-grade reliability, and a public release. v1.1 (auth store/TUI/native shell) is paused until this ships.
+
+**Dependency spine:** 10.0.1 hygiene → 10.0.2 install path → 10.0.3 identity & cockpit redesign → 10.0.4 integrations/manifest → 10.0.5 golden workflows → 10.0.6 public release.
+
+#### Phase 10.0.1: Repo Hygiene & Trust Package
+
+**Goal:** The repo is safe and credible to open-source.
+**Requirements:** none mapped yet (pre-v1.1 REQUIREMENTS.md; trace during planning).
+**Success criteria:**
+
+1. License decided and `LICENSE` added; Hermes attribution re-audited against the public-release bar.
+2. Secret scan run clean; no credentials/private data/logs in tracked history for files going public.
+3. Trust docs exist: `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `LIMITATIONS.md`, `ARCHITECTURE.md`, `ATTRIBUTION.md`.
+4. Issue templates (bug report, feature request) and a `good first issue` label scheme exist.
+
+**Plans:** 0 plans (not yet planned — run `/gsd-plan-phase 10.0.1`)
+
+#### Phase 10.0.2: One-Command Install Path
+
+**Goal:** A developer can clone, configure, and run ATLAS without the operator's help.
+**Requirements:** none mapped yet (trace during planning).
+**Success criteria:**
+
+1. Docker Compose or an equivalent one-command local setup boots gateway + cockpit.
+2. `.env.example`, quickstart doc, and seed/demo data exist; a mock mode covers missing API keys.
+3. A health check command/endpoint exists with install troubleshooting docs.
+4. Verified on a clean environment (not Davi's machine state).
+
+**Plans:** 0 plans (not yet planned — run `/gsd-plan-phase 10.0.2`)
+
+#### Phase 10.0.3: ATLAS Identity & Cockpit Redesign
+
+**Goal:** The cockpit covers every page the wedge plan's launch bar requires AND carries a
+coherent ATLAS brand identity — a real operator control center, not a toy.
+
+**Scope note (conscious wedge-override):** The 30-day wedge no-list (`l2_atlas_30_day_mass_adoption_wedge_plan.md` §20)
+de-scopes "huge redesign" and "branding rabbit hole." Operator decision (2026-06-16): override that
+guardrail and expand 10.0.3 from page-completion into a full per-page redesign + brand identity,
+because mass adoption depends on first-impression quality. This phase **absorbs** the original
+10.0.3 completion criteria (dashboard, integrations, settings, artifact browser, states) so the new
+pages are built once, in the new design language. The one wedge constraint kept: no overbuilt animation.
+
+**Requirements:** none mapped yet (trace during planning).
+**Design contract:** `UI-SPEC.md` (in this phase dir) — concept "ATLAS bears the world"; evolved
+palette (L2 core + Titan Bronze / Celestial signature); logo system; topographic shell. Draft
+artifacts: `output/brand/atlas-brand-sheet.html`, `output/brand/atlas-emblem-prompt.md`.
+**Success criteria:**
+
+1. ATLAS brand identity locked + applied: logo system (glyph/wordmark/lockup), evolved palette tokens, fixed favicon, ATLAS-forward/L2-endorsed shell.
+2. Topographic "living terrain" shell + redesigned sidebar/nav + global error/loading/empty-state components.
+3. Dashboard/home, dedicated Integrations, Settings/System Health, and a distinct Artifact Browser all ship in the new design language.
+4. Every existing page (missions, runs, wiki, models) is redesigned to the contract; visual polish pass done without overbuilding animation.
+5. Verified: production build passes, 6-pillar UI audit (`/gsd-ui-review`) findings resolved, a11y/contrast/responsive checks pass.
+
+**Plans:** 0 plans (not yet planned — run `/gsd-plan-phase 10.0.3`).
+**Progress (in-flight, pre-plan):** brand direction approved at gate (palette locked, all 3 logo
+variants in-tree); ATLAS palette tokens + logo components + favicon + topographic shell + sidebar
+redesign landed and building; UI-SPEC + per-page wave outstanding.
+
+#### Phase 10.0.4: Developer Integrations & Tool Manifest
+
+**Goal:** ATLAS is useful against real developer workflows and proves it is an extensible harness, not a closed demo.
+**Requirements:** none mapped yet (trace during planning).
+**Success criteria:**
+
+1. Local Workspace, GitHub, Web Fetch, and Webhook Notification integrations work end-to-end (read-only by default; write/shell actions require explicit operator approval).
+2. Tool Manifest v0 (name/description/risk_level/permissions/inputs/outputs/audit_events YAML schema) is implemented and documented; adding a tool means writing a manifest + adapter.
+3. Policy/permissions are visible in the WebUI: read-only mode by default, explicit approval gate for writes, no-sensitive-data posture stated.
+4. All tool calls emit `tool.requested`/`tool.completed`/`tool.failed` audit events per the existing audit bus.
+
+**Plans:** 0 plans (not yet planned — run `/gsd-plan-phase 10.0.4`)
+
+#### Phase 10.0.5: Golden Workflows & Quality Gate
+
+**Goal:** ATLAS survives repeated demos on the three wedge use cases.
+**Requirements:** none mapped yet (trace during planning).
+**Success criteria:**
+
+1. Golden Workflow 1 (Repo Triage), 2 (Research Brief), and 3 (Self-Review) each run 3 times with consistent output (artifact + audit trail + wiki entries; Self-Review never writes without approval).
+2. Repeated failures fixed; a smoke test and demo-reset path exist.
+3. Sample data, screenshots, and a documented known-failures list exist.
+
+**Plans:** 0 plans (not yet planned — run `/gsd-plan-phase 10.0.5`)
+
+#### Phase 10.0.6: Public Release Prep & Distribution
+
+**Goal:** ATLAS v0.1 is public with credible packaging.
+**Requirements:** none mapped yet (trace during planning).
+**Success criteria:**
+
+1. README, technical report, roadmap, and demo script/video/screenshots are final; status label is "ATLAS v0.1 — Open Research Preview" (no production/enterprise/AGI claims).
+2. Repo made public, tagged `v0.1.0-open-research-preview`, GitHub Discussions + roadmap issues opened.
+3. Private beta (20–50 targeted developer contacts) run before public flip; feedback logged.
+4. Launch message sent across the channels list in the wedge plan; `ATLAS_30_DAY_SHIP_REPORT.md` drafted with build + adoption metrics.
+
+**Plans:** 0 plans (not yet planned — run `/gsd-plan-phase 10.0.6`)
+
+### ⏸ v1.1 ATLAS Agent Harness & Native Operator Shell (Phases 10.1–10.6) — PAUSED
+
+Post-v1.0 inspection showed the archived CLI is a thin operational surface, not a complete ATLAS/Hermes-derived agent harness. v1.1 builds the owned harness — TUI, auth, provider/model registry, agentic chat — and then a native shell that wraps a *real* harness, not an empty one. **Paused 2026-06-16 pending v1.0.5 Mass-Adoption Launch Wedge** — the 30-day public-launch plan doesn't call for native-shell/TUI depth and the wedge plan's no-list explicitly excludes unscoped feature sprawl during the launch sprint. Resume at 10.1 once v1.0.5 ships.
+
+**Research:** `.planning/research/SUMMARY.md` (STACK/FEATURES/ARCHITECTURE/PITFALLS). **Prep:** `.planning/prep/README.md`. **Requirements:** `.planning/REQUIREMENTS.md` (55 REQ-IDs).
+
+**Locked decisions:** Codex read-only detection only; OpenAI/Codex-compatible lane first then health-aware fallback; file-store-first auth (keychain deferred). Adapt the Hermes Ink TUI (no Rust rewrite); agent adapter is Python over Hermes AIAgent via the stdio JSON-RPC `tui_gateway`; Rust owns the provider-probe layer + Tauri shell.
+
+**Dependency spine:** 10.0 design → 10.1 auth (critical path) → 10.2 chat + 10.3 discovery → 10.4 TUI → 10.5 native shell (**hard-gated on 10.2 + 10.4**) → 10.6 integration/UAT.
 
 #### Phase 10.1: ATLAS-Owned Auth Store & Codex Detection
 
@@ -150,12 +250,18 @@ Post-v1.0 inspection showed the archived CLI is a thin operational surface, not 
 | 9. Skill Inventory & Classification | v1.0 | 1/1 | Complete | 2026-06-15 |
 | 9.5 Public Hardening & Manual Acceptance | v1.0 | — | Complete | 2026-06-15 |
 | 10.0 Harness Architecture & Threat-Model Design | v1.1 | 3/3 | Complete   | 2026-06-16 |
-| 10.1 ATLAS-Owned Auth Store & Codex Detection | v1.1 | 0/? | Not started | — |
-| 10.2 Agentic Chat CLI & Runtime Adapter | v1.1 | 0/? | Not started | — |
-| 10.3 Provider/Model Discovery & Cockpit Truth | v1.1 | 0/? | Not started | — |
-| 10.4 ATLAS TUI | v1.1 | 0/? | Not started | — |
-| 10.5 Native Operator Shell (Tauri 2 + PTY) | v1.1 | 0/? | Not started | — |
-| 10.6 Integration & Manual UAT | v1.1 | 0/? | Not started | — |
+| 10.0.1 Repo Hygiene & Trust Package | v1.0.5 | 0/? | Not started | — |
+| 10.0.2 One-Command Install Path | v1.0.5 | 0/? | Not started | — |
+| 10.0.3 WebUI Cockpit Completion | v1.0.5 | 0/? | Not started | — |
+| 10.0.4 Developer Integrations & Tool Manifest | v1.0.5 | 0/? | Not started | — |
+| 10.0.5 Golden Workflows & Quality Gate | v1.0.5 | 0/? | Not started | — |
+| 10.0.6 Public Release Prep & Distribution | v1.0.5 | 0/? | Not started | — |
+| 10.1 ATLAS-Owned Auth Store & Codex Detection | v1.1 | 0/? | Paused | — |
+| 10.2 Agentic Chat CLI & Runtime Adapter | v1.1 | 0/? | Paused | — |
+| 10.3 Provider/Model Discovery & Cockpit Truth | v1.1 | 0/? | Paused | — |
+| 10.4 ATLAS TUI | v1.1 | 0/? | Paused | — |
+| 10.5 Native Operator Shell (Tauri 2 + PTY) | v1.1 | 0/? | Paused | — |
+| 10.6 Integration & Manual UAT | v1.1 | 0/? | Paused | — |
 | 11. CRM via Twenty | v2.0 | 0/? | Not started | — |
 | 12. Basic Pulse Monitor | v2.0 | 0/? | Not started | — |
 | 13. STT/TTS Voice Integration | v2.0 | 0/? | Not started | — |

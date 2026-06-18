@@ -1,0 +1,158 @@
+/* ==========================================================================
+   L2 SYSTEMS // Design Tokens
+   "Complex Inputs. Clean Outputs."
+   ========================================================================== */
+
+/* Self-hosted fonts (loopback-only / local-first — no remote CDN fetch).
+   Family names match the --l2-font-* tokens below; weights cover what the UI uses. */
+@import '@fontsource/inter/300.css';
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+@import '@fontsource/inter/800.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+@import '@fontsource/jetbrains-mono/700.css';
+/* Engraved display serif (Trajan-class) — the ATLAS heraldic wordmark + display. */
+@import '@fontsource/cinzel/400.css';
+@import '@fontsource/cinzel/500.css';
+@import '@fontsource/cinzel/600.css';
+@import '@fontsource/cinzel/700.css';
+/* Refined humanist serif — subheads / mythic captions. */
+@import '@fontsource/cormorant-garamond/400.css';
+@import '@fontsource/cormorant-garamond/500.css';
+@import '@fontsource/cormorant-garamond/600.css';
+
+:root {
+  /* ===== VOID — blue-temperature near-black (ATLAS). Depth by tone, not borders.
+     "Controlled light on expensive material" — never pure black. ===== */
+  --l2-void-page:      #0B0D12;  /* VOID BLACK */
+  --l2-void-deep:      #07080C;
+  --l2-void-base:      #0E1118;
+  --l2-void-surface:   #151820;  /* INK */
+  --l2-void-card:      #181C26;
+  --l2-void-card-2:    #12151D;
+  --l2-pure-black:     #000000;
+
+  /* ===== GLASS — interactive surfaces ===== */
+  --l2-glass-bg:         rgba(20, 20, 20, 0.60);
+  --l2-glass-bg-lo:      rgba(255, 255, 255, 0.02);
+  --l2-glass-bg-med:     rgba(255, 255, 255, 0.05);
+  --l2-glass-bg-hi:      rgba(255, 255, 255, 0.08);
+  --l2-glass-border:     rgba(237, 234, 224, 0.10);
+  --l2-glass-border-lo:  rgba(237, 234, 224, 0.06);
+  --l2-glass-border-hi:  rgba(237, 234, 224, 0.24);
+  --l2-glass-blur:       12px;
+  /* Hairlines should feel expensive, not loud — bronze filigree edges (brand). */
+  --l2-hairline:         rgba(237, 234, 224, 0.08);
+  --l2-hairline-bronze:  rgba(176, 138, 87, 0.32);
+  --l2-hairline-celest:  rgba(79, 139, 255, 0.28);
+
+  /* ===== PRIMARY / SIGNAL ===== */
+  --l2-electric-violet:       #7F00FF;
+  --l2-electric-violet-glow:  rgba(127, 0, 255, 0.50);
+  --l2-electric-violet-soft:  rgba(127, 0, 255, 0.20);
+  --l2-cyber-blue:            #00F0FF;
+  --l2-cyber-blue-glow:       rgba(0, 240, 255, 0.50);
+  --l2-signal-teal:           #00E5C8;
+  --l2-signal-teal-glow:      rgba(0, 229, 200, 0.50);
+
+  /* ===== STATUS / SEMANTIC ===== */
+  --l2-success:   #00FF94;
+  --l2-warning:   #FFD600;
+  --l2-error:     #FF0055;
+  --l2-info:      #00F0FF;
+
+  /* ===== FOREGROUND / TEXT — ivory family, cool muted greys ===== */
+  --l2-fg-1:      #EDEAE0;  /* IVORY */
+  --l2-fg-2:      #9BA0AD;
+  --l2-fg-3:      #565C6B;
+  --l2-fg-mute:   rgba(237, 234, 224, 0.42);
+  --l2-fg-dim:    rgba(237, 234, 224, 0.20);
+  --l2-fg-ghost:  rgba(237, 234, 224, 0.05);
+  --l2-fg-white:  #FFFFFF;
+
+  /* ===== TOPOGRAPHIC FIELD ===== */
+  --l2-topo-line:        rgba(180, 200, 235, 0.05);
+  --l2-topo-glow-brand:  rgba(161, 123, 255, 0.30);
+  --l2-topo-glow-info:   rgba(79, 139, 255, 0.34);
+  --l2-topo-glow-good:   rgba(70, 240, 224, 0.30);
+  --l2-topo-glow-warn:   rgba(255, 214, 0, 0.30);
+  --l2-topo-glow-bad:    rgba(255, 0, 85, 0.32);
+  --l2-topo-glow-atlas:  rgba(79, 139, 255, 0.30);
+  --l2-topo-parallax:    0.4;
+
+  /* ===== ATLAS SIGNATURE — celestial-heraldic identity (canonical palette) =====
+     Role law:
+       BRONZE  = precious filigree / wordmark inline / brand hairlines (identity ONLY).
+       CELESTIAL/MYTHIC BLUE = the heavens, the globe, primary luminous accent.
+       SIGNAL CYAN + VIOLET  = telemetry / live / interactive signals.
+       IVORY   = engraved light, primary text.
+     Controlled luminance on dark material — accents are points of light, not fog. */
+  --atlas-void:          #0B0D12;
+  --atlas-ink:           #151820;
+  --atlas-ivory:         #EDEAE0;
+  --atlas-blue:          #1E3A8A;  /* ATLAS BLUE — deep field */
+  --atlas-mythic:        #3D68FF;  /* MYTHIC BLUE — constellation lines */
+  --atlas-celestial:     #4F8BFF;  /* CELESTIAL BLUE — the globe / primary accent */
+  --atlas-cyan:          #46F0E0;  /* SIGNAL CYAN — live telemetry */
+  --atlas-violet:        #A17BFF;  /* SIGNAL VIOLET — memory / secondary signal */
+  --atlas-bronze:        #B08A57;  /* TITAN BRONZE — filigree, brand only */
+  --atlas-bronze-deep:   #6E5535;
+  --atlas-bronze-soft:   rgba(176, 138, 87, 0.18);
+  --atlas-bronze-glow:   rgba(176, 138, 87, 0.55);
+  --atlas-celestial-deep:#0F1E47;
+  --atlas-celestial-glow:rgba(79, 139, 255, 0.42);
+  --atlas-cyan-glow:     rgba(70, 240, 224, 0.45);
+  --atlas-violet-glow:   rgba(161, 123, 255, 0.45);
+
+  /* ===== TYPOGRAPHY ===== */
+  --l2-font-sans:    'Inter', system-ui, -apple-system, sans-serif;
+  --l2-font-display: 'Cinzel', 'Times New Roman', serif;       /* engraved wordmark */
+  --l2-font-serif:   'Cormorant Garamond', Georgia, serif;     /* mythic subheads */
+  --l2-font-mono:    'JetBrains Mono', ui-monospace, 'Courier New', monospace;
+
+  --l2-text-hero: 96px;
+  --l2-text-h1:   64px;
+  --l2-text-h2:   32px;
+  --l2-text-h3:   24px;
+  --l2-text-lead: 18px;
+  --l2-text-body: 16px;
+  --l2-text-sm:   14px;
+  --l2-text-xs:   12px;
+  --l2-text-data: 13px;
+
+  /* ===== SPACING ===== */
+  --l2-space-1:  4px;
+  --l2-space-2:  8px;
+  --l2-space-3:  12px;
+  --l2-space-4:  16px;
+  --l2-space-6:  24px;
+  --l2-space-8:  32px;
+  --l2-space-12: 48px;
+  --l2-space-16: 64px;
+
+  /* ===== GEOMETRY ===== */
+  --l2-radius:    2px;
+  --l2-radius-md: 4px;
+  --l2-radius-lg: 8px;
+
+  /* ===== MOTION ===== */
+  --l2-ease:         cubic-bezier(0.22, 1, 0.36, 1);
+  --l2-duration-xs:  80ms;
+  --l2-duration-sm:  150ms;
+  --l2-duration-md:  250ms;
+  --l2-duration-lg:  400ms;
+
+  /* ===== ELEVATION / SHADOWS ===== */
+  --l2-shadow-sm:   0 1px 3px rgba(0, 0, 0, 0.8);
+  --l2-shadow-md:   0 4px 12px rgba(0, 0, 0, 0.6);
+  --l2-shadow-lg:   0 8px 32px rgba(0, 0, 0, 0.8);
+  --l2-shadow-violet: 0 0 24px rgba(127, 0, 255, 0.35);
+  --l2-shadow-blue:   0 0 24px rgba(0, 240, 255, 0.25);
+
+  /* ===== BRAND LABEL ===== */
+  --l2-letter-spacing-label: 0.2em;
+  --l2-letter-spacing-data:  0.05em;
+}

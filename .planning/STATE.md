@@ -1,33 +1,44 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: ATLAS Agent Harness & Native Operator Shell
+milestone: v1.0.5
+milestone_name: Mass-Adoption Launch Wedge
 status: in_progress
-last_updated: "2026-06-16T03:02:09Z"
-last_activity: 2026-06-16 -- Hardening + cleaning pass; STATE reconciled to ROADMAP (Phase 10.0 complete, 10.1 next)
+last_updated: "2026-06-17T14:30:00.000Z"
+last_activity: 2026-06-17 -- React pivot scaffolded; Dashboard surface builds + renders (proof shots)
 progress:
-  total_phases: 7
+  total_phases: 13
   completed_phases: 1
   total_plans: 3
   completed_plans: 3
-  percent: 14
+  percent: 8
 ---
 
 # STATE — L2 ATLAS
 
 ## Current Position
 
-Phase: 10.0 — COMPLETE (3/3 plans). Next: Phase 10.1 — ATLAS-Owned Auth Store & Codex Detection (not started, critical path)
+Phase: 10.0.1 — not started (planned next: Repo Hygiene & Trust Package, v1.0.5 wedge)
 Plan: 10.0 closed; 10.1 not yet planned
-Status: v1.1 in progress — 1/7 phases complete (14%)
-Last activity: 2026-06-16 -- Hardening + cleaning pass; STATE reconciled to ROADMAP
+Status: in_progress
+In-flight (ahead of spine, operator-directed): 10.0.3 ATLAS Identity & Cockpit Redesign — brand
+  direction approved at gate; ATLAS palette tokens, logo system (3 variants), favicon, topographic
+  shell + sidebar redesign landed. UI-SPEC + per-page redesign wave outstanding.
+  Conscious override of the wedge no-list (§20) recorded in ROADMAP 10.0.3.
+  REACT PIVOT (operator-directed, D-023): gradual strangler-fig migration Svelte→React underway.
+  New parallel app `services/web-ui-react` (Vite + React 19 + TS + Tailwind v4 + React Router 7)
+  scaffolded and BUILDING GREEN (tsc + vite). Foundation copied verbatim (tokens.css, api.ts,
+  topoEngine.ts, favicon, FX keyframes); shell ported (AtlasMark, TopoField, Sidebar, hud
+  primitives); soft-aurora OGL effect integrated; first React surface = Dashboard operator HUD
+  (live telemetry + graceful loading/empty/offline states), proven via Playwright
+  (output/react-pivot/). Svelte cockpit stays live until React reaches route parity.
+Last activity: 2026-06-17 -- React pivot scaffolded; Dashboard surface builds + renders (proof shots)
 
 ## Project Reference
 
 See: `.planning/PROJECT.md` (updated 2026-06-15) · `.planning/MILESTONES.md`
 
 **Core value:** A serious, auditable AI operating system for technical founders/operators.
-**Current focus:** Phase 10.1 — ATLAS-owned auth store & Codex detection (10.0 design phase complete)
+**Current focus:** Phase 10.0.1 — Repo Hygiene & Trust Package (v1.0.5 wedge active; v1.1 paused at 10.0)
 
 ## Deferred Items
 
@@ -40,6 +51,10 @@ Acknowledged at milestone close on 2026-06-15:
 | public-release | `PUBLIC_RELEASE_HARDENING.md §4` items 1–5, 7–8 | bounded, pre-public-publish / post-v1.0 (item 6 fonts RESOLVED) |
 
 ## Accumulated Context
+
+### Roadmap Evolution
+
+- Phase 10.0.1 inserted after Phase 10.0: Mass-Adoption Launch Wedge (v1.0.5): Repo Hygiene & Trust Package — first of 6 phases (10.0.1-10.0.6) inserted ahead of v1.1 Phase 10.1+ per l2_atlas_30_day_mass_adoption_wedge_plan.md; v1.1 native-shell/auth/TUI work paused until wedge ships (URGENT)
 
 ### Decisions logged
 
@@ -74,6 +89,88 @@ Acknowledged at milestone close on 2026-06-15:
 - D-022 (2026-06-10): Rust-first cementation policy — resolves D-013 open timing; Phase 7 gateway is Rust (axum + rusqlite, first native/atlas-core-rs crate; reads direct SQLite, writes via `atlas` CLI contract, SSE via rowid poll); Python confined to Hermes foundation surface + LLM adapters + scripts; L0–L5 cementation ladder ends with Rust harness core strangling the Python agent loop (v2.x); budgets locked (CLI <100ms/<50MB, daemon <80MB idle, binary <20MB)
 - D-008 satisfied (2026-06-15, Phase 9): `docs/imports/SKILL_INVENTORY.md` classifies ~266 skills across 7 source groups. ATLAS Core Pack = 7 credential-free public-safe skills; Developer Operator Pack = ~18 opt-in; L2 Systems Pack = 9 l2-internal/personal-private (public_safe: false). Release blockers logged: `red-teaming/godmode` + `inference/obliteratus` ship in the vendored *default* tree (must quarantine before public distribution); `l2-mind`/`vault-scan` never ship. GSD classified external-reference (build framework, not shipped).
 - D-021 (2026-06-10): v1.0 sequencing + branding consolidation — Phase 8 web-first (native shell → Phase 10/v1.1); canonical phase numbering (9 skills, 10 native shell, 11 CRM/Twenty, 12 Pulse); memory framework = 6 layers (AGENT_MEMORY_FRAMEWORK_STRATEGY.md canonical); Twenty = external relationship system of record, Layer 4 graph = local derived index referencing Twenty by ID; Terax reuse architecture-level only; FreeLLMAPI fork triggers defined (2-of-4 criteria); two-layer branding policy (L2/ATLAS brand = experience layer + vendored Hermes-derived foundation; sidecars stay pinned upstream unbranded); Hermes vendored to foundation/atlas-hermes with ATTRIBUTION + DIVERGENCE_LOG (D-018 implementation start)
+- D-023 (2026-06-17): WebUI framework pivot Svelte→React — AMENDS D-006. Operator-directed gradual
+  strangler-fig migration. New parallel app `services/web-ui-react`: Vite + React 19 + TypeScript +
+  Tailwind v4 (@tailwindcss/vite) + React Router 7, adapter-static-equivalent (Vite SPA, `dist/`,
+  WebView2-safe — no SSR/Node runtime APIs). Rationale: React Bits acceptance-bar effects + real
+  shadcn drop in directly; framework-agnostic core (tokens.css, api.ts, topoEngine.ts) transfers
+  verbatim, so migration is low-risk. Migrate route-by-route (Dashboard first, then missions/runs/
+  wiki/models, then new pages); Svelte cockpit remains the served build until React reaches parity,
+  at which point the gateway/native shell point at `web-ui-react/dist` and the Svelte app retires.
+  CELESTIAL-HERALDIC REDESIGN (operator-directed, via ultradesign dark-luxe): cockpit rebuilt to
+  the attached ATLAS brand reference — Cinzel engraved wordmark, ATLAS palette (void #0B0D12, ivory
+  #EDEAE0, celestial #4F8BFF, titan bronze #B08A57 filigree), code-drawn astrolabe mark + filigree
+  (compass-star/astrolabe rings/starfield), hairline rails replacing empty glass cards, real
+  skeleton/empty/offline states. Aurora fog removed. Tooling upgraded to latest (vite 8, ts 6,
+  plugin-react 6, lucide 1, react-router 7.18) + ESLint 10 flat config; tsc/lint/build all green.
+  BRAND ASSETS: 8 GPT-image raws organized under brand/atlas/{source,sheets}; vivid-blue "celestial"
+  emblem = primary, bronze = filigree (D-024). Processed via brand/atlas/process.py (PIL): emblem
+  cut to transparent webp (figure+full), governance seal, app-icons from the globe. Integrated:
+  Operator-Atlas emblem = dashboard hero focal; seal = empty states; app-icon/apple-touch links.
+  IA replan saved: .planning/phases/10.0.3-webui-cockpit-completion/ULTRAPLAN-assets-and-IA.md
+  (pillared nav Mission/Audit/Structure + NEW pages: Audit Ledger, Integrations, System/About,
+  ⌘K palette). NEXT WAVE: build the new page set from scratch per that IA.
+  DESIGN/PLAN DOC SET (2026-06-17, in phase 10.0.3 dir): PAGES-SPEC.md (verbose per-page specs),
+  HARNESS-WIRING.md (gateway contract; found unused SSE /v1/runs/{id}/stream to wire + 4 missing
+  endpoints: /v1/runs, /v1/audit/events, /v1/integrations, /v1/system), UX-VISUAL-SPEC.md (plasma
+  glassmorphism + typing-reactive TopoInput via the already-ported engine's pushTrail/sonarPing;
+  L2 5-laws-of-effects applied). NEW PHASE planned: 10.0.7 Foundation De-brand
+  (.planning/phases/10.0.7-foundation-debrand/PHASE.md) — strip Hermes branding from vendored
+  foundation/atlas-hermes, retain MIT LICENSE + ATTRIBUTION; insert via /gsd-phase before 10.0.6.
+  BUILD WAVE STARTED (2026-06-17): (1) modular layout foundation — pillared nav registry
+  (modules.ts navSections: MISSION/AUDIT/STRUCTURE/SYSTEM), Sidebar renders pillar sections,
+  reusable Page scaffold, all new routes wired (audit/integrations/system). (2) TopoInput —
+  typing-reactive input: per-field topo via the ported engine's pushTrail at the caret, validation
+  tones (info/ai/good/bad); terrain blooms violet under AI-bound fields ("typing = authorship") —
+  verified live in the create-mission modal. (3) Real Missions page — table + TopoInput filter +
+  status chips + create modal (createMission), three states (skeleton/empty-seal/offline).
+  tsc/lint/build green.
+  BUILD WAVE 2-3 (2026-06-17, MISSION pillar + showpiece): (4) PlasmaGlass lift — GlassPanel
+  upgraded (specular top edge + inner-light box-shadow, blur(14px) saturate(1.35), optional
+  semantic `glow` bleed) so all surfaces inherit polish. (5) api.ts: openRunStream(id,after)
+  EventSource + interim listRuns (fan-out listMissions→getMission, deduped/sorted) until /v1/runs
+  ships. (6) useRunStream hook — ported Svelte SSE logic: named events audit/end/stream_error,
+  lastCursor dedupe, single transport retry, 500-row cap, terminal-run history paging, newCursors
+  set for blur-in/sonar. (7) Mission detail (lifecycle rail + runs table + launch/cancel-all). (8)
+  Runs list (cross-mission interim feed, LiveBadge + GlowBorder on running rows). (9) Run detail
+  SHOWPIECE — live SSE, electric GlowBorder, CRT-textured audit log over a dedicated topo field
+  firing sonarPing per arriving event, auto-scroll pin, cancel + JSONL export (truncation-guarded).
+  Primitives: LiveBadge, SseEventRow, RunTimeline, GlowBorder. CONSOLE wired into IA (MISSION
+  pillar, status 'planned' → Sidebar dims it + "SOON" tag; branded v1.1 placeholder route) — IA
+  forward-compatible, no chat surface yet (v1.1, outside wedge). App.tsx routes live (was
+  <Migrating>). tsc/lint/build GREEN.
+  LIVE SMOKE PASSED (2026-06-17, Playwright vs real gateway on :8484, cockpit :5173): /runs/:id on
+  a live RUNNING run connected via SSE, streamed run_started + tool_call rows with policy chips,
+  LIVE badge + electric border, ZERO console/CORS errors; finished run loaded history + showed
+  Export JSONL; Runs list rendered the interim cross-mission feed (4 runs, dedup, LIVE row);
+  Mission detail, Console placeholder, sidebar SOON tag all render. Screenshot:
+  output/playwright/runDetail-live-showpiece.png. Fixed from live data: gateway status vocab is
+  completed/cancelled (not succeeded) — StatusBadge + RunTimeline now map COMPLETED→cyan,
+  CANCELLED→muted-red.
+  BORDERGLOW (2026-06-17): cursor-reactive modal border ported from reactbits BorderGlow
+  (.planning/research/ui-effects/border-glow.md) — ATLAS-toned (2px radius, celestial/violet, loud
+  interior mesh-fill dropped). New component services/web-ui-react/src/components/BorderGlow.tsx +
+  .abg-* CSS in app.css; pointer sets --cursor-angle/--edge-proximity, wedge lights the edge nearest
+  the cursor. Applied to the New Mission modal (violet, AI-authoring context). tsc/build green,
+  visually verified (output/playwright/modal-borderglow-tuned.png). Reusable for future modals.
+  NEXT (operator-directed): contextual topo color + behavior-complexity systems (semantic
+  data-topo→color/behavior driving the ambient + per-surface fields). Then operator UAT + Audit
+  Ledger (+/v1/audit/events) / Codex / Models / Integrations / System.
+  ODYSSEUS BASELINE doc'd (phase 10.0.3 dir / ODYSSEUS-PAGE-BASELINE.md): reference pillar's 8
+  surfaces mapped to our IA. Biggest GAP = a CONSOLE/CHAT surface (direct conversational agent
+  interaction, every turn audited) — Odysseus leads with it, we lack it; reuses our SSE+ledger
+  plumbing. Other adds to reach the floor: Models→Cookbook+Compare, deep-research as a mission
+  template, Codex authoring mode. Conscious exclusions (cockpit ≠ workspace): email/calendar/PIM/
+  image gallery. STANCE: Odysseus = direction/UX/feature reference (explicitly allowed — ideas/page
+  sets aren't copyrightable; we reimplement natively). Direct code/CSS/asset reuse is GATED: repo
+  shows AGPL-3.0 (copyleft) vs MIT in D-016 — confirm before copying any source. "Borrow the
+  direction, write our own code."
+- D-024 (2026-06-17): ATLAS brand identity locked to the celestial-heraldic reference. Primary =
+  vivid-blue "celestial" Operator-Atlas emblem (titan bearing a constellation globe over a circuit
+  temple); titan bronze #B08A57 = precious filigree/wordmark only; ivory #EDEAE0 text; Cinzel
+  engraved display serif (Orbitron dropped). Photographic emblems for large brand moments
+  (hero/splash/About/empty); crisp vector marks for tiny sizes (favicon/nav). Supersedes the
+  earlier warm-bronze #E0A94E direction. Page IA replanned around MISSION/AUDIT/STRUCTURE pillars.
 
 ### Known blockers
 
@@ -136,6 +233,8 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 
 ## Performance Metrics
 
+(v1.0.5 Mass-Adoption Launch Wedge phases 10.0.1-10.0.6 inserted 2026-06-16, not yet started — see Phase History note below.)
+
 | Phase | Plan | Duration | Notes |
 |-------|------|----------|-------|
 | Phase 08-cockpit P05 | 25m | 2 tasks | 6 files |
@@ -146,7 +245,8 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 
 ## Operator Next Steps
 
-- v1.1 is underway (Phase 10.0 design complete). Continue at Phase 10.1 with `/gsd-discuss-phase 10.1` then `/gsd-plan-phase 10.1` (auth store is the critical path).
+- v1.0.5 Mass-Adoption Launch Wedge is now active (inserted 2026-06-16 ahead of v1.1, per `l2_atlas_30_day_mass_adoption_wedge_plan.md`). Continue at Phase 10.0.1 with `/gsd-discuss-phase 10.0.1` then `/gsd-plan-phase 10.0.1` (repo hygiene & trust package first; spine is 10.0.1 -> 10.0.2 -> 10.0.3 -> 10.0.4 -> 10.0.5 -> 10.0.6).
+- v1.1 is paused at Phase 10.0 (design complete, 10.1+ not started). Resume at Phase 10.1 with `/gsd-discuss-phase 10.1` once v1.0.5 ships.
 - Use `.planning/prep/README.md` as the preparation index; extra-marathon scope is in `.planning/prep/v1.1-extra-marathon-scope.md`.
 - Visual CLI inspection guide added: `docs/operations/CLI_VISUAL_MANUAL.md`
 - Post-v1.0 gap report added: `.planning/reports/v1-cli-agentic-gap-2026-06-15.md`

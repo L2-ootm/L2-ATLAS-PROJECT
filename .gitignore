@@ -65,3 +65,9 @@ artifacts/*
 
 # UAT / Playwright screenshot evidence (transient, not archived)
 output/
+
+# Local dev wrapper — contains an absolute path to this machine's venv python
+atlas.cmd
+
+# Local Claude Code state (plans, worktrees, settings) — never publish
+.claude/

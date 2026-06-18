@@ -4,7 +4,8 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { cockpitModules } from '$lib/modules.js';
 	import { checkHealth } from '$lib/api.js';
-	import { sidebar } from '$lib/ui-state.svelte.js';
+	import { sidebar, SIDEBAR_WIDTH_COLLAPSED, SIDEBAR_WIDTH_EXPANDED } from '$lib/ui-state.svelte.js';
+	import AtlasMark from '$lib/brand/AtlasMark.svelte';
 
 	// ── Collapse state (shared with +layout so main content shifts) ──────────
 	onMount(() => {
@@ -18,6 +19,7 @@
 	}
 
 	const expanded = $derived(sidebar.expanded);
+	const width = $derived(expanded ? SIDEBAR_WIDTH_EXPANDED : SIDEBAR_WIDTH_COLLAPSED);
 
 	// ── Gateway health ────────────────────────────────────────────────────────
 	let gatewayOnline = $state<boolean | null>(null);
@@ -46,185 +48,206 @@
 	function isActive(route: string): boolean {
 		return $page.url.pathname.startsWith(route);
 	}
+
+	const statusColor = $derived(
+		gatewayOnline === true ? 'var(--l2-success)' : gatewayOnline === false ? 'var(--l2-error)' : 'var(--l2-fg-3)'
+	);
+	const statusTopo = $derived(gatewayOnline === true ? 'good' : gatewayOnline === false ? 'bad' : 'atlas');
 </script>
 
 <nav
 	aria-label="Main navigation"
+	data-topo="atlas"
 	style="
 		position: fixed;
 		top: 0;
 		left: 0;
 		bottom: 0;
-		width: {expanded ? '200px' : '56px'};
-		background: #050505;
+		width: {width}px;
+		background: linear-gradient(180deg, rgba(10,10,12,0.82), rgba(5,5,7,0.92));
+		backdrop-filter: blur(14px) saturate(1.3);
 		display: flex;
 		flex-direction: column;
-		border-right: 1px solid rgba(255,255,255,0.05);
-		transition: width 150ms var(--l2-ease);
+		border-right: 1px solid var(--l2-glass-border-lo);
+		box-shadow: 1px 0 0 rgba(0,0,0,0.6), 8px 0 32px rgba(0,0,0,0.45);
+		transition: width var(--l2-duration-sm) var(--l2-ease);
 		z-index: 100;
 		overflow: hidden;
 	"
 >
-	<!-- ASCII ATLAS wordmark (brand accent) -->
-	{#if expanded}
-		<div
-			style="
-				padding: 16px 12px 4px;
-				border-bottom: 1px solid rgba(255,255,255,0.04);
-			"
-			aria-hidden="true"
-		>
-			<pre
-				style="
-					font-family: var(--l2-font-mono);
-					font-size: 7px;
-					line-height: 1.1;
-					color: var(--l2-fg-3);
-					margin: 0;
-					padding: 0;
-					user-select: none;
-					letter-spacing: 0.05em;
-				"
-			>
-  ___  _____ __    ___  ___
- / _ \|_   _| |  / _ \/ __|
-| (_) | | | | |_| (_) \__ \
- \___/  |_| |____\___/|___/
-			</pre>
-		</div>
-	{:else}
-		<div style="height: 48px;"></div>
-	{/if}
+	<!-- ── Brand header — ATLAS-forward ────────────────────────────────────── -->
+	<a
+		href="/"
+		aria-label="ATLAS home"
+		style="
+			display: flex;
+			align-items: center;
+			gap: 12px;
+			height: 72px;
+			padding: 0 {expanded ? '18px' : '0'};
+			justify-content: {expanded ? 'flex-start' : 'center'};
+			text-decoration: none;
+			border-bottom: 1px solid var(--l2-glass-border-lo);
+			flex: none;
+		"
+	>
+		<AtlasMark variant="borne" tone="color" size={30} />
+		{#if expanded}
+			<div style="display:flex; flex-direction:column; gap:3px; min-width:0;">
+				<span
+					style="
+						font-family: var(--l2-font-display);
+						font-weight: 700;
+						font-size: 18px;
+						letter-spacing: 0.26em;
+						line-height: 1;
+						color: var(--l2-fg-1);
+						white-space: nowrap;
+					"
+				>ATL<span style="color: var(--atlas-bronze);">A</span>S</span>
+				<span
+					style="
+						font-family: var(--l2-font-mono);
+						font-size: 8px;
+						letter-spacing: 0.28em;
+						text-transform: uppercase;
+						color: var(--l2-fg-3);
+						white-space: nowrap;
+					"
+				>OPERATOR COCKPIT</span>
+			</div>
+		{/if}
+	</a>
 
-	<!-- Toggle button -->
+	<!-- ── Collapse toggle ─────────────────────────────────────────────────── -->
 	<button
 		onclick={toggleExpanded}
 		aria-label={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
 		style="
 			display: flex;
 			align-items: center;
-			justify-content: center;
+			justify-content: {expanded ? 'flex-end' : 'center'};
 			width: 100%;
-			height: 40px;
+			height: 34px;
+			padding: {expanded ? '0 18px' : '0'};
 			background: none;
 			border: none;
-			border-bottom: 1px solid rgba(255,255,255,0.04);
+			border-bottom: 1px solid var(--l2-glass-border-lo);
 			cursor: pointer;
 			color: var(--l2-fg-3);
-			padding: 0;
 			transition: color var(--l2-duration-xs) var(--l2-ease);
 		"
-		onmouseenter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--l2-fg-2)'; }}
+		onmouseenter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--l2-cyber-blue)'; }}
 		onmouseleave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = 'var(--l2-fg-3)'; }}
 	>
 		{#if expanded}
-			<ChevronLeft size={16} strokeWidth={1.5} />
+			<ChevronLeft size={15} strokeWidth={1.5} />
 		{:else}
-			<ChevronRight size={16} strokeWidth={1.5} />
+			<ChevronRight size={15} strokeWidth={1.5} />
 		{/if}
 	</button>
 
-	<!-- Navigation items -->
-	<ul role="list" style="flex: 1; list-style: none; margin: 0; padding: 8px 0;">
+	<!-- ── Navigation ──────────────────────────────────────────────────────── -->
+	<ul role="list" style="flex: 1; list-style: none; margin: 0; padding: 10px 0;">
 		{#each cockpitModules as mod (mod.id)}
 			{@const active = isActive(mod.route)}
 			<li>
 				<a
 					href={mod.route}
+					data-topo={active ? 'info' : 'atlas'}
 					aria-label={expanded ? undefined : mod.ariaLabel}
 					aria-current={active ? 'page' : undefined}
 					style="
+						position: relative;
 						display: flex;
 						align-items: center;
-						gap: {expanded ? '12px' : '0'};
+						gap: {expanded ? '14px' : '0'};
 						justify-content: {expanded ? 'flex-start' : 'center'};
-						height: 48px;
-						padding: {expanded ? '0 16px' : '0'};
+						height: 46px;
+						margin: 2px 8px;
+						padding: {expanded ? '0 12px' : '0'};
+						border-radius: var(--l2-radius);
 						text-decoration: none;
-						border-left: 2px solid {active ? '#00F0FF' : 'transparent'};
-						background: {active ? 'rgba(0,240,255,0.06)' : 'transparent'};
-						color: {active ? '#00F0FF' : '#505050'};
+						background: {active ? 'rgba(0,240,255,0.07)' : 'transparent'};
+						color: {active ? 'var(--l2-cyber-blue)' : 'var(--l2-fg-3)'};
+						box-shadow: {active ? 'inset 0 0 0 1px rgba(0,240,255,0.18)' : 'none'};
 						transition: background var(--l2-duration-xs) var(--l2-ease), color var(--l2-duration-xs) var(--l2-ease);
 					"
 					onmouseenter={(e) => {
 						if (!active) {
 							const el = e.currentTarget as HTMLAnchorElement;
-							el.style.background = 'rgba(255,255,255,0.02)';
-							el.style.color = '#A0A0A0';
+							el.style.background = 'var(--l2-glass-bg-lo)';
+							el.style.color = 'var(--l2-fg-1)';
 						}
 					}}
 					onmouseleave={(e) => {
 						if (!active) {
 							const el = e.currentTarget as HTMLAnchorElement;
 							el.style.background = 'transparent';
-							el.style.color = '#505050';
+							el.style.color = 'var(--l2-fg-3)';
 						}
 					}}
 				>
-					<mod.icon
-						size={expanded ? 16 : 20}
-						strokeWidth={1.5}
-						color={active ? '#00F0FF' : '#505050'}
-					/>
+					{#if active}
+						<span
+							aria-hidden="true"
+							style="position:absolute; left:-8px; top:50%; transform:translateY(-50%); width:3px; height:22px; border-radius:0 2px 2px 0; background:var(--l2-cyber-blue); box-shadow:0 0 12px var(--l2-cyber-blue-glow);"
+						></span>
+					{/if}
+					<mod.icon size={expanded ? 17 : 20} strokeWidth={1.5} color="currentColor" />
 					{#if expanded}
 						<span
 							style="
-								font-family: var(--l2-font-sans);
-								font-size: 14px;
-								font-weight: 600;
+								font-family: var(--l2-font-mono);
+								font-size: 12px;
+								font-weight: 500;
 								text-transform: uppercase;
-								letter-spacing: 0.1em;
+								letter-spacing: 0.16em;
 								white-space: nowrap;
 							"
-						>
-							{mod.label}
-						</span>
+						>{mod.label}</span>
 					{/if}
 				</a>
 			</li>
 		{/each}
 	</ul>
 
-	<!-- Bottom: wordmark + gateway status -->
-	{#if expanded}
-		<div
-			style="
-				padding: 12px 16px;
-				border-top: 1px solid rgba(255,255,255,0.04);
-			"
-		>
-			<!-- Wordmark -->
-			<div
-				style="
-					font-family: var(--l2-font-display);
-					font-size: 12px;
-					text-transform: uppercase;
-					letter-spacing: 0.3em;
-					color: #E0E0E0;
-					margin-bottom: 8px;
-				"
-			>
-				L2 // SYSTEMS
-			</div>
-
-			<!-- Gateway status -->
-			<div
-				style="
-					font-family: var(--l2-font-mono);
-					font-size: 11px;
-					text-transform: uppercase;
-					letter-spacing: 0.1em;
-					color: {gatewayOnline === true ? '#00FF94' : gatewayOnline === false ? '#FF0055' : '#505050'};
-				"
-			>
-				{#if gatewayOnline === true}
-					GATEWAY: ONLINE
-				{:else if gatewayOnline === false}
-					GATEWAY: OFFLINE
-				{:else}
-					GATEWAY: CHECKING
-				{/if}
-			</div>
+	<!-- ── Footer — gateway status + L2 endorsement ────────────────────────── -->
+	<div
+		style="
+			padding: {expanded ? '14px 18px' : '14px 0'};
+			border-top: 1px solid var(--l2-glass-border-lo);
+			display: flex;
+			flex-direction: column;
+			gap: 10px;
+			align-items: {expanded ? 'stretch' : 'center'};
+			flex: none;
+		"
+		data-topo={statusTopo}
+	>
+		<!-- Gateway status -->
+		<div style="display:flex; align-items:center; gap:8px; justify-content:{expanded ? 'flex-start' : 'center'};">
+			<span
+				aria-hidden="true"
+				style="width:7px; height:7px; border-radius:50%; background:{statusColor}; box-shadow:0 0 8px {statusColor}; flex:none;"
+			></span>
+			{#if expanded}
+				<span
+					style="font-family:var(--l2-font-mono); font-size:10px; text-transform:uppercase; letter-spacing:0.16em; color:{statusColor};"
+				>
+					{#if gatewayOnline === true}GATEWAY · ONLINE{:else if gatewayOnline === false}GATEWAY · OFFLINE{:else}GATEWAY · CHECKING{/if}
+				</span>
+			{/if}
 		</div>
-	{/if}
+
+		{#if expanded}
+			<!-- L2 endorsement (ATLAS-forward, L2-endorsed) -->
+			<div style="display:flex; align-items:center; gap:6px; color:var(--l2-fg-3);">
+				<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--l2-fg-2)" stroke-width="3" stroke-linecap="square" aria-hidden="true">
+					<path d="M5 5 V19 H13 M15 5 H19 V11 H15 V19 H19" />
+				</svg>
+				<span style="font-family:var(--l2-font-mono); font-size:9px; letter-spacing:0.22em; text-transform:uppercase;">BY L2 SYSTEMS</span>
+			</div>
+		{/if}
+	</div>
 </nav>
