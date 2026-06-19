@@ -4,14 +4,17 @@ import ForceGraph3D from '3d-force-graph';
 import * as THREE from 'three';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import SpriteText from 'three-spritetext';
-import { Boxes, Crosshair, Maximize2, Minus, Plus, RefreshCw, Search, X } from 'lucide-react';
+import { Boxes, Crosshair, Lock, Maximize2, Minus, Plus, RefreshCw, Search, X } from 'lucide-react';
 import { Page } from '../components/Page';
 import { GlassPanel } from '../components/GlassFx';
-import { getGraph, type GraphData, type GraphNode } from '../lib/api';
+import Lightning from '../components/Lightning';
+import { getGraph, getGraphFetchedAt, type GraphData, type GraphNode } from '../lib/api';
 
 type Load = { s: 'loading' } | { s: 'ready'; data: GraphData } | { s: 'error'; message: string };
+type SimNode = GraphNode & { x?: number; y?: number; z?: number };
 
-// Node color by kind — bronze for structural hubs, celestial/cyan/violet for content.
+// Node color by kind — bronze for structural hubs, celestial/cyan/violet/etc for
+// content. Per-category (NOT heat) — clusters read as distinct communities.
 const NODE_COLOR: Record<string, string> = {
 	root: '#E0A94E',
 	group: '#C98A3E',
@@ -32,13 +35,13 @@ const NODE_COLOR: Record<string, string> = {
 const colorFor = (kind: string): string => NODE_COLOR[kind] ?? '#8A93A6';
 
 const LINK_COLOR: Record<string, string> = {
-	contains: 'rgba(224,169,78,0.22)',
-	link: 'rgba(0,240,255,0.6)',
-	wikilink: 'rgba(0,229,200,0.6)',
+	contains: 'rgba(224,169,78,0.18)',
+	link: 'rgba(0,240,255,0.55)',
+	wikilink: 'rgba(0,229,200,0.55)',
 	decision: 'rgba(127,0,255,0.5)',
-	phase: 'rgba(74,93,191,0.55)'
+	phase: 'rgba(74,93,191,0.5)'
 };
-const linkColorFor = (kind: string): string => LINK_COLOR[kind] ?? 'rgba(237,234,224,0.2)';
+const linkColorFor = (kind: string): string => LINK_COLOR[kind] ?? 'rgba(237,234,224,0.18)';
 
 // Minimal builder surface we use from 3d-force-graph (typed loosely on purpose).
 type GraphHandle = {
@@ -62,6 +65,7 @@ type GraphHandle = {
 	width: (v: number) => GraphHandle;
 	height: (v: number) => GraphHandle;
 	onNodeClick: (fn: (n: unknown) => void) => GraphHandle;
+	onEngineStop: (fn: () => void) => GraphHandle;
 	cameraPosition: (pos?: Vec3, lookAt?: unknown, ms?: number) => Vec3;
 	zoomToFit: (ms?: number, px?: number) => GraphHandle;
 	postProcessingComposer: () => { addPass: (p: unknown) => void };
@@ -71,19 +75,34 @@ type GraphHandle = {
 
 type Vec3 = { x: number; y: number; z: number };
 
+const TABS = [
+	{ id: 'global', label: 'Global', live: true },
+	{ id: 'projects', label: 'Projects', live: false },
+	{ id: 'vault', label: 'Obsidian Vault', live: false },
+	{ id: 'agent', label: 'Agent Context', live: false }
+] as const;
+
 export default function Graph() {
 	const [load, setLoad] = useState<Load>({ s: 'loading' });
 	const [nonce, setNonce] = useState(0);
 	const [selected, setSelected] = useState<GraphNode | null>(null);
 	const [query, setQuery] = useState('');
+	const [tab, setTab] = useState<(typeof TABS)[number]['id']>('global');
+	const [electricity, setElectricity] = useState(true);
+	const [storm, setStorm] = useState(true);
+	const [, setClock] = useState(0); // ticks "Updated Xm ago"
 	const containerRef = useRef<HTMLDivElement>(null);
+	const minimapRef = useRef<HTMLCanvasElement>(null);
 	const graphRef = useRef<GraphHandle | null>(null);
+	const simNodesRef = useRef<SimNode[]>([]);
+	const electricityRef = useRef(electricity);
+	electricityRef.current = electricity;
 
 	useEffect(() => {
 		let alive = true;
 		setLoad({ s: 'loading' });
 		setSelected(null);
-		getGraph()
+		getGraph(nonce > 0)
 			.then((data) => alive && setLoad({ s: 'ready', data }))
 			.catch((err) => alive && setLoad({ s: 'error', message: err instanceof Error ? err.message : String(err) }));
 		return () => {
@@ -91,10 +110,15 @@ export default function Graph() {
 		};
 	}, [nonce]);
 
+	// Re-render the "Updated Xm ago" label periodically.
+	useEffect(() => {
+		const t = setInterval(() => setClock((c) => c + 1), 30000);
+		return () => clearInterval(t);
+	}, []);
+
 	const data = load.s === 'ready' ? load.data : null;
 
-	// Adjacency + node index, captured from the raw (string-id) links before
-	// 3d-force-graph mutates its own copies into node references.
+	// Adjacency + node index, captured from the raw (string-id) links.
 	const { nodeById, neighbors } = useMemo(() => {
 		const byId = new Map<string, GraphNode>();
 		const adj = new Map<string, Set<string>>();
@@ -143,7 +167,10 @@ export default function Graph() {
 		const el = containerRef.current;
 		if (!el || !data) return;
 
-		const graph = (new (ForceGraph3D as unknown as new (e: HTMLElement) => GraphHandle)(el))
+		const simNodes: SimNode[] = data.nodes.map((node) => ({ ...node }));
+		simNodesRef.current = simNodes;
+
+		const graph = new (ForceGraph3D as unknown as new (e: HTMLElement) => GraphHandle)(el)
 			.backgroundColor('rgba(7,8,12,0)')
 			.showNavInfo(false)
 			.nodeLabel((n) => {
@@ -153,11 +180,11 @@ export default function Graph() {
 			.nodeColor((n) => colorFor((n as GraphNode).kind))
 			.nodeVal((n) => {
 				const node = n as GraphNode;
-				if (node.id === 'root') return 14;
-				if (node.kind === 'group') return 7;
-				return Math.max(1.4, Math.min(8, node.size / 2200));
+				if (node.id === 'root') return 11;
+				if (node.kind === 'group') return 6;
+				return Math.max(1.2, Math.min(6.5, node.size / 2600));
 			})
-			.nodeOpacity(0.95)
+			.nodeOpacity(0.92)
 			.nodeResolution(16)
 			.nodeThreeObjectExtend(true)
 			.nodeThreeObject((n) => {
@@ -177,23 +204,31 @@ export default function Graph() {
 				return sprite;
 			})
 			.linkColor((l) => linkColorFor((l as { kind: string }).kind))
-			.linkWidth(0.6)
-			.linkOpacity(0.7)
-			.linkDirectionalParticles((l) => ((l as { kind: string }).kind === 'contains' ? 0 : 2))
-			.linkDirectionalParticleWidth(1.5)
+			.linkWidth(0.55)
+			.linkOpacity(0.65)
+			.linkDirectionalParticles((l) =>
+				electricityRef.current && (l as { kind: string }).kind !== 'contains' ? 2 : 0
+			)
+			.linkDirectionalParticleWidth(1.4)
 			.linkDirectionalParticleSpeed(0.01)
 			.linkDirectionalParticleColor((l) => linkColorFor((l as { kind: string }).kind))
 			.width(el.clientWidth)
 			.height(el.clientHeight)
 			.onNodeClick((n) => selectAndFocus(n as GraphNode))
-			.graphData({
-				nodes: data.nodes.map((node) => ({ ...node })),
-				links: data.links.map((link) => ({ ...link }))
-			});
+			.graphData({ nodes: simNodes, links: data.links.map((link) => ({ ...link })) });
 
-		// Unreal bloom — the glowing, electric-nebula look.
+		// Center the layout once it settles.
+		let fitted = false;
+		graph.onEngineStop(() => {
+			if (fitted) return;
+			fitted = true;
+			graph.zoomToFit(700, 80);
+		});
+
+		// Unreal bloom — tuned down from the earlier "melted glow": lower strength,
+		// tighter radius, higher threshold so only bright cores bloom.
 		try {
-			const bloom = new UnrealBloomPass(new THREE.Vector2(el.clientWidth, el.clientHeight), 1.9, 0.85, 0.12);
+			const bloom = new UnrealBloomPass(new THREE.Vector2(el.clientWidth, el.clientHeight), 0.95, 0.55, 0.22);
 			graph.postProcessingComposer().addPass(bloom);
 		} catch {
 			// postprocessing unavailable — fall back to flat nodes
@@ -211,9 +246,90 @@ export default function Graph() {
 			ro.disconnect();
 			graph._destructor?.();
 			graphRef.current = null;
+			simNodesRef.current = [];
 			el.replaceChildren();
 		};
 	}, [data, selectAndFocus]);
+
+	// Toggle link particles without rebuilding the layout.
+	useEffect(() => {
+		graphRef.current?.linkDirectionalParticles((l) =>
+			electricity && (l as { kind: string }).kind !== 'contains' ? 2 : 0
+		);
+	}, [electricity]);
+
+	// Minimap: project sim-node x/y onto a small canvas each frame, plus a viewport box.
+	useEffect(() => {
+		const canvas = minimapRef.current;
+		if (!canvas || !data) return;
+		const ctx = canvas.getContext('2d');
+		if (!ctx) return;
+		const dpr = Math.min(2, window.devicePixelRatio || 1);
+		const W = 168;
+		const H = 116;
+		canvas.width = W * dpr;
+		canvas.height = H * dpr;
+		ctx.scale(dpr, dpr);
+
+		let raf = 0;
+		let last = 0;
+		const draw = (t: number) => {
+			raf = requestAnimationFrame(draw);
+			if (t - last < 90) return; // ~11fps is plenty for a thumbnail
+			last = t;
+			const nodes = simNodesRef.current;
+			ctx.clearRect(0, 0, W, H);
+			if (!nodes.length) return;
+			let minX = Infinity;
+			let maxX = -Infinity;
+			let minY = Infinity;
+			let maxY = -Infinity;
+			for (const node of nodes) {
+				if (node.x === undefined || node.y === undefined) continue;
+				if (node.x < minX) minX = node.x;
+				if (node.x > maxX) maxX = node.x;
+				if (node.y < minY) minY = node.y;
+				if (node.y > maxY) maxY = node.y;
+			}
+			if (!isFinite(minX)) return;
+			const pad = 10;
+			const spanX = maxX - minX || 1;
+			const spanY = maxY - minY || 1;
+			const scale = Math.min((W - pad * 2) / spanX, (H - pad * 2) / spanY);
+			const offX = (W - spanX * scale) / 2;
+			const offY = (H - spanY * scale) / 2;
+			const px = (x: number) => offX + (x - minX) * scale;
+			const py = (y: number) => offY + (y - minY) * scale;
+			for (const node of nodes) {
+				if (node.x === undefined || node.y === undefined) continue;
+				ctx.fillStyle = colorFor(node.kind);
+				ctx.globalAlpha = node.kind === 'group' || node.id === 'root' ? 0.95 : 0.7;
+				const r = node.id === 'root' ? 2.4 : node.kind === 'group' ? 1.8 : 1.1;
+				ctx.beginPath();
+				ctx.arc(px(node.x), py(node.y), r, 0, Math.PI * 2);
+				ctx.fill();
+			}
+			ctx.globalAlpha = 1;
+			// Viewport indicator from camera x/y (approximate pan position).
+			const cam = graphRef.current?.cameraPosition();
+			if (cam) {
+				const cx = px(THREE.MathUtils.clamp(cam.x, minX, maxX));
+				const cy = py(THREE.MathUtils.clamp(cam.y, minY, maxY));
+				const bw = 44;
+				const bh = 30;
+				ctx.strokeStyle = 'rgba(74,93,191,0.85)';
+				ctx.lineWidth = 1;
+				ctx.strokeRect(
+					THREE.MathUtils.clamp(cx - bw / 2, 0, W - bw),
+					THREE.MathUtils.clamp(cy - bh / 2, 0, H - bh),
+					bw,
+					bh
+				);
+			}
+		};
+		raf = requestAnimationFrame(draw);
+		return () => cancelAnimationFrame(raf);
+	}, [data]);
 
 	const zoomBy = (factor: number) => {
 		const graph = graphRef.current;
@@ -241,68 +357,113 @@ export default function Graph() {
 				.filter((node): node is GraphNode => !!node)
 		: [];
 
+	const updatedAgo = updatedLabel();
+
 	return (
-		<Page
-			eyebrow="STRUCTURE · GRAPHIFY"
-			title="Knowledge Graph"
-			max={null}
-			actions={
-				<button type="button" onClick={() => setNonce((n) => n + 1)} title="Rebuild graph" style={rebuildButtonStyle}>
-					<RefreshCw size={14} strokeWidth={1.8} />
-					<span>REBUILD</span>
-				</button>
-			}
-		>
+		<Page eyebrow="STRUCTURE · GRAPHIFY" title="Knowledge Graph" max={null}>
 			<GlassPanel
 				data-topo="atlas"
 				style={{ position: 'relative', height: 'calc(100vh - 142px)', minHeight: 560, overflow: 'hidden' }}
 			>
+				{/* Storm Activity — masked lightning behind the graph */}
+				{storm && (
+					<div style={stormLayerStyle} aria-hidden>
+						<Lightning hue={252} speed={0.5} intensity={0.9} size={2.2} xOffset={0.3} />
+					</div>
+				)}
+
 				<div ref={containerRef} style={{ position: 'absolute', inset: 0 }} />
 
-				{/* Search */}
-				<form onSubmit={runSearch} style={searchWrapStyle}>
-					<Search size={13} strokeWidth={1.8} style={{ color: 'var(--l2-fg-3)', flex: '0 0 auto' }} />
-					<input
-						value={query}
-						onChange={(e) => setQuery(e.target.value)}
-						placeholder="Search the graph…"
-						style={searchInputStyle}
-					/>
-				</form>
+				{/* Top strip — source tabs + node/edge count + rebuild */}
+				<div style={topStripStyle}>
+					<div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+						{TABS.map((t) => {
+							const active = t.id === tab;
+							return (
+								<button
+									key={t.id}
+									type="button"
+									onClick={() => t.live && setTab(t.id)}
+									disabled={!t.live}
+									title={t.live ? undefined : 'Coming soon — wires to agent context, wiki, RAG & memory'}
+									style={tabStyle(active, t.live)}
+								>
+									{!t.live && <Lock size={10} strokeWidth={1.8} style={{ opacity: 0.7 }} />}
+									{t.label}
+								</button>
+							);
+						})}
+					</div>
+					<div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+						{stats && (
+							<span style={countChipStyle}>
+								{stats.n} NODES <span style={{ opacity: 0.4 }}>·</span> {stats.e} EDGES
+							</span>
+						)}
+						<button type="button" onClick={() => setNonce((n) => n + 1)} style={rebuildButtonStyle} title="Rebuild graph">
+							<RefreshCw size={13} strokeWidth={1.8} />
+							<span>REBUILD</span>
+						</button>
+					</div>
+				</div>
 
-				{/* Legend */}
-				<div style={legendStyle}>
-					{LEGEND.map((item) => (
-						<span key={item.kind} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-							<span style={{ width: 8, height: 8, borderRadius: 8, background: colorFor(item.kind) }} />
-							{item.label}
-						</span>
-					))}
+				{/* Control panel — search, legend, toggles */}
+				<div style={controlPanelStyle}>
+					<form onSubmit={runSearch} style={searchWrapStyle}>
+						<Search size={13} strokeWidth={1.8} style={{ color: 'var(--l2-fg-3)', flex: '0 0 auto' }} />
+						<input
+							value={query}
+							onChange={(e) => setQuery(e.target.value)}
+							placeholder="Search the graph…"
+							style={searchInputStyle}
+						/>
+					</form>
+					<div style={legendStyle}>
+						{LEGEND.map((item) => (
+							<span key={item.kind} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+								<span style={{ width: 8, height: 8, borderRadius: 8, background: colorFor(item.kind) }} />
+								{item.label}
+							</span>
+						))}
+					</div>
+					<div style={toggleRowStyle}>
+						<Toggle label="Electricity" on={electricity} onClick={() => setElectricity((v) => !v)} />
+						<Toggle label="Storm Activity" on={storm} onClick={() => setStorm((v) => !v)} />
+					</div>
 				</div>
 
 				{/* Stats */}
 				{stats && (
 					<div style={statsStyle}>
-						<div style={statsTitleStyle}>GRAPH OVERVIEW</div>
+						<div style={statsTitleStyle}>GRAPH STATISTICS</div>
 						<Stat label="Nodes" value={String(stats.n)} />
 						<Stat label="Edges" value={String(stats.e)} />
 						<Stat label="Communities" value={String(stats.communities)} />
 						<Stat label="Density" value={stats.density.toFixed(3)} />
 						<Stat label="Avg Degree" value={stats.avgDegree.toFixed(2)} />
+						<div style={updatedRowStyle}>
+							<span style={{ width: 6, height: 6, borderRadius: 6, background: 'var(--atlas-green, #46F0A0)' }} />
+							{updatedAgo}
+						</div>
 					</div>
 				)}
 
-				{/* Camera controls */}
-				<div style={controlsStyle}>
-					<CtrlButton title="Fit view" onClick={fitView}>
-						<Maximize2 size={14} strokeWidth={1.8} />
-					</CtrlButton>
-					<CtrlButton title="Zoom in" onClick={() => zoomBy(0.78)}>
-						<Plus size={14} strokeWidth={1.8} />
-					</CtrlButton>
-					<CtrlButton title="Zoom out" onClick={() => zoomBy(1.28)}>
-						<Minus size={14} strokeWidth={1.8} />
-					</CtrlButton>
+				{/* Minimap + camera controls */}
+				<div style={minimapWrapStyle}>
+					<div style={controlsColStyle}>
+						<CtrlButton title="Fit view" onClick={fitView}>
+							<Maximize2 size={14} strokeWidth={1.8} />
+						</CtrlButton>
+						<CtrlButton title="Zoom in" onClick={() => zoomBy(0.78)}>
+							<Plus size={14} strokeWidth={1.8} />
+						</CtrlButton>
+						<CtrlButton title="Zoom out" onClick={() => zoomBy(1.28)}>
+							<Minus size={14} strokeWidth={1.8} />
+						</CtrlButton>
+					</div>
+					<div style={minimapFrameStyle}>
+						<canvas ref={minimapRef} style={{ width: 168, height: 116, display: 'block' }} />
+					</div>
 				</div>
 
 				{/* Node inspector */}
@@ -324,7 +485,7 @@ export default function Graph() {
 							FOCUS
 						</button>
 						<div style={inspectSectionLabelStyle}>CONNECTIONS · {selectedNeighbors.length}</div>
-						<div style={{ display: 'flex', flexDirection: 'column', gap: 3, overflow: 'auto', maxHeight: 260 }}>
+						<div style={{ display: 'flex', flexDirection: 'column', gap: 3, overflow: 'auto', maxHeight: 220 }}>
 							{selectedNeighbors.map((node) => (
 								<button key={node.id} type="button" onClick={() => selectAndFocus(node)} style={neighborRowStyle}>
 									<span style={{ width: 7, height: 7, borderRadius: 7, background: colorFor(node.kind), flex: '0 0 auto' }} />
@@ -348,6 +509,17 @@ export default function Graph() {
 			</GlassPanel>
 		</Page>
 	);
+}
+
+function updatedLabel(): string {
+	const at = getGraphFetchedAt();
+	if (!at) return 'Updated just now';
+	const mins = Math.floor((Date.now() - at) / 60000);
+	if (mins <= 0) return 'Updated just now';
+	if (mins === 1) return 'Updated 1m ago';
+	if (mins < 60) return `Updated ${mins}m ago`;
+	const hrs = Math.floor(mins / 60);
+	return `Updated ${hrs}h ago`;
 }
 
 const LEGEND = [
@@ -376,6 +548,69 @@ function CtrlButton({ title, onClick, children }: { title: string; onClick: () =
 	);
 }
 
+function Toggle({ label, on, onClick }: { label: string; on: boolean; onClick: () => void }) {
+	return (
+		<button type="button" onClick={onClick} style={toggleButtonStyle}>
+			<span style={{ color: on ? 'var(--l2-fg-1)' : 'var(--l2-fg-3)' }}>{label}</span>
+			<span style={{ ...trackStyle, background: on ? 'rgba(74,93,191,0.7)' : 'rgba(237,234,224,0.14)' }}>
+				<span style={{ ...knobStyle, transform: on ? 'translateX(13px)' : 'translateX(0)' }} />
+			</span>
+		</button>
+	);
+}
+
+const stormLayerStyle: React.CSSProperties = {
+	position: 'absolute',
+	inset: 0,
+	pointerEvents: 'none',
+	// Persistent grey-violet "storm cloud" base; the reactbits lightning canvas
+	// flickers its bolts on top. The shader already outputs alpha, so this sits
+	// behind the transparent graph with normal compositing (no screen blend
+	// needed — that only washed the cloud out). Masked to an upper-center region.
+	background:
+		'radial-gradient(95% 68% at 62% 26%, rgba(154,144,208,0.34), rgba(74,80,132,0.15) 40%, transparent 68%)',
+	WebkitMaskImage: 'radial-gradient(115% 80% at 62% 26%, #000 0%, rgba(0,0,0,0.6) 52%, transparent 80%)',
+	maskImage: 'radial-gradient(115% 80% at 62% 26%, #000 0%, rgba(0,0,0,0.6) 52%, transparent 80%)'
+};
+
+const topStripStyle: React.CSSProperties = {
+	position: 'absolute',
+	top: 0,
+	left: 0,
+	right: 0,
+	height: 44,
+	display: 'flex',
+	alignItems: 'center',
+	justifyContent: 'space-between',
+	padding: '0 14px',
+	borderBottom: '1px solid rgba(237,234,224,0.07)',
+	background: 'linear-gradient(180deg, rgba(7,8,12,0.78), rgba(7,8,12,0.32))',
+	backdropFilter: 'blur(8px)'
+};
+
+const tabStyle = (active: boolean, live: boolean): React.CSSProperties => ({
+	display: 'inline-flex',
+	alignItems: 'center',
+	gap: 6,
+	padding: '6px 12px',
+	border: 'none',
+	borderRadius: 2,
+	background: active ? 'rgba(74,93,191,0.18)' : 'transparent',
+	color: active ? 'var(--atlas-celestial)' : live ? 'var(--l2-fg-2)' : 'var(--l2-fg-3)',
+	fontFamily: 'var(--l2-font-mono)',
+	fontSize: 11.5,
+	letterSpacing: '0.03em',
+	cursor: live ? 'pointer' : 'not-allowed',
+	opacity: live || active ? 1 : 0.55
+});
+
+const countChipStyle: React.CSSProperties = {
+	fontFamily: 'var(--l2-font-mono)',
+	fontSize: 10,
+	letterSpacing: '0.16em',
+	color: 'var(--l2-fg-3)'
+};
+
 const overlayStyle: React.CSSProperties = {
 	position: 'absolute',
 	inset: 0,
@@ -393,19 +628,29 @@ const overlayStyle: React.CSSProperties = {
 	padding: 24
 };
 
-const searchWrapStyle: React.CSSProperties = {
+const controlPanelStyle: React.CSSProperties = {
 	position: 'absolute',
-	top: 12,
+	top: 58,
 	left: 14,
+	width: 230,
+	display: 'flex',
+	flexDirection: 'column',
+	gap: 11,
+	padding: '12px 13px',
+	borderRadius: 2,
+	border: '1px solid rgba(237,234,224,0.08)',
+	background: 'rgba(7,8,12,0.6)',
+	backdropFilter: 'blur(10px)'
+};
+
+const searchWrapStyle: React.CSSProperties = {
 	display: 'flex',
 	alignItems: 'center',
 	gap: 8,
-	width: 240,
 	padding: '7px 10px',
 	borderRadius: 2,
-	border: '1px solid rgba(74,93,191,0.32)',
-	background: 'rgba(7,8,12,0.6)',
-	backdropFilter: 'blur(8px)'
+	border: '1px solid rgba(74,93,191,0.3)',
+	background: 'rgba(7,8,12,0.5)'
 };
 
 const searchInputStyle: React.CSSProperties = {
@@ -421,27 +666,63 @@ const searchInputStyle: React.CSSProperties = {
 };
 
 const legendStyle: React.CSSProperties = {
-	position: 'absolute',
-	top: 12,
-	right: 14,
 	display: 'flex',
 	flexWrap: 'wrap',
-	justifyContent: 'flex-end',
-	gap: 12,
-	maxWidth: 420,
+	gap: '7px 12px',
 	fontFamily: 'var(--l2-font-mono)',
 	fontSize: 9.5,
-	letterSpacing: '0.1em',
+	letterSpacing: '0.08em',
 	textTransform: 'uppercase',
-	color: 'var(--l2-fg-3)',
-	pointerEvents: 'none'
+	color: 'var(--l2-fg-3)'
+};
+
+const toggleRowStyle: React.CSSProperties = {
+	display: 'flex',
+	flexDirection: 'column',
+	gap: 7,
+	paddingTop: 9,
+	borderTop: '1px solid rgba(237,234,224,0.07)'
+};
+
+const toggleButtonStyle: React.CSSProperties = {
+	display: 'flex',
+	alignItems: 'center',
+	justifyContent: 'space-between',
+	gap: 10,
+	border: 'none',
+	background: 'transparent',
+	padding: 0,
+	cursor: 'pointer',
+	fontFamily: 'var(--l2-font-mono)',
+	fontSize: 11,
+	letterSpacing: '0.03em'
+};
+
+const trackStyle: React.CSSProperties = {
+	position: 'relative',
+	width: 28,
+	height: 15,
+	borderRadius: 8,
+	flex: '0 0 auto',
+	transition: 'background 160ms'
+};
+
+const knobStyle: React.CSSProperties = {
+	position: 'absolute',
+	top: 2,
+	left: 2,
+	width: 11,
+	height: 11,
+	borderRadius: 11,
+	background: '#EDEAE0',
+	transition: 'transform 160ms'
 };
 
 const statsStyle: React.CSSProperties = {
 	position: 'absolute',
 	bottom: 14,
 	left: 14,
-	width: 200,
+	width: 204,
 	display: 'flex',
 	flexDirection: 'column',
 	gap: 6,
@@ -461,13 +742,40 @@ const statsTitleStyle: React.CSSProperties = {
 	marginBottom: 2
 };
 
-const controlsStyle: React.CSSProperties = {
+const updatedRowStyle: React.CSSProperties = {
+	display: 'flex',
+	alignItems: 'center',
+	gap: 7,
+	marginTop: 6,
+	paddingTop: 8,
+	borderTop: '1px solid rgba(237,234,224,0.07)',
+	fontSize: 9.5,
+	letterSpacing: '0.08em',
+	color: 'var(--l2-fg-3)'
+};
+
+const minimapWrapStyle: React.CSSProperties = {
 	position: 'absolute',
 	bottom: 14,
 	right: 14,
 	display: 'flex',
+	alignItems: 'flex-end',
+	gap: 8
+};
+
+const controlsColStyle: React.CSSProperties = {
+	display: 'flex',
 	flexDirection: 'column',
 	gap: 6
+};
+
+const minimapFrameStyle: React.CSSProperties = {
+	padding: 4,
+	borderRadius: 3,
+	border: '1px solid rgba(74,93,191,0.28)',
+	background: 'rgba(7,8,12,0.66)',
+	backdropFilter: 'blur(8px)',
+	lineHeight: 0
 };
 
 const ctrlButtonStyle: React.CSSProperties = {
@@ -486,7 +794,7 @@ const ctrlButtonStyle: React.CSSProperties = {
 
 const inspectStyle: React.CSSProperties = {
 	position: 'absolute',
-	top: 56,
+	top: 58,
 	right: 14,
 	width: 268,
 	display: 'flex',
@@ -595,7 +903,7 @@ const rebuildButtonStyle: React.CSSProperties = {
 	display: 'inline-flex',
 	alignItems: 'center',
 	gap: 7,
-	padding: '7px 11px',
+	padding: '6px 11px',
 	borderRadius: 2,
 	border: '1px solid rgba(74,93,191,0.4)',
 	background: 'rgba(74,93,191,0.12)',

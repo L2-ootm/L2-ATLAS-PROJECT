@@ -280,8 +280,20 @@ export interface GraphData {
 	counts: { nodes: number; links: number };
 }
 
-export async function getGraph(): Promise<GraphData> {
-	return apiFetch('/v1/graph');
+// Building the graph rescans `.planning` on the gateway every call, so we cache
+// the result for the session. Navigating away and back reuses the cached graph
+// instantly; REBUILD passes `force` to rescan.
+let graphCache: { data: GraphData; fetchedAt: number } | null = null;
+
+export function getGraphFetchedAt(): number | null {
+	return graphCache?.fetchedAt ?? null;
+}
+
+export async function getGraph(force = false): Promise<GraphData> {
+	if (!force && graphCache) return graphCache.data;
+	const data = await apiFetch<GraphData>('/v1/graph');
+	graphCache = { data, fetchedAt: Date.now() };
+	return data;
 }
 
 export async function getProject(
