@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0.5
 milestone_name: Mass-Adoption Launch Wedge
 status: in_progress
-last_updated: "2026-06-17T14:30:00.000Z"
-last_activity: 2026-06-17 -- React pivot scaffolded; Dashboard surface builds + renders (proof shots)
+last_updated: "2026-06-19T03:03:23.250Z"
+last_activity: 2026-06-19 -- Operator console window manager: draggable/tiled chat workbench, project/folder binding, native chat bridge, Claude Code SDK path wired
 progress:
   total_phases: 13
   completed_phases: 1
@@ -31,7 +31,10 @@ In-flight (ahead of spine, operator-directed): 10.0.3 ATLAS Identity & Cockpit R
   primitives); soft-aurora OGL effect integrated; first React surface = Dashboard operator HUD
   (live telemetry + graceful loading/empty/offline states), proven via Playwright
   (output/react-pivot/). Svelte cockpit stays live until React reaches route parity.
-Last activity: 2026-06-17 -- React pivot scaffolded; Dashboard surface builds + renders (proof shots)
+Last activity: 2026-06-19 -- Operator console window manager: draggable/tiled chat workbench, project/folder binding, native chat bridge, Claude Code SDK path wired
+Loop note: pre-existing dirty state on branch `feat/cockpit-p3-glass-p4` (`.planning/prep/next-steps-db-runner-async-supabase.md`)
+  blocked safe code-changing automation. Report-only continuation state written to
+  `.planning/reports/atlas-living-context-loop-2026-06-18-dirty-worktree-guard.md`.
 
 ### Operator big-plan progress (2026-06-18, web-ui-react)
 - **P1 GlassTopo (DONE+verified):** signature frosted-glass-over-glowing-topo surface
@@ -83,8 +86,78 @@ Last activity: 2026-06-17 -- React pivot scaffolded; Dashboard surface builds + 
     broken at runtime until 0005+0006 were hand-applied this session. The slated `atlas db init`
     runner is now a real prerequisite — fresh installs get all migrations via bootstrap, but
     existing DBs silently drift. Build the runner before further schema work.
+- **Operator UX slice (DONE — 2026-06-19, live-verified):**
+  - Succeeded/completed missions can now be archived with retention (`mission_archive.archived_at/delete_after`);
+    purge deletes expired archived missions and their runs/audit/tool/artifact rows. CLI + gateway routes landed.
+  - Mission detail/archive panel, archived mission filtering, softer glass modal treatment, glassier run rows, and
+    Claude Code orange selector state landed in React. Run detail topo now releases with an expanding radial mask
+    before settling into clean audit logs.
+  - Cashflow is now a native `/cashflow` ATLAS route backed by the Rust gateway reading `services/cashflow/dev.db`;
+    the old System-page server start/iframe control path was removed. Cashflow module activated live.
+  - Projects page live readback verified with `L2 ATLAS PROJECT` and `L2 Cashflow` registered. Proof shots:
+    `output/playwright/ux-projects-page.png`, `ux-cashflow-page.png`, `ux-mission-archive-panel.png`,
+    `ux-claude-selector-orange.png`, `ux-run-detail-clean-logs.png`.
+  - Console direction set for next slice: VS Code/Claude-style conversation surface in ATLAS visual language,
+    then modular panes (chat, audit stream, tools/files, memory/context) with draggable tiling and topo-aware motion.
+- **Operator UX cleanup (DONE — 2026-06-19, live-verified):**
+  - Removed the `Missions.refresh()` automatic archive purge call. Root cause: page navigation was invoking
+    `POST /v1/missions/purge-archived`, which shells through the CLI contract and can surface Windows terminals.
+    Purge remains available as an explicit backend/API operation only.
+  - Restored the New Mission modal material to the pre-cleanup glow/blur treatment; kept only the requested
+    project selector behavior. Live run audit topo was strengthened and pings are no longer gated by the release phase.
+  - Cashflow summary page now includes a `Complete Cashflow` handoff to the future gateway endpoint
+    `http://127.0.0.1:8484/cashflow/full`. Proof shots: `output/playwright/ux-new-mission-modal-restored.png`,
+    `ux-cashflow-complete-button.png`, `ux-run-live-topo-restored.png`.
+- **Operator UX console/projects foundation (DONE — 2026-06-19, live-verified):**
+  - New Mission project selection now uses a custom ATLAS popover (`ProjectSelector`) instead of the native Windows
+    dropdown; project name/path are scannable and the "No project" state remains explicit.
+  - Projects create/register modals now prioritize folder picking. In the Tauri desktop shell, `select_folder`
+    opens the OS folder picker via `rfd`; browser mode degrades to manual paste because browsers cannot expose
+    arbitrary absolute local paths.
+  - Projects rows now include an `Open` console action routing to `/console?project=<id>`. The `/console` route is
+    now a first-pass VS Code-like ATLAS workbench: tabs (`atlas.chat`, `audit.stream`, `context.graph`), project rail,
+    chat/composer, context/tool dock, local draft message stream, and responsive mobile collapse.
+  - Shared page header and Projects table now respond at narrow widths; console long paths wrap instead of clipping.
+    Proof shots: `output/playwright/ux-project-selector-polished.png`,
+    `ux-project-folder-picker.png`, `ux-projects-console-buttons-final.png`,
+    `ux-console-project-tabs-final.png`, `ux-projects-mobile-header-fixed.png`,
+    `ux-console-mobile-header-fixed.png`.
+  - Verified: `npm run check`, `npm run lint`, `npm run build` green in `services/web-ui-react`; `cargo check`
+    green in `services/web-ui-react/src-tauri`; Playwright project handoff and console composer smoke passed.
+- **Operator console window manager (DONE/PARTIAL — 2026-06-19, live-verified):**
+  - `/console` is now a modular workbench: VS Code-like tabs, new chat/audit/tools/context window creation,
+    tile layout reordering, free-layout pointer dragging, active-window focus, and topo-aware semantic window zones.
+  - Project integration is live. Projects route to `/console?project=<id>`; the console resolves project root, binds
+    chat/tool/context panes to that folder, and can switch to manual folder binding through the desktop folder picker.
+  - Added the chat execution bridge: `atlas console chat`, gateway `POST /v1/console/chat`, React `consoleChat`, and
+    Native/Claude Code mode selection. Native mode returns a receipt through the real gateway and populates audit rows.
+  - Claude Code mode is code-wired through `claude-agent-sdk` with `cwd`, `permission_mode="dontAsk"`, read/search tool
+    allowance, and preset `claude_code` prompt context. The local `claude.exe` exists, but the active `python` runtime is
+    the Hermes venv without `pip`; `claude_agent_sdk` is not importable there, so the UI now reports the missing optional
+    SDK cleanly instead of breaking. Install `atlas-runtime[claude]` in the gateway dispatch Python to make it execute.
+  - Verification: `npm run check`, `npm run lint`, `npm run build` green; gateway `/v1/console/chat` native probe green;
+    Playwright verified bound boot receipt, new chat window creation, free-layout drag, native chat response, Claude-mode
+    fallback, and zero browser warnings. Proof shots: `output/playwright/ux-console-window-manager-tile.png`,
+    `ux-console-new-chat-window.png`, `ux-console-window-manager-free-dragged.png`,
+    `ux-console-native-chat-response.png`, `ux-console-claude-mode-sdk-missing.png`.
 
+- **Operator console UX continuation (DONE — 2026-06-19, browser-verified):**
+  - Claude Code is now per-window: `+ Claude Code` spawns a separate `claude.code` chat window while existing native
+    chats remain native. The global agent toggle behavior was removed from the console workbench.
+  - Free mode now has live drag + live resize through pointer and mouse fallbacks, a scrollable free canvas, and initial
+    window geometry that keeps resize handles visible at 1280x720. Exclusive tabs mode remains available for one-window-per-tab use.
+  - Browser-mode folder selection is wired through the Rust gateway at `POST /v1/host/select-folder`; Projects and Console use
+    the shared `selectFolder()` host helper instead of the desktop-only Tauri path. Project modals keep manual path entry as a fallback.
+  - The Context window now contains the first Hermes Brain / Graphify surface: a topo-lit 3D-ish neuron field with memory,
+    skills, runs, audit, and Graphify nodes. Graphify remains disabled in `.planning/config.json`, so this is a UI contract
+    and activation point rather than a graph build.
+  - Added global ATLAS custom scrollbars and kept project-to-console binding live from `/projects`.
+  - Verification: `npm run check`, `npm run lint`, and elevated `npm run build` green in `services/web-ui-react`;
+    `cargo check -p atlas-gateway` green in `native/atlas-core-rs`; in-app browser verified `/console` no `agent is not defined`, Claude spawns separately,
+    tile/free/tabs cycle, free resize and drag both mutate geometry live, `/projects` Open binds `/console?project=<id>`,
+    New Project modal has browser-friendly folder-picker copy, and browser console errors stayed empty.
 ## Project Reference
+
 
 See: `.planning/PROJECT.md` (updated 2026-06-15) · `.planning/MILESTONES.md`
 
