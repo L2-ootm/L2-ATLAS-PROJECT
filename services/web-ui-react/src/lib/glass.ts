@@ -21,12 +21,15 @@ export function glassPanel(extra?: CSSProperties): CSSProperties {
 		// a bright diagonal specular sweep + an inner celestial glow + a lit top edge
 		// give the wet, glowing, glassmorphic read the flat tint was missing.
 		background:
-			'linear-gradient(135deg, rgba(237,234,224,0.11) 0%, transparent 24%, transparent 67%, rgba(237,234,224,0.05) 100%), linear-gradient(180deg, rgba(22,26,36,0.56), rgba(10,13,18,0.64))',
-		backdropFilter: `blur(18px) url(#${GLASS_DISPLACE_ID}) saturate(1.7) brightness(1.06)`,
-		WebkitBackdropFilter: 'blur(18px) saturate(1.7) brightness(1.06)',
+			'linear-gradient(135deg, rgba(237,234,224,0.10) 0%, transparent 26%, transparent 70%, rgba(237,234,224,0.045) 100%), linear-gradient(180deg, rgba(20,24,33,0.42), rgba(10,13,18,0.50))',
+		// Lighter frost (blur 10, was 18) so the living TopoField stays VISIBLE through
+		// the glass — just gently warped by the url() displacement (scale 18) + a soft
+		// specular sweep + inner glow. Glassmorphic, but you can read the terrain.
+		backdropFilter: `blur(10px) url(#${GLASS_DISPLACE_ID}) saturate(1.5) brightness(1.04)`,
+		WebkitBackdropFilter: 'blur(10px) saturate(1.5) brightness(1.04)',
 		// Lit top edge + faint inner celestial glow + soft lift = depth without going solid.
 		boxShadow:
-			'inset 0 1px 0 rgba(237,234,224,0.12), inset 0 0 30px rgba(79,139,255,0.06), 0 12px 44px rgba(0,0,0,0.36)',
+			'inset 0 1px 0 rgba(237,234,224,0.10), inset 0 0 26px rgba(79,139,255,0.05), 0 10px 38px rgba(0,0,0,0.32)',
 		...extra
 	};
 }
