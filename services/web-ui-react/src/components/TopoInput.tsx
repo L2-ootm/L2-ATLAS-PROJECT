@@ -95,7 +95,6 @@ export default function TopoInput({
 	useEffect(() => {
 		const host = hostRef.current;
 		if (!host) return;
-		if (quiet) return; // clean mode — no per-field topo (modals)
 		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
 		const build = () => {
@@ -109,7 +108,9 @@ export default function TopoInput({
 				cellSize: 13,
 				color: 'rgba(150,170,210,1)',
 				glowColor: GLOW[tone],
-				restingOpacity: 0.07,
+				// quiet (modals): no resting contours, but the field still lights up on
+				// type — the authorship comet glow is preserved, clutter at rest is not.
+				restingOpacity: quiet ? 0 : 0.07,
 				glowOpacity: 0.5,
 				restingWidth: 0.6,
 				glowWidth: 1.15,

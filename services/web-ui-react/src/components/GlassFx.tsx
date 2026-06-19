@@ -61,7 +61,7 @@ export function GlassFilter() {
 					<feDisplacementMap
 						in="SourceGraphic"
 						in2="softMap"
-						scale={26}
+						scale={18}
 						xChannelSelector="R"
 						yChannelSelector="G"
 					/>
