@@ -176,6 +176,7 @@ export interface ConsoleChatEvent {
 	input?: unknown;
 	content?: unknown;
 	error?: string;
+	is_error?: boolean;
 	subtype?: string | null;
 	num_turns?: number | null;
 	total_cost_usd?: number | null;

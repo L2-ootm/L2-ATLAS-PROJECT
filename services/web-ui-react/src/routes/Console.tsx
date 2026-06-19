@@ -1,29 +1,39 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type * as React from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
+	AlertTriangle,
 	Bot,
 	BoxSelect,
 	Check,
 	ChevronDown,
+	ChevronRight,
 	Circle,
 	Columns3,
 	CopyPlus,
+	FilePen,
+	FilePlus2,
+	FileText,
 	Folder,
 	FolderOpen,
+	FolderSearch,
 	GitBranch,
 	Grip,
 	GripVertical,
 	LayoutGrid,
+	ListTree,
 	MessageSquare,
 	MousePointer2,
+	Search,
 	SendHorizontal,
 	SquareTerminal,
 	Waypoints,
+	Wrench,
 	X
 } from 'lucide-react';
 import { Page } from '../components/Page';
 import { GlassPanel } from '../components/GlassFx';
+import { TopoScroll } from '../components/TopoScroll';
 import {
 	agentRuntimeLabel,
 	consoleChat,
@@ -59,6 +69,8 @@ type ConsoleMessage = {
 	body: string;
 	time: string;
 	status?: 'pending' | 'failed' | 'succeeded';
+	/** Ordered SDK events for an agent turn — text blocks + tool calls rendered inline. */
+	events?: ConsoleChatEvent[];
 };
 
 const INITIAL_WINDOWS: ConsoleWindow[] = [
@@ -114,6 +126,13 @@ export default function Console() {
 	const [drag, setDrag] = useState<DragState>(null);
 	const [resize, setResize] = useState<ResizeState>(null);
 	const [tileDragId, setTileDragId] = useState<string | null>(null);
+	// Live drag bookkeeping: tracks the reserved "home" slot the dragged window
+	// will land in, so other windows can swap into the vacated slot in real time.
+	const dragRef = useRef<
+		{ id: string; pointerId?: number; startX: number; startY: number; x: number; y: number; homeX: number; homeY: number; didSwap: boolean } | null
+	>(null);
+	const windowsRef = useRef(windows);
+	windowsRef.current = windows;
 
 	useEffect(() => {
 		let alive = true;
@@ -224,20 +243,6 @@ export default function Console() {
 		}
 	}
 
-	function moveWindow(id: string, x: number, y: number) {
-		setWindows((prev) =>
-			prev.map((w) =>
-				w.id === id
-					? {
-							...w,
-							x: Math.max(0, x),
-							y: Math.max(0, y)
-						}
-					: w
-			)
-		);
-	}
-
 	function resizeWindow(id: string, w: number, h: number) {
 		setWindows((prev) =>
 			prev.map((win) =>
@@ -298,7 +303,8 @@ export default function Console() {
 				label: agentRuntimeLabel(result.agent),
 				body: result.text,
 				time: nowLabel(),
-				status: result.status
+				status: result.status,
+				events: result.events
 			};
 			setMessagesByWindow((prev) => ({
 				...prev,
@@ -326,9 +332,51 @@ export default function Console() {
 		}
 	}
 
-	function moveDragTo(clientX: number, clientY: number) {
-		if (!drag) return;
-		moveWindow(drag.id, drag.x + clientX - drag.startX, drag.y + clientY - drag.startY);
+	// Move the dragged window to follow the cursor, and if its center crosses
+	// another window, swap that window into the dragged window's reserved slot —
+	// live, while dragging. The dragged window keeps tracking the cursor 1:1.
+	function dragMoveAndSwap(clientX: number, clientY: number) {
+		const d = dragRef.current;
+		if (!d) return;
+		const nx = Math.max(0, d.x + clientX - d.startX);
+		const ny = Math.max(0, d.y + clientY - d.startY);
+		const wins = windowsRef.current;
+		const dragged = wins.find((w) => w.id === d.id);
+		if (!dragged) return;
+		const cx = nx + dragged.w / 2;
+		const cy = ny + dragged.h / 2;
+		const target = wins.find(
+			(w) => w.id !== d.id && cx >= w.x && cx <= w.x + w.w && cy >= w.y && cy <= w.y + w.h
+		);
+		if (target) {
+			const homeX = d.homeX;
+			const homeY = d.homeY;
+			d.homeX = target.x;
+			d.homeY = target.y;
+			d.didSwap = true;
+			setWindows((prev) =>
+				prev.map((w) =>
+					w.id === d.id
+						? { ...w, x: nx, y: ny }
+						: w.id === target.id
+							? { ...w, x: homeX, y: homeY }
+							: w
+				)
+			);
+		} else {
+			setWindows((prev) => prev.map((w) => (w.id === d.id ? { ...w, x: nx, y: ny } : w)));
+		}
+	}
+
+	// On release, if any swap happened, snap the dragged window into its reserved
+	// slot for a clean reorder. If nothing was swapped, it stays where it was dropped.
+	function finishFreeDrag() {
+		const d = dragRef.current;
+		if (d && d.didSwap) {
+			const { id, homeX, homeY } = d;
+			setWindows((prev) => prev.map((w) => (w.id === id ? { ...w, x: homeX, y: homeY } : w)));
+		}
+		dragRef.current = null;
 	}
 
 	function resizeTo(clientX: number, clientY: number) {
@@ -338,7 +386,7 @@ export default function Console() {
 
 	function onFreePointerMove(e: React.PointerEvent<HTMLDivElement>) {
 		if (!drag || drag.pointerId === undefined || e.pointerId !== drag.pointerId) return;
-		moveDragTo(e.clientX, e.clientY);
+		dragMoveAndSwap(e.clientX, e.clientY);
 	}
 
 	function startFreeDrag(e: React.PointerEvent<HTMLDivElement>, win: ConsoleWindow) {
@@ -349,12 +397,14 @@ export default function Console() {
 			// The document-level fallback still tracks movement.
 		}
 		setActiveWindow(win.id);
+		dragRef.current = { id: win.id, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, x: win.x, y: win.y, homeX: win.x, homeY: win.y, didSwap: false };
 		setDrag({ id: win.id, pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, x: win.x, y: win.y });
 	}
 
 	function startFreeMouseDrag(e: React.MouseEvent<HTMLDivElement>, win: ConsoleWindow) {
 		if (layout !== 'free' || e.button !== 0) return;
 		setActiveWindow(win.id);
+		dragRef.current = { id: win.id, startX: e.clientX, startY: e.clientY, x: win.x, y: win.y, homeX: win.x, homeY: win.y, didSwap: false };
 		setDrag({ id: win.id, startX: e.clientX, startY: e.clientY, x: win.x, y: win.y });
 	}
 
@@ -366,6 +416,7 @@ export default function Console() {
 				// Pointer capture may already be released by the browser.
 			}
 		}
+		finishFreeDrag();
 		setDrag(null);
 	}
 
@@ -408,26 +459,32 @@ export default function Console() {
 		if (!drag && !resize) return;
 		function onPointerMove(e: PointerEvent) {
 			if (drag?.pointerId !== undefined && e.pointerId === drag.pointerId) {
-				moveWindow(drag.id, drag.x + e.clientX - drag.startX, drag.y + e.clientY - drag.startY);
+				dragMoveAndSwap(e.clientX, e.clientY);
 			}
 			if (resize?.pointerId !== undefined && e.pointerId === resize.pointerId) {
 				resizeWindow(resize.id, resize.w + e.clientX - resize.startX, resize.h + e.clientY - resize.startY);
 			}
 		}
 		function onPointerEnd(e: PointerEvent) {
-			if (drag?.pointerId !== undefined && e.pointerId === drag.pointerId) setDrag(null);
+			if (drag?.pointerId !== undefined && e.pointerId === drag.pointerId) {
+				finishFreeDrag();
+				setDrag(null);
+			}
 			if (resize?.pointerId !== undefined && e.pointerId === resize.pointerId) setResize(null);
 		}
 		function onMouseMove(e: MouseEvent) {
 			if (drag && drag.pointerId === undefined) {
-				moveWindow(drag.id, drag.x + e.clientX - drag.startX, drag.y + e.clientY - drag.startY);
+				dragMoveAndSwap(e.clientX, e.clientY);
 			}
 			if (resize && resize.pointerId === undefined) {
 				resizeWindow(resize.id, resize.w + e.clientX - resize.startX, resize.h + e.clientY - resize.startY);
 			}
 		}
 		function onMouseEnd() {
-			if (drag?.pointerId === undefined) setDrag(null);
+			if (drag?.pointerId === undefined) {
+				finishFreeDrag();
+				setDrag(null);
+			}
 			if (resize?.pointerId === undefined) setResize(null);
 		}
 		window.addEventListener('pointermove', onPointerMove);
@@ -666,7 +723,11 @@ function WorkbenchWindow({
 					top: win.y,
 					width: win.w,
 					height: win.h,
-					zIndex: active ? 30 : 10
+					zIndex: dragging ? 40 : active ? 30 : 10,
+					// Dragged window tracks the cursor 1:1; displaced windows glide to their new slot.
+					transition: dragging
+						? 'none'
+						: 'left 180ms var(--l2-ease), top 180ms var(--l2-ease), box-shadow 180ms var(--l2-ease), border-color 180ms var(--l2-ease)'
 				}
 			: {};
 	return (
@@ -693,11 +754,6 @@ function WorkbenchWindow({
 				onTileDragEnd();
 			}}
 			onClick={onActivate}
-			onPointerMove={(e) => {
-				const rect = e.currentTarget.getBoundingClientRect();
-				e.currentTarget.style.setProperty('--mx', `${e.clientX - rect.left}px`);
-				e.currentTarget.style.setProperty('--my', `${e.clientY - rect.top}px`);
-			}}
 			style={{
 				...windowStyle,
 				...freeStyle,
@@ -770,9 +826,15 @@ function ChatPane({
 				</div>
 				<WorkbenchBadge icon={<GitBranch size={13} />} label={boundCwd ? 'BOUND' : 'UNBOUND'} />
 			</div>
-			<div style={messageListStyle}>
-				{messages.map((message) => <MessageBubble key={message.id} message={message} />)}
-			</div>
+			<TopoScroll tone={agent === 'claude_code' ? 'atlas' : 'info'} style={{ minHeight: 0 }} viewportStyle={messageListStyle}>
+				{messages.map((message) =>
+					message.role === 'agent' && message.events && message.events.length > 0 ? (
+						<AgentTurn key={message.id} message={message} />
+					) : (
+						<MessageBubble key={message.id} message={message} />
+					)
+				)}
+			</TopoScroll>
 			<div style={composerWrapStyle}>
 				<textarea
 					value={draft}
@@ -957,7 +1019,7 @@ function GraphBrainSurface({ activeProject, boundCwd, onSpawnBrain }: { activePr
 }
 function AuditPane({ events }: { events: ConsoleChatEvent[] }) {
 	return (
-		<div style={auditBodyStyle}>
+		<TopoScroll tone="good" style={{ height: '100%' }} viewportStyle={auditBodyStyle}>
 			{events.length === 0 ? (
 				<div style={emptyAuditStyle}>No console events recorded.</div>
 			) : (
@@ -969,6 +1031,195 @@ function AuditPane({ events }: { events: ConsoleChatEvent[] }) {
 						</span>
 					</div>
 				))
+			)}
+		</TopoScroll>
+	);
+}
+
+// ── Tool-calling inline rendering (Claude-Code-style cards) ─────────────────
+
+const TOOL_ICON: Record<string, React.ElementType> = {
+	read: FileText,
+	grep: Search,
+	glob: FolderSearch,
+	ls: ListTree,
+	edit: FilePen,
+	multiedit: FilePen,
+	write: FilePlus2,
+	bash: SquareTerminal
+};
+
+function toolIcon(name: string | null | undefined): React.ElementType {
+	if (!name) return Wrench;
+	return TOOL_ICON[name.toLowerCase()] ?? Wrench;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+	return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+}
+
+function summarizeToolInput(name: string | null | undefined, input: unknown): string {
+	const o = asRecord(input);
+	const n = (name ?? '').toLowerCase();
+	const str = (k: string) => (typeof o[k] === 'string' ? (o[k] as string) : undefined);
+	if (n === 'read') return str('file_path') ?? str('path') ?? '';
+	if (n === 'grep') {
+		const pat = str('pattern') ?? '';
+		const path = str('path') ?? str('glob');
+		return path ? `${pat}  ·  ${path}` : pat;
+	}
+	if (n === 'glob') return str('pattern') ?? '';
+	if (n === 'ls') return str('path') ?? '';
+	if (n === 'edit' || n === 'multiedit' || n === 'write') return str('file_path') ?? str('path') ?? '';
+	if (n === 'bash') return str('command') ?? '';
+	const keys = Object.keys(o);
+	if (keys.length === 0) return '';
+	const first = o[keys[0]];
+	return typeof first === 'string' ? first : JSON.stringify(o).slice(0, 120);
+}
+
+function resultToText(content: unknown): string {
+	if (content == null) return '';
+	if (typeof content === 'string') return content;
+	if (Array.isArray(content)) {
+		return content
+			.map((b) => {
+				const r = asRecord(b);
+				if (typeof r.text === 'string') return r.text;
+				return typeof b === 'string' ? b : JSON.stringify(b);
+			})
+			.join('\n');
+	}
+	const r = asRecord(content);
+	if (typeof r.text === 'string') return r.text;
+	return JSON.stringify(content, null, 2);
+}
+
+function clip(text: string, max = 4000): string {
+	return text.length > max ? `${text.slice(0, max)}\n… (${text.length - max} more chars)` : text;
+}
+
+function DiffView({ oldStr, newStr }: { oldStr: string; newStr: string }) {
+	const oldLines = oldStr ? oldStr.split('\n') : [];
+	const newLines = newStr ? newStr.split('\n') : [];
+	return (
+		<div style={diffWrapStyle}>
+			{oldLines.map((line, i) => (
+				<div key={`o-${i}`} style={{ ...diffLineStyle, background: 'rgba(255,77,125,0.10)', color: '#ffb3c6' }}>
+					<span style={diffSignStyle}>-</span>
+					{line || ' '}
+				</div>
+			))}
+			{newLines.map((line, i) => (
+				<div key={`n-${i}`} style={{ ...diffLineStyle, background: 'rgba(70,240,160,0.10)', color: '#9bf3c9' }}>
+					<span style={diffSignStyle}>+</span>
+					{line || ' '}
+				</div>
+			))}
+		</div>
+	);
+}
+
+function ToolCallCard({ event, result }: { event: ConsoleChatEvent; result?: ConsoleChatEvent }) {
+	const [open, setOpen] = useState(false);
+	const Icon = toolIcon(event.tool_name);
+	const name = (event.tool_name ?? 'tool').toUpperCase();
+	const summary = summarizeToolInput(event.tool_name, event.input);
+	const done = !!result;
+	const isEdit = ['edit', 'multiedit', 'write'].includes((event.tool_name ?? '').toLowerCase());
+	const editInput = asRecord(event.input);
+	const oldStr = typeof editInput.old_string === 'string' ? editInput.old_string : '';
+	const newStr =
+		typeof editInput.new_string === 'string'
+			? editInput.new_string
+			: typeof editInput.content === 'string'
+				? editInput.content
+				: '';
+	const resultText = result ? clip(resultToText(result.content)) : '';
+	const Chevron = open ? ChevronDown : ChevronRight;
+	return (
+		<div style={toolCardStyle} data-topo="ai">
+			<button type="button" style={toolCardHeaderStyle} onClick={() => setOpen((v) => !v)}>
+				<Chevron size={13} strokeWidth={1.8} style={{ color: 'var(--l2-fg-3)', flex: '0 0 auto' }} />
+				<Icon size={14} strokeWidth={1.7} style={{ color: 'var(--atlas-celestial)', flex: '0 0 auto' }} />
+				<span style={toolNameStyle}>{name}</span>
+				<span style={toolSummaryStyle}>{summary}</span>
+				<span style={{ flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+					<Circle size={7} fill={done ? 'rgba(70,240,160,0.95)' : 'rgba(255,214,0,0.95)'} stroke="none" />
+					<span style={monoMicroStyle}>{done ? 'DONE' : 'RUNNING'}</span>
+				</span>
+			</button>
+			{open && (
+				<div style={toolCardBodyStyle}>
+					{isEdit && (oldStr || newStr) ? (
+						<DiffView oldStr={oldStr} newStr={newStr} />
+					) : (
+						<>
+							<div style={toolFieldLabelStyle}>INPUT</div>
+							<pre style={toolPreStyle}>{JSON.stringify(event.input ?? {}, null, 2)}</pre>
+						</>
+					)}
+					{resultText && (
+						<>
+							<div style={toolFieldLabelStyle}>OUTPUT</div>
+							<pre style={toolPreStyle}>{resultText}</pre>
+						</>
+					)}
+				</div>
+			)}
+		</div>
+	);
+}
+
+function AgentTurn({ message }: { message: ConsoleMessage }) {
+	const events = message.events ?? [];
+	const resultsByCall = useMemo(() => {
+		const map: Record<string, ConsoleChatEvent> = {};
+		for (const e of events) {
+			if (e.type === 'tool_result' && e.tool_call_id) map[e.tool_call_id] = e;
+		}
+		return map;
+	}, [events]);
+	const summary = events.find((e) => e.type === 'result');
+	return (
+		<div style={agentTurnStyle} data-topo={message.status === 'failed' ? 'bad' : 'good'}>
+			<div style={agentTurnHeaderStyle}>
+				<Bot size={13} strokeWidth={1.7} style={{ color: 'rgba(70,240,160,0.95)' }} />
+				<span style={monoLabelStyle}>{message.label}</span>
+				<span style={{ ...pathTextStyle, fontSize: 10 }}>{message.time}</span>
+			</div>
+			{events.map((event, idx) => {
+				if (event.type === 'text') {
+					return event.text ? (
+						<div key={idx} style={agentTextStyle}>
+							{event.text}
+						</div>
+					) : null;
+				}
+				if (event.type === 'tool_call') {
+					return (
+						<ToolCallCard
+							key={idx}
+							event={event}
+							result={event.tool_call_id ? resultsByCall[event.tool_call_id] : undefined}
+						/>
+					);
+				}
+				if (event.type === 'failure') {
+					return (
+						<div key={idx} style={turnErrorStyle}>
+							<AlertTriangle size={13} strokeWidth={1.8} />
+							<span>{event.error ?? 'Agent failure'}</span>
+						</div>
+					);
+				}
+				return null;
+			})}
+			{summary && (summary.num_turns != null || summary.total_cost_usd != null) && (
+				<div style={turnFooterStyle}>
+					{summary.num_turns != null && <span>{summary.num_turns} turns</span>}
+					{summary.total_cost_usd != null && <span>${summary.total_cost_usd.toFixed(4)}</span>}
+				</div>
 			)}
 		</div>
 	);
@@ -1236,8 +1487,7 @@ const messageListStyle: React.CSSProperties = {
 	display: 'flex',
 	flexDirection: 'column',
 	gap: 12,
-	padding: 14,
-	overflow: 'auto'
+	padding: 14
 };
 
 const composerWrapStyle: React.CSSProperties = {
@@ -1286,9 +1536,6 @@ const paneBodyStyle: React.CSSProperties = {
 };
 
 const auditBodyStyle: React.CSSProperties = {
-	height: '100%',
-	minHeight: 0,
-	overflow: 'auto',
 	padding: 12,
 	display: 'flex',
 	flexDirection: 'column',
@@ -1471,6 +1718,155 @@ const auditRowStyle: React.CSSProperties = {
 	gap: 10,
 	padding: '8px 0',
 	borderBottom: '1px solid rgba(237,234,224,0.055)'
+};
+
+// ── Tool-call card + agent-turn styles ──────────────────────────────────────
+
+const agentTurnStyle: React.CSSProperties = {
+	display: 'flex',
+	flexDirection: 'column',
+	gap: 8,
+	alignItems: 'stretch',
+	maxWidth: 'min(820px, 96%)',
+	animation: 'atlas-window-in 240ms var(--l2-ease)'
+};
+
+const agentTurnHeaderStyle: React.CSSProperties = {
+	display: 'flex',
+	alignItems: 'center',
+	gap: 8
+};
+
+const agentTextStyle: React.CSSProperties = {
+	color: 'var(--l2-fg-1)',
+	fontSize: 13.5,
+	lineHeight: 1.58,
+	overflowWrap: 'anywhere',
+	whiteSpace: 'pre-wrap'
+};
+
+const toolCardStyle: React.CSSProperties = {
+	border: '1px solid rgba(74,93,191,0.30)',
+	borderRadius: 2,
+	background: 'rgba(13,16,24,0.55)',
+	overflow: 'hidden'
+};
+
+const toolCardHeaderStyle: React.CSSProperties = {
+	display: 'flex',
+	alignItems: 'center',
+	gap: 8,
+	width: '100%',
+	padding: '7px 10px',
+	background: 'transparent',
+	border: 'none',
+	cursor: 'pointer',
+	textAlign: 'left',
+	color: 'var(--l2-fg-2)'
+};
+
+const toolNameStyle: React.CSSProperties = {
+	flex: '0 0 auto',
+	fontFamily: 'var(--l2-font-mono)',
+	fontSize: 10.5,
+	letterSpacing: '0.14em',
+	color: 'var(--atlas-celestial)'
+};
+
+const toolSummaryStyle: React.CSSProperties = {
+	flex: '1 1 auto',
+	minWidth: 0,
+	overflow: 'hidden',
+	textOverflow: 'ellipsis',
+	whiteSpace: 'nowrap',
+	fontFamily: 'var(--l2-font-mono)',
+	fontSize: 11.5,
+	color: 'var(--l2-fg-2)'
+};
+
+const monoMicroStyle: React.CSSProperties = {
+	fontFamily: 'var(--l2-font-mono)',
+	fontSize: 9,
+	letterSpacing: '0.14em',
+	color: 'var(--l2-fg-3)'
+};
+
+const toolCardBodyStyle: React.CSSProperties = {
+	borderTop: '1px solid rgba(237,234,224,0.07)',
+	padding: '9px 10px',
+	display: 'flex',
+	flexDirection: 'column',
+	gap: 6
+};
+
+const toolFieldLabelStyle: React.CSSProperties = {
+	fontFamily: 'var(--l2-font-mono)',
+	fontSize: 9,
+	letterSpacing: '0.18em',
+	color: 'var(--l2-fg-3)'
+};
+
+const toolPreStyle: React.CSSProperties = {
+	margin: 0,
+	maxHeight: 280,
+	overflow: 'auto',
+	fontFamily: 'var(--l2-font-mono)',
+	fontSize: 11.5,
+	lineHeight: 1.5,
+	color: 'var(--l2-fg-1)',
+	background: 'rgba(5,6,10,0.5)',
+	border: '1px solid rgba(237,234,224,0.06)',
+	borderRadius: 2,
+	padding: '8px 9px',
+	whiteSpace: 'pre-wrap',
+	overflowWrap: 'anywhere'
+};
+
+const diffWrapStyle: React.CSSProperties = {
+	fontFamily: 'var(--l2-font-mono)',
+	fontSize: 11.5,
+	lineHeight: 1.5,
+	maxHeight: 320,
+	overflow: 'auto',
+	border: '1px solid rgba(237,234,224,0.06)',
+	borderRadius: 2,
+	background: 'rgba(5,6,10,0.5)'
+};
+
+const diffLineStyle: React.CSSProperties = {
+	display: 'flex',
+	gap: 8,
+	padding: '1px 9px',
+	whiteSpace: 'pre-wrap',
+	overflowWrap: 'anywhere'
+};
+
+const diffSignStyle: React.CSSProperties = {
+	flex: '0 0 auto',
+	opacity: 0.7,
+	userSelect: 'none'
+};
+
+const turnErrorStyle: React.CSSProperties = {
+	display: 'flex',
+	alignItems: 'center',
+	gap: 8,
+	padding: '8px 10px',
+	border: '1px solid rgba(255,77,125,0.32)',
+	borderRadius: 2,
+	background: 'rgba(255,77,125,0.07)',
+	color: '#ffb3c6',
+	fontSize: 12.5
+};
+
+const turnFooterStyle: React.CSSProperties = {
+	display: 'flex',
+	gap: 14,
+	fontFamily: 'var(--l2-font-mono)',
+	fontSize: 9.5,
+	letterSpacing: '0.12em',
+	color: 'var(--l2-fg-3)',
+	paddingTop: 2
 };
 
 const pathInputWrapStyle: React.CSSProperties = {

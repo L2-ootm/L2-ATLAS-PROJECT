@@ -135,9 +135,6 @@ body,
 	min-height: 220px;
 }
 
-.atlas-workbench-window:hover {
-	transform: translateY(-1px);
-}
 
 .atlas-projects-grid {
 	grid-template-columns: 28px minmax(0, 1fr) 110px 136px;
@@ -411,34 +408,98 @@ body,
 	background: linear-gradient(180deg, rgba(79,139,255,0.86), rgba(70,240,160,0.58));
 }
 
+/* TopoScroll — fully custom overlay scrollbar (native rail hidden, gradient thumb). */
+.atlas-topo-scroll {
+	position: relative;
+	min-height: 0;
+}
+
+.atlas-topo-scroll-viewport {
+	height: 100%;
+	overflow-y: auto;
+	overflow-x: hidden;
+	scrollbar-width: none;
+}
+
+.atlas-topo-scroll-viewport::-webkit-scrollbar {
+	width: 0;
+	height: 0;
+	display: none;
+}
+
+.atlas-topo-scroll-track {
+	position: absolute;
+	top: 3px;
+	right: 2px;
+	bottom: 3px;
+	width: 8px;
+	border-radius: 4px;
+	opacity: 0;
+	transition: opacity 280ms var(--l2-ease);
+	pointer-events: none;
+	z-index: 5;
+}
+
+.atlas-topo-scroll:hover .atlas-topo-scroll-track,
+.atlas-topo-scroll-track[data-active="true"] {
+	opacity: 1;
+}
+
+.atlas-topo-scroll-thumb {
+	position: absolute;
+	left: 1px;
+	width: 6px;
+	border-radius: 3px;
+	background: linear-gradient(180deg, rgba(79,139,255,0.62), rgba(70,240,160,0.40));
+	box-shadow: 0 0 9px rgba(79,139,255,0.34), inset 0 0 0 1px rgba(237,234,224,0.10);
+	cursor: grab;
+	pointer-events: auto;
+	transition: background 180ms var(--l2-ease), box-shadow 180ms var(--l2-ease);
+}
+
+.atlas-topo-scroll-thumb:hover {
+	background: linear-gradient(180deg, rgba(79,139,255,0.92), rgba(70,240,160,0.62));
+	box-shadow: 0 0 14px rgba(79,139,255,0.5), inset 0 0 0 1px rgba(237,234,224,0.16);
+}
+
+.atlas-topo-scroll-thumb:active {
+	cursor: grabbing;
+}
+
+.atlas-topo-scroll[data-tone="good"] .atlas-topo-scroll-thumb {
+	background: linear-gradient(180deg, rgba(70,240,160,0.62), rgba(0,229,200,0.40));
+	box-shadow: 0 0 9px rgba(70,240,160,0.32), inset 0 0 0 1px rgba(237,234,224,0.10);
+}
+
+.atlas-topo-scroll[data-tone="ai"] .atlas-topo-scroll-thumb {
+	background: linear-gradient(180deg, rgba(127,0,255,0.62), rgba(79,139,255,0.40));
+	box-shadow: 0 0 9px rgba(127,0,255,0.32), inset 0 0 0 1px rgba(237,234,224,0.10);
+}
+
+.atlas-topo-scroll[data-tone="atlas"] .atlas-topo-scroll-thumb {
+	background: linear-gradient(180deg, rgba(224,169,78,0.62), rgba(156,107,46,0.40));
+	box-shadow: 0 0 9px rgba(224,169,78,0.30), inset 0 0 0 1px rgba(237,234,224,0.10);
+}
+
 .atlas-workbench-window {
 	position: relative;
 	isolation: isolate;
-	--window-glow: rgba(79,139,255,0.24);
-	--mx: 50%;
-	--my: 0%;
 }
 
-.atlas-workbench-window[data-agent="claude_code"] {
-	--window-glow: rgba(224,169,78,0.30);
-}
-
+/* Clean static elevation sheen — no cursor-following glow. */
 .atlas-workbench-window::before {
 	content: "";
 	position: absolute;
 	inset: 0;
 	z-index: 0;
 	pointer-events: none;
-	background:
-		radial-gradient(360px circle at var(--mx) var(--my), var(--window-glow), transparent 58%),
-		linear-gradient(180deg, rgba(237,234,224,0.035), transparent 30%);
+	background: linear-gradient(180deg, rgba(237,234,224,0.035), transparent 24%);
 	opacity: 0;
-	transition: opacity 160ms var(--l2-ease);
+	transition: opacity 200ms var(--l2-ease);
 }
 
 .atlas-workbench-window:hover::before,
-.atlas-workbench-window.is-dragging::before,
-.atlas-workbench-window.is-resizing::before {
+.atlas-workbench-window.is-dragging::before {
 	opacity: 1;
 }
 
