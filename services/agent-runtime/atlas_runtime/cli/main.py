@@ -133,13 +133,16 @@ def console_chat(
 @graph_app.command("build")
 def graph_build(
     root: str = typer.Option(".", "--root", help="Project root containing .planning/"),
+    scope: str = typer.Option(
+        "atlas", "--scope", help="atlas | global | projects | obsidian"
+    ),
     write: bool = typer.Option(
         False, "--write", help="Also cache the graph to .planning/graphs/graph.json"
     ),
 ) -> None:
-    """Build the project knowledge graph and print it as JSON."""
+    """Build the knowledge graph for the given scope and print it as JSON."""
     try:
-        result = graph_service.build_graph(root=root)
+        result = graph_service.build_graph(root=root, scope=scope)
     except ValueError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1)

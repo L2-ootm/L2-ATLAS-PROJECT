@@ -273,26 +273,33 @@ export interface GraphLink {
 	kind: string;
 }
 
+export type GraphScope = 'atlas' | 'global' | 'projects' | 'obsidian';
+
 export interface GraphData {
 	nodes: GraphNode[];
 	links: GraphLink[];
 	root: string;
+	scope?: string;
+	error?: string;
 	counts: { nodes: number; links: number };
 }
 
-// Building the graph rescans `.planning` on the gateway every call, so we cache
-// the result for the session. Navigating away and back reuses the cached graph
-// instantly; REBUILD passes `force` to rescan.
-let graphCache: { data: GraphData; fetchedAt: number } | null = null;
+// Building the graph rescans markdown on the gateway every call, so we cache
+// per scope for the session. Switching tabs / navigating away and back reuses
+// the cached graph instantly; REBUILD passes `force` to rescan that scope.
+const graphCache = new Map<GraphScope, { data: GraphData; fetchedAt: number }>();
 
-export function getGraphFetchedAt(): number | null {
-	return graphCache?.fetchedAt ?? null;
+export function getGraphFetchedAt(scope: GraphScope = 'atlas'): number | null {
+	return graphCache.get(scope)?.fetchedAt ?? null;
 }
 
-export async function getGraph(force = false): Promise<GraphData> {
-	if (!force && graphCache) return graphCache.data;
-	const data = await apiFetch<GraphData>('/v1/graph');
-	graphCache = { data, fetchedAt: Date.now() };
+export async function getGraph(scope: GraphScope = 'atlas', force = false): Promise<GraphData> {
+	if (!force) {
+		const hit = graphCache.get(scope);
+		if (hit) return hit.data;
+	}
+	const data = await apiFetch<GraphData>(`/v1/graph?scope=${encodeURIComponent(scope)}`);
+	graphCache.set(scope, { data, fetchedAt: Date.now() });
 	return data;
 }
 

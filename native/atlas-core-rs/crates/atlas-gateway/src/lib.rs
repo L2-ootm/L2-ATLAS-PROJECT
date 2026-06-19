@@ -623,10 +623,21 @@ async fn console_stream(
         .map_err(|e| ApiError::Internal(format!("failed to build stream response: {e}")))
 }
 
-/// Project knowledge graph for the cockpit Graphify view. Builds from the
-/// gateway's working directory `.planning/` corpus (fast — dozens of docs).
-async fn graph_view(State(state): State<AppState>) -> ApiResult {
-    let args = ["graph", "build", "--root", "."];
+#[derive(Deserialize)]
+struct GraphParams {
+    /// atlas | global | projects | obsidian (defaults to atlas).
+    scope: Option<String>,
+}
+
+/// Knowledge graph for the cockpit Graphify view. `scope` selects the corpus:
+/// `atlas` (the gateway's `.planning/`), `global` (repo-wide markdown),
+/// `projects` (sibling L2 projects), or `obsidian` (the configured vault).
+async fn graph_view(State(state): State<AppState>, Query(params): Query<GraphParams>) -> ApiResult {
+    let scope = match params.scope.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        Some(s) if matches!(s, "atlas" | "global" | "projects" | "obsidian") => s,
+        _ => "atlas",
+    };
+    let args = ["graph", "build", "--root", ".", "--scope", scope];
     let out = dispatch_atlas_with_timeout(&state.atlas_cmd, &args, CONSOLE_DISPATCH_TIMEOUT).await?;
     let value: Value = serde_json::from_str(&out).map_err(|e| {
         ApiError::Internal(format!("atlas graph build returned invalid JSON: {e}"))

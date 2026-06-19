@@ -8,7 +8,7 @@ import { Boxes, Crosshair, Lock, Maximize2, Minus, Plus, RefreshCw, Search, X } 
 import { Page } from '../components/Page';
 import { GlassPanel } from '../components/GlassFx';
 import Lightning from '../components/Lightning';
-import { getGraph, getGraphFetchedAt, type GraphData, type GraphNode } from '../lib/api';
+import { getGraph, getGraphFetchedAt, type GraphData, type GraphNode, type GraphScope } from '../lib/api';
 
 type Load = { s: 'loading' } | { s: 'ready'; data: GraphData } | { s: 'error'; message: string };
 type SimNode = GraphNode & { x?: number; y?: number; z?: number };
@@ -32,16 +32,37 @@ const NODE_COLOR: Record<string, string> = {
 	intel: '#46F0E0',
 	doc: '#8A93A6'
 };
-const colorFor = (kind: string): string => NODE_COLOR[kind] ?? '#8A93A6';
+// Deterministic palette for unknown kinds (folder-slug communities from the
+// global/obsidian/projects scopes) so every cluster gets a distinct color.
+const PALETTE = [
+	'#00E5C8', '#00F0FF', '#4A5DBF', '#7F00FF', '#B14BE0', '#FF4D7D',
+	'#FFD600', '#46F0A0', '#E0A94E', '#5BC8FF', '#9A8CFF', '#FF8A3D', '#3DD6A8'
+];
+function paletteFor(kind: string): string {
+	let h = 0;
+	for (let i = 0; i < kind.length; i++) h = (h * 31 + kind.charCodeAt(i)) | 0;
+	return PALETTE[Math.abs(h) % PALETTE.length];
+}
+const colorFor = (kind: string): string => NODE_COLOR[kind] ?? paletteFor(kind);
 
 const LINK_COLOR: Record<string, string> = {
-	contains: 'rgba(224,169,78,0.18)',
-	link: 'rgba(0,240,255,0.55)',
-	wikilink: 'rgba(0,229,200,0.55)',
-	decision: 'rgba(127,0,255,0.5)',
-	phase: 'rgba(74,93,191,0.5)'
+	contains: 'rgba(224,169,78,0.16)',
+	link: 'rgba(0,240,255,0.5)',
+	wikilink: 'rgba(0,229,200,0.5)',
+	decision: 'rgba(127,0,255,0.45)',
+	phase: 'rgba(74,93,191,0.45)'
 };
-const linkColorFor = (kind: string): string => LINK_COLOR[kind] ?? 'rgba(237,234,224,0.18)';
+const linkColorFor = (kind: string): string => LINK_COLOR[kind] ?? 'rgba(237,234,224,0.16)';
+
+// Bright, opaque particle colors so the "electricity" actually glows through
+// the bloom pass (semi-transparent link colors stayed below threshold).
+const PARTICLE_COLOR: Record<string, string> = {
+	link: '#6FF4FF',
+	wikilink: '#5DF5E0',
+	decision: '#C79CFF',
+	phase: '#9CB0FF'
+};
+const particleColorFor = (kind: string): string => PARTICLE_COLOR[kind] ?? '#8FE9FF';
 
 // Minimal builder surface we use from 3d-force-graph (typed loosely on purpose).
 type GraphHandle = {
@@ -76,18 +97,25 @@ type GraphHandle = {
 type Vec3 = { x: number; y: number; z: number };
 
 const TABS = [
-	{ id: 'global', label: 'Global', live: true },
-	{ id: 'projects', label: 'Projects', live: false },
-	{ id: 'vault', label: 'Obsidian Vault', live: false },
-	{ id: 'agent', label: 'Agent Context', live: false }
+	{ id: 'global', label: 'Global', live: true, scope: 'global' as GraphScope },
+	{ id: 'projects', label: 'Projects', live: true, scope: 'projects' as GraphScope },
+	{ id: 'vault', label: 'Obsidian Vault', live: true, scope: 'obsidian' as GraphScope },
+	{ id: 'agent', label: 'Agent Context', live: false, scope: 'atlas' as GraphScope }
 ] as const;
+type TabId = (typeof TABS)[number]['id'];
+const SCOPE_BY_TAB: Record<TabId, GraphScope> = {
+	global: 'global',
+	projects: 'projects',
+	vault: 'obsidian',
+	agent: 'atlas'
+};
 
 export default function Graph() {
 	const [load, setLoad] = useState<Load>({ s: 'loading' });
-	const [nonce, setNonce] = useState(0);
+	const [reload, setReload] = useState(0);
 	const [selected, setSelected] = useState<GraphNode | null>(null);
 	const [query, setQuery] = useState('');
-	const [tab, setTab] = useState<(typeof TABS)[number]['id']>('global');
+	const [tab, setTab] = useState<TabId>('global');
 	const [electricity, setElectricity] = useState(true);
 	const [storm, setStorm] = useState(true);
 	const [, setClock] = useState(0); // ticks "Updated Xm ago"
@@ -96,19 +124,30 @@ export default function Graph() {
 	const graphRef = useRef<GraphHandle | null>(null);
 	const simNodesRef = useRef<SimNode[]>([]);
 	const electricityRef = useRef(electricity);
+	const forceNext = useRef(false);
 	electricityRef.current = electricity;
+
+	const scope = SCOPE_BY_TAB[tab];
 
 	useEffect(() => {
 		let alive = true;
 		setLoad({ s: 'loading' });
 		setSelected(null);
-		getGraph(nonce > 0)
+		setQuery('');
+		const force = forceNext.current;
+		forceNext.current = false;
+		getGraph(scope, force)
 			.then((data) => alive && setLoad({ s: 'ready', data }))
 			.catch((err) => alive && setLoad({ s: 'error', message: err instanceof Error ? err.message : String(err) }));
 		return () => {
 			alive = false;
 		};
-	}, [nonce]);
+	}, [scope, reload]);
+
+	const rebuild = () => {
+		forceNext.current = true;
+		setReload((r) => r + 1);
+	};
 
 	// Re-render the "Updated Xm ago" label periodically.
 	useEffect(() => {
@@ -143,6 +182,20 @@ export default function Graph() {
 		const density = n > 1 ? (2 * e) / (n * (n - 1)) : 0;
 		const avgDegree = n > 0 ? (2 * e) / n : 0;
 		return { n, e, communities, density, avgDegree };
+	}, [data]);
+
+	// Legend reflects the actual communities in the loaded scope (top by count).
+	const legend = useMemo(() => {
+		if (!data) return [] as { kind: string; count: number }[];
+		const counts = new Map<string, number>();
+		for (const node of data.nodes) {
+			if (node.kind === 'group') continue;
+			counts.set(node.kind, (counts.get(node.kind) ?? 0) + 1);
+		}
+		return Array.from(counts.entries())
+			.sort((a, b) => b[1] - a[1])
+			.slice(0, 8)
+			.map(([kind, count]) => ({ kind, count }));
 	}, [data]);
 
 	const focusNode = useCallback((node: GraphNode) => {
@@ -180,12 +233,12 @@ export default function Graph() {
 			.nodeColor((n) => colorFor((n as GraphNode).kind))
 			.nodeVal((n) => {
 				const node = n as GraphNode;
-				if (node.id === 'root') return 11;
-				if (node.kind === 'group') return 6;
-				return Math.max(1.2, Math.min(6.5, node.size / 2600));
+				if (node.id === 'root') return 8;
+				if (node.kind === 'group') return 4.5;
+				return Math.max(1, Math.min(4.5, node.size / 3400));
 			})
-			.nodeOpacity(0.92)
-			.nodeResolution(16)
+			.nodeOpacity(0.9)
+			.nodeResolution(14)
 			.nodeThreeObjectExtend(true)
 			.nodeThreeObject((n) => {
 				const node = n as GraphNode;
@@ -204,14 +257,14 @@ export default function Graph() {
 				return sprite;
 			})
 			.linkColor((l) => linkColorFor((l as { kind: string }).kind))
-			.linkWidth(0.55)
-			.linkOpacity(0.65)
+			.linkWidth(0.5)
+			.linkOpacity(0.5)
 			.linkDirectionalParticles((l) =>
-				electricityRef.current && (l as { kind: string }).kind !== 'contains' ? 2 : 0
+				electricityRef.current && (l as { kind: string }).kind !== 'contains' ? 3 : 0
 			)
-			.linkDirectionalParticleWidth(1.4)
-			.linkDirectionalParticleSpeed(0.01)
-			.linkDirectionalParticleColor((l) => linkColorFor((l as { kind: string }).kind))
+			.linkDirectionalParticleWidth(2.6)
+			.linkDirectionalParticleSpeed(0.012)
+			.linkDirectionalParticleColor((l) => particleColorFor((l as { kind: string }).kind))
 			.width(el.clientWidth)
 			.height(el.clientHeight)
 			.onNodeClick((n) => selectAndFocus(n as GraphNode))
@@ -225,10 +278,10 @@ export default function Graph() {
 			graph.zoomToFit(700, 80);
 		});
 
-		// Unreal bloom — tuned down from the earlier "melted glow": lower strength,
-		// tighter radius, higher threshold so only bright cores bloom.
+		// Unreal bloom — gentle: lower strength + higher threshold so big bright
+		// hubs don't melt, but the bright electricity particles still glow.
 		try {
-			const bloom = new UnrealBloomPass(new THREE.Vector2(el.clientWidth, el.clientHeight), 0.95, 0.55, 0.22);
+			const bloom = new UnrealBloomPass(new THREE.Vector2(el.clientWidth, el.clientHeight), 0.72, 0.5, 0.3);
 			graph.postProcessingComposer().addPass(bloom);
 		} catch {
 			// postprocessing unavailable — fall back to flat nodes
@@ -254,81 +307,63 @@ export default function Graph() {
 	// Toggle link particles without rebuilding the layout.
 	useEffect(() => {
 		graphRef.current?.linkDirectionalParticles((l) =>
-			electricity && (l as { kind: string }).kind !== 'contains' ? 2 : 0
+			electricity && (l as { kind: string }).kind !== 'contains' ? 3 : 0
 		);
 	}, [electricity]);
 
-	// Minimap: project sim-node x/y onto a small canvas each frame, plus a viewport box.
+	// Minimap = a true secondary viewport: a second WebGL renderer drawing the
+	// main graph's *same scene* from a far camera framed to fit every node. It
+	// mirrors the live layout (same positions/clusters) zoomed all the way out.
 	useEffect(() => {
 		const canvas = minimapRef.current;
-		if (!canvas || !data) return;
-		const ctx = canvas.getContext('2d');
-		if (!ctx) return;
-		const dpr = Math.min(2, window.devicePixelRatio || 1);
+		const graph = graphRef.current;
+		if (!canvas || !data || !graph) return;
+		let renderer: THREE.WebGLRenderer;
+		try {
+			renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+		} catch {
+			return;
+		}
 		const W = 168;
 		const H = 116;
-		canvas.width = W * dpr;
-		canvas.height = H * dpr;
-		ctx.scale(dpr, dpr);
+		renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+		renderer.setSize(W, H, false);
+		renderer.setClearColor(0x000000, 0);
+		const scene = graph.scene();
+		const cam = new THREE.PerspectiveCamera(50, W / H, 1, 500000);
+		const center = new THREE.Vector3();
+		const halfFov = (cam.fov * Math.PI) / 180 / 2;
 
 		let raf = 0;
 		let last = 0;
 		const draw = (t: number) => {
 			raf = requestAnimationFrame(draw);
-			if (t - last < 90) return; // ~11fps is plenty for a thumbnail
+			if (t - last < 66) return; // ~15fps is plenty for a thumbnail
 			last = t;
 			const nodes = simNodesRef.current;
-			ctx.clearRect(0, 0, W, H);
-			if (!nodes.length) return;
-			let minX = Infinity;
-			let maxX = -Infinity;
-			let minY = Infinity;
-			let maxY = -Infinity;
-			for (const node of nodes) {
-				if (node.x === undefined || node.y === undefined) continue;
-				if (node.x < minX) minX = node.x;
-				if (node.x > maxX) maxX = node.x;
-				if (node.y < minY) minY = node.y;
-				if (node.y > maxY) maxY = node.y;
+			let minX = Infinity, minY = Infinity, minZ = Infinity;
+			let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+			for (const n of nodes) {
+				if (n.x === undefined || n.y === undefined || n.z === undefined) continue;
+				minX = Math.min(minX, n.x); maxX = Math.max(maxX, n.x);
+				minY = Math.min(minY, n.y); maxY = Math.max(maxY, n.y);
+				minZ = Math.min(minZ, n.z); maxZ = Math.max(maxZ, n.z);
 			}
-			if (!isFinite(minX)) return;
-			const pad = 10;
-			const spanX = maxX - minX || 1;
-			const spanY = maxY - minY || 1;
-			const scale = Math.min((W - pad * 2) / spanX, (H - pad * 2) / spanY);
-			const offX = (W - spanX * scale) / 2;
-			const offY = (H - spanY * scale) / 2;
-			const px = (x: number) => offX + (x - minX) * scale;
-			const py = (y: number) => offY + (y - minY) * scale;
-			for (const node of nodes) {
-				if (node.x === undefined || node.y === undefined) continue;
-				ctx.fillStyle = colorFor(node.kind);
-				ctx.globalAlpha = node.kind === 'group' || node.id === 'root' ? 0.95 : 0.7;
-				const r = node.id === 'root' ? 2.4 : node.kind === 'group' ? 1.8 : 1.1;
-				ctx.beginPath();
-				ctx.arc(px(node.x), py(node.y), r, 0, Math.PI * 2);
-				ctx.fill();
+			if (isFinite(minX)) {
+				center.set((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2);
+				const radius = Math.max(maxX - minX, maxY - minY, maxZ - minZ) / 2 || 50;
+				const dist = (radius / Math.tan(halfFov)) * 1.25 + 40;
+				cam.position.set(center.x, center.y, center.z + dist);
+				cam.lookAt(center);
+				cam.updateProjectionMatrix();
 			}
-			ctx.globalAlpha = 1;
-			// Viewport indicator from camera x/y (approximate pan position).
-			const cam = graphRef.current?.cameraPosition();
-			if (cam) {
-				const cx = px(THREE.MathUtils.clamp(cam.x, minX, maxX));
-				const cy = py(THREE.MathUtils.clamp(cam.y, minY, maxY));
-				const bw = 44;
-				const bh = 30;
-				ctx.strokeStyle = 'rgba(74,93,191,0.85)';
-				ctx.lineWidth = 1;
-				ctx.strokeRect(
-					THREE.MathUtils.clamp(cx - bw / 2, 0, W - bw),
-					THREE.MathUtils.clamp(cy - bh / 2, 0, H - bh),
-					bw,
-					bh
-				);
-			}
+			renderer.render(scene, cam);
 		};
 		raf = requestAnimationFrame(draw);
-		return () => cancelAnimationFrame(raf);
+		return () => {
+			cancelAnimationFrame(raf);
+			renderer.dispose();
+		};
 	}, [data]);
 
 	const zoomBy = (factor: number) => {
@@ -357,7 +392,7 @@ export default function Graph() {
 				.filter((node): node is GraphNode => !!node)
 		: [];
 
-	const updatedAgo = updatedLabel();
+	const updatedAgo = updatedLabel(scope);
 
 	return (
 		<Page eyebrow="STRUCTURE · GRAPHIFY" title="Knowledge Graph" max={null}>
@@ -365,14 +400,16 @@ export default function Graph() {
 				data-topo="atlas"
 				style={{ position: 'relative', height: 'calc(100vh - 142px)', minHeight: 560, overflow: 'hidden' }}
 			>
-				{/* Storm Activity — masked lightning behind the graph */}
+				<div ref={containerRef} style={{ position: 'absolute', inset: 0 }} />
+
+				{/* Storm Activity — masked lightning glow. Sits *over* the graph canvas
+				    (which the bloom composer renders opaque) with screen blend, so it
+				    adds atmospheric light + bolt flashes without covering the nodes. */}
 				{storm && (
 					<div style={stormLayerStyle} aria-hidden>
-						<Lightning hue={252} speed={0.5} intensity={0.9} size={2.2} xOffset={0.3} />
+						<Lightning hue={252} speed={0.55} intensity={1.1} size={2.0} xOffset={0.2} />
 					</div>
 				)}
-
-				<div ref={containerRef} style={{ position: 'absolute', inset: 0 }} />
 
 				{/* Top strip — source tabs + node/edge count + rebuild */}
 				<div style={topStripStyle}>
@@ -400,7 +437,7 @@ export default function Graph() {
 								{stats.n} NODES <span style={{ opacity: 0.4 }}>·</span> {stats.e} EDGES
 							</span>
 						)}
-						<button type="button" onClick={() => setNonce((n) => n + 1)} style={rebuildButtonStyle} title="Rebuild graph">
+						<button type="button" onClick={rebuild} style={rebuildButtonStyle} title="Rebuild graph">
 							<RefreshCw size={13} strokeWidth={1.8} />
 							<span>REBUILD</span>
 						</button>
@@ -419,10 +456,10 @@ export default function Graph() {
 						/>
 					</form>
 					<div style={legendStyle}>
-						{LEGEND.map((item) => (
-							<span key={item.kind} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+						{legend.map((item) => (
+							<span key={item.kind} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} title={`${item.count} nodes`}>
 								<span style={{ width: 8, height: 8, borderRadius: 8, background: colorFor(item.kind) }} />
-								{item.label}
+								{item.kind}
 							</span>
 						))}
 					</div>
@@ -511,8 +548,8 @@ export default function Graph() {
 	);
 }
 
-function updatedLabel(): string {
-	const at = getGraphFetchedAt();
+function updatedLabel(scope: GraphScope): string {
+	const at = getGraphFetchedAt(scope);
 	if (!at) return 'Updated just now';
 	const mins = Math.floor((Date.now() - at) / 60000);
 	if (mins <= 0) return 'Updated just now';
@@ -521,15 +558,6 @@ function updatedLabel(): string {
 	const hrs = Math.floor(mins / 60);
 	return `Updated ${hrs}h ago`;
 }
-
-const LEGEND = [
-	{ kind: 'phase', label: 'Phase' },
-	{ kind: 'roadmap', label: 'Roadmap/State' },
-	{ kind: 'research', label: 'Research' },
-	{ kind: 'prep', label: 'Prep' },
-	{ kind: 'report', label: 'Report' },
-	{ kind: 'group', label: 'Folder' }
-];
 
 function Stat({ label, value }: { label: string; value: string }) {
 	return (
@@ -563,14 +591,14 @@ const stormLayerStyle: React.CSSProperties = {
 	position: 'absolute',
 	inset: 0,
 	pointerEvents: 'none',
-	// Persistent grey-violet "storm cloud" base; the reactbits lightning canvas
-	// flickers its bolts on top. The shader already outputs alpha, so this sits
-	// behind the transparent graph with normal compositing (no screen blend
-	// needed — that only washed the cloud out). Masked to an upper-center region.
+	opacity: 0.85,
+	mixBlendMode: 'screen',
+	// Grey-violet storm-cloud glow + the reactbits lightning bolts on top. Screen
+	// blend over the (bloom-opaque) graph canvas adds light without hiding nodes.
 	background:
-		'radial-gradient(95% 68% at 62% 26%, rgba(154,144,208,0.34), rgba(74,80,132,0.15) 40%, transparent 68%)',
-	WebkitMaskImage: 'radial-gradient(115% 80% at 62% 26%, #000 0%, rgba(0,0,0,0.6) 52%, transparent 80%)',
-	maskImage: 'radial-gradient(115% 80% at 62% 26%, #000 0%, rgba(0,0,0,0.6) 52%, transparent 80%)'
+		'radial-gradient(95% 70% at 60% 24%, rgba(150,138,205,0.55), rgba(70,76,132,0.22) 42%, transparent 70%)',
+	WebkitMaskImage: 'radial-gradient(118% 82% at 60% 22%, #000 0%, rgba(0,0,0,0.6) 54%, transparent 82%)',
+	maskImage: 'radial-gradient(118% 82% at 60% 22%, #000 0%, rgba(0,0,0,0.6) 54%, transparent 82%)'
 };
 
 const topStripStyle: React.CSSProperties = {
