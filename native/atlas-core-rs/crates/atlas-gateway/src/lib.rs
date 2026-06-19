@@ -14,6 +14,7 @@ use axum::response::{IntoResponse, Response};
 use axum::{routing::{get, post}, Json, Router};
 use futures_util::stream::Stream;
 use serde::Deserialize;
+use tokio::io::AsyncBufReadExt;
 use serde_json::{json, Value};
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -558,6 +559,70 @@ async fn console_chat(State(state): State<AppState>, Json(body): Json<ConsoleCha
     Ok(Json(value))
 }
 
+/// Streaming console chat: spawns the CLI with `--stream` and forwards its
+/// NDJSON stdout (one JSON event per line) to the client as a chunked body, so
+/// the cockpit tool-cards fill in real time instead of all-at-once on completion.
+async fn console_stream(
+    State(state): State<AppState>,
+    Json(body): Json<ConsoleChatBody>,
+) -> Result<Response, ApiError> {
+    let prompt = body.prompt.trim().to_string();
+    require_arg(&prompt, "prompt must be non-empty")?;
+    let agent = body
+        .agent
+        .map(|a| a.trim().to_string())
+        .filter(|a| !a.is_empty())
+        .unwrap_or_else(|| "native".to_string());
+    if agent != "native" && agent != "claude_code" {
+        return Err(ApiError::BadRequest("agent must be 'native' or 'claude_code'"));
+    }
+    if state.atlas_cmd.is_empty() {
+        return Err(ApiError::Internal("atlas_cmd is empty".into()));
+    }
+
+    let mut cmd = tokio::process::Command::new(&state.atlas_cmd[0]);
+    for pre in &state.atlas_cmd[1..] {
+        cmd.arg(pre);
+    }
+    cmd.args(["console", "chat", "--agent", &agent, "--prompt", &prompt]);
+    if let Some(cwd) = body.cwd.map(|c| c.trim().to_string()).filter(|c| !c.is_empty()) {
+        cmd.args(["--cwd", &cwd]);
+    }
+    cmd.arg("--stream");
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::null());
+    cmd.kill_on_drop(true);
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| ApiError::Internal(format!("failed to spawn atlas console stream: {e}")))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| ApiError::Internal("console stream stdout unavailable".into()))?;
+    let lines = tokio::io::BufReader::new(stdout).lines();
+
+    // Hold the child in the stream state so kill_on_drop fires if the client disconnects.
+    let stream = futures_util::stream::unfold((lines, child), |(mut lines, mut child)| async move {
+        match lines.next_line().await {
+            Ok(Some(line)) => {
+                let chunk = axum::body::Bytes::from(format!("{line}\n"));
+                Some((Ok::<_, std::io::Error>(chunk), (lines, child)))
+            }
+            _ => {
+                let _ = child.wait().await;
+                None
+            }
+        }
+    });
+
+    Response::builder()
+        .header(header::CONTENT_TYPE, "application/x-ndjson")
+        .header(header::CACHE_CONTROL, "no-cache")
+        .body(axum::body::Body::from_stream(stream))
+        .map_err(|e| ApiError::Internal(format!("failed to build stream response: {e}")))
+}
+
 /// Project knowledge graph for the cockpit Graphify view. Builds from the
 /// gateway's working directory `.planning/` corpus (fast — dozens of docs).
 async fn graph_view(State(state): State<AppState>) -> ApiResult {
@@ -1041,6 +1106,7 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/wiki/search", get(wiki_search))
         .route("/v1/models", get(models_list))
         .route("/v1/console/chat", post(console_chat))
+        .route("/v1/console/stream", post(console_stream))
         .route("/v1/graph", get(graph_view))
         .route("/v1/host/select-folder", post(select_folder))
         .route("/v1/projects", get(projects_list).post(projects_create))
