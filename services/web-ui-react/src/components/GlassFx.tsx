@@ -56,12 +56,12 @@ export function GlassFilter() {
 						result="noise"
 					/>
 					{/* Soften the map so the refraction reads as smooth glass, not ripples. */}
-					<feGaussianBlur in="noise" stdDeviation="1.5" result="softMap" />
+					<feGaussianBlur in="noise" stdDeviation="1.4" result="softMap" />
 					{/* Warp the backdrop by the map. Low scale = a gentle, premium bend. */}
 					<feDisplacementMap
 						in="SourceGraphic"
 						in2="softMap"
-						scale={16}
+						scale={26}
 						xChannelSelector="R"
 						yChannelSelector="G"
 					/>
