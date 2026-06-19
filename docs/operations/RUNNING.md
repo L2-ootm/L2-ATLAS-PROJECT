@@ -117,6 +117,21 @@ npm run build && npm run preview
 The cockpit targets `http://127.0.0.1:8484` for all data. If the gateway is down
 the sidebar shows an offline state rather than crashing.
 
+### Desktop shell (Tauri 2) — optional native window
+
+The React cockpit can run as a native desktop app (system WebView2) that can start
+the gateway from inside the app (the System-page "Start Gateway" button). Requires
+the `atlas` CLI on PATH (`scripts/install-atlas-cli.ps1`).
+
+```bash
+cd services/web-ui-react
+npm run tauri:dev     # native window + Vite dev (:5174)
+npm run tauri:build   # installer / bundle
+```
+
+See `services/web-ui-react/src-tauri/README.md`. Outside the shell the same UI
+falls back to the copy-command flow (`atlas gateway start`).
+
 ---
 
 ## 4. Smoke the loop manually

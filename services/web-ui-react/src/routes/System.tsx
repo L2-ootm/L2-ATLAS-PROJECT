@@ -12,6 +12,7 @@ import {
 	type Module,
 	type CashflowStatus
 } from '../lib/api';
+import { isTauri, startGatewayViaShell } from '../lib/host';
 
 // ── System — operator control surface ────────────────────────────────────────
 // Gateway + database health, the offline start affordance (a browser SPA cannot
@@ -22,11 +23,6 @@ const START_COMMAND = 'atlas gateway start';
 
 type Health = { status: string; db: string } | null;
 type Load = { s: 'loading' } | { s: 'ready' } | { s: 'error' };
-
-// True only when running inside the Tauri desktop shell (deferred milestone).
-function inTauriShell(): boolean {
-	return typeof window !== 'undefined' && '__TAURI__' in window;
-}
 
 export default function System() {
 	const [health, setHealth] = useState<Health>(null);
@@ -85,7 +81,7 @@ export default function System() {
 				/>
 			</div>
 
-			{online === false && <OfflinePanel />}
+			{online === false && <OfflinePanel onStarted={() => void refresh()} />}
 
 			<ModulesPanel
 				modules={modules}
@@ -291,9 +287,11 @@ function StatusCard({
 }
 
 // ── offline start panel ─────────────────────────────────────────────────────
-function OfflinePanel() {
+function OfflinePanel({ onStarted }: { onStarted: () => void }) {
 	const [copied, setCopied] = useState(false);
-	const shell = inTauriShell();
+	const [busy, setBusy] = useState(false);
+	const [err, setErr] = useState<string | null>(null);
+	const shell = isTauri();
 
 	async function copy() {
 		try {
@@ -302,6 +300,19 @@ function OfflinePanel() {
 			setTimeout(() => setCopied(false), 1600);
 		} catch {
 			/* clipboard blocked — the command is shown for manual copy */
+		}
+	}
+
+	async function startViaShell() {
+		setBusy(true);
+		setErr(null);
+		try {
+			await startGatewayViaShell();
+			onStarted();
+		} catch (e) {
+			setErr(e instanceof Error ? e.message : 'failed to start the gateway');
+		} finally {
+			setBusy(false);
 		}
 	}
 
@@ -319,9 +330,12 @@ function OfflinePanel() {
 					: 'Run this in any terminal to start the gateway (the `atlas` CLI is on your PATH). The cockpit will reconnect automatically.'}
 			</p>
 			{shell ? (
-				<PrimaryButton icon={<Power size={14} strokeWidth={2} />} onClick={() => void 0} disabled>
-					START GATEWAY (SHELL)
-				</PrimaryButton>
+				<>
+					<PrimaryButton icon={<Power size={14} strokeWidth={2} />} onClick={() => void startViaShell()} disabled={busy}>
+						{busy ? 'STARTING…' : 'START GATEWAY'}
+					</PrimaryButton>
+					{err && <div style={{ marginTop: 10, color: 'var(--l2-error)', fontSize: 12, fontFamily: 'var(--l2-font-mono)' }}>{err}</div>}
+				</>
 			) : (
 				<div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
 					<code
