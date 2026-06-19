@@ -42,7 +42,15 @@ class Mission(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     title: str
     intent: str = ""
-    status: Literal["pending", "running", "succeeded", "failed", "cancelled"] = "pending"
+    status: Literal[
+        "pending",
+        "running",
+        "succeeded",
+        "completed",
+        "failed",
+        "cancelled",
+        "archived",
+    ] = "pending"
     project: str = ""
     project_id: Optional[str] = None
     created_at: datetime.datetime = Field(

@@ -60,6 +60,9 @@ def _child_env() -> dict[str, str]:
     A spaced interpreter path falls back to the installed `atlas` on PATH.
     """
     env = os.environ.copy()
+    root = MIGRATIONS_DIR.parent.parent  # infra/migrations -> infra -> repo root
+    env.setdefault("ATLAS_REPO_ROOT", str(root))
+    env.setdefault("ATLAS_CASHFLOW_DB_PATH", str(root / "services" / "cashflow" / "dev.db"))
     if "ATLAS_CLI" not in env and " " not in sys.executable:
         env["ATLAS_CLI"] = f"{sys.executable} -m atlas_runtime.cli.main"
         existing = env.get("PYTHONPATH", "")

@@ -11,10 +11,11 @@ from __future__ import annotations
 
 import sqlite3
 import threading
+import json
 
 import typer
 
-from atlas_runtime import db, mission_service, project_service, run_service
+from atlas_runtime import console_service, db, mission_service, project_service, run_service
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -33,6 +34,8 @@ module_app = typer.Typer(name="module", help="Optional modules: list, activate, 
 app.add_typer(module_app, name="module")
 cashflow_app = typer.Typer(name="cashflow", help="Cashflow module process: start, status, stop.")
 app.add_typer(cashflow_app, name="cashflow")
+console_app = typer.Typer(name="console", help="Cockpit console chat and workbench operations.")
+app.add_typer(console_app, name="console")
 
 try:
     from atlas_wiki.cli.main import wiki_app
@@ -71,6 +74,30 @@ def _get_connection() -> sqlite3.Connection:
 def _get_lock() -> threading.Lock:
     """Return the module-level threading.Lock singleton."""
     return _LOCK
+
+
+# ---------------------------------------------------------------------------
+# console subcommands
+# ---------------------------------------------------------------------------
+
+
+@console_app.command("chat")
+def console_chat(
+    prompt: str = typer.Option(..., "--prompt", help="Prompt to send to the console agent"),
+    agent: str = typer.Option(
+        "native", "--agent", help="Console agent: native | claude_code"
+    ),
+    cwd: str | None = typer.Option(
+        None, "--cwd", help="Folder binding for the console agent"
+    ),
+) -> None:
+    """Run one folder-aware console chat turn and print JSON."""
+    try:
+        result = console_service.run_chat(prompt=prompt, agent=agent, cwd=cwd)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(json.dumps(result, ensure_ascii=False))
 
 
 # ---------------------------------------------------------------------------
@@ -181,6 +208,41 @@ def cancel(
     except ValueError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1)
+
+
+@mission_app.command("archive")
+def archive(
+    mission_id: str = typer.Argument(..., help="Mission ID to archive"),
+    delete_after_days: int = typer.Option(
+        30,
+        "--delete-after-days",
+        min=1,
+        help="Delete archived mission after this many days",
+    ),
+) -> None:
+    """Archive a succeeded/completed mission and print its ID."""
+    conn = _get_connection()
+    lock = _get_lock()
+    try:
+        mission = mission_service.archive_mission(
+            conn,
+            lock,
+            mission_id=mission_id,
+            delete_after_days=delete_after_days,
+        )
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(mission.id)
+
+
+@mission_app.command("purge-archived")
+def purge_archived() -> None:
+    """Delete archived missions whose retention deadline has passed."""
+    conn = _get_connection()
+    lock = _get_lock()
+    count = mission_service.purge_expired_archives(conn, lock)
+    typer.echo(str(count))
 
 
 @mission_app.command("status")

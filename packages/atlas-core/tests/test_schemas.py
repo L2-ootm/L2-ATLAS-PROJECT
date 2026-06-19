@@ -117,7 +117,7 @@ def test_json_schema_all_fields_present() -> None:
 
 
 def test_json_schema_status_enum() -> None:
-    """SCHEMA-03: Mission.status JSON Schema must expose 'pending' in its enum array."""
+    """SCHEMA-03: Mission.status JSON Schema must expose lifecycle values."""
     from atlas_core.schemas.core import Mission
 
     status_schema = Mission.model_json_schema()["properties"]["status"]
@@ -132,6 +132,7 @@ def test_json_schema_status_enum() -> None:
         # Fallback: check allOf/const patterns
         enum_values = status_schema.get("enum", [])
     assert "pending" in enum_values, f"'pending' not found in status schema: {status_schema}"
+    assert "archived" in enum_values, f"'archived' not found in status schema: {status_schema}"
 
 
 def test_json_schema_all_models() -> None:
