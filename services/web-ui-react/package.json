@@ -14,6 +14,7 @@
     "tauri:build": "tauri build"
   },
   "dependencies": {
+    "3d-force-graph": "^1.80.0",
     "@fontsource/cinzel": "^5.2.8",
     "@fontsource/cormorant-garamond": "^5.2.11",
     "@fontsource/inter": "^5.2.8",

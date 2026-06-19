@@ -202,6 +202,33 @@ export async function consoleChat(body: {
 	});
 }
 
+// ── Knowledge graph (Graphify view) ─────────────────────────────────────────
+
+export interface GraphNode {
+	id: string;
+	label: string;
+	kind: string;
+	group: string;
+	size: number;
+}
+
+export interface GraphLink {
+	source: string;
+	target: string;
+	kind: string;
+}
+
+export interface GraphData {
+	nodes: GraphNode[];
+	links: GraphLink[];
+	root: string;
+	counts: { nodes: number; links: number };
+}
+
+export async function getGraph(): Promise<GraphData> {
+	return apiFetch('/v1/graph');
+}
+
 export async function getProject(
 	id: string
 ): Promise<{ project: Project; missions: Mission[] }> {

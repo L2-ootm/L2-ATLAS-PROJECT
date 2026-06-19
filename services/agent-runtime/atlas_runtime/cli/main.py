@@ -15,7 +15,7 @@ import json
 
 import typer
 
-from atlas_runtime import console_service, db, mission_service, project_service, run_service
+from atlas_runtime import console_service, db, graph_service, mission_service, project_service, run_service
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -36,6 +36,8 @@ cashflow_app = typer.Typer(name="cashflow", help="Cashflow module process: start
 app.add_typer(cashflow_app, name="cashflow")
 console_app = typer.Typer(name="console", help="Cockpit console chat and workbench operations.")
 app.add_typer(console_app, name="console")
+graph_app = typer.Typer(name="graph", help="Project knowledge graph for the cockpit Graphify view.")
+app.add_typer(graph_app, name="graph")
 
 try:
     from atlas_wiki.cli.main import wiki_app
@@ -98,6 +100,34 @@ def console_chat(
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1)
     typer.echo(json.dumps(result, ensure_ascii=False))
+
+
+# ---------------------------------------------------------------------------
+# graph subcommands
+# ---------------------------------------------------------------------------
+
+
+@graph_app.command("build")
+def graph_build(
+    root: str = typer.Option(".", "--root", help="Project root containing .planning/"),
+    write: bool = typer.Option(
+        False, "--write", help="Also cache the graph to .planning/graphs/graph.json"
+    ),
+) -> None:
+    """Build the project knowledge graph and print it as JSON."""
+    try:
+        result = graph_service.build_graph(root=root)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    if write:
+        from pathlib import Path
+
+        out = Path(root).resolve() / ".planning" / "graphs"
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "graph.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    # ensure_ascii so the payload survives a cp1252 stdout on Windows; valid JSON either way.
+    typer.echo(json.dumps(result))
 
 
 # ---------------------------------------------------------------------------
