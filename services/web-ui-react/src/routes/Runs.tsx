@@ -6,6 +6,7 @@ import LiveBadge from '../components/LiveBadge';
 import GlowBorder from '../components/GlowBorder';
 import { GlassPanel } from '../components/GlassFx';
 import { listRuns, type RunWithMission } from '../lib/api';
+import { useGatewayHealth } from '../lib/useGatewayHealth';
 import sealMark from '../brand/assets/seal.webp';
 
 type Load = { s: 'loading' } | { s: 'ready'; runs: RunWithMission[] } | { s: 'error' };
@@ -38,6 +39,7 @@ export default function Runs() {
 	const [load, setLoad] = useState<Load>({ s: 'loading' });
 	const [status, setStatus] = useState('ALL');
 	const nav = useNavigate();
+	const { epoch } = useGatewayHealth();
 
 	useEffect(() => {
 		let alive = true;
@@ -47,7 +49,7 @@ export default function Runs() {
 		return () => {
 			alive = false;
 		};
-	}, []);
+	}, [epoch]);
 
 	const filtered = useMemo(() => {
 		if (load.s !== 'ready') return [];

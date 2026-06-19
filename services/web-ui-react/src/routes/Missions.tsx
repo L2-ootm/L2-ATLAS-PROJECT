@@ -7,6 +7,7 @@ import TopoInput from '../components/TopoInput';
 import BorderGlow from '../components/BorderGlow';
 import { GlassPanel } from '../components/GlassFx';
 import { listMissions, createMission, listProjects, type Mission, type Project } from '../lib/api';
+import { useGatewayHealth } from '../lib/useGatewayHealth';
 import sealMark from '../brand/assets/seal.webp';
 
 type Load = { s: 'loading' } | { s: 'ready'; missions: Mission[]; count: number } | { s: 'error' };
@@ -29,6 +30,7 @@ export default function Missions() {
 	const [status, setStatus] = useState('ALL');
 	const [creating, setCreating] = useState(false);
 	const nav = useNavigate();
+	const { epoch } = useGatewayHealth();
 
 	async function refresh() {
 		try {
@@ -40,7 +42,7 @@ export default function Missions() {
 	}
 	useEffect(() => {
 		void refresh();
-	}, []);
+	}, [epoch]);
 
 	const filtered = useMemo(() => {
 		if (load.s !== 'ready') return [];

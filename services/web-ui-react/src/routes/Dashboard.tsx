@@ -6,6 +6,7 @@ import { Wordmark } from '../brand/Wordmark';
 import { StatusBadge } from '../components/hud';
 import { glassPanel } from '../lib/glass';
 import { listMissions, listModels, listWikiPages, checkHealth, type Mission } from '../lib/api';
+import { useGatewayHealth } from '../lib/useGatewayHealth';
 import emblemFigure from '../brand/assets/emblem-figure.webp';
 import sealMark from '../brand/assets/seal.webp';
 
@@ -27,6 +28,7 @@ type Load = { state: 'loading' } | { state: 'ready'; data: TelemetryData } | { s
 
 export default function Dashboard() {
 	const [load, setLoad] = useState<Load>({ state: 'loading' });
+	const { epoch } = useGatewayHealth();
 
 	useEffect(() => {
 		let alive = true;
@@ -59,7 +61,7 @@ export default function Dashboard() {
 		return () => {
 			alive = false;
 		};
-	}, []);
+	}, [epoch]);
 
 	return (
 		<div style={{ maxWidth: 1200, margin: '0 auto' }}>
