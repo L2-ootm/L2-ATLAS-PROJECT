@@ -26,27 +26,28 @@ def _resolve_cwd(cwd: str | None) -> Path | None:
     return path.resolve()
 
 
-def _native_response(prompt: str, cwd: Path | None) -> dict[str, Any]:
+EventSink = Callable[[dict[str, Any]], None]
+
+
+def _native_response(prompt: str, cwd: Path | None, on_event: EventSink | None = None) -> dict[str, Any]:
     where = str(cwd) if cwd else "default working directory"
     text = (
         f"Native console mode received the request in {where}. "
         "Switch to Claude Code mode to execute agentic folder-aware work."
     )
+    events = [
+        {"type": "text", "text": text},
+        {"type": "receipt", "prompt": prompt},
+    ]
+    if on_event is not None:
+        for event in events:
+            on_event(event)
     return {
         "status": "succeeded",
         "agent": "native",
         "cwd": str(cwd) if cwd else None,
         "text": text,
-        "events": [
-            {
-                "type": "text",
-                "text": text,
-            },
-            {
-                "type": "receipt",
-                "prompt": prompt,
-            },
-        ],
+        "events": events,
     }
 
 
@@ -57,8 +58,14 @@ def run_chat(
     cwd: str | None = None,
     query_fn: Callable[..., Any] | None = None,
     options_factory: Callable[[Path | None], Any] | None = None,
+    on_event: EventSink | None = None,
 ) -> dict[str, Any]:
-    """Run one console chat turn and return a JSON-serializable result."""
+    """Run one console chat turn and return a JSON-serializable result.
+
+    If ``on_event`` is provided, each event is also delivered to it as it is
+    produced — the basis for live streaming (the gateway forwards these as
+    NDJSON so the cockpit tool-cards fill in real time).
+    """
     clean_prompt = prompt.strip()
     if not clean_prompt:
         raise ValueError("prompt must be non-empty")
@@ -66,12 +73,13 @@ def run_chat(
         raise ValueError("agent must be 'native' or 'claude_code'")
     resolved = _resolve_cwd(cwd)
     if agent == "native":
-        return _native_response(clean_prompt, resolved)
+        return _native_response(clean_prompt, resolved, on_event)
     return _run_claude_code_chat(
         prompt=clean_prompt,
         cwd=resolved,
         query_fn=query_fn,
         options_factory=options_factory,
+        on_event=on_event,
     )
 
 
@@ -81,6 +89,7 @@ def _run_claude_code_chat(
     cwd: Path | None,
     query_fn: Callable[..., Any] | None,
     options_factory: Callable[[Path | None], Any] | None,
+    on_event: EventSink | None = None,
 ) -> dict[str, Any]:
     try:
         if query_fn is None:
@@ -121,7 +130,7 @@ def _run_claude_code_chat(
         async def _drive() -> None:
             options = options_factory(cwd)
             async for msg in query_fn(prompt=prompt, options=options):
-                _map_sdk_message(msg, events, text_parts, state)
+                _map_sdk_message(msg, events, text_parts, state, on_event)
 
         asyncio.run(_drive())
         text = "".join(text_parts).strip()
@@ -135,20 +144,26 @@ def _run_claude_code_chat(
             "events": events,
         }
     except ImportError:
+        failure = {"type": "failure", "error": "claude-agent-sdk is not installed"}
+        if on_event is not None:
+            on_event(failure)
         return {
             "status": "failed",
             "agent": "claude_code",
             "cwd": str(cwd) if cwd else None,
             "text": "claude-agent-sdk is not installed. Install atlas-runtime[claude] to enable Claude Code console mode.",
-            "events": [{"type": "failure", "error": "claude-agent-sdk is not installed"}],
+            "events": [failure],
         }
     except Exception as exc:
+        failure = {"type": "failure", "error": str(exc)}
+        if on_event is not None:
+            on_event(failure)
         return {
             "status": "failed",
             "agent": "claude_code",
             "cwd": str(cwd) if cwd else None,
             "text": f"claude_code error: {exc}",
-            "events": [{"type": "failure", "error": str(exc)}],
+            "events": [failure],
         }
 
 
@@ -157,7 +172,13 @@ def _map_sdk_message(
     events: list[dict[str, Any]],
     text_parts: list[str],
     state: dict[str, str],
+    on_event: EventSink | None = None,
 ) -> None:
+    def emit(event: dict[str, Any]) -> None:
+        events.append(event)
+        if on_event is not None:
+            on_event(event)
+
     kind = type(msg).__name__
     if kind == "AssistantMessage":
         for block in getattr(msg, "content", []) or []:
@@ -166,9 +187,9 @@ def _map_sdk_message(
                 text = getattr(block, "text", "") or ""
                 if text:
                     text_parts.append(text)
-                    events.append({"type": "text", "text": text})
+                    emit({"type": "text", "text": text})
             elif bkind == "ToolUseBlock":
-                events.append(
+                emit(
                     {
                         "type": "tool_call",
                         "tool_name": getattr(block, "name", None),
@@ -177,7 +198,7 @@ def _map_sdk_message(
                     }
                 )
             elif bkind == "ToolResultBlock":
-                events.append(
+                emit(
                     {
                         "type": "tool_result",
                         "tool_call_id": getattr(block, "tool_use_id", None),
@@ -191,7 +212,7 @@ def _map_sdk_message(
         if isinstance(content, list):
             for block in content:
                 if type(block).__name__ == "ToolResultBlock":
-                    events.append(
+                    emit(
                         {
                             "type": "tool_result",
                             "tool_call_id": getattr(block, "tool_use_id", None),
@@ -205,7 +226,7 @@ def _map_sdk_message(
         result = getattr(msg, "result", None)
         if result and not text_parts:
             text_parts.append(str(result))
-        events.append(
+        emit(
             {
                 "type": "result",
                 "is_error": is_error,
@@ -216,7 +237,7 @@ def _map_sdk_message(
             }
         )
     elif kind == "SystemMessage":
-        events.append(
+        emit(
             {
                 "type": "system",
                 "subtype": getattr(msg, "subtype", None),

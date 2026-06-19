@@ -92,8 +92,31 @@ def console_chat(
     cwd: str | None = typer.Option(
         None, "--cwd", help="Folder binding for the console agent"
     ),
+    stream: bool = typer.Option(
+        False, "--stream", help="Emit one JSON event per line (NDJSON) as they happen"
+    ),
 ) -> None:
-    """Run one folder-aware console chat turn and print JSON."""
+    """Run one folder-aware console chat turn and print JSON.
+
+    Default: print the full result as a single JSON object. With ``--stream``,
+    print one ASCII-safe JSON event per line as it is produced (NDJSON) — the
+    gateway forwards these so the cockpit tool-cards fill in real time.
+    """
+    if stream:
+        import sys
+
+        def on_event(event: dict) -> None:
+            sys.stdout.write(json.dumps(event) + "\n")
+            sys.stdout.flush()
+
+        try:
+            console_service.run_chat(prompt=prompt, agent=agent, cwd=cwd, on_event=on_event)
+        except ValueError as exc:
+            sys.stdout.write(json.dumps({"type": "failure", "error": str(exc)}) + "\n")
+            sys.stdout.flush()
+            raise typer.Exit(1)
+        return
+
     try:
         result = console_service.run_chat(prompt=prompt, agent=agent, cwd=cwd)
     except ValueError as exc:

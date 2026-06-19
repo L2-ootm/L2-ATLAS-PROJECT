@@ -36,7 +36,7 @@ import { GlassPanel } from '../components/GlassFx';
 import { TopoScroll } from '../components/TopoScroll';
 import {
 	agentRuntimeLabel,
-	consoleChat,
+	consoleChatStream,
 	listProjects,
 	type AgentRuntime,
 	type ConsoleChatEvent,
@@ -281,51 +281,71 @@ export default function Console() {
 			body: draft,
 			time: nowLabel()
 		};
-		const pending: ConsoleMessage = {
-			id: `${Date.now()}-pending`,
-			role: 'system',
+		// Live agent turn — events stream in and render as tool-cards in real time.
+		const turnId = `${Date.now()}-agent`;
+		const liveTurn: ConsoleMessage = {
+			id: turnId,
+			role: 'agent',
 			label: agentRuntimeLabel(windowAgent),
-			body: `Routing through ${agentRuntimeLabel(windowAgent)}${boundCwd ? ` in ${boundCwd}` : ''}.`,
+			body: '',
 			time: nowLabel(),
-			status: 'pending'
+			status: 'pending',
+			events: []
 		};
 		setDraftByWindow((prev) => ({ ...prev, [windowId]: '' }));
 		setMessagesByWindow((prev) => ({
 			...prev,
-			[windowId]: [...(prev[windowId] ?? []), operator, pending]
+			[windowId]: [...(prev[windowId] ?? []), operator, liveTurn]
 		}));
 		setBusyWindow(windowId);
-		try {
-			const result = await consoleChat({ prompt: draft, agent: windowAgent, cwd: boundCwd });
-			const response: ConsoleMessage = {
-				id: `${Date.now()}-agent`,
-				role: result.status === 'failed' ? 'system' : 'agent',
-				label: agentRuntimeLabel(result.agent),
-				body: result.text,
-				time: nowLabel(),
-				status: result.status,
-				events: result.events
-			};
+
+		const appendEvent = (event: ConsoleChatEvent) => {
 			setMessagesByWindow((prev) => ({
 				...prev,
-				[windowId]: [...(prev[windowId] ?? []).filter((m) => m.id !== pending.id), response]
+				[windowId]: (prev[windowId] ?? []).map((m) =>
+					m.id === turnId
+						? {
+								...m,
+								events: [...(m.events ?? []), event],
+								body: event.type === 'text' ? `${m.body}${event.text ?? ''}` : m.body,
+								status:
+									event.type === 'failure'
+										? 'failed'
+										: event.type === 'result'
+											? event.is_error
+												? 'failed'
+												: 'succeeded'
+											: m.status
+							}
+						: m
+				)
 			}));
-			setAuditEvents((prev) => [...result.events, ...prev].slice(0, 80));
+			setAuditEvents((prev) => [event, ...prev].slice(0, 80));
+		};
+
+		try {
+			await consoleChatStream({ prompt: draft, agent: windowAgent, cwd: boundCwd }, appendEvent);
+			// If the stream ended without a terminal result event, settle the turn.
+			setMessagesByWindow((prev) => ({
+				...prev,
+				[windowId]: (prev[windowId] ?? []).map((m) =>
+					m.id === turnId && m.status === 'pending' ? { ...m, status: 'succeeded' } : m
+				)
+			}));
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			setMessagesByWindow((prev) => ({
 				...prev,
-				[windowId]: [
-					...(prev[windowId] ?? []).filter((m) => m.id !== pending.id),
-					{
-						id: `${Date.now()}-error`,
-						role: 'system',
-						label: 'ATLAS',
-						body: msg,
-						time: nowLabel(),
-						status: 'failed'
-					}
-				]
+				[windowId]: (prev[windowId] ?? []).map((m) =>
+					m.id === turnId
+						? {
+								...m,
+								status: 'failed',
+								body: m.body || msg,
+								events: [...(m.events ?? []), { type: 'failure', error: msg }]
+							}
+						: m
+				)
 			}));
 		} finally {
 			setBusyWindow(null);
@@ -828,7 +848,7 @@ function ChatPane({
 			</div>
 			<TopoScroll tone={agent === 'claude_code' ? 'atlas' : 'info'} style={{ minHeight: 0 }} viewportStyle={messageListStyle}>
 				{messages.map((message) =>
-					message.role === 'agent' && message.events && message.events.length > 0 ? (
+					message.role === 'agent' && (message.events?.length || message.status === 'pending') ? (
 						<AgentTurn key={message.id} message={message} />
 					) : (
 						<MessageBubble key={message.id} message={message} />
@@ -1187,7 +1207,11 @@ function AgentTurn({ message }: { message: ConsoleMessage }) {
 				<Bot size={13} strokeWidth={1.7} style={{ color: 'rgba(70,240,160,0.95)' }} />
 				<span style={monoLabelStyle}>{message.label}</span>
 				<span style={{ ...pathTextStyle, fontSize: 10 }}>{message.time}</span>
+				{message.status === 'pending' && <span style={liveBadgeStyle}>LIVE</span>}
 			</div>
+			{events.length === 0 && message.status === 'pending' && (
+				<div style={{ ...agentTextStyle, opacity: 0.6 }}>Working…</div>
+			)}
 			{events.map((event, idx) => {
 				if (event.type === 'text') {
 					return event.text ? (

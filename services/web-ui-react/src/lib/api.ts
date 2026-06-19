@@ -202,6 +202,61 @@ export async function consoleChat(body: {
 	});
 }
 
+/**
+ * Streaming console chat — reads the gateway's NDJSON body and calls `onEvent`
+ * for each event as it arrives, so the cockpit tool-cards fill in real time.
+ */
+export async function consoleChatStream(
+	body: { prompt: string; agent: AgentRuntime; cwd?: string | null },
+	onEvent: (event: ConsoleChatEvent) => void,
+	signal?: AbortSignal
+): Promise<void> {
+	const response = await fetch(`${GATEWAY}/v1/console/stream`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(body),
+		signal
+	});
+	if (!response.ok || !response.body) {
+		const text = await response.text().catch(() => response.statusText);
+		throw new ApiError(response.status, `GATEWAY ERROR ${response.status} — /v1/console/stream: ${text}`);
+	}
+	const reader = response.body.getReader();
+	const decoder = new TextDecoder();
+	let buffer = '';
+	const drain = (flush: boolean) => {
+		let idx: number;
+		while ((idx = buffer.indexOf('\n')) >= 0) {
+			const line = buffer.slice(0, idx).trim();
+			buffer = buffer.slice(idx + 1);
+			if (line) {
+				try {
+					onEvent(JSON.parse(line) as ConsoleChatEvent);
+				} catch {
+					// ignore a malformed line
+				}
+			}
+		}
+		if (flush) {
+			const tail = buffer.trim();
+			if (tail) {
+				try {
+					onEvent(JSON.parse(tail) as ConsoleChatEvent);
+				} catch {
+					// ignore trailing partial
+				}
+			}
+		}
+	};
+	for (;;) {
+		const { value, done } = await reader.read();
+		if (done) break;
+		buffer += decoder.decode(value, { stream: true });
+		drain(false);
+	}
+	drain(true);
+}
+
 // ── Knowledge graph (Graphify view) ─────────────────────────────────────────
 
 export interface GraphNode {
