@@ -789,6 +789,9 @@ fn allowed_origins() -> &'static Vec<String> {
         let mut origins: Vec<String> = [
             "http://localhost:5173",
             "http://127.0.0.1:5173",
+            // React cockpit (web-ui-react) Vite dev port — see its vite.config.ts.
+            "http://localhost:5174",
+            "http://127.0.0.1:5174",
             "http://localhost:4173",
             "http://127.0.0.1:4173",
             "tauri://localhost",
