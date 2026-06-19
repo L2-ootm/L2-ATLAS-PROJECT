@@ -34,12 +34,12 @@ const RESTING: Record<GlassTone, string> = {
 
 // Soft bloom colour for the drop-shadow on the field (tight halo — keep lines crisp).
 const BLOOM: Record<GlassTone, string> = {
-	good: 'rgba(74,235,158,0.4)',
-	ai: 'rgba(168,138,255,0.4)',
-	info: 'rgba(96,156,255,0.4)',
-	warn: 'rgba(255,200,85,0.38)',
-	bad: 'rgba(255,108,148,0.38)',
-	atlas: 'rgba(230,180,110,0.38)'
+	good: 'rgba(74,235,158,0.22)',
+	ai: 'rgba(168,138,255,0.22)',
+	info: 'rgba(96,156,255,0.22)',
+	warn: 'rgba(255,200,85,0.2)',
+	bad: 'rgba(255,108,148,0.2)',
+	atlas: 'rgba(230,180,110,0.2)'
 };
 
 // Faint tone tint mixed into the glass so the frost itself carries the colour.
@@ -95,18 +95,19 @@ export default function GlassTopo({
 				host,
 				viewW: W,
 				viewH: H,
-				cellSize: 9,
+				cellSize: 11,
 				levels: LEVELS,
 				color: RESTING[tone],
 				glowColor: glow,
-				// resting field is the star: dense, bright, uniform, CRISP lines
-				restingOpacity: 0.82,
-				restingWidth: 0.7,
+				// Restrained crisp contours — dim resting field (was 0.82, read as a
+				// melted glowing cloud in the hero), gentle localised bulge.
+				restingOpacity: 0.34,
+				restingWidth: 0.6,
 				// moving accent: a small localised bulge (NOT a panel-wide mask hole)
-				glowOpacity: 0.95,
-				glowWidth: 1.3,
-				bulgeStrength: 0.55,
-				hoverRadius: 150,
+				glowOpacity: 0.5,
+				glowWidth: 1.0,
+				bulgeStrength: 0.22,
+				hoverRadius: 120,
 				freq: 0.015
 			});
 		};
