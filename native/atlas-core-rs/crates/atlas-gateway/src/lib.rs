@@ -163,6 +163,51 @@ async fn mission_detail(State(state): State<AppState>, AxPath(id): AxPath<String
     }
 }
 
+#[derive(Deserialize)]
+struct ArchiveMissionBody {
+    delete_after_days: Option<i64>,
+}
+
+async fn archive_mission(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    body: Option<Json<ArchiveMissionBody>>,
+) -> ApiResult {
+    require_arg(&id, "mission id must be non-empty")?;
+    let days = body
+        .and_then(|Json(b)| b.delete_after_days)
+        .unwrap_or(30)
+        .clamp(1, 3650);
+    let days_arg = days.to_string();
+    dispatch_atlas(
+        &state.atlas_cmd,
+        &[
+            "mission",
+            "archive",
+            "--delete-after-days",
+            &days_arg,
+            "--",
+            &id,
+        ],
+    )
+    .await?;
+    let path = state.db_path.clone();
+    let id_clone = id.clone();
+    let found = blocking(move || db::get_mission(&path, &id_clone)).await?;
+    match found {
+        Some((mission, runs)) => Ok(Json(json!({ "mission": mission, "runs": runs }))),
+        None => Err(ApiError::Internal(format!(
+            "mission '{id}' archive dispatched but not found in db"
+        ))),
+    }
+}
+
+async fn purge_archived_missions(State(state): State<AppState>) -> ApiResult {
+    let out = dispatch_atlas(&state.atlas_cmd, &["mission", "purge-archived"]).await?;
+    let deleted = out.trim().parse::<i64>().unwrap_or(0);
+    Ok(Json(json!({ "deleted": deleted })))
+}
+
 async fn run_detail(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
     let path = state.db_path.clone();
     let found = blocking(move || db::get_run(&path, &id)).await?;
@@ -369,6 +414,7 @@ async fn wiki_pages(
 /// Upper bound on a single CLI dispatch — a hung `atlas` process (DB lock
 /// contention, stdin prompt) must not hang the HTTP request forever.
 const DISPATCH_TIMEOUT: Duration = Duration::from_secs(30);
+const CONSOLE_DISPATCH_TIMEOUT: Duration = Duration::from_secs(180);
 
 /// Reject empty/whitespace user input destined for CLI positional arguments.
 /// Values starting with `-` are also rejected: even behind a `--` separator
@@ -389,6 +435,14 @@ async fn dispatch_atlas(
     atlas_cmd: &[String],
     args: &[&str],
 ) -> Result<String, ApiError> {
+    dispatch_atlas_with_timeout(atlas_cmd, args, DISPATCH_TIMEOUT).await
+}
+
+async fn dispatch_atlas_with_timeout(
+    atlas_cmd: &[String],
+    args: &[&str],
+    timeout: Duration,
+) -> Result<String, ApiError> {
     if atlas_cmd.is_empty() {
         return Err(ApiError::Internal("atlas_cmd is empty".into()));
     }
@@ -401,7 +455,7 @@ async fn dispatch_atlas(
     }
     // Dropping the output() future on timeout kills the child.
     cmd.kill_on_drop(true);
-    let output = tokio::time::timeout(DISPATCH_TIMEOUT, cmd.output())
+    let output = tokio::time::timeout(timeout, cmd.output())
         .await
         .map_err(|_| ApiError::Internal("atlas command timed out".into()))?
         .map_err(|e| ApiError::Internal(format!("failed to spawn atlas: {e}")))?;
@@ -412,6 +466,96 @@ async fn dispatch_atlas(
         )));
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+#[derive(Deserialize)]
+struct SelectFolderBody {
+    title: Option<String>,
+}
+
+#[cfg(windows)]
+async fn select_folder(body: Option<Json<SelectFolderBody>>) -> ApiResult {
+    let title = body
+        .and_then(|Json(b)| b.title)
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .unwrap_or_else(|| "Choose folder".to_string());
+    let script = r#"
+Add-Type -AssemblyName System.Windows.Forms
+[System.Windows.Forms.Application]::EnableVisualStyles()
+$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+$dialog.Description = $env:ATLAS_FOLDER_DIALOG_TITLE
+$dialog.ShowNewFolderButton = $true
+$result = $dialog.ShowDialog()
+if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    [Console]::Out.Write($dialog.SelectedPath)
+}
+"#;
+    let mut cmd = tokio::process::Command::new("powershell.exe");
+    cmd.arg("-NoProfile")
+        .arg("-STA")
+        .arg("-ExecutionPolicy")
+        .arg("Bypass")
+        .arg("-Command")
+        .arg(script)
+        .env("ATLAS_FOLDER_DIALOG_TITLE", title)
+        .kill_on_drop(true);
+    let output = tokio::time::timeout(Duration::from_secs(300), cmd.output())
+        .await
+        .map_err(|_| ApiError::Internal("folder picker timed out".into()))?
+        .map_err(|e| ApiError::Internal(format!("failed to open folder picker: {e}")))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(ApiError::Internal(format!("folder picker failed: {stderr}")));
+    }
+    let picked = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(Json(json!({ "path": if picked.is_empty() { Value::Null } else { Value::String(picked) } })))
+}
+
+#[cfg(not(windows))]
+async fn select_folder(_body: Option<Json<SelectFolderBody>>) -> ApiResult {
+    Err(ApiError::BadRequest("folder picker is only available on Windows in browser mode"))
+}
+#[derive(Deserialize)]
+struct ConsoleChatBody {
+    prompt: String,
+    agent: Option<String>,
+    cwd: Option<String>,
+}
+
+async fn console_chat(State(state): State<AppState>, Json(body): Json<ConsoleChatBody>) -> ApiResult {
+    let prompt = body.prompt.trim().to_string();
+    require_arg(&prompt, "prompt must be non-empty")?;
+    let agent = body
+        .agent
+        .map(|a| a.trim().to_string())
+        .filter(|a| !a.is_empty())
+        .unwrap_or_else(|| "native".to_string());
+    if agent != "native" && agent != "claude_code" {
+        return Err(ApiError::BadRequest(
+            "agent must be 'native' or 'claude_code'",
+        ));
+    }
+
+    let mut owned_args = vec![
+        "console".to_string(),
+        "chat".to_string(),
+        "--agent".to_string(),
+        agent,
+        "--prompt".to_string(),
+        prompt,
+    ];
+    if let Some(cwd) = body.cwd.map(|c| c.trim().to_string()).filter(|c| !c.is_empty()) {
+        owned_args.push("--cwd".to_string());
+        owned_args.push(cwd);
+    }
+    let args: Vec<&str> = owned_args.iter().map(String::as_str).collect();
+    let out = dispatch_atlas_with_timeout(&state.atlas_cmd, &args, CONSOLE_DISPATCH_TIMEOUT).await?;
+    let value: Value = serde_json::from_str(&out).map_err(|e| {
+        ApiError::Internal(format!("atlas console chat returned invalid JSON: {e}"))
+    })?;
+    Ok(Json(value))
 }
 
 #[derive(Deserialize)]
@@ -748,6 +892,14 @@ async fn cashflow_stop(State(state): State<AppState>) -> ApiResult {
     Ok(Json(json!({ "message": msg })))
 }
 
+async fn cashflow_summary() -> ApiResult {
+    let summary = tokio::task::spawn_blocking(db::cashflow_summary)
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .map_err(ApiError::from)?;
+    Ok(Json(summary))
+}
+
 // ---------------------------------------------------------------------------
 // Run cancel handler (Phase 8 — Surface 2 run monitoring)
 // ---------------------------------------------------------------------------
@@ -865,7 +1017,9 @@ pub fn app(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/v1/missions", get(missions_list).post(create_mission))
+        .route("/v1/missions/purge-archived", post(purge_archived_missions))
         .route("/v1/missions/{id}", get(mission_detail))
+        .route("/v1/missions/{id}/archive", post(archive_mission))
         .route("/v1/missions/{id}/run", post(start_run))
         .route("/v1/missions/{id}/cancel", post(cancel_run))
         .route("/v1/runs/{id}", get(run_detail))
@@ -875,12 +1029,15 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/wiki/pages/{slug}", get(wiki_page_detail).put(wiki_update))
         .route("/v1/wiki/search", get(wiki_search))
         .route("/v1/models", get(models_list))
+        .route("/v1/console/chat", post(console_chat))
+        .route("/v1/host/select-folder", post(select_folder))
         .route("/v1/projects", get(projects_list).post(projects_create))
         .route("/v1/projects/register", post(projects_register))
         .route("/v1/modules", get(modules_list))
         .route("/v1/modules/{id}/activate", post(module_activate))
         .route("/v1/modules/{id}/deactivate", post(module_deactivate))
         .route("/v1/cashflow/status", get(cashflow_status))
+        .route("/v1/cashflow/summary", get(cashflow_summary))
         .route("/v1/cashflow/start", post(cashflow_start))
         .route("/v1/cashflow/stop", post(cashflow_stop))
         .route("/v1/projects/{id}", get(project_detail))

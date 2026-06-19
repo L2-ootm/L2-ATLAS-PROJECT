@@ -10,6 +10,7 @@ Lock injection pattern follows Phase 4 audit_service.py conventions.
 """
 from __future__ import annotations
 
+import datetime
 import sqlite3
 import threading
 from typing import Optional
@@ -82,3 +83,94 @@ def list_missions(
     )
     cols = [d[0] for d in cursor.description]
     return [Mission(**dict(zip(cols, row))) for row in cursor]
+
+
+def archive_mission(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    *,
+    mission_id: str,
+    delete_after_days: int,
+) -> Mission:
+    """Archive a succeeded/completed mission and stamp its retention deadline.
+
+    Archived missions remain readable until a purge sweep. Only successful
+    terminal missions can be archived; pending/running/failed/cancelled missions
+    keep their explicit lifecycle status.
+    """
+    if delete_after_days < 1:
+        raise ValueError("delete_after_days must be >= 1")
+
+    archived_at = datetime.datetime.now(datetime.timezone.utc)
+    delete_after = archived_at + datetime.timedelta(days=delete_after_days)
+
+    with lock:
+        with conn:
+            row = conn.execute(
+                "SELECT status FROM missions WHERE id=?", (mission_id,)
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"Mission {mission_id!r} not found")
+            status = str(row[0]).lower()
+            if status not in {"succeeded", "completed"}:
+                raise ValueError(
+                    f"Cannot archive mission in state {row[0]!r}"
+                )
+            conn.execute(
+                "UPDATE missions SET status='archived', updated_at=? WHERE id=?",
+                (archived_at.isoformat(), mission_id),
+            )
+            conn.execute(
+                "INSERT INTO mission_archive(mission_id, archived_at, delete_after) "
+                "VALUES (?, ?, ?) "
+                "ON CONFLICT(mission_id) DO UPDATE SET "
+                "archived_at=excluded.archived_at, delete_after=excluded.delete_after",
+                (mission_id, archived_at.isoformat(), delete_after.isoformat()),
+            )
+
+    mission = get_mission(conn, mission_id)
+    if mission is None:
+        raise ValueError(f"Mission {mission_id!r} not found after archive")
+    return mission
+
+
+def purge_expired_archives(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    *,
+    now: Optional[str] = None,
+) -> int:
+    """Delete archived missions whose retention deadline has passed.
+
+    SQLite foreign keys in the early schema do not cascade from missions to runs,
+    so dependent rows are removed explicitly. The purge is scoped only to rows
+    present in mission_archive and status='archived'.
+    """
+    now_iso = now or datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    with lock:
+        with conn:
+            rows = conn.execute(
+                "SELECT mission_id FROM mission_archive "
+                "WHERE delete_after <= ? "
+                "AND mission_id IN (SELECT id FROM missions WHERE status='archived')",
+                (now_iso,),
+            ).fetchall()
+            mission_ids = [row[0] for row in rows]
+            for mission_id in mission_ids:
+                run_ids = [
+                    row[0]
+                    for row in conn.execute(
+                        "SELECT id FROM runs WHERE mission_id=?", (mission_id,)
+                    ).fetchall()
+                ]
+                for run_id in run_ids:
+                    conn.execute("DELETE FROM tool_calls WHERE run_id=?", (run_id,))
+                    conn.execute("DELETE FROM artifacts WHERE run_id=?", (run_id,))
+                    conn.execute("DELETE FROM audit_events WHERE run_id=?", (run_id,))
+                conn.execute("DELETE FROM runs WHERE mission_id=?", (mission_id,))
+                conn.execute(
+                    "DELETE FROM mission_archive WHERE mission_id=?", (mission_id,)
+                )
+                conn.execute("DELETE FROM missions WHERE id=?", (mission_id,))
+    return len(mission_ids)

@@ -510,6 +510,40 @@ async fn start_run_invalid_agent_is_400() {
 }
 
 #[tokio::test]
+async fn console_chat_forwards_agent_prompt_and_cwd() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let db_path = seeded_db(&dir);
+    let argv_path = stub_dir.path().join("argv.txt");
+    let router = test_app_with_arg_capture(
+        db_path,
+        r#"{"status":"succeeded","agent":"claude_code","text":"ok","events":[]}"#,
+        &argv_path,
+        &stub_dir,
+    );
+    let (status, body) = post_json(
+        &router,
+        "/v1/console/chat",
+        json!({
+            "agent": "claude_code",
+            "cwd": "C:\\Work\\Atlas",
+            "prompt": "inspect project"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["agent"], "claude_code");
+    assert_eq!(body["text"], "ok");
+
+    let argv = std::fs::read_to_string(&argv_path).unwrap();
+    let args: Vec<&str> = argv.lines().collect();
+    assert_eq!(args.first().copied(), Some("console"));
+    assert!(args.windows(2).any(|w| w == ["--agent", "claude_code"]));
+    assert!(args.windows(2).any(|w| w == ["--cwd", "C:\\Work\\Atlas"]));
+    assert!(args.windows(2).any(|w| w == ["--prompt", "inspect project"]));
+}
+
+#[tokio::test]
 async fn start_run_atlas_not_found_is_500() {
     let dir = tempfile::tempdir().unwrap();
     let router = app(AppState {

@@ -11,6 +11,8 @@ Fixtures from conftest.py (injected by name — do NOT import):
   db      — in-memory SQLite, WAL + FK ON + 0001_core.sql applied
   lock    — threading.Lock()
 """
+import json
+
 import pytest
 from typer.testing import CliRunner
 
@@ -78,3 +80,69 @@ def test_status_unknown_id_exits_one(db, monkeypatch):
     monkeypatch.setattr(cli_main, "_get_connection", lambda: db)
     result = runner.invoke(app, ["mission", "status", "nonexistent-uuid"])
     assert result.exit_code == 1
+
+
+def test_archive_command_exits_zero_for_succeeded(db, lock, monkeypatch):
+    import atlas_runtime.cli.main as cli_main
+    from atlas_runtime import mission_service
+
+    monkeypatch.setattr(cli_main, "_get_connection", lambda: db)
+    monkeypatch.setattr(cli_main, "_get_lock", lambda: lock)
+    mission = mission_service.create_mission(db, lock, title="Archive CLI")
+    db.execute("UPDATE missions SET status='succeeded' WHERE id=?", (mission.id,))
+    db.commit()
+
+    result = runner.invoke(
+        app,
+        ["mission", "archive", "--delete-after-days", "7", mission.id],
+    )
+
+    assert result.exit_code == 0
+    assert mission.id in result.output
+    assert db.execute(
+        "SELECT status FROM missions WHERE id=?", (mission.id,)
+    ).fetchone()[0] == "archived"
+
+
+def test_purge_archived_command_prints_count(db, lock, monkeypatch):
+    import atlas_runtime.cli.main as cli_main
+    from atlas_runtime import mission_service
+
+    monkeypatch.setattr(cli_main, "_get_connection", lambda: db)
+    monkeypatch.setattr(cli_main, "_get_lock", lambda: lock)
+    mission = mission_service.create_mission(db, lock, title="Purge CLI")
+    db.execute("UPDATE missions SET status='succeeded' WHERE id=?", (mission.id,))
+    db.commit()
+    mission_service.archive_mission(db, lock, mission_id=mission.id, delete_after_days=1)
+    db.execute(
+        "UPDATE mission_archive SET delete_after='2000-01-01T00:00:00+00:00' WHERE mission_id=?",
+        (mission.id,),
+    )
+    db.commit()
+
+    result = runner.invoke(app, ["mission", "purge-archived"])
+
+    assert result.exit_code == 0
+    assert result.output.strip() == "1"
+
+
+def test_console_chat_command_prints_json(tmp_path):
+    result = runner.invoke(
+        app,
+        [
+            "console",
+            "chat",
+            "--agent",
+            "native",
+            "--cwd",
+            str(tmp_path),
+            "--prompt",
+            "inspect this folder",
+        ],
+    )
+
+    assert result.exit_code == 0
+    body = json.loads(result.output)
+    assert body["status"] == "succeeded"
+    assert body["agent"] == "native"
+    assert body["cwd"] == str(tmp_path.resolve())
