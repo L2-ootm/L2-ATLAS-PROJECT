@@ -17,8 +17,19 @@ class ToolUseBlock:
         self.input = input
 
 
+class ToolResultBlock:
+    def __init__(self, tool_use_id: str, content) -> None:  # noqa: ANN001
+        self.tool_use_id = tool_use_id
+        self.content = content
+
+
 class AssistantMessage:
     def __init__(self, content: list) -> None:
+        self.content = content
+
+
+class UserMessage:
+    def __init__(self, content) -> None:  # noqa: ANN001
         self.content = content
 
 
@@ -84,3 +95,25 @@ def test_claude_code_console_maps_sdk_stream(tmp_path):
     assert result["status"] == "succeeded"
     assert result["text"] == "hello ATLAS"
     assert any(e["type"] == "tool_call" and e["tool_name"] == "Read" for e in result["events"])
+
+
+def test_claude_code_console_captures_tool_results(tmp_path):
+    # Tool results arrive in a UserMessage that follows the assistant's tool use.
+    messages = [
+        AssistantMessage([ToolUseBlock("Read", "tool-1", {"file_path": "README.md"})]),
+        UserMessage([ToolResultBlock("tool-1", "file contents here")]),
+        AssistantMessage([TextBlock("done")]),
+        ResultMessage(),
+    ]
+
+    result = console_service.run_chat(
+        prompt="inspect",
+        agent="claude_code",
+        cwd=str(tmp_path),
+        query_fn=_make_query(messages),
+    )
+
+    results = [e for e in result["events"] if e["type"] == "tool_result"]
+    assert len(results) == 1
+    assert results[0]["tool_call_id"] == "tool-1"
+    assert results[0]["content"] == "file contents here"

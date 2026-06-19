@@ -184,6 +184,20 @@ def _map_sdk_message(
                         "content": getattr(block, "content", None),
                     }
                 )
+    elif kind == "UserMessage":
+        # The SDK returns tool results as ToolResultBlocks inside a UserMessage
+        # that follows the assistant's ToolUseBlock — not in the AssistantMessage.
+        content = getattr(msg, "content", None)
+        if isinstance(content, list):
+            for block in content:
+                if type(block).__name__ == "ToolResultBlock":
+                    events.append(
+                        {
+                            "type": "tool_result",
+                            "tool_call_id": getattr(block, "tool_use_id", None),
+                            "content": getattr(block, "content", None),
+                        }
+                    )
     elif kind == "ResultMessage":
         is_error = bool(getattr(msg, "is_error", False))
         if is_error:
