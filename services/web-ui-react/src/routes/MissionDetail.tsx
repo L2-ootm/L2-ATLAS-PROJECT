@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Play, Ban } from 'lucide-react';
+import { Archive, Play, Ban, X } from 'lucide-react';
 import { Page } from '../components/Page';
 import { AgentBadge, GlassPanel, HudLabel, StatusBadge } from '../components/hud';
 import RunTimeline from '../components/RunTimeline';
 import LiveBadge from '../components/LiveBadge';
 import BorderGlow from '../components/BorderGlow';
 import GlassTopo from '../components/GlassTopo';
-import { getMission, startRun, cancelRun, type AgentRuntime, type Mission, type Run } from '../lib/api';
+import { archiveMission, getMission, startRun, cancelRun, type AgentRuntime, type Mission, type Run } from '../lib/api';
 import sealMark from '../brand/assets/seal.webp';
 
 type Load =
@@ -39,6 +39,10 @@ export default function MissionDetail() {
 	const [launchError, setLaunchError] = useState<string | null>(null);
 	const [confirmCancel, setConfirmCancel] = useState(false);
 	const [cancelError, setCancelError] = useState<string | null>(null);
+	const [archiveOpen, setArchiveOpen] = useState(false);
+	const [archiveDays, setArchiveDays] = useState(30);
+	const [archiveError, setArchiveError] = useState<string | null>(null);
+	const [archiving, setArchiving] = useState(false);
 
 	const refresh = useCallback(async () => {
 		try {
@@ -78,9 +82,28 @@ export default function MissionDetail() {
 		}
 	}
 
+	async function doArchive() {
+		if (load.s !== 'ready') return;
+		setArchiving(true);
+		setArchiveError(null);
+		try {
+			await archiveMission(load.mission.id, archiveDays);
+			setArchiveOpen(false);
+			await refresh();
+		} catch (e) {
+			setArchiveError(`ARCHIVE FAILED — ${e instanceof Error ? e.message : String(e)}`);
+		} finally {
+			setArchiving(false);
+		}
+	}
+
 	const mission = load.s === 'ready' ? load.mission : null;
 	const runs = load.s === 'ready' ? load.runs : [];
 	const hasActive = runs.some((r) => isRunActive(r.status));
+	const missionStatus = mission?.status.toUpperCase() ?? '';
+	const canLaunch = missionStatus === 'PENDING';
+	const canArchive = missionStatus === 'SUCCEEDED' || missionStatus === 'COMPLETED';
+	const archived = missionStatus === 'ARCHIVED';
 
 	return (
 		<Page
@@ -89,15 +112,22 @@ export default function MissionDetail() {
 			actions={
 				load.s === 'ready' ? (
 					<>
-						<AgentSelect value={agent} onChange={setAgent} disabled={launching} />
+						{canLaunch && <AgentSelect value={agent} onChange={setAgent} disabled={launching} />}
+						{canArchive && (
+							<GhostButton icon={<Archive size={15} strokeWidth={1.5} />} onClick={() => setArchiveOpen(true)}>
+								Archive
+							</GhostButton>
+						)}
 						{hasActive && (
 							<GhostButton icon={<Ban size={15} strokeWidth={1.5} />} onClick={() => setConfirmCancel(true)} danger>
 								Cancel
 							</GhostButton>
 						)}
-						<PrimaryButton icon={<Play size={15} strokeWidth={2} />} onClick={launch} disabled={launching}>
-							{launching ? 'Launching…' : 'Launch run'}
-						</PrimaryButton>
+						{canLaunch && (
+							<PrimaryButton icon={<Play size={15} strokeWidth={2} />} onClick={launch} disabled={launching}>
+								{launching ? 'Launching…' : 'Launch run'}
+							</PrimaryButton>
+						)}
 					</>
 				) : null
 			}
@@ -145,9 +175,25 @@ export default function MissionDetail() {
 								<Meta label="CREATED" value={fmt(mission.created_at)} />
 								<Meta label="UPDATED" value={fmt(mission.updated_at)} />
 								{mission.project && <Meta label="PROJECT" value={mission.project} />}
+								{archived && mission.archived_at && <Meta label="ARCHIVED" value={fmt(mission.archived_at)} />}
+								{archived && mission.delete_after && <Meta label="DELETE AFTER" value={fmt(mission.delete_after)} />}
 							</div>
 						</GlassTopo>
 					</BorderGlow>
+
+					{archiveOpen && (
+						<ArchivePanel
+							days={archiveDays}
+							busy={archiving}
+							error={archiveError}
+							onDays={setArchiveDays}
+							onClose={() => {
+								setArchiveOpen(false);
+								setArchiveError(null);
+							}}
+							onConfirm={doArchive}
+						/>
+					)}
 
 					{/* runs */}
 					<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
@@ -196,16 +242,107 @@ export default function MissionDetail() {
 							</div>
 						</GlassPanel>
 					) : (
-						<div style={{ border: '1px solid var(--l2-hairline)', borderRadius: 2, background: 'linear-gradient(180deg, rgba(21,24,32,0.5), rgba(11,13,18,0.5))', overflow: 'hidden' }}>
+						<GlassPanel
+							glow="info"
+							style={{
+								overflow: 'hidden',
+								background:
+									'linear-gradient(135deg, rgba(237,234,224,0.08), rgba(18,22,31,0.36) 34%, rgba(79,139,255,0.07))',
+								backdropFilter: 'blur(11px) saturate(1.55) brightness(1.04)',
+								WebkitBackdropFilter: 'blur(11px) saturate(1.55) brightness(1.04)',
+								boxShadow:
+									'inset 0 1px 0 rgba(237,234,224,0.10), inset 0 0 30px rgba(79,139,255,0.05), 0 18px 60px rgba(0,0,0,0.28)'
+							}}
+						>
 							<RunHeader />
 							{runs.map((r, i) => (
 								<RunRow key={r.id} r={r} first={i === 0} onClick={() => nav(`/runs/${r.id}`)} />
 							))}
-						</div>
+						</GlassPanel>
 					)}
 				</>
 			)}
 		</Page>
+	);
+}
+
+function ArchivePanel({
+	days,
+	busy,
+	error,
+	onDays,
+	onClose,
+	onConfirm
+}: {
+	days: number;
+	busy: boolean;
+	error: string | null;
+	onDays: (days: number) => void;
+	onClose: () => void;
+	onConfirm: () => void;
+}) {
+	const options = [7, 30, 90, 365];
+	return (
+		<GlassPanel glow="atlas" style={{ padding: 16, marginBottom: 12 }}>
+			<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+				<span style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+					<Archive size={15} strokeWidth={1.6} color="var(--atlas-bronze)" />
+					<HudLabel style={{ color: 'var(--atlas-bronze)' }}>ARCHIVE RETENTION</HudLabel>
+				</span>
+				<button onClick={onClose} aria-label="Close archive panel" style={{ background: 'none', border: 'none', color: 'var(--l2-fg-3)', cursor: 'pointer', display: 'flex' }}>
+					<X size={16} />
+				</button>
+			</div>
+			<p style={{ margin: '0 0 12px', color: 'var(--l2-fg-2)', fontSize: 13, lineHeight: 1.5 }}>
+				Archive this succeeded mission. ATLAS keeps the run and audit trail until the retention deadline, then the purge sweep deletes it.
+			</p>
+			<div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+				{options.map((opt) => (
+					<button
+						key={opt}
+						onClick={() => onDays(opt)}
+						style={{
+							padding: '7px 11px',
+							borderRadius: 2,
+							border: `1px solid ${days === opt ? 'rgba(176,138,87,0.5)' : 'var(--l2-hairline)'}`,
+							background: days === opt ? 'rgba(176,138,87,0.14)' : 'transparent',
+							color: days === opt ? 'var(--atlas-bronze)' : 'var(--l2-fg-3)',
+							fontFamily: 'var(--l2-font-mono)',
+							fontSize: 10,
+							letterSpacing: '0.12em',
+							cursor: 'pointer'
+						}}
+					>
+						{opt}D
+					</button>
+				))}
+				<input
+					type="number"
+					min={1}
+					max={3650}
+					value={days}
+					onChange={(e) => onDays(Math.max(1, Math.min(3650, Number(e.target.value) || 1)))}
+					aria-label="Archive retention days"
+					style={{
+						width: 88,
+						padding: '7px 10px',
+						borderRadius: 2,
+						border: '1px solid var(--l2-hairline)',
+						background: 'rgba(9,11,16,0.58)',
+						color: 'var(--l2-fg-1)',
+						fontFamily: 'var(--l2-font-mono)',
+						fontSize: 11
+					}}
+				/>
+			</div>
+			{error && <div style={{ marginBottom: 10, color: 'var(--l2-error)', fontSize: 12, fontFamily: 'var(--l2-font-mono)' }}>{error}</div>}
+			<div style={{ display: 'flex', gap: 10 }}>
+				<PrimaryButton icon={<Archive size={15} strokeWidth={1.5} />} onClick={onConfirm} disabled={busy}>
+					{busy ? 'ARCHIVING…' : 'ARCHIVE'}
+				</PrimaryButton>
+				<GhostButton onClick={onClose}>Keep Visible</GhostButton>
+			</div>
+		</GlassPanel>
 	);
 }
 
@@ -343,6 +480,10 @@ function AgentSelect({ value, onChange, disabled }: { value: AgentRuntime; onCha
 		>
 			{AGENT_OPTIONS.map((opt) => {
 				const on = opt.value === value;
+				const claude = opt.value === 'claude_code';
+				const activeColor = claude ? '#F08A4B' : 'var(--atlas-celestial)';
+				const activeBg = claude ? 'rgba(240,138,75,0.15)' : 'rgba(79,139,255,0.14)';
+				const activeBorder = claude ? 'rgba(240,138,75,0.42)' : 'rgba(79,139,255,0.34)';
 				return (
 					<button
 						key={opt.value}
@@ -353,9 +494,10 @@ function AgentSelect({ value, onChange, disabled }: { value: AgentRuntime; onCha
 						style={{
 							padding: '7px 12px',
 							borderRadius: 2,
-							border: '1px solid transparent',
-							background: on ? 'rgba(79,139,255,0.14)' : 'transparent',
-							color: on ? 'var(--atlas-celestial)' : 'var(--l2-fg-3)',
+							border: `1px solid ${on ? activeBorder : 'transparent'}`,
+							background: on ? activeBg : 'transparent',
+							color: on ? activeColor : 'var(--l2-fg-3)',
+							boxShadow: on && claude ? '0 0 18px rgba(240,138,75,0.10)' : 'none',
 							fontFamily: 'var(--l2-font-mono)',
 							fontSize: 10,
 							letterSpacing: '0.14em',

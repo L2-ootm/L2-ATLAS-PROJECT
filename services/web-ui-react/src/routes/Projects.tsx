@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Search, Plus, FolderPlus, X } from 'lucide-react';
+import type * as React from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Search, Plus, FolderPlus, X, FolderOpen, SquareTerminal } from 'lucide-react';
 import { Page } from '../components/Page';
 import TopoInput from '../components/TopoInput';
 import BorderGlow from '../components/BorderGlow';
 import { GlassPanel } from '../components/GlassFx';
+import { GLASS_DISPLACE_ID } from '../lib/glass';
 import { listProjects, createProject, registerProject, type Project } from '../lib/api';
+import { selectFolder } from '../lib/host';
 import sealMark from '../brand/assets/seal.webp';
 
 type Load = { s: 'loading' } | { s: 'ready'; projects: Project[]; count: number } | { s: 'error' };
@@ -24,6 +28,7 @@ export default function Projects() {
 	const [load, setLoad] = useState<Load>({ s: 'loading' });
 	const [query, setQuery] = useState('');
 	const [modal, setModal] = useState<Mode | null>(null);
+	const navigate = useNavigate();
 
 	async function refresh() {
 		try {
@@ -89,7 +94,14 @@ export default function Projects() {
 					(filtered.length === 0 ? (
 						<Empty hasAny={load.projects.length > 0} onCreate={() => setModal('create')} />
 					) : (
-						filtered.map((p, i) => <Row key={p.id} p={p} i={i} />)
+						filtered.map((p, i) => (
+							<Row
+								key={p.id}
+								p={p}
+								i={i}
+								onOpenConsole={() => navigate(`/console?project=${encodeURIComponent(p.id)}`)}
+							/>
+						))
 					))}
 			</GlassPanel>
 
@@ -108,13 +120,12 @@ export default function Projects() {
 }
 
 // ── table pieces ─────────────────────────────────────────────────────────────
-const GRID = '28px 1fr 110px';
 function Header() {
 	return (
 		<div
+			className="atlas-projects-grid"
 			style={{
 				display: 'grid',
-				gridTemplateColumns: GRID,
 				gap: 14,
 				padding: '11px 18px',
 				borderBottom: '1px solid var(--l2-hairline)',
@@ -127,18 +138,19 @@ function Header() {
 		>
 			<span>#</span>
 			<span>Project</span>
-			<span style={{ textAlign: 'right' }}>Created</span>
+			<span className="atlas-projects-created-col" style={{ textAlign: 'right' }}>Created</span>
+			<span className="atlas-projects-console-col" style={{ textAlign: 'right' }}>Console</span>
 		</div>
 	);
 }
 
-function Row({ p, i }: { p: Project; i: number }) {
+function Row({ p, i, onOpenConsole }: { p: Project; i: number; onOpenConsole: () => void }) {
 	return (
 		<div
+			className="atlas-projects-grid"
 			data-topo="good"
 			style={{
 				display: 'grid',
-				gridTemplateColumns: GRID,
 				gap: 14,
 				alignItems: 'center',
 				padding: '14px 18px',
@@ -159,8 +171,11 @@ function Row({ p, i }: { p: Project; i: number }) {
 					{p.root_path}
 				</div>
 			</span>
-			<span style={{ textAlign: 'right', fontFamily: 'var(--l2-font-mono)', fontSize: 11, color: 'var(--l2-fg-3)' }}>
+			<span className="atlas-projects-created-col" style={{ textAlign: 'right', fontFamily: 'var(--l2-font-mono)', fontSize: 11, color: 'var(--l2-fg-3)' }}>
 				{rel(p.created_at)}
+			</span>
+			<span className="atlas-projects-console-col" style={{ display: 'flex', justifyContent: 'flex-end' }}>
+				<ConsoleButton onClick={onOpenConsole} />
 			</span>
 		</div>
 	);
@@ -170,10 +185,11 @@ function SkeletonRows() {
 	return (
 		<div>
 			{Array.from({ length: 4 }).map((_, i) => (
-				<div key={i} style={{ display: 'grid', gridTemplateColumns: GRID, gap: 14, padding: '16px 18px', borderTop: i === 0 ? 'none' : '1px solid var(--l2-hairline)' }}>
+				<div key={i} className="atlas-projects-grid" style={{ display: 'grid', gap: 14, padding: '16px 18px', borderTop: i === 0 ? 'none' : '1px solid var(--l2-hairline)' }}>
 					<div style={sk(16)} />
 					<div style={sk(`${50 + ((i * 11) % 35)}%`)} />
-					<div style={sk(48, true)} />
+					<div className="atlas-projects-created-col" style={sk(48, true)} />
+					<div className="atlas-projects-console-col" style={sk(64, true)} />
 				</div>
 			))}
 		</div>
@@ -284,14 +300,104 @@ function GhostButton({ children, icon, onClick }: { children: React.ReactNode; i
 	);
 }
 
+function ConsoleButton({ onClick }: { onClick: () => void }) {
+	return (
+		<button
+			type="button"
+			className="atlas-project-console-button"
+			onClick={onClick}
+			title="Open project console"
+			style={{
+				display: 'inline-flex',
+				alignItems: 'center',
+				justifyContent: 'center',
+				gap: 7,
+				height: 32,
+				borderRadius: 2,
+				border: '1px solid rgba(79,139,255,0.38)',
+				background: 'linear-gradient(180deg, rgba(79,139,255,0.12), rgba(79,139,255,0.05))',
+				color: 'var(--atlas-celestial)',
+				fontFamily: 'var(--l2-font-mono)',
+				fontSize: 10,
+				letterSpacing: '0.14em',
+				textTransform: 'uppercase',
+				cursor: 'pointer',
+				boxShadow: 'inset 0 1px 0 rgba(237,234,224,0.06)',
+				transition: 'border-color 150ms var(--l2-ease), background 150ms var(--l2-ease), transform 150ms var(--l2-ease)'
+			}}
+			onMouseEnter={(e) => {
+				e.currentTarget.style.borderColor = 'rgba(79,139,255,0.72)';
+				e.currentTarget.style.background = 'linear-gradient(180deg, rgba(79,139,255,0.20), rgba(79,139,255,0.08))';
+				e.currentTarget.style.transform = 'translateY(-1px)';
+			}}
+			onMouseLeave={(e) => {
+				e.currentTarget.style.borderColor = 'rgba(79,139,255,0.38)';
+				e.currentTarget.style.background = 'linear-gradient(180deg, rgba(79,139,255,0.12), rgba(79,139,255,0.05))';
+				e.currentTarget.style.transform = 'none';
+			}}
+		>
+			<SquareTerminal size={14} strokeWidth={1.7} />
+			<span className="atlas-project-console-label">Open</span>
+		</button>
+	);
+}
+
 // ── create / register modal ──────────────────────────────────────────────────
+function folderName(path: string): string {
+	const clean = path.replace(/[\\/]+$/, '');
+	return clean.split(/[\\/]/).filter(Boolean).pop() ?? clean;
+}
+
+function safeFolderSegment(name: string): string {
+	const printable = Array.from(name.trim()).filter((ch) => {
+		const code = ch.codePointAt(0) ?? 0;
+		return code >= 32 && code !== 127;
+	}).join('');
+	const clean = printable
+		.trim()
+		.replace(/[<>:"/\\|?*]+/g, '-')
+		.replace(/\s+/g, '-')
+		.replace(/^-+|-+$/g, '');
+	return clean || 'new-project';
+}
+
+function joinFolder(base: string, child: string): string {
+	const clean = base.replace(/[\\/]+$/, '');
+	if (!clean) return child;
+	const sep = clean.includes('/') && !clean.includes('\\') ? '/' : '\\';
+	return `${clean}${sep}${child}`;
+}
+
 function ProjectModal({ mode, onClose, onCreated }: { mode: Mode; onClose: () => void; onCreated: () => void }) {
 	const [name, setName] = useState('');
 	const [path, setPath] = useState('');
+	const [basePath, setBasePath] = useState('');
 	const [busy, setBusy] = useState(false);
 	const [err, setErr] = useState<string | null>(null);
 
 	const isCreate = mode === 'create';
+
+	useEffect(() => {
+		if (!isCreate || !basePath) return;
+		setPath(joinFolder(basePath, safeFolderSegment(name)));
+	}, [basePath, isCreate, name]);
+
+	async function chooseFolder() {
+		setErr(null);
+		try {
+			const picked = await selectFolder(isCreate ? 'Choose parent folder for the new project' : 'Choose project folder');
+			if (!picked) return;
+			if (isCreate) {
+				setBasePath(picked);
+				setPath(joinFolder(picked, safeFolderSegment(name)));
+			} else {
+				setPath(picked);
+				if (!name.trim()) setName(folderName(picked));
+			}
+		} catch {
+			setErr('Could not open the local folder picker. Confirm the gateway is running.');
+		}
+	}
 
 	async function submit() {
 		if (!name.trim() || !path.trim()) {
@@ -318,7 +424,16 @@ function ProjectModal({ mode, onClose, onCreated }: { mode: Mode; onClose: () =>
 	return (
 		<div
 			onClick={onClose}
-			style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'grid', placeItems: 'center', background: 'rgba(5,6,10,0.97)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)' }}
+			style={{
+				position: 'fixed',
+				inset: 0,
+				zIndex: 200,
+				display: 'grid',
+				placeItems: 'center',
+				background: 'rgba(5,6,10,0.76)',
+				backdropFilter: `blur(6px) url(#${GLASS_DISPLACE_ID}) saturate(1.35)`,
+				WebkitBackdropFilter: 'blur(6px) saturate(1.35)'
+			}}
 		>
 			<div onClick={(e) => e.stopPropagation()} style={{ width: 'min(560px, 92vw)' }}>
 				<BorderGlow
@@ -329,7 +444,19 @@ function ProjectModal({ mode, onClose, onCreated }: { mode: Mode; onClose: () =>
 					edgeSensitivity={16}
 					style={{ boxShadow: '0 24px 80px rgba(0,0,0,0.6)' }}
 				>
-					<div style={{ position: 'relative', borderRadius: 2, overflow: 'hidden' }}>
+					<div
+						style={{
+							position: 'relative',
+							borderRadius: 2,
+							overflow: 'hidden',
+							background:
+								'linear-gradient(135deg, rgba(237,234,224,0.10), rgba(13,16,24,0.54) 38%, rgba(70,240,160,0.08))',
+							backdropFilter: `blur(7px) url(#${GLASS_DISPLACE_ID}) saturate(1.55) brightness(1.05)`,
+							WebkitBackdropFilter: 'blur(7px) saturate(1.55) brightness(1.05)',
+							boxShadow:
+								'inset 0 1px 0 rgba(237,234,224,0.10), inset 0 0 34px rgba(70,240,160,0.08), 0 28px 90px rgba(0,0,0,0.58)'
+						}}
+					>
 						<span
 							aria-hidden="true"
 							style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, background: 'linear-gradient(90deg, transparent, var(--atlas-bronze) 50%, transparent)', opacity: 0.5, zIndex: 2 }}
@@ -347,18 +474,20 @@ function ProjectModal({ mode, onClose, onCreated }: { mode: Mode; onClose: () =>
 								<TopoInput value={name} onChange={setName} placeholder="Project name" tone="good" ariaLabel="Project name" autoFocus quiet />
 							</Field>
 							<Field label={isCreate ? 'FOLDER TO CREATE' : 'EXISTING FOLDER PATH'}>
-								<TopoInput
+								<PathPicker
 									value={path}
 									onChange={setPath}
-									placeholder={isCreate ? 'C:\\path\\to\\new-project' : 'C:\\path\\to\\existing\\folder'}
-									tone="info"
-									ariaLabel="Folder path"
-									quiet
+									onPick={chooseFolder}
+									readOnly={false}
+									actionLabel={isCreate ? 'Choose Parent' : 'Choose Folder'}
+									placeholder={isCreate ? 'Choose a parent folder' : 'Choose an existing folder'}
 								/>
 							</Field>
 							<div style={{ color: 'var(--l2-fg-3)', fontSize: 11.5, lineHeight: 1.5 }}>
 								{isCreate
-									? 'The folder is created if it does not exist. Missions assigned to this project run in this directory.'
+									? basePath
+										? `ATLAS will create ${safeFolderSegment(name)} inside the selected parent. Missions assigned to this project run there.`
+										: 'Pick a parent folder; ATLAS will create a project folder inside it.'
 									: 'The folder must already exist on this machine. It becomes the working directory for assigned missions.'}
 							</div>
 							{err && <div style={{ color: 'var(--l2-error)', fontSize: 12, fontFamily: 'var(--l2-font-mono)' }}>{err}</div>}
@@ -378,11 +507,96 @@ function ProjectModal({ mode, onClose, onCreated }: { mode: Mode; onClose: () =>
 	);
 }
 
+function PathPicker({
+	value,
+	onChange,
+	onPick,
+	readOnly,
+	actionLabel,
+	placeholder
+}: {
+	value: string;
+	onChange: (value: string) => void;
+	onPick: () => void;
+	readOnly: boolean;
+	actionLabel: string;
+	placeholder: string;
+}) {
+	return (
+		<div
+			style={{
+				display: 'grid',
+				gridTemplateColumns: 'minmax(0,1fr) auto',
+				gap: 8,
+				alignItems: 'stretch'
+			}}
+		>
+			<input
+				value={value}
+				readOnly={readOnly}
+				onClick={() => readOnly && onPick()}
+				onChange={(e) => onChange(e.target.value)}
+				placeholder={placeholder}
+				aria-label="Folder path"
+				style={{
+					width: '100%',
+					minWidth: 0,
+					height: 44,
+					borderRadius: 2,
+					border: '1px solid var(--l2-hairline)',
+					background: 'rgba(9,11,16,0.72)',
+					color: value ? 'var(--l2-fg-1)' : 'var(--l2-fg-3)',
+					fontFamily: 'var(--l2-font-mono)',
+					fontSize: 12.5,
+					padding: '0 12px',
+					outline: 'none',
+					cursor: readOnly ? 'pointer' : 'text',
+					boxShadow: 'inset 0 1px 0 rgba(237,234,224,0.04)'
+				}}
+			/>
+			<button
+				type="button"
+				onClick={onPick}
+				style={{
+					display: 'inline-flex',
+					alignItems: 'center',
+					justifyContent: 'center',
+					gap: 8,
+					height: 44,
+					padding: '0 13px',
+					borderRadius: 2,
+					border: '1px solid rgba(70,240,160,0.35)',
+					background: 'rgba(70,240,160,0.10)',
+					color: 'var(--atlas-emerald)',
+					fontFamily: 'var(--l2-font-mono)',
+					fontSize: 10.5,
+					letterSpacing: '0.14em',
+					textTransform: 'uppercase',
+					whiteSpace: 'nowrap',
+					cursor: 'pointer',
+					transition: 'border-color 150ms var(--l2-ease), background 150ms var(--l2-ease)'
+				}}
+				onMouseEnter={(e) => {
+					e.currentTarget.style.borderColor = 'rgba(70,240,160,0.72)';
+					e.currentTarget.style.background = 'rgba(70,240,160,0.18)';
+				}}
+				onMouseLeave={(e) => {
+					e.currentTarget.style.borderColor = 'rgba(70,240,160,0.35)';
+					e.currentTarget.style.background = 'rgba(70,240,160,0.10)';
+				}}
+			>
+				<FolderOpen size={14} strokeWidth={1.7} />
+				{actionLabel}
+			</button>
+		</div>
+	);
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
 	return (
-		<label style={{ display: 'block' }}>
+		<div style={{ display: 'block' }}>
 			<span style={{ display: 'block', fontFamily: 'var(--l2-font-mono)', fontSize: 9.5, letterSpacing: '0.2em', color: 'var(--l2-fg-3)', marginBottom: 7 }}>{label}</span>
 			{children}
-		</label>
+		</div>
 	);
 }

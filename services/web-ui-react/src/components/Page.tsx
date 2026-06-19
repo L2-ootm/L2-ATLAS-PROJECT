@@ -22,6 +22,7 @@ export function Page({ eyebrow, title, actions, max = 1200, children }: PageProp
 	return (
 		<div style={{ maxWidth: max ?? undefined, margin: max ? '0 auto' : undefined }}>
 			<header
+				className="atlas-page-header"
 				style={{
 					display: 'flex',
 					alignItems: 'flex-end',
@@ -66,7 +67,22 @@ export function Page({ eyebrow, title, actions, max = 1200, children }: PageProp
 						{title}
 					</h1>
 				</div>
-				{actions && <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 'none' }}>{actions}</div>}
+				{actions && (
+					<div
+						className="atlas-page-actions"
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							justifyContent: 'flex-end',
+							gap: 10,
+							flex: '0 1 auto',
+							flexWrap: 'wrap',
+							minWidth: 0
+						}}
+					>
+						{actions}
+					</div>
+				)}
 			</header>
 			{children}
 		</div>

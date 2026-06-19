@@ -4,6 +4,7 @@ import { Search, Plus, X } from 'lucide-react';
 import { Page } from '../components/Page';
 import { StatusBadge } from '../components/hud';
 import TopoInput from '../components/TopoInput';
+import ProjectSelector from '../components/ProjectSelector';
 import BorderGlow from '../components/BorderGlow';
 import { GlassPanel } from '../components/GlassFx';
 import { listMissions, createMission, listProjects, type Mission, type Project } from '../lib/api';
@@ -12,7 +13,7 @@ import sealMark from '../brand/assets/seal.webp';
 
 type Load = { s: 'loading' } | { s: 'ready'; missions: Mission[]; count: number } | { s: 'error' };
 
-const STATUSES = ['ALL', 'PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED'];
+const STATUSES = ['ALL', 'PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED', 'ARCHIVED'];
 
 function rel(iso: string): string {
 	const t = Date.parse(iso);
@@ -148,11 +149,12 @@ function Header() {
 }
 
 function Row({ m, i, onClick }: { m: Mission; i: number; onClick: () => void }) {
+	const archived = m.status?.toUpperCase() === 'ARCHIVED';
 	return (
 		<div
 			role="button"
 			tabIndex={0}
-			data-topo="info"
+			data-topo={archived ? 'atlas' : 'info'}
 			onClick={onClick}
 			onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onClick()}
 			style={{
@@ -163,9 +165,10 @@ function Row({ m, i, onClick }: { m: Mission; i: number; onClick: () => void }) 
 				padding: '14px 18px',
 				borderTop: i === 0 ? 'none' : '1px solid var(--l2-hairline)',
 				cursor: 'pointer',
+				opacity: archived ? 0.68 : 1,
 				transition: 'background var(--l2-duration-xs) var(--l2-ease)'
 			}}
-			onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(79,139,255,0.05)')}
+			onMouseEnter={(e) => (e.currentTarget.style.background = archived ? 'rgba(176,138,87,0.05)' : 'rgba(79,139,255,0.05)')}
 			onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
 		>
 			<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 11, color: 'var(--l2-fg-3)', fontVariantNumeric: 'tabular-nums' }}>
@@ -362,29 +365,12 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
 					</Field>
 					{projects.length > 0 && (
 						<Field label="PROJECT (OPTIONAL — RUNS IN ITS FOLDER)">
-							<select
-								value={projectId}
-								onChange={(e) => setProjectId(e.target.value)}
-								aria-label="Project"
-								style={{
-									width: '100%',
-									padding: '10px 12px',
-									borderRadius: 2,
-									border: '1px solid var(--l2-hairline)',
-									background: 'rgba(9,11,16,0.6)',
-									color: 'var(--l2-fg-1)',
-									fontFamily: 'var(--l2-font-mono)',
-									fontSize: 12.5,
-									cursor: 'pointer'
-								}}
-							>
-								<option value="">No project (default working directory)</option>
-								{projects.map((p) => (
-									<option key={p.id} value={p.id}>
-										{p.name} — {p.root_path}
-									</option>
-								))}
-							</select>
+							<ProjectSelector projects={projects} value={projectId} onChange={setProjectId} disabled={busy} />
+						</Field>
+					)}
+					{projects.length === 0 && (
+						<Field label="PROJECT (OPTIONAL — RUNS IN ITS FOLDER)">
+							<ProjectSelector projects={[]} value="" onChange={setProjectId} disabled={busy} />
 						</Field>
 					)}
 					{err && <div style={{ color: 'var(--l2-error)', fontSize: 12, fontFamily: 'var(--l2-font-mono)' }}>{err}</div>}

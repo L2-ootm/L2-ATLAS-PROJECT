@@ -34,6 +34,26 @@ export default function RunDetail() {
 
 	const stream = useRunStream(id, run);
 	const active = isActive(stream.status);
+	const [topoPhase, setTopoPhase] = useState<'idle' | 'live' | 'release'>('idle');
+	const topoWasLive = useRef(false);
+	const visualTopoPhase = active ? 'live' : topoPhase;
+
+	useEffect(() => {
+		if (active) {
+			topoWasLive.current = true;
+			setTopoPhase('live');
+			return;
+		}
+		if (topoWasLive.current) {
+			setTopoPhase('release');
+			const t = setTimeout(() => {
+				topoWasLive.current = false;
+				setTopoPhase('idle');
+			}, 1400);
+			return () => clearTimeout(t);
+		}
+		setTopoPhase('idle');
+	}, [active]);
 
 	// Fetch the run record for header metadata (mission link, timestamps).
 	useEffect(() => {
@@ -73,10 +93,10 @@ export default function RunDetail() {
 				cellSize: 16,
 				color: 'rgba(150,170,210,1)',
 				glowColor: 'rgba(79,139,255,0.85)',
-				restingOpacity: 0.06,
-				glowOpacity: 0.42,
-				glowWidth: 1.1,
-				bulgeStrength: 0.5,
+				restingOpacity: 0.08,
+				glowOpacity: 0.58,
+				glowWidth: 1.25,
+				bulgeStrength: 0.62,
 				freq: 0.012
 			});
 		};
@@ -109,7 +129,7 @@ export default function RunDetail() {
 				if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
 			});
 		}
-	}, [stream.events]);
+	}, [stream.events, topoPhase]);
 
 	function onScroll() {
 		const el = scrollRef.current;
@@ -280,13 +300,21 @@ export default function RunDetail() {
 					style={{
 						position: 'relative',
 						borderRadius: 2,
-						background: 'linear-gradient(180deg, rgba(8,9,13,0.92), rgba(5,6,9,0.96))',
+						background:
+							visualTopoPhase === 'idle'
+								? 'linear-gradient(180deg, rgba(8,9,13,0.98), rgba(5,6,9,0.99))'
+								: 'linear-gradient(180deg, rgba(8,9,13,0.92), rgba(5,6,9,0.96))',
 						border: stream.connected ? 'none' : '1px solid var(--l2-hairline)',
 						overflow: 'hidden'
 					}}
 				>
 					{/* topo field host — behind the log */}
-					<div ref={fieldHostRef} aria-hidden="true" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />
+					<div
+						ref={fieldHostRef}
+						aria-hidden="true"
+						className={`atlas-audit-topo ${visualTopoPhase}`}
+						style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+					/>
 					{/* CRT scanline texture */}
 					<div
 						aria-hidden="true"
@@ -294,7 +322,8 @@ export default function RunDetail() {
 							position: 'absolute',
 							inset: 0,
 							pointerEvents: 'none',
-							opacity: 0.35,
+							opacity: visualTopoPhase === 'idle' ? 0.08 : 0.35,
+							transition: 'opacity 600ms var(--l2-ease)',
 							background: 'repeating-linear-gradient(0deg, rgba(255,255,255,0.018) 0px, rgba(255,255,255,0.018) 1px, transparent 1px, transparent 3px)'
 						}}
 					/>
