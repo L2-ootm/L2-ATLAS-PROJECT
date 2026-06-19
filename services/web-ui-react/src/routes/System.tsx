@@ -1,16 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Server, Database, Copy, Check, Power, Wallet } from 'lucide-react';
+import { Server, Database, Copy, Check, Power } from 'lucide-react';
 import { Page } from '../components/Page';
 import { glassPanel } from '../lib/glass';
 import {
 	checkHealth,
 	listModules,
 	setModuleActive,
-	cashflowStatus,
-	cashflowStart,
-	cashflowStop,
-	type Module,
-	type CashflowStatus
+	type Module
 } from '../lib/api';
 import { isTauri, startGatewayViaShell } from '../lib/host';
 import { useGatewayHealth } from '../lib/useGatewayHealth';
@@ -93,171 +89,7 @@ export default function System() {
 				onToggle={toggle}
 				err={err}
 			/>
-
-			{modules.some((m) => m.id === 'cashflow' && m.status === 'active') && <CashflowControl />}
 		</Page>
-	);
-}
-
-// ── cashflow process control (shown when the cashflow module is active) ──────
-function CashflowControl() {
-	const [st, setSt] = useState<CashflowStatus | null>(null);
-	const [backend, setBackend] = useState<'local' | 'supabase'>('local');
-	const [busy, setBusy] = useState(false);
-	const [msg, setMsg] = useState<string | null>(null);
-
-	const refresh = useCallback(async () => {
-		try {
-			const s = await cashflowStatus();
-			setSt(s);
-			if (s.backend === 'local' || s.backend === 'supabase') setBackend(s.backend);
-		} catch {
-			setSt(null);
-		}
-	}, []);
-
-	useEffect(() => {
-		void refresh();
-		const id = setInterval(() => void refresh(), 10_000);
-		return () => clearInterval(id);
-	}, [refresh]);
-
-	async function action(kind: 'start' | 'stop') {
-		setBusy(true);
-		setMsg(null);
-		try {
-			const res = kind === 'start' ? await cashflowStart(backend) : await cashflowStop();
-			setMsg(res.message);
-			await refresh();
-		} catch {
-			setMsg(`Could not ${kind} cashflow — is the gateway running?`);
-		} finally {
-			setBusy(false);
-		}
-	}
-
-	const running = st?.running === true;
-
-	return (
-		<section style={glassPanel({ overflow: 'hidden', marginTop: 16 })}>
-			<header
-				style={{
-					display: 'flex',
-					alignItems: 'center',
-					justifyContent: 'space-between',
-					padding: '14px 18px',
-					borderBottom: '1px solid var(--l2-hairline)'
-				}}
-			>
-				<span style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-					<Wallet size={14} strokeWidth={1.6} color="var(--atlas-bronze)" />
-					<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 11, letterSpacing: '0.22em', color: 'var(--atlas-bronze)' }}>
-						CASHFLOW PROCESS
-					</span>
-				</span>
-				<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-					<span
-						style={{
-							width: 6,
-							height: 6,
-							borderRadius: '50%',
-							background: running ? 'var(--atlas-cyan)' : 'var(--l2-fg-3)',
-							boxShadow: running ? '0 0 8px var(--atlas-cyan-glow)' : 'none'
-						}}
-					/>
-					<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 10, letterSpacing: '0.14em', color: running ? 'var(--atlas-cyan)' : 'var(--l2-fg-3)' }}>
-						{running ? 'RUNNING' : 'STOPPED'}
-					</span>
-				</span>
-			</header>
-
-			<div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-				<div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-					<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 9.5, letterSpacing: '0.2em', color: 'var(--l2-fg-3)' }}>
-						DB BACKEND
-					</span>
-					<Segmented value={backend} options={['local', 'supabase']} disabled={running || busy} onChange={setBackend} />
-					{running && (
-						<span style={{ fontSize: 11.5, color: 'var(--l2-fg-3)' }}>stop to change backend</span>
-					)}
-				</div>
-
-				<div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-					<button
-						onClick={() => action(running ? 'stop' : 'start')}
-						disabled={busy}
-						style={{
-							padding: '9px 18px',
-							borderRadius: 2,
-							border: `1px solid ${running ? 'var(--l2-hairline)' : 'rgba(79,139,255,0.4)'}`,
-							background: running ? 'transparent' : 'rgba(79,139,255,0.12)',
-							color: running ? 'var(--l2-fg-2)' : 'var(--atlas-celestial)',
-							fontFamily: 'var(--l2-font-mono)',
-							fontSize: 11,
-							letterSpacing: '0.16em',
-							textTransform: 'uppercase',
-							cursor: busy ? 'default' : 'pointer',
-							opacity: busy ? 0.6 : 1
-						}}
-					>
-						{busy ? '…' : running ? 'Stop' : 'Start'}
-					</button>
-					{running && (
-						<a
-							href="http://localhost:3000"
-							target="_blank"
-							rel="noreferrer"
-							style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 10.5, letterSpacing: '0.12em', color: 'var(--atlas-celestial)', textDecoration: 'none' }}
-						>
-							OPEN ↗
-						</a>
-					)}
-				</div>
-
-				{msg && <div style={{ color: 'var(--l2-fg-3)', fontSize: 12, fontFamily: 'var(--l2-font-mono)' }}>{msg}</div>}
-			</div>
-		</section>
-	);
-}
-
-function Segmented({
-	value,
-	options,
-	disabled,
-	onChange
-}: {
-	value: string;
-	options: ('local' | 'supabase')[];
-	disabled: boolean;
-	onChange: (v: 'local' | 'supabase') => void;
-}) {
-	return (
-		<div style={{ display: 'inline-flex', border: '1px solid var(--l2-hairline)', borderRadius: 2, overflow: 'hidden' }}>
-			{options.map((opt) => {
-				const active = opt === value;
-				return (
-					<button
-						key={opt}
-						onClick={() => !disabled && onChange(opt)}
-						disabled={disabled}
-						style={{
-							padding: '7px 14px',
-							border: 'none',
-							background: active ? 'rgba(79,139,255,0.16)' : 'transparent',
-							color: active ? 'var(--atlas-celestial)' : 'var(--l2-fg-3)',
-							fontFamily: 'var(--l2-font-mono)',
-							fontSize: 10.5,
-							letterSpacing: '0.12em',
-							textTransform: 'uppercase',
-							cursor: disabled ? 'default' : 'pointer',
-							opacity: disabled && !active ? 0.5 : 1
-						}}
-					>
-						{opt}
-					</button>
-				);
-			})}
-		</div>
 	);
 }
 

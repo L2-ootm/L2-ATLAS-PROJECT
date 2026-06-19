@@ -13,6 +13,8 @@ export interface Mission {
 	project: string;
 	created_at: string;
 	updated_at: string;
+	archived_at?: string | null;
+	delete_after?: string | null;
 }
 
 /** Folder-backed working directory (P3). Mirrors db.rs project_row. */
@@ -129,6 +131,27 @@ export async function createMission(
 	});
 }
 
+export async function archiveMission(
+	id: string,
+	deleteAfterDays = 30
+): Promise<{ mission: Mission; runs: Run[] }> {
+	return apiFetch(`/v1/missions/${encodeURIComponent(id)}/archive`, {
+		method: 'POST',
+		body: JSON.stringify({ delete_after_days: deleteAfterDays })
+	});
+}
+
+export async function purgeArchivedMissions(): Promise<{ deleted: number }> {
+	try {
+		return await apiFetch('/v1/missions/purge-archived', { method: 'POST' });
+	} catch (err) {
+		if (err instanceof ApiError && (err.status === 404 || err.status === 503)) {
+			return { deleted: 0 };
+		}
+		throw err;
+	}
+}
+
 // ── Project endpoints (P3 — folder-backed working directories) ────────────────
 
 export async function listProjects(limit = 100): Promise<{ projects: Project[]; count: number }> {
@@ -141,6 +164,41 @@ export async function listProjects(limit = 100): Promise<{ projects: Project[]; 
 		}
 		throw err;
 	}
+}
+
+// ── Console chat endpoint (operator workbench) ──────────────────────────────
+
+export interface ConsoleChatEvent {
+	type: string;
+	text?: string;
+	tool_name?: string | null;
+	tool_call_id?: string | null;
+	input?: unknown;
+	content?: unknown;
+	error?: string;
+	subtype?: string | null;
+	num_turns?: number | null;
+	total_cost_usd?: number | null;
+	usage?: unknown;
+}
+
+export interface ConsoleChatResponse {
+	status: 'succeeded' | 'failed';
+	agent: AgentRuntime;
+	cwd: string | null;
+	text: string;
+	events: ConsoleChatEvent[];
+}
+
+export async function consoleChat(body: {
+	prompt: string;
+	agent: AgentRuntime;
+	cwd?: string | null;
+}): Promise<ConsoleChatResponse> {
+	return apiFetch('/v1/console/chat', {
+		method: 'POST',
+		body: JSON.stringify(body)
+	});
 }
 
 export async function getProject(
@@ -224,6 +282,82 @@ export async function cashflowStart(backend: 'local' | 'supabase'): Promise<{ me
 
 export async function cashflowStop(): Promise<{ message: string }> {
 	return apiFetch('/v1/cashflow/stop', { method: 'POST' });
+}
+
+export interface CashflowClient {
+	id: string;
+	name: string;
+	service: string;
+	monthlyPayment: number;
+	startDate: string;
+	contractMonths: number;
+	active: boolean;
+	phone: string | null;
+	notes: string;
+}
+
+export interface CashflowInvoice {
+	id: string;
+	clientName: string;
+	description: string;
+	amount: number;
+	issueDate: string;
+	dueDate: string;
+	paidDate: string | null;
+	status: string;
+}
+
+export interface CashflowExpense {
+	id: string;
+	clientId: string | null;
+	category: string;
+	description: string;
+	amount: number;
+	date: string;
+	recurring: boolean;
+}
+
+export interface CashflowSummary {
+	available: boolean;
+	db_path: string;
+	metrics: {
+		active_clients: number;
+		monthly_revenue: number;
+		monthly_expenses: number;
+		profit: number;
+		outstanding: number;
+		overdue_invoices: number;
+		due_soon_invoices: number;
+	};
+	clients: CashflowClient[];
+	invoices: CashflowInvoice[];
+	expenses: CashflowExpense[];
+}
+
+export async function cashflowSummary(): Promise<CashflowSummary> {
+	try {
+		return await apiFetch<CashflowSummary>('/v1/cashflow/summary');
+	} catch (err) {
+		if (err instanceof ApiError && (err.status === 404 || err.status === 503)) {
+			return {
+				available: false,
+				db_path: '',
+				metrics: {
+					active_clients: 0,
+					monthly_revenue: 0,
+					monthly_expenses: 0,
+					profit: 0,
+					outstanding: 0,
+					overdue_invoices: 0,
+					due_soon_invoices: 0
+				},
+				clients: [],
+				invoices: [],
+				expenses: []
+			};
+		}
+		throw err;
+	}
 }
 
 // ── Run endpoints ────────────────────────────────────────────────────────────
