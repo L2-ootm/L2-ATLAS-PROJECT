@@ -329,7 +329,7 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
 	return (
 		<div
 			onClick={onClose}
-			style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'grid', placeItems: 'center', background: 'rgba(4,5,9,0.86)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' }}
+			style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'grid', placeItems: 'center', background: 'rgba(5,6,10,0.97)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)' }}
 		>
 			<div onClick={(e) => e.stopPropagation()} style={{ width: 'min(560px, 92vw)' }}>
 			<BorderGlow
@@ -353,10 +353,10 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
 				</div>
 				<div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
 					<Field label="TITLE">
-						<TopoInput value={title} onChange={setTitle} placeholder="Concise mission title" tone="info" ariaLabel="Mission title" autoFocus />
+						<TopoInput value={title} onChange={setTitle} placeholder="Concise mission title" tone="info" ariaLabel="Mission title" autoFocus quiet />
 					</Field>
 					<Field label="INTENT">
-						<TopoInput value={intent} onChange={setIntent} placeholder="What should ATLAS accomplish, and why?" tone="ai" multiline rows={4} ariaLabel="Mission intent" />
+						<TopoInput value={intent} onChange={setIntent} placeholder="What should ATLAS accomplish, and why?" tone="ai" multiline rows={4} ariaLabel="Mission intent" quiet />
 					</Field>
 					{projects.length > 0 && (
 						<Field label="PROJECT (OPTIONAL — RUNS IN ITS FOLDER)">

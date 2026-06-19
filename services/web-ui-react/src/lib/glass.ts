@@ -13,19 +13,20 @@ export const GLASS_DISPLACE_ID = 'atlas-glass-displace';
  */
 export function glassPanel(extra?: CSSProperties): CSSProperties {
 	return {
-		border: '1px solid var(--l2-hairline)',
+		border: '1px solid var(--l2-glass-border)',
 		borderRadius: 2,
-		// Tinted pane that sits CLEARLY above the living TopoField — the terrain only
-		// faintly refracts through, it no longer washes across the surface. A faint
-		// diagonal specular sheen still sells the glass; the url() displacement + frost
-		// keep the refraction. Opacity raised (was 0.18/0.24) per the "panels too
-		// transparent" direction so data reads on a real surface, not raw terrain.
+		// Frosted REFRACTIVE glass (not flat translucency). A heavy blur turns the
+		// living TopoField behind into a soft glow rather than a raw contour wash;
+		// the url() feDisplacementMap warps that glow fluidically (the "liquid" bend);
+		// a bright diagonal specular sweep + an inner celestial glow + a lit top edge
+		// give the wet, glowing, glassmorphic read the flat tint was missing.
 		background:
-			'linear-gradient(125deg, rgba(237,234,224,0.06) 0%, transparent 30%, transparent 74%, rgba(237,234,224,0.025) 100%), linear-gradient(180deg, rgba(20,24,33,0.74), rgba(10,13,18,0.82))',
-		backdropFilter: `blur(11px) url(#${GLASS_DISPLACE_ID}) saturate(1.4) brightness(1.02)`,
-		WebkitBackdropFilter: 'blur(11px) saturate(1.4) brightness(1.02)',
-		// No heavy inner shadow — that was reading as "solid". Top specular + soft lift.
-		boxShadow: 'inset 0 1px 0 rgba(237,234,224,0.07), 0 8px 30px rgba(0,0,0,0.28)',
+			'linear-gradient(135deg, rgba(237,234,224,0.11) 0%, transparent 24%, transparent 67%, rgba(237,234,224,0.05) 100%), linear-gradient(180deg, rgba(22,26,36,0.56), rgba(10,13,18,0.64))',
+		backdropFilter: `blur(18px) url(#${GLASS_DISPLACE_ID}) saturate(1.7) brightness(1.06)`,
+		WebkitBackdropFilter: 'blur(18px) saturate(1.7) brightness(1.06)',
+		// Lit top edge + faint inner celestial glow + soft lift = depth without going solid.
+		boxShadow:
+			'inset 0 1px 0 rgba(237,234,224,0.12), inset 0 0 30px rgba(79,139,255,0.06), 0 12px 44px rgba(0,0,0,0.36)',
 		...extra
 	};
 }

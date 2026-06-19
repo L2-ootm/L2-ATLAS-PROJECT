@@ -318,7 +318,7 @@ function ProjectModal({ mode, onClose, onCreated }: { mode: Mode; onClose: () =>
 	return (
 		<div
 			onClick={onClose}
-			style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'grid', placeItems: 'center', background: 'rgba(4,5,9,0.86)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' }}
+			style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'grid', placeItems: 'center', background: 'rgba(5,6,10,0.97)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)' }}
 		>
 			<div onClick={(e) => e.stopPropagation()} style={{ width: 'min(560px, 92vw)' }}>
 				<BorderGlow
@@ -344,7 +344,7 @@ function ProjectModal({ mode, onClose, onCreated }: { mode: Mode; onClose: () =>
 						</div>
 						<div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
 							<Field label="NAME">
-								<TopoInput value={name} onChange={setName} placeholder="Project name" tone="good" ariaLabel="Project name" autoFocus />
+								<TopoInput value={name} onChange={setName} placeholder="Project name" tone="good" ariaLabel="Project name" autoFocus quiet />
 							</Field>
 							<Field label={isCreate ? 'FOLDER TO CREATE' : 'EXISTING FOLDER PATH'}>
 								<TopoInput
@@ -353,6 +353,7 @@ function ProjectModal({ mode, onClose, onCreated }: { mode: Mode; onClose: () =>
 									placeholder={isCreate ? 'C:\\path\\to\\new-project' : 'C:\\path\\to\\existing\\folder'}
 									tone="info"
 									ariaLabel="Folder path"
+									quiet
 								/>
 							</Field>
 							<div style={{ color: 'var(--l2-fg-3)', fontSize: 11.5, lineHeight: 1.5 }}>

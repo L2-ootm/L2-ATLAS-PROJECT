@@ -67,6 +67,8 @@ interface TopoInputProps {
 	onSubmit?: () => void;
 	ariaLabel?: string;
 	autoFocus?: boolean;
+	/** Clean mode: no per-field topo, solid background. For modals/dialogs. */
+	quiet?: boolean;
 	style?: CSSProperties;
 }
 
@@ -81,6 +83,7 @@ export default function TopoInput({
 	onSubmit,
 	ariaLabel,
 	autoFocus,
+	quiet = false,
 	style
 }: TopoInputProps) {
 	const hostRef = useRef<HTMLDivElement>(null);
@@ -92,6 +95,7 @@ export default function TopoInput({
 	useEffect(() => {
 		const host = hostRef.current;
 		if (!host) return;
+		if (quiet) return; // clean mode — no per-field topo (modals)
 		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
 		const build = () => {
@@ -122,7 +126,7 @@ export default function TopoInput({
 			fieldRef.current?.destroy();
 			fieldRef.current = null;
 		};
-	}, [tone]);
+	}, [tone, quiet]);
 
 	// Caret → field coordinates (accounting for the control's offset within the
 	// host and soft-wrapped lines), then push a glow source there.
@@ -181,8 +185,10 @@ export default function TopoInput({
 				minHeight: multiline ? undefined : 44,
 				borderRadius: 2,
 				border: '1px solid var(--l2-hairline)',
-				background: 'linear-gradient(180deg, rgba(21,24,32,0.66), rgba(11,13,18,0.66))',
-				backdropFilter: 'blur(10px) saturate(1.2)',
+				background: quiet
+					? 'rgba(15,18,25,1)'
+					: 'linear-gradient(180deg, rgba(21,24,32,0.66), rgba(11,13,18,0.66))',
+				backdropFilter: quiet ? undefined : 'blur(10px) saturate(1.2)',
 				overflow: 'hidden',
 				...style
 			}}
