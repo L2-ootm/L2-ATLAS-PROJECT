@@ -37,6 +37,15 @@ fn stop_gateway() -> Result<String, String> {
     run_atlas(&["gateway", "stop"])
 }
 
+#[tauri::command]
+fn select_folder(title: String) -> Result<Option<String>, String> {
+    let folder = rfd::FileDialog::new()
+        .set_title(&title)
+        .pick_folder()
+        .map(|path| path.to_string_lossy().to_string());
+    Ok(folder)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -53,7 +62,8 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       start_gateway,
       gateway_status,
-      stop_gateway
+      stop_gateway,
+      select_folder
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
