@@ -558,6 +558,17 @@ async fn console_chat(State(state): State<AppState>, Json(body): Json<ConsoleCha
     Ok(Json(value))
 }
 
+/// Project knowledge graph for the cockpit Graphify view. Builds from the
+/// gateway's working directory `.planning/` corpus (fast — dozens of docs).
+async fn graph_view(State(state): State<AppState>) -> ApiResult {
+    let args = ["graph", "build", "--root", "."];
+    let out = dispatch_atlas_with_timeout(&state.atlas_cmd, &args, CONSOLE_DISPATCH_TIMEOUT).await?;
+    let value: Value = serde_json::from_str(&out).map_err(|e| {
+        ApiError::Internal(format!("atlas graph build returned invalid JSON: {e}"))
+    })?;
+    Ok(Json(value))
+}
+
 #[derive(Deserialize)]
 struct CreateMissionBody {
     title: String,
@@ -1030,6 +1041,7 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/wiki/search", get(wiki_search))
         .route("/v1/models", get(models_list))
         .route("/v1/console/chat", post(console_chat))
+        .route("/v1/graph", get(graph_view))
         .route("/v1/host/select-folder", post(select_folder))
         .route("/v1/projects", get(projects_list).post(projects_create))
         .route("/v1/projects/register", post(projects_register))
