@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Wallet, Boxes, type LucideIcon } from 'lucide-react';
 import { navSections, type CockpitModule, type NavSection } from '../lib/modules';
-import { checkHealth, listModules } from '../lib/api';
+import { listModules } from '../lib/api';
+import { useGatewayHealth } from '../lib/useGatewayHealth';
 
 // Active optional modules (Decision 3b) render as a dynamic nav section. Map known
 // module ids to an icon; unknown modules fall back to a generic one.
@@ -20,20 +21,15 @@ export default function Sidebar({ expanded, onToggle }: SidebarProps) {
 	const width = expanded ? SIDEBAR_WIDTH_EXPANDED : SIDEBAR_WIDTH_COLLAPSED;
 	const { pathname } = useLocation();
 
-	// ── Gateway health ──────────────────────────────────────────────────────
-	const [gatewayOnline, setGatewayOnline] = useState<boolean | null>(null);
+	// ── Gateway health — shared heartbeat (live, no manual refresh) ──────────
+	const { online: gatewayOnline, epoch } = useGatewayHealth();
 	// ── Active optional modules (drive the dynamic nav section) ──────────────
 	const [activeModuleNav, setActiveModuleNav] = useState<CockpitModule[]>([]);
 
+	// Refetch the module nav on (re)connect (epoch) and on a slow interval.
 	useEffect(() => {
 		let alive = true;
-		async function poll() {
-			try {
-				await checkHealth();
-				if (alive) setGatewayOnline(true);
-			} catch {
-				if (alive) setGatewayOnline(false);
-			}
+		async function loadModules() {
 			try {
 				const { modules } = await listModules();
 				if (!alive) return;
@@ -53,13 +49,13 @@ export default function Sidebar({ expanded, onToggle }: SidebarProps) {
 				if (alive) setActiveModuleNav([]);
 			}
 		}
-		void poll();
-		const id = setInterval(() => void poll(), 30_000);
+		void loadModules();
+		const id = setInterval(() => void loadModules(), 30_000);
 		return () => {
 			alive = false;
 			clearInterval(id);
 		};
-	}, []);
+	}, [epoch]);
 
 	// navSections + a dynamic MODULES section when any optional module is active.
 	const sections: NavSection[] =
@@ -311,7 +307,10 @@ export default function Sidebar({ expanded, onToggle }: SidebarProps) {
 							borderRadius: '50%',
 							background: statusColor,
 							boxShadow: `0 0 8px ${statusColor}`,
-							flex: 'none'
+							flex: 'none',
+							transition: 'background 600ms var(--l2-ease), box-shadow 600ms var(--l2-ease)',
+							// Gentle heartbeat while online so the live status reads as "alive".
+							animation: gatewayOnline === true ? 'atlas-heartbeat 2.4s var(--l2-ease) infinite' : 'none'
 						}}
 					/>
 					{expanded && (

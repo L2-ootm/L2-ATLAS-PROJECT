@@ -13,6 +13,7 @@ import {
 	type CashflowStatus
 } from '../lib/api';
 import { isTauri, startGatewayViaShell } from '../lib/host';
+import { useGatewayHealth } from '../lib/useGatewayHealth';
 
 // ── System — operator control surface ────────────────────────────────────────
 // Gateway + database health, the offline start affordance (a browser SPA cannot
@@ -31,6 +32,7 @@ export default function System() {
 	const [load, setLoad] = useState<Load>({ s: 'loading' });
 	const [busyId, setBusyId] = useState<string | null>(null);
 	const [err, setErr] = useState<string | null>(null);
+	const { epoch } = useGatewayHealth();
 
 	const refresh = useCallback(async () => {
 		const [h, m] = await Promise.allSettled([checkHealth(), listModules()]);
@@ -49,7 +51,7 @@ export default function System() {
 		void refresh();
 		const id = setInterval(() => void refresh(), 15_000);
 		return () => clearInterval(id);
-	}, [refresh]);
+	}, [refresh, epoch]);
 
 	async function toggle(mod: Module) {
 		setBusyId(mod.id);
