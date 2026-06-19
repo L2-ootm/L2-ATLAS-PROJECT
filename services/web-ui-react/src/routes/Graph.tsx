@@ -1,6 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type * as React from 'react';
 import ForceGraph3D from '3d-force-graph';
-import { Boxes, RefreshCw } from 'lucide-react';
+import * as THREE from 'three';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import SpriteText from 'three-spritetext';
+import { Boxes, Crosshair, Maximize2, Minus, Plus, RefreshCw, Search, X } from 'lucide-react';
 import { Page } from '../components/Page';
 import { GlassPanel } from '../components/GlassFx';
 import { getGraph, type GraphData, type GraphNode } from '../lib/api';
@@ -10,7 +14,7 @@ type Load = { s: 'loading' } | { s: 'ready'; data: GraphData } | { s: 'error'; m
 // Node color by kind — bronze for structural hubs, celestial/cyan/violet for content.
 const NODE_COLOR: Record<string, string> = {
 	root: '#E0A94E',
-	group: '#9C6B2E',
+	group: '#C98A3E',
 	phase: '#4A5DBF',
 	milestone: '#7F00FF',
 	roadmap: '#00F0FF',
@@ -28,13 +32,15 @@ const NODE_COLOR: Record<string, string> = {
 const colorFor = (kind: string): string => NODE_COLOR[kind] ?? '#8A93A6';
 
 const LINK_COLOR: Record<string, string> = {
-	contains: 'rgba(224,169,78,0.28)',
-	link: 'rgba(0,240,255,0.55)',
-	wikilink: 'rgba(0,229,200,0.55)',
-	decision: 'rgba(127,0,255,0.45)',
-	phase: 'rgba(74,93,191,0.5)'
+	contains: 'rgba(224,169,78,0.22)',
+	link: 'rgba(0,240,255,0.6)',
+	wikilink: 'rgba(0,229,200,0.6)',
+	decision: 'rgba(127,0,255,0.5)',
+	phase: 'rgba(74,93,191,0.55)'
 };
+const linkColorFor = (kind: string): string => LINK_COLOR[kind] ?? 'rgba(237,234,224,0.2)';
 
+// Minimal builder surface we use from 3d-force-graph (typed loosely on purpose).
 type GraphHandle = {
 	graphData: (d: { nodes: unknown[]; links: unknown[] }) => GraphHandle;
 	nodeLabel: (fn: (n: unknown) => string) => GraphHandle;
@@ -42,27 +48,41 @@ type GraphHandle = {
 	nodeVal: (fn: (n: unknown) => number) => GraphHandle;
 	nodeOpacity: (v: number) => GraphHandle;
 	nodeResolution: (v: number) => GraphHandle;
+	nodeThreeObjectExtend: (v: boolean) => GraphHandle;
+	nodeThreeObject: (fn: (n: unknown) => unknown) => GraphHandle;
 	linkColor: (fn: (l: unknown) => string) => GraphHandle;
 	linkWidth: (v: number) => GraphHandle;
 	linkOpacity: (v: number) => GraphHandle;
+	linkDirectionalParticles: (fn: (l: unknown) => number) => GraphHandle;
+	linkDirectionalParticleWidth: (v: number) => GraphHandle;
+	linkDirectionalParticleSpeed: (v: number) => GraphHandle;
+	linkDirectionalParticleColor: (fn: (l: unknown) => string) => GraphHandle;
 	backgroundColor: (c: string) => GraphHandle;
 	showNavInfo: (v: boolean) => GraphHandle;
 	width: (v: number) => GraphHandle;
 	height: (v: number) => GraphHandle;
 	onNodeClick: (fn: (n: unknown) => void) => GraphHandle;
-	cameraPosition: (pos: { x: number; y: number; z: number }, lookAt?: unknown, ms?: number) => GraphHandle;
+	cameraPosition: (pos?: Vec3, lookAt?: unknown, ms?: number) => Vec3;
+	zoomToFit: (ms?: number, px?: number) => GraphHandle;
+	postProcessingComposer: () => { addPass: (p: unknown) => void };
+	scene: () => THREE.Scene;
 	_destructor?: () => void;
 };
+
+type Vec3 = { x: number; y: number; z: number };
 
 export default function Graph() {
 	const [load, setLoad] = useState<Load>({ s: 'loading' });
 	const [nonce, setNonce] = useState(0);
+	const [selected, setSelected] = useState<GraphNode | null>(null);
+	const [query, setQuery] = useState('');
 	const containerRef = useRef<HTMLDivElement>(null);
 	const graphRef = useRef<GraphHandle | null>(null);
 
 	useEffect(() => {
 		let alive = true;
 		setLoad({ s: 'loading' });
+		setSelected(null);
 		getGraph()
 			.then((data) => alive && setLoad({ s: 'ready', data }))
 			.catch((err) => alive && setLoad({ s: 'error', message: err instanceof Error ? err.message : String(err) }));
@@ -73,12 +93,57 @@ export default function Graph() {
 
 	const data = load.s === 'ready' ? load.data : null;
 
+	// Adjacency + node index, captured from the raw (string-id) links before
+	// 3d-force-graph mutates its own copies into node references.
+	const { nodeById, neighbors } = useMemo(() => {
+		const byId = new Map<string, GraphNode>();
+		const adj = new Map<string, Set<string>>();
+		if (data) {
+			for (const node of data.nodes) {
+				byId.set(node.id, node);
+				adj.set(node.id, new Set());
+			}
+			for (const link of data.links) {
+				adj.get(link.source)?.add(link.target);
+				adj.get(link.target)?.add(link.source);
+			}
+		}
+		return { nodeById: byId, neighbors: adj };
+	}, [data]);
+
+	const stats = useMemo(() => {
+		if (!data) return null;
+		const n = data.nodes.length;
+		const e = data.links.length;
+		const communities = new Set(data.nodes.map((node) => node.group)).size;
+		const density = n > 1 ? (2 * e) / (n * (n - 1)) : 0;
+		const avgDegree = n > 0 ? (2 * e) / n : 0;
+		return { n, e, communities, density, avgDegree };
+	}, [data]);
+
+	const focusNode = useCallback((node: GraphNode) => {
+		const graph = graphRef.current;
+		const pos = node as unknown as Vec3;
+		if (!graph || pos.x === undefined) return;
+		const dist = 80;
+		const hyp = Math.hypot(pos.x, pos.y, pos.z) || 1;
+		const ratio = 1 + dist / hyp;
+		graph.cameraPosition({ x: pos.x * ratio, y: pos.y * ratio, z: pos.z * ratio }, pos, 900);
+	}, []);
+
+	const selectAndFocus = useCallback(
+		(node: GraphNode) => {
+			setSelected(node);
+			focusNode(node);
+		},
+		[focusNode]
+	);
+
 	useEffect(() => {
 		const el = containerRef.current;
 		if (!el || !data) return;
 
-		const GraphCtor = ForceGraph3D as unknown as new (e: HTMLElement) => GraphHandle;
-		const graph = new GraphCtor(el)
+		const graph = (new (ForceGraph3D as unknown as new (e: HTMLElement) => GraphHandle)(el))
 			.backgroundColor('rgba(7,8,12,0)')
 			.showNavInfo(false)
 			.nodeLabel((n) => {
@@ -88,27 +153,51 @@ export default function Graph() {
 			.nodeColor((n) => colorFor((n as GraphNode).kind))
 			.nodeVal((n) => {
 				const node = n as GraphNode;
-				if (node.kind === 'group') return 6;
-				return Math.max(1.2, Math.min(8, node.size / 2200));
+				if (node.id === 'root') return 14;
+				if (node.kind === 'group') return 7;
+				return Math.max(1.4, Math.min(8, node.size / 2200));
 			})
-			.nodeOpacity(0.92)
-			.nodeResolution(12)
-			.linkColor((l) => LINK_COLOR[(l as { kind: string }).kind] ?? 'rgba(237,234,224,0.2)')
-			.linkWidth(0.7)
-			.linkOpacity(0.8)
+			.nodeOpacity(0.95)
+			.nodeResolution(16)
+			.nodeThreeObjectExtend(true)
+			.nodeThreeObject((n) => {
+				const node = n as GraphNode;
+				if (node.kind !== 'group') return undefined as unknown as THREE.Object3D;
+				const sprite = new SpriteText(node.label);
+				sprite.color = '#EDEAE0';
+				sprite.textHeight = node.id === 'root' ? 7 : 4.5;
+				sprite.fontFace = 'JetBrains Mono, ui-monospace, monospace';
+				sprite.fontWeight = '600';
+				sprite.backgroundColor = 'rgba(7,8,12,0.5)';
+				sprite.padding = 2;
+				sprite.borderRadius = 2;
+				const mat = (sprite as unknown as { material: THREE.Material }).material;
+				mat.depthWrite = false;
+				sprite.position.set(0, node.id === 'root' ? 12 : 8, 0);
+				return sprite;
+			})
+			.linkColor((l) => linkColorFor((l as { kind: string }).kind))
+			.linkWidth(0.6)
+			.linkOpacity(0.7)
+			.linkDirectionalParticles((l) => ((l as { kind: string }).kind === 'contains' ? 0 : 2))
+			.linkDirectionalParticleWidth(1.5)
+			.linkDirectionalParticleSpeed(0.01)
+			.linkDirectionalParticleColor((l) => linkColorFor((l as { kind: string }).kind))
 			.width(el.clientWidth)
 			.height(el.clientHeight)
-			.onNodeClick((n) => {
-				const node = n as unknown as { x: number; y: number; z: number };
-				const distance = 90;
-				const ratio = 1 + distance / Math.hypot(node.x || 1, node.y || 1, node.z || 1);
-				graph.cameraPosition(
-					{ x: (node.x || 0) * ratio, y: (node.y || 0) * ratio, z: (node.z || 0) * ratio },
-					node,
-					900
-				);
-			})
-			.graphData({ nodes: data.nodes as unknown[], links: data.links as unknown[] });
+			.onNodeClick((n) => selectAndFocus(n as GraphNode))
+			.graphData({
+				nodes: data.nodes.map((node) => ({ ...node })),
+				links: data.links.map((link) => ({ ...link }))
+			});
+
+		// Unreal bloom — the glowing, electric-nebula look.
+		try {
+			const bloom = new UnrealBloomPass(new THREE.Vector2(el.clientWidth, el.clientHeight), 1.9, 0.85, 0.12);
+			graph.postProcessingComposer().addPass(bloom);
+		} catch {
+			// postprocessing unavailable — fall back to flat nodes
+		}
 
 		graphRef.current = graph;
 
@@ -124,20 +213,33 @@ export default function Graph() {
 			graphRef.current = null;
 			el.replaceChildren();
 		};
-	}, [data]);
+	}, [data, selectAndFocus]);
 
-	const counts = data?.counts;
-	const legend = useMemo(
-		() => [
-			{ kind: 'phase', label: 'Phase' },
-			{ kind: 'roadmap', label: 'Roadmap/State' },
-			{ kind: 'research', label: 'Research' },
-			{ kind: 'prep', label: 'Prep' },
-			{ kind: 'report', label: 'Report' },
-			{ kind: 'group', label: 'Folder' }
-		],
-		[]
-	);
+	const zoomBy = (factor: number) => {
+		const graph = graphRef.current;
+		if (!graph) return;
+		const c = graph.cameraPosition();
+		graph.cameraPosition({ x: c.x * factor, y: c.y * factor, z: c.z * factor }, undefined, 240);
+	};
+
+	const fitView = () => graphRef.current?.zoomToFit(600, 70);
+
+	const runSearch = (e: React.FormEvent) => {
+		e.preventDefault();
+		const q = query.trim().toLowerCase();
+		if (!q || !data) return;
+		const hit =
+			data.nodes.find((node) => node.label.toLowerCase() === q) ??
+			data.nodes.find((node) => node.label.toLowerCase().includes(q)) ??
+			data.nodes.find((node) => node.id.toLowerCase().includes(q));
+		if (hit) selectAndFocus(hit);
+	};
+
+	const selectedNeighbors = selected
+		? Array.from(neighbors.get(selected.id) ?? [])
+				.map((id) => nodeById.get(id))
+				.filter((node): node is GraphNode => !!node)
+		: [];
 
 	return (
 		<Page
@@ -145,12 +247,7 @@ export default function Graph() {
 			title="Knowledge Graph"
 			max={null}
 			actions={
-				<button
-					type="button"
-					onClick={() => setNonce((n) => n + 1)}
-					title="Rebuild graph"
-					style={rebuildButtonStyle}
-				>
+				<button type="button" onClick={() => setNonce((n) => n + 1)} title="Rebuild graph" style={rebuildButtonStyle}>
 					<RefreshCw size={14} strokeWidth={1.8} />
 					<span>REBUILD</span>
 				</button>
@@ -162,6 +259,82 @@ export default function Graph() {
 			>
 				<div ref={containerRef} style={{ position: 'absolute', inset: 0 }} />
 
+				{/* Search */}
+				<form onSubmit={runSearch} style={searchWrapStyle}>
+					<Search size={13} strokeWidth={1.8} style={{ color: 'var(--l2-fg-3)', flex: '0 0 auto' }} />
+					<input
+						value={query}
+						onChange={(e) => setQuery(e.target.value)}
+						placeholder="Search the graph…"
+						style={searchInputStyle}
+					/>
+				</form>
+
+				{/* Legend */}
+				<div style={legendStyle}>
+					{LEGEND.map((item) => (
+						<span key={item.kind} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+							<span style={{ width: 8, height: 8, borderRadius: 8, background: colorFor(item.kind) }} />
+							{item.label}
+						</span>
+					))}
+				</div>
+
+				{/* Stats */}
+				{stats && (
+					<div style={statsStyle}>
+						<div style={statsTitleStyle}>GRAPH OVERVIEW</div>
+						<Stat label="Nodes" value={String(stats.n)} />
+						<Stat label="Edges" value={String(stats.e)} />
+						<Stat label="Communities" value={String(stats.communities)} />
+						<Stat label="Density" value={stats.density.toFixed(3)} />
+						<Stat label="Avg Degree" value={stats.avgDegree.toFixed(2)} />
+					</div>
+				)}
+
+				{/* Camera controls */}
+				<div style={controlsStyle}>
+					<CtrlButton title="Fit view" onClick={fitView}>
+						<Maximize2 size={14} strokeWidth={1.8} />
+					</CtrlButton>
+					<CtrlButton title="Zoom in" onClick={() => zoomBy(0.78)}>
+						<Plus size={14} strokeWidth={1.8} />
+					</CtrlButton>
+					<CtrlButton title="Zoom out" onClick={() => zoomBy(1.28)}>
+						<Minus size={14} strokeWidth={1.8} />
+					</CtrlButton>
+				</div>
+
+				{/* Node inspector */}
+				{selected && (
+					<div style={inspectStyle}>
+						<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+							<span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+								<span style={{ width: 9, height: 9, borderRadius: 9, background: colorFor(selected.kind) }} />
+								<span style={inspectKindStyle}>{selected.kind.toUpperCase()}</span>
+							</span>
+							<button type="button" onClick={() => setSelected(null)} style={inspectCloseStyle} title="Close">
+								<X size={13} strokeWidth={1.8} />
+							</button>
+						</div>
+						<div style={inspectTitleStyle}>{selected.label}</div>
+						<div style={inspectPathStyle}>{selected.id}</div>
+						<button type="button" onClick={() => focusNode(selected)} style={focusButtonStyle}>
+							<Crosshair size={12} strokeWidth={1.8} />
+							FOCUS
+						</button>
+						<div style={inspectSectionLabelStyle}>CONNECTIONS · {selectedNeighbors.length}</div>
+						<div style={{ display: 'flex', flexDirection: 'column', gap: 3, overflow: 'auto', maxHeight: 260 }}>
+							{selectedNeighbors.map((node) => (
+								<button key={node.id} type="button" onClick={() => selectAndFocus(node)} style={neighborRowStyle}>
+									<span style={{ width: 7, height: 7, borderRadius: 7, background: colorFor(node.kind), flex: '0 0 auto' }} />
+									<span style={neighborLabelStyle}>{node.label}</span>
+								</button>
+							))}
+						</div>
+					</div>
+				)}
+
 				{load.s === 'loading' && <div style={overlayStyle}>Building knowledge graph…</div>}
 				{load.s === 'error' && (
 					<div style={overlayStyle}>
@@ -171,23 +344,35 @@ export default function Graph() {
 					</div>
 				)}
 
-				{counts && (
-					<div style={hudStyle}>
-						<span>{counts.nodes} NODES</span>
-						<span>{counts.links} EDGES</span>
-					</div>
-				)}
-
-				<div style={legendStyle}>
-					{legend.map((item) => (
-						<span key={item.kind} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-							<span style={{ width: 8, height: 8, borderRadius: 8, background: colorFor(item.kind) }} />
-							{item.label}
-						</span>
-					))}
-				</div>
+				<div style={hintStyle}>Drag to orbit · Scroll to zoom · Click a node to inspect</div>
 			</GlassPanel>
 		</Page>
+	);
+}
+
+const LEGEND = [
+	{ kind: 'phase', label: 'Phase' },
+	{ kind: 'roadmap', label: 'Roadmap/State' },
+	{ kind: 'research', label: 'Research' },
+	{ kind: 'prep', label: 'Prep' },
+	{ kind: 'report', label: 'Report' },
+	{ kind: 'group', label: 'Folder' }
+];
+
+function Stat({ label, value }: { label: string; value: string }) {
+	return (
+		<div style={{ display: 'flex', justifyContent: 'space-between', gap: 14 }}>
+			<span style={{ color: 'var(--l2-fg-3)' }}>{label}</span>
+			<span style={{ color: 'var(--l2-fg-1)' }}>{value}</span>
+		</div>
+	);
+}
+
+function CtrlButton({ title, onClick, children }: { title: string; onClick: () => void; children: React.ReactNode }) {
+	return (
+		<button type="button" title={title} onClick={onClick} style={ctrlButtonStyle}>
+			{children}
+		</button>
 	);
 }
 
@@ -208,32 +393,202 @@ const overlayStyle: React.CSSProperties = {
 	padding: 24
 };
 
-const hudStyle: React.CSSProperties = {
+const searchWrapStyle: React.CSSProperties = {
 	position: 'absolute',
 	top: 12,
-	right: 14,
+	left: 14,
 	display: 'flex',
-	gap: 14,
+	alignItems: 'center',
+	gap: 8,
+	width: 240,
+	padding: '7px 10px',
+	borderRadius: 2,
+	border: '1px solid rgba(74,93,191,0.32)',
+	background: 'rgba(7,8,12,0.6)',
+	backdropFilter: 'blur(8px)'
+};
+
+const searchInputStyle: React.CSSProperties = {
+	flex: 1,
+	minWidth: 0,
+	border: 'none',
+	background: 'transparent',
+	outline: 'none',
+	color: 'var(--l2-fg-1)',
 	fontFamily: 'var(--l2-font-mono)',
-	fontSize: 10,
-	letterSpacing: '0.16em',
-	color: 'var(--l2-fg-3)',
-	pointerEvents: 'none'
+	fontSize: 11.5,
+	letterSpacing: '0.03em'
 };
 
 const legendStyle: React.CSSProperties = {
 	position: 'absolute',
-	bottom: 12,
-	left: 14,
+	top: 12,
+	right: 14,
 	display: 'flex',
 	flexWrap: 'wrap',
-	gap: 14,
+	justifyContent: 'flex-end',
+	gap: 12,
+	maxWidth: 420,
 	fontFamily: 'var(--l2-font-mono)',
 	fontSize: 9.5,
 	letterSpacing: '0.1em',
 	textTransform: 'uppercase',
 	color: 'var(--l2-fg-3)',
 	pointerEvents: 'none'
+};
+
+const statsStyle: React.CSSProperties = {
+	position: 'absolute',
+	bottom: 14,
+	left: 14,
+	width: 200,
+	display: 'flex',
+	flexDirection: 'column',
+	gap: 6,
+	padding: '12px 13px',
+	borderRadius: 2,
+	border: '1px solid rgba(237,234,224,0.08)',
+	background: 'rgba(7,8,12,0.62)',
+	backdropFilter: 'blur(10px)',
+	fontFamily: 'var(--l2-font-mono)',
+	fontSize: 11
+};
+
+const statsTitleStyle: React.CSSProperties = {
+	fontSize: 9,
+	letterSpacing: '0.18em',
+	color: 'var(--atlas-bronze)',
+	marginBottom: 2
+};
+
+const controlsStyle: React.CSSProperties = {
+	position: 'absolute',
+	bottom: 14,
+	right: 14,
+	display: 'flex',
+	flexDirection: 'column',
+	gap: 6
+};
+
+const ctrlButtonStyle: React.CSSProperties = {
+	width: 34,
+	height: 34,
+	display: 'inline-flex',
+	alignItems: 'center',
+	justifyContent: 'center',
+	borderRadius: 2,
+	border: '1px solid rgba(74,93,191,0.32)',
+	background: 'rgba(7,8,12,0.62)',
+	backdropFilter: 'blur(8px)',
+	color: 'var(--atlas-celestial)',
+	cursor: 'pointer'
+};
+
+const inspectStyle: React.CSSProperties = {
+	position: 'absolute',
+	top: 56,
+	right: 14,
+	width: 268,
+	display: 'flex',
+	flexDirection: 'column',
+	gap: 9,
+	padding: '13px 14px',
+	borderRadius: 2,
+	border: '1px solid rgba(74,93,191,0.34)',
+	background: 'rgba(9,11,16,0.86)',
+	backdropFilter: 'blur(14px)',
+	boxShadow: '0 18px 52px rgba(0,0,0,0.45)'
+};
+
+const inspectKindStyle: React.CSSProperties = {
+	fontFamily: 'var(--l2-font-mono)',
+	fontSize: 9.5,
+	letterSpacing: '0.16em',
+	color: 'var(--l2-fg-3)'
+};
+
+const inspectCloseStyle: React.CSSProperties = {
+	display: 'inline-flex',
+	border: 'none',
+	background: 'transparent',
+	color: 'var(--l2-fg-3)',
+	cursor: 'pointer',
+	padding: 2
+};
+
+const inspectTitleStyle: React.CSSProperties = {
+	fontFamily: 'var(--l2-font-sans)',
+	fontSize: 15,
+	fontWeight: 600,
+	color: 'var(--l2-fg-1)',
+	lineHeight: 1.25
+};
+
+const inspectPathStyle: React.CSSProperties = {
+	fontFamily: 'var(--l2-font-mono)',
+	fontSize: 10.5,
+	color: 'var(--l2-fg-3)',
+	wordBreak: 'break-all'
+};
+
+const inspectSectionLabelStyle: React.CSSProperties = {
+	fontFamily: 'var(--l2-font-mono)',
+	fontSize: 9,
+	letterSpacing: '0.16em',
+	color: 'var(--atlas-bronze)',
+	marginTop: 2
+};
+
+const focusButtonStyle: React.CSSProperties = {
+	display: 'inline-flex',
+	alignItems: 'center',
+	justifyContent: 'center',
+	gap: 7,
+	padding: '7px 0',
+	borderRadius: 2,
+	border: '1px solid rgba(74,93,191,0.4)',
+	background: 'rgba(74,93,191,0.14)',
+	color: 'var(--atlas-celestial)',
+	fontFamily: 'var(--l2-font-mono)',
+	fontSize: 10,
+	letterSpacing: '0.14em',
+	cursor: 'pointer'
+};
+
+const neighborRowStyle: React.CSSProperties = {
+	display: 'flex',
+	alignItems: 'center',
+	gap: 8,
+	width: '100%',
+	padding: '5px 7px',
+	border: 'none',
+	borderRadius: 2,
+	background: 'rgba(237,234,224,0.03)',
+	color: 'var(--l2-fg-2)',
+	cursor: 'pointer',
+	textAlign: 'left'
+};
+
+const neighborLabelStyle: React.CSSProperties = {
+	minWidth: 0,
+	overflow: 'hidden',
+	textOverflow: 'ellipsis',
+	whiteSpace: 'nowrap',
+	fontFamily: 'var(--l2-font-mono)',
+	fontSize: 11
+};
+
+const hintStyle: React.CSSProperties = {
+	position: 'absolute',
+	bottom: 16,
+	left: '50%',
+	transform: 'translateX(-50%)',
+	fontFamily: 'var(--l2-font-mono)',
+	fontSize: 9.5,
+	letterSpacing: '0.1em',
+	color: 'var(--l2-fg-3)',
+	pointerEvents: 'none',
+	opacity: 0.7
 };
 
 const rebuildButtonStyle: React.CSSProperties = {
