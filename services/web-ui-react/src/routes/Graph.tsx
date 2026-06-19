@@ -7,62 +7,20 @@ import SpriteText from 'three-spritetext';
 import { Boxes, Crosshair, Lock, Maximize2, Minus, Plus, RefreshCw, Search, X } from 'lucide-react';
 import { Page } from '../components/Page';
 import { GlassPanel } from '../components/GlassFx';
-import Lightning from '../components/Lightning';
+import { attachFog } from '../graph/GraphFog';
 import { getGraph, getGraphFetchedAt, type GraphData, type GraphNode, type GraphScope } from '../lib/api';
+import {
+	BLOOM,
+	colorFor,
+	FORCE,
+	linkColorFor,
+	nodeSize,
+	particleColorFor,
+	TEXT
+} from '../graph/GraphVisualConfig';
 
 type Load = { s: 'loading' } | { s: 'ready'; data: GraphData } | { s: 'error'; message: string };
 type SimNode = GraphNode & { x?: number; y?: number; z?: number };
-
-// Node color by kind — bronze for structural hubs, celestial/cyan/violet/etc for
-// content. Per-category (NOT heat) — clusters read as distinct communities.
-const NODE_COLOR: Record<string, string> = {
-	root: '#E0A94E',
-	group: '#C98A3E',
-	phase: '#4A5DBF',
-	milestone: '#7F00FF',
-	roadmap: '#00F0FF',
-	state: '#00E5C8',
-	project: '#E0A94E',
-	requirements: '#4A5DBF',
-	risks: '#FF4D7D',
-	retro: '#46F0A0',
-	prep: '#7F00FF',
-	research: '#00E5C8',
-	report: '#FFD600',
-	intel: '#46F0E0',
-	doc: '#8A93A6'
-};
-// Deterministic palette for unknown kinds (folder-slug communities from the
-// global/obsidian/projects scopes) so every cluster gets a distinct color.
-const PALETTE = [
-	'#00E5C8', '#00F0FF', '#4A5DBF', '#7F00FF', '#B14BE0', '#FF4D7D',
-	'#FFD600', '#46F0A0', '#E0A94E', '#5BC8FF', '#9A8CFF', '#FF8A3D', '#3DD6A8'
-];
-function paletteFor(kind: string): string {
-	let h = 0;
-	for (let i = 0; i < kind.length; i++) h = (h * 31 + kind.charCodeAt(i)) | 0;
-	return PALETTE[Math.abs(h) % PALETTE.length];
-}
-const colorFor = (kind: string): string => NODE_COLOR[kind] ?? paletteFor(kind);
-
-const LINK_COLOR: Record<string, string> = {
-	contains: 'rgba(224,169,78,0.16)',
-	link: 'rgba(0,240,255,0.5)',
-	wikilink: 'rgba(0,229,200,0.5)',
-	decision: 'rgba(127,0,255,0.45)',
-	phase: 'rgba(74,93,191,0.45)'
-};
-const linkColorFor = (kind: string): string => LINK_COLOR[kind] ?? 'rgba(237,234,224,0.16)';
-
-// Bright, opaque particle colors so the "electricity" actually glows through
-// the bloom pass (semi-transparent link colors stayed below threshold).
-const PARTICLE_COLOR: Record<string, string> = {
-	link: '#6FF4FF',
-	wikilink: '#5DF5E0',
-	decision: '#C79CFF',
-	phase: '#9CB0FF'
-};
-const particleColorFor = (kind: string): string => PARTICLE_COLOR[kind] ?? '#8FE9FF';
 
 // Minimal builder surface we use from 3d-force-graph (typed loosely on purpose).
 type GraphHandle = {
@@ -89,8 +47,14 @@ type GraphHandle = {
 	onEngineStop: (fn: () => void) => GraphHandle;
 	cameraPosition: (pos?: Vec3, lookAt?: unknown, ms?: number) => Vec3;
 	zoomToFit: (ms?: number, px?: number) => GraphHandle;
+	d3VelocityDecay: (v: number) => GraphHandle;
+	d3AlphaDecay: (v: number) => GraphHandle;
+	warmupTicks: (v: number) => GraphHandle;
+	cooldownTime: (v: number) => GraphHandle;
 	postProcessingComposer: () => { addPass: (p: unknown) => void };
 	scene: () => THREE.Scene;
+	camera: () => THREE.PerspectiveCamera;
+	controls: () => { target?: THREE.Vector3; enableDamping?: boolean; dampingFactor?: number };
 	_destructor?: () => void;
 };
 
@@ -121,6 +85,7 @@ export default function Graph() {
 	const [, setClock] = useState(0); // ticks "Updated Xm ago"
 	const containerRef = useRef<HTMLDivElement>(null);
 	const minimapRef = useRef<HTMLCanvasElement>(null);
+	const viewportRectRef = useRef<HTMLDivElement>(null);
 	const graphRef = useRef<GraphHandle | null>(null);
 	const simNodesRef = useRef<SimNode[]>([]);
 	const electricityRef = useRef(electricity);
@@ -223,20 +188,20 @@ export default function Graph() {
 		const simNodes: SimNode[] = data.nodes.map((node) => ({ ...node }));
 		simNodesRef.current = simNodes;
 
-		const graph = new (ForceGraph3D as unknown as new (e: HTMLElement) => GraphHandle)(el)
+		// Orbit controls (with damping) feel less "weird" than the default
+		// trackball — smoother pan/zoom/orbit that doesn't fight node drag.
+		const graph = new (ForceGraph3D as unknown as new (
+			e: HTMLElement,
+			opts?: { controlType?: string }
+		) => GraphHandle)(el, { controlType: 'orbit' })
 			.backgroundColor('rgba(7,8,12,0)')
 			.showNavInfo(false)
 			.nodeLabel((n) => {
 				const node = n as GraphNode;
-				return `<div style="font-family:var(--l2-font-mono);font-size:11px;letter-spacing:0.04em;color:#EDEAE0;background:rgba(7,8,12,0.92);border:1px solid rgba(74,93,191,0.4);padding:4px 8px;border-radius:2px"><b>${node.label}</b><br/><span style="opacity:0.6">${node.kind} · ${node.id}</span></div>`;
+				return `<div style="font-family:var(--l2-font-mono);font-size:11px;letter-spacing:0.04em;color:${TEXT.primary};background:rgba(7,8,12,0.94);border:1px solid rgba(79,139,255,0.4);padding:4px 8px;border-radius:2px"><b>${node.label}</b><br/><span style="color:${TEXT.secondary}">${node.kind} · ${node.id}</span></div>`;
 			})
 			.nodeColor((n) => colorFor((n as GraphNode).kind))
-			.nodeVal((n) => {
-				const node = n as GraphNode;
-				if (node.id === 'root') return 8;
-				if (node.kind === 'group') return 4.5;
-				return Math.max(1, Math.min(4.5, node.size / 3400));
-			})
+			.nodeVal((n) => nodeSize(n as GraphNode))
 			.nodeOpacity(0.9)
 			.nodeResolution(14)
 			.nodeThreeObjectExtend(true)
@@ -270,6 +235,15 @@ export default function Graph() {
 			.onNodeClick((n) => selectAndFocus(n as GraphNode))
 			.graphData({ nodes: simNodes, links: data.links.map((link) => ({ ...link })) });
 
+		// Smoothed cooling + weighted damping: drag is responsive but settles
+		// without violent spring-back; orbit damps instead of snapping.
+		graph.d3VelocityDecay(FORCE.velocityDecay).d3AlphaDecay(FORCE.alphaDecay).cooldownTime(FORCE.cooldownTime);
+		const controls = graph.controls();
+		if (controls) {
+			controls.enableDamping = true;
+			controls.dampingFactor = FORCE.orbitDamping;
+		}
+
 		// Center the layout once it settles.
 		let fitted = false;
 		graph.onEngineStop(() => {
@@ -278,10 +252,14 @@ export default function Graph() {
 			graph.zoomToFit(700, 80);
 		});
 
-		// Unreal bloom — gentle: lower strength + higher threshold so big bright
-		// hubs don't melt, but the bright electricity particles still glow.
+		// Unreal bloom — gentle: bright cores/particles glow, hubs don't melt.
 		try {
-			const bloom = new UnrealBloomPass(new THREE.Vector2(el.clientWidth, el.clientHeight), 0.72, 0.5, 0.3);
+			const bloom = new UnrealBloomPass(
+				new THREE.Vector2(el.clientWidth, el.clientHeight),
+				BLOOM.strength,
+				BLOOM.radius,
+				BLOOM.threshold
+			);
 			graph.postProcessingComposer().addPass(bloom);
 		} catch {
 			// postprocessing unavailable — fall back to flat nodes
@@ -311,21 +289,36 @@ export default function Graph() {
 		);
 	}, [electricity]);
 
+	// Storm Activity → world-anchored knowledge mist (in-scene fog sprites at
+	// cluster centroids). Toggling on/off just attaches/detaches the fog.
+	useEffect(() => {
+		const graph = graphRef.current;
+		if (!graph || !data || !storm) return;
+		return attachFog(graph.scene(), data.nodes, () => simNodesRef.current);
+	}, [data, storm]);
+
 	// Minimap = a true secondary viewport: a second WebGL renderer drawing the
 	// main graph's *same scene* from a far camera framed to fit every node. It
-	// mirrors the live layout (same positions/clusters) zoomed all the way out.
+	// mirrors the live layout (same positions/clusters) zoomed all the way out,
+	// matches the main container's aspect ratio, overlays the current camera
+	// viewport as a rectangle, and navigates the main graph on click. ~10fps.
 	useEffect(() => {
 		const canvas = minimapRef.current;
 		const graph = graphRef.current;
-		if (!canvas || !data || !graph) return;
+		const container = containerRef.current;
+		if (!canvas || !data || !graph || !container) return;
 		let renderer: THREE.WebGLRenderer;
 		try {
 			renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
 		} catch {
 			return;
 		}
-		const W = 168;
-		const H = 116;
+		// Match the main container's aspect ratio so the global shape reads true.
+		const W = 184;
+		const aspect = container.clientWidth / Math.max(1, container.clientHeight);
+		const H = Math.round(THREE.MathUtils.clamp(W / aspect, 88, 150));
+		canvas.style.width = `${W}px`;
+		canvas.style.height = `${H}px`;
 		renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
 		renderer.setSize(W, H, false);
 		renderer.setClearColor(0x000000, 0);
@@ -333,12 +326,35 @@ export default function Graph() {
 		const cam = new THREE.PerspectiveCamera(50, W / H, 1, 500000);
 		const center = new THREE.Vector3();
 		const halfFov = (cam.fov * Math.PI) / 180 / 2;
+		let miniDist = 1;
+
+		// Click → translate the main camera to look at the picked world point.
+		const onClick = (ev: MouseEvent) => {
+			const r = canvas.getBoundingClientRect();
+			const ndc = new THREE.Vector3(
+				((ev.clientX - r.left) / r.width) * 2 - 1,
+				-(((ev.clientY - r.top) / r.height) * 2 - 1),
+				0.5
+			).unproject(cam);
+			const dir = ndc.sub(cam.position).normalize();
+			const tt = (center.z - cam.position.z) / (dir.z || 1e-6);
+			const world = cam.position.clone().add(dir.multiplyScalar(tt));
+			const mainCam = graph.camera();
+			const target = graph.controls()?.target ?? new THREE.Vector3();
+			const offset = mainCam.position.clone().sub(target);
+			graph.cameraPosition(
+				{ x: world.x + offset.x, y: world.y + offset.y, z: world.z + offset.z },
+				world,
+				600
+			);
+		};
+		canvas.addEventListener('click', onClick);
 
 		let raf = 0;
 		let last = 0;
 		const draw = (t: number) => {
 			raf = requestAnimationFrame(draw);
-			if (t - last < 66) return; // ~15fps is plenty for a thumbnail
+			if (t - last < 100) return; // ~10fps — plenty for a thumbnail
 			last = t;
 			const nodes = simNodesRef.current;
 			let minX = Infinity, minY = Infinity, minZ = Infinity;
@@ -352,16 +368,36 @@ export default function Graph() {
 			if (isFinite(minX)) {
 				center.set((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2);
 				const radius = Math.max(maxX - minX, maxY - minY, maxZ - minZ) / 2 || 50;
-				const dist = (radius / Math.tan(halfFov)) * 1.25 + 40;
-				cam.position.set(center.x, center.y, center.z + dist);
+				miniDist = (radius / Math.tan(halfFov)) * 1.25 + 40;
+				cam.position.set(center.x, center.y, center.z + miniDist);
 				cam.lookAt(center);
 				cam.updateProjectionMatrix();
 			}
 			renderer.render(scene, cam);
+
+			// Viewport overlay: project the main camera target into minimap space;
+			// size the rect by how much of the graph the main camera sees.
+			const rect = viewportRectRef.current;
+			const target = graph.controls()?.target;
+			if (rect && target) {
+				const p = target.clone().project(cam);
+				const sx = (p.x * 0.5 + 0.5) * W;
+				const sy = (-p.y * 0.5 + 0.5) * H;
+				const mainDist = graph.camera().position.distanceTo(target);
+				const frac = THREE.MathUtils.clamp(mainDist / miniDist, 0.1, 1);
+				const rw = W * frac;
+				const rh = H * frac;
+				rect.style.display = 'block';
+				rect.style.left = `${THREE.MathUtils.clamp(sx - rw / 2, 0, W - rw)}px`;
+				rect.style.top = `${THREE.MathUtils.clamp(sy - rh / 2, 0, H - rh)}px`;
+				rect.style.width = `${rw}px`;
+				rect.style.height = `${rh}px`;
+			}
 		};
 		raf = requestAnimationFrame(draw);
 		return () => {
 			cancelAnimationFrame(raf);
+			canvas.removeEventListener('click', onClick);
 			renderer.dispose();
 		};
 	}, [data]);
@@ -401,15 +437,6 @@ export default function Graph() {
 				style={{ position: 'relative', height: 'calc(100vh - 142px)', minHeight: 560, overflow: 'hidden' }}
 			>
 				<div ref={containerRef} style={{ position: 'absolute', inset: 0 }} />
-
-				{/* Storm Activity — masked lightning glow. Sits *over* the graph canvas
-				    (which the bloom composer renders opaque) with screen blend, so it
-				    adds atmospheric light + bolt flashes without covering the nodes. */}
-				{storm && (
-					<div style={stormLayerStyle} aria-hidden>
-						<Lightning hue={252} speed={0.55} intensity={1.1} size={2.0} xOffset={0.2} />
-					</div>
-				)}
 
 				{/* Top strip — source tabs + node/edge count + rebuild */}
 				<div style={topStripStyle}>
@@ -499,7 +526,10 @@ export default function Graph() {
 						</CtrlButton>
 					</div>
 					<div style={minimapFrameStyle}>
-						<canvas ref={minimapRef} style={{ width: 168, height: 116, display: 'block' }} />
+						<div style={{ position: 'relative', lineHeight: 0, cursor: 'pointer' }} title="Click to navigate">
+							<canvas ref={minimapRef} style={{ width: 184, height: 112, display: 'block' }} />
+							<div ref={viewportRectRef} style={viewportRectStyle} />
+						</div>
 					</div>
 				</div>
 
@@ -587,20 +617,6 @@ function Toggle({ label, on, onClick }: { label: string; on: boolean; onClick: (
 	);
 }
 
-const stormLayerStyle: React.CSSProperties = {
-	position: 'absolute',
-	inset: 0,
-	pointerEvents: 'none',
-	opacity: 0.85,
-	mixBlendMode: 'screen',
-	// Grey-violet storm-cloud glow + the reactbits lightning bolts on top. Screen
-	// blend over the (bloom-opaque) graph canvas adds light without hiding nodes.
-	background:
-		'radial-gradient(95% 70% at 60% 24%, rgba(150,138,205,0.55), rgba(70,76,132,0.22) 42%, transparent 70%)',
-	WebkitMaskImage: 'radial-gradient(118% 82% at 60% 22%, #000 0%, rgba(0,0,0,0.6) 54%, transparent 82%)',
-	maskImage: 'radial-gradient(118% 82% at 60% 22%, #000 0%, rgba(0,0,0,0.6) 54%, transparent 82%)'
-};
-
 const topStripStyle: React.CSSProperties = {
 	position: 'absolute',
 	top: 0,
@@ -622,21 +638,24 @@ const tabStyle = (active: boolean, live: boolean): React.CSSProperties => ({
 	gap: 6,
 	padding: '6px 12px',
 	border: 'none',
+	borderBottom: active ? '2px solid rgba(79,139,255,0.9)' : '2px solid transparent',
 	borderRadius: 2,
-	background: active ? 'rgba(74,93,191,0.18)' : 'transparent',
-	color: active ? 'var(--atlas-celestial)' : live ? 'var(--l2-fg-2)' : 'var(--l2-fg-3)',
+	background: active ? 'rgba(79,139,255,0.14)' : 'transparent',
+	// Active = full ivory; live-inactive = secondary; disabled = ghost.
+	color: active ? TEXT.primary : live ? TEXT.secondary : TEXT.ghost,
+	textShadow: active ? '0 0 10px rgba(79,139,255,0.45)' : 'none',
 	fontFamily: 'var(--l2-font-mono)',
 	fontSize: 11.5,
 	letterSpacing: '0.03em',
 	cursor: live ? 'pointer' : 'not-allowed',
-	opacity: live || active ? 1 : 0.55
+	opacity: live || active ? 1 : 0.7
 });
 
 const countChipStyle: React.CSSProperties = {
 	fontFamily: 'var(--l2-font-mono)',
 	fontSize: 10,
 	letterSpacing: '0.16em',
-	color: 'var(--l2-fg-3)'
+	color: TEXT.secondary
 };
 
 const overlayStyle: React.CSSProperties = {
@@ -698,10 +717,10 @@ const legendStyle: React.CSSProperties = {
 	flexWrap: 'wrap',
 	gap: '7px 12px',
 	fontFamily: 'var(--l2-font-mono)',
-	fontSize: 9.5,
-	letterSpacing: '0.08em',
+	fontSize: 10,
+	letterSpacing: '0.06em',
 	textTransform: 'uppercase',
-	color: 'var(--l2-fg-3)'
+	color: TEXT.secondary
 };
 
 const toggleRowStyle: React.CSSProperties = {
@@ -777,9 +796,9 @@ const updatedRowStyle: React.CSSProperties = {
 	marginTop: 6,
 	paddingTop: 8,
 	borderTop: '1px solid rgba(237,234,224,0.07)',
-	fontSize: 9.5,
-	letterSpacing: '0.08em',
-	color: 'var(--l2-fg-3)'
+	fontSize: 10,
+	letterSpacing: '0.06em',
+	color: TEXT.secondary
 };
 
 const minimapWrapStyle: React.CSSProperties = {
@@ -800,10 +819,20 @@ const controlsColStyle: React.CSSProperties = {
 const minimapFrameStyle: React.CSSProperties = {
 	padding: 4,
 	borderRadius: 3,
-	border: '1px solid rgba(74,93,191,0.28)',
+	border: '1px solid rgba(79,139,255,0.28)',
 	background: 'rgba(7,8,12,0.66)',
 	backdropFilter: 'blur(8px)',
 	lineHeight: 0
+};
+
+const viewportRectStyle: React.CSSProperties = {
+	position: 'absolute',
+	display: 'none',
+	border: '1px solid rgba(79,139,255,0.9)',
+	background: 'rgba(79,139,255,0.08)',
+	borderRadius: 2,
+	pointerEvents: 'none',
+	boxShadow: '0 0 8px rgba(79,139,255,0.35)'
 };
 
 const ctrlButtonStyle: React.CSSProperties = {
@@ -920,11 +949,11 @@ const hintStyle: React.CSSProperties = {
 	left: '50%',
 	transform: 'translateX(-50%)',
 	fontFamily: 'var(--l2-font-mono)',
-	fontSize: 9.5,
-	letterSpacing: '0.1em',
-	color: 'var(--l2-fg-3)',
+	fontSize: 10,
+	letterSpacing: '0.08em',
+	color: TEXT.secondary,
 	pointerEvents: 'none',
-	opacity: 0.7
+	opacity: 0.9
 };
 
 const rebuildButtonStyle: React.CSSProperties = {
