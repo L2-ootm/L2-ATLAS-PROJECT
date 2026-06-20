@@ -88,6 +88,37 @@ class Project(BaseModel):
         return None if dt is None else dt.isoformat()
 
 
+class Focus(BaseModel):
+    """The operator's current working focus for the Command Center (CC-1).
+
+    A single Focus is 'active' at a time (the Current Focus); promoting a new one
+    archives the prior. `priorities` and `drivers` are JSON-array strings (str),
+    mirroring AuditEvent.data, so model_dump() stays JSON-safe and the DDL in
+    0009_focus.sql is 1:1. Feeds the Intelligence-Layer context-assembly step
+    (phase 10.0.3-command-center)."""
+
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    title: str
+    framework: str = ""
+    priorities: str = "[]"  # JSON array of strings
+    drivers: str = "[]"  # JSON array of strings
+    project_id: Optional[str] = None
+    status: Literal["active", "archived"] = "active"
+    created_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+    updated_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_dt(self, dt: datetime.datetime | None) -> str | None:
+        """Return ISO 8601 string so model_dump() is JSON-safe."""
+        return None if dt is None else dt.isoformat()
+
+
 class Module(BaseModel):
     """An optional, activatable ATLAS module (e.g. cashflow). Off by default;
     toggled from the System page (DDL in 0007_modules.sql — Decision 3b). `id` is
@@ -300,6 +331,7 @@ class MemoryProvenance(BaseModel):
 __all__ = [
     "Mission",
     "Project",
+    "Focus",
     "Module",
     "Run",
     "AuditEvent",
