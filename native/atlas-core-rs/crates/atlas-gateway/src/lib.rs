@@ -1025,6 +1025,137 @@ async fn focus_archive(
 }
 
 // ---------------------------------------------------------------------------
+// Goal hierarchy handlers (loop-engineering slice — D-022 dispatch pattern)
+// ---------------------------------------------------------------------------
+
+/// The nested goal forest for a focus (goals → children → tasks → observations).
+async fn focus_tree(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
+    let path = state.db_path.clone();
+    let tree = blocking(move || db::goal_tree(&path, &id)).await?;
+    Ok(Json(json!({ "tree": tree })))
+}
+
+#[derive(Deserialize)]
+struct CreateGoalBody {
+    title: String,
+    description: Option<String>,
+    focus: Option<String>,
+    parent: Option<String>,
+    status: Option<String>,
+}
+
+async fn goal_create(
+    State(state): State<AppState>,
+    Json(body): Json<CreateGoalBody>,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    require_arg(&body.title, "title must be non-empty")?;
+    let description = body.description.unwrap_or_default();
+    let focus = body.focus.unwrap_or_default();
+    let parent = body.parent.unwrap_or_default();
+    let status = body.status.unwrap_or_default();
+    let mut args: Vec<&str> = vec!["goal", "create", "--title", &body.title];
+    if !description.is_empty() {
+        args.extend_from_slice(&["--description", &description]);
+    }
+    if !focus.is_empty() {
+        args.extend_from_slice(&["--focus", &focus]);
+    }
+    if !parent.is_empty() {
+        args.extend_from_slice(&["--parent", &parent]);
+    }
+    if !status.is_empty() {
+        args.extend_from_slice(&["--status", &status]);
+    }
+    let id = dispatch_atlas(&state.atlas_cmd, &args).await?;
+    let path = state.db_path.clone();
+    let id_clone = id.clone();
+    let found = blocking(move || db::get_goal(&path, &id_clone)).await?;
+    match found {
+        Some(goal) => Ok((StatusCode::CREATED, Json(json!({ "goal": goal })))),
+        None => Err(ApiError::Internal(format!(
+            "goal '{id}' created but not found in db"
+        ))),
+    }
+}
+
+async fn goal_archive(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
+    require_arg(&id, "goal id must be non-empty")?;
+    dispatch_atlas(&state.atlas_cmd, &["goal", "archive", "--", &id]).await?;
+    Ok(Json(json!({ "archived": true, "id": id })))
+}
+
+#[derive(Deserialize)]
+struct CreateTaskBody {
+    goal: String,
+    title: String,
+}
+
+async fn task_create(
+    State(state): State<AppState>,
+    Json(body): Json<CreateTaskBody>,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    require_arg(&body.goal, "goal id must be non-empty")?;
+    require_arg(&body.title, "title must be non-empty")?;
+    let id = dispatch_atlas(
+        &state.atlas_cmd,
+        &["task", "add", "--goal", &body.goal, "--title", &body.title],
+    )
+    .await?;
+    Ok((StatusCode::CREATED, Json(json!({ "created": true, "id": id }))))
+}
+
+#[derive(Deserialize)]
+struct TaskStatusBody {
+    status: String,
+}
+
+async fn task_set_status(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    Json(body): Json<TaskStatusBody>,
+) -> ApiResult {
+    require_arg(&id, "task id must be non-empty")?;
+    require_arg(&body.status, "status must be non-empty")?;
+    // Options before the `--` guard so the positional id can't be parsed as a flag.
+    dispatch_atlas(
+        &state.atlas_cmd,
+        &["task", "status", "--status", &body.status, "--", &id],
+    )
+    .await?;
+    Ok(Json(json!({ "updated": true, "id": id, "status": body.status })))
+}
+
+#[derive(Deserialize)]
+struct CreateObservationBody {
+    body: String,
+    goal: Option<String>,
+    run: Option<String>,
+    source: Option<String>,
+}
+
+async fn observation_create(
+    State(state): State<AppState>,
+    Json(payload): Json<CreateObservationBody>,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    require_arg(&payload.body, "body must be non-empty")?;
+    let goal = payload.goal.unwrap_or_default();
+    let run = payload.run.unwrap_or_default();
+    let source = payload.source.unwrap_or_default();
+    let mut args: Vec<&str> = vec!["observe", "add", "--body", &payload.body];
+    if !goal.is_empty() {
+        args.extend_from_slice(&["--goal", &goal]);
+    }
+    if !run.is_empty() {
+        args.extend_from_slice(&["--run", &run]);
+    }
+    if !source.is_empty() {
+        args.extend_from_slice(&["--source", &source]);
+    }
+    let id = dispatch_atlas(&state.atlas_cmd, &args).await?;
+    Ok((StatusCode::CREATED, Json(json!({ "created": true, "id": id }))))
+}
+
+// ---------------------------------------------------------------------------
 // Modules handlers (Decision 3b — optional activatable modules)
 // ---------------------------------------------------------------------------
 
@@ -1245,6 +1376,12 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/focus", get(focus_list).post(focus_create))
         .route("/v1/focus/current", get(focus_current))
         .route("/v1/focus/{id}/archive", post(focus_archive))
+        .route("/v1/focus/{id}/tree", get(focus_tree))
+        .route("/v1/goals", post(goal_create))
+        .route("/v1/goals/{id}/archive", post(goal_archive))
+        .route("/v1/tasks", post(task_create))
+        .route("/v1/tasks/{id}/status", post(task_set_status))
+        .route("/v1/observations", post(observation_create))
         .route("/v1/modules", get(modules_list))
         .route("/v1/modules/{id}/activate", post(module_activate))
         .route("/v1/modules/{id}/deactivate", post(module_deactivate))

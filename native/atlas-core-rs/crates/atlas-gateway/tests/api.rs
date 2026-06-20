@@ -956,3 +956,135 @@ async fn focus_archive_dispatches_and_returns_200() {
     // id passed after the `--` argument-injection guard.
     assert_eq!(args.last().copied(), Some("f-cur"));
 }
+
+// --- Goal hierarchy read + write surface (loop-engineering slice) ------------
+
+const MIGRATION_0010: &str = include_str!("../../../../../infra/migrations/0010_goal_model.sql");
+
+/// seeded_db_focus + 0010 (goal model) with a root goal, a sub-goal, a task on
+/// the root, and an observation on the root — enough to exercise tree nesting.
+fn seeded_db_goals(dir: &tempfile::TempDir) -> PathBuf {
+    let path = seeded_db_focus(dir);
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    conn.execute_batch(MIGRATION_0010).unwrap();
+    conn.execute_batch(
+        "INSERT INTO goals
+            (id, focus_id, parent_goal_id, title, description, status, position, created_at, updated_at)
+         VALUES
+            ('g-root', 'f-cur', NULL, 'Ship the loop', 'full slice', 'active', 0,
+             '2026-06-10T10:00:00Z', '2026-06-10T10:00:00Z'),
+            ('g-sub', 'f-cur', 'g-root', 'Wire execution', '', 'open', 0,
+             '2026-06-10T10:05:00Z', '2026-06-10T10:05:00Z'),
+            ('g-archived', 'f-cur', NULL, 'old goal', '', 'archived', 1,
+             '2026-06-09T10:00:00Z', '2026-06-09T10:00:00Z');
+         INSERT INTO tasks(id, goal_id, title, status, position, created_at, updated_at)
+         VALUES
+            ('t1', 'g-root', 'write migration', 'done', 0,
+             '2026-06-10T10:01:00Z', '2026-06-10T10:01:00Z');
+         INSERT INTO observations(id, goal_id, run_id, body, source, created_at)
+         VALUES
+            ('o1', 'g-root', 'r1', 'tests green', 'run:r1', '2026-06-10T10:02:00Z');",
+    )
+    .unwrap();
+    path
+}
+
+#[tokio::test]
+async fn focus_tree_nests_children_tasks_observations() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_app(seeded_db_goals(&dir));
+    let (status, body) = get_json(&router, "/v1/focus/f-cur/tree").await;
+    assert_eq!(status, StatusCode::OK);
+    let tree = body["tree"].as_array().unwrap();
+    assert_eq!(tree.len(), 1); // archived root excluded; sub nested under root
+    let root = &tree[0];
+    assert_eq!(root["id"], "g-root");
+    assert_eq!(root["tasks"][0]["title"], "write migration");
+    assert_eq!(root["observations"][0]["body"], "tests green");
+    assert_eq!(root["children"][0]["id"], "g-sub");
+}
+
+#[tokio::test]
+async fn focus_tree_empty_when_table_absent() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_app(seeded_db_focus(&dir)); // 0010 not applied
+    let (status, body) = get_json(&router, "/v1/focus/f-cur/tree").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["tree"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn goal_create_forwards_args_and_returns_201() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let db_path = seeded_db_goals(&dir);
+    let argv_path = stub_dir.path().join("argv.txt");
+    // Stub prints the seeded root id so the handler's read-back succeeds.
+    let router = test_app_with_arg_capture(db_path, "g-root", &argv_path, &stub_dir);
+    let (status, body) = post_json(
+        &router,
+        "/v1/goals",
+        json!({ "title": "Ship the loop", "description": "full slice", "focus": "f-cur", "parent": "g-root" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(body["goal"]["id"], "g-root");
+
+    let argv = std::fs::read_to_string(&argv_path).unwrap();
+    let args: Vec<&str> = argv.lines().collect();
+    assert_eq!(args.first().copied(), Some("goal"));
+    assert!(args.windows(2).any(|w| w == ["--title", "Ship the loop"]));
+    assert!(args.windows(2).any(|w| w == ["--focus", "f-cur"]));
+    assert!(args.windows(2).any(|w| w == ["--parent", "g-root"]));
+}
+
+#[tokio::test]
+async fn task_create_and_status_forward_args() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let db_path = seeded_db_goals(&dir);
+    let argv_path = stub_dir.path().join("argv.txt");
+    let router = test_app_with_arg_capture(db_path, "t-new", &argv_path, &stub_dir);
+
+    let (status, body) = post_json(
+        &router,
+        "/v1/tasks",
+        json!({ "goal": "g-root", "title": "write service" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(body["id"], "t-new");
+    let args = std::fs::read_to_string(&argv_path).unwrap();
+    assert!(args.contains("--goal"));
+    assert!(args.contains("write service"));
+
+    let (status, body) = post_json(&router, "/v1/tasks/t1/status", json!({ "status": "done" })).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["updated"], true);
+    let argv = std::fs::read_to_string(&argv_path).unwrap();
+    let args: Vec<&str> = argv.lines().collect();
+    assert!(args.windows(2).any(|w| w == ["--status", "done"]));
+    assert_eq!(args.last().copied(), Some("t1")); // id after `--`
+}
+
+#[tokio::test]
+async fn observation_create_forwards_args_and_returns_201() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let db_path = seeded_db_goals(&dir);
+    let argv_path = stub_dir.path().join("argv.txt");
+    let router = test_app_with_arg_capture(db_path, "o-new", &argv_path, &stub_dir);
+    let (status, body) = post_json(
+        &router,
+        "/v1/observations",
+        json!({ "body": "found a bug", "goal": "g-root", "source": "operator" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(body["id"], "o-new");
+    let argv = std::fs::read_to_string(&argv_path).unwrap();
+    let args: Vec<&str> = argv.lines().collect();
+    assert_eq!(args.first().copied(), Some("observe"));
+    assert!(args.windows(2).any(|w| w == ["--body", "found a bug"]));
+    assert!(args.windows(2).any(|w| w == ["--goal", "g-root"]));
+}
