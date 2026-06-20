@@ -506,6 +506,32 @@ async fn config_view(State(state): State<AppState>) -> ApiResult {
     Ok(Json(value))
 }
 
+/// GET /v1/channels — configured messaging channels (foundation gateway config).
+/// Dispatches `atlas channels json`; values are never returned, only presence.
+async fn channels_list(State(state): State<AppState>) -> ApiResult {
+    let out = dispatch_atlas(&state.atlas_cmd, &["channels", "json"]).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("channels json parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+#[derive(Deserialize)]
+struct ToggleChannelBody {
+    enabled: bool,
+}
+
+/// POST /v1/channels/{name}/toggle — enable/disable a channel via the CLI.
+/// The user-controlled `name` is passed after `--` (argument-injection guard).
+async fn channel_toggle(
+    State(state): State<AppState>,
+    AxPath(name): AxPath<String>,
+    Json(body): Json<ToggleChannelBody>,
+) -> ApiResult {
+    let sub = if body.enabled { "enable" } else { "disable" };
+    dispatch_atlas(&state.atlas_cmd, &["channels", sub, "--", &name]).await?;
+    Ok(Json(json!({ "name": name, "enabled": body.enabled })))
+}
+
 #[derive(Deserialize)]
 struct SelectFolderBody {
     title: Option<String>,
@@ -1442,6 +1468,8 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/wiki/search", get(wiki_search))
         .route("/v1/models", get(models_list))
         .route("/v1/config", get(config_view))
+        .route("/v1/channels", get(channels_list))
+        .route("/v1/channels/{name}/toggle", post(channel_toggle))
         .route("/v1/console/chat", post(console_chat))
         .route("/v1/console/stream", post(console_stream))
         .route("/v1/graph", get(graph_view))

@@ -50,3 +50,64 @@ def test_status_lists_channels_without_leaking_secrets(monkeypatch, tmp_path):
     assert "disabled" in result.output and "discord" in result.output
     assert "credential: set" in result.output
     assert "super-secret-token" not in result.output
+
+
+def _seed(config, body: str):
+    config.write_text(body, encoding="utf-8")
+
+
+def test_json_lists_channels_without_secrets(monkeypatch, tmp_path):
+    import json
+
+    config = _set_home(monkeypatch, tmp_path)
+    _seed(
+        config,
+        "gateway:\n"
+        "  platforms:\n"
+        "    discord:\n"
+        "      enabled: true\n"
+        "      token: super-secret-token\n"
+        "    slack:\n"
+        "      enabled: false\n",
+    )
+    result = runner.invoke(app, ["channels", "json"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    names = {c["name"]: c for c in data["channels"]}
+    assert names["discord"]["enabled"] is True
+    assert names["discord"]["credential_present"] is True
+    assert names["slack"]["enabled"] is False
+    assert "super-secret-token" not in result.output
+
+
+def test_enable_disable_round_trip_preserves_other_keys(monkeypatch, tmp_path):
+    config = _set_home(monkeypatch, tmp_path)
+    _seed(
+        config,
+        "gateway:\n"
+        "  platforms:\n"
+        "    discord:\n"
+        "      enabled: false\n"
+        "      token: keepme\n"
+        "agent:\n"
+        "  model: keep-this-too\n",
+    )
+    assert runner.invoke(app, ["channels", "enable", "discord"]).exit_code == 0
+    plats = channels_cli._load_platforms(config)
+    assert plats["discord"]["enabled"] is True
+    assert plats["discord"]["token"] == "keepme"  # other keys preserved
+    # Unrelated top-level config preserved across the round-trip.
+    import yaml
+
+    full = yaml.safe_load(config.read_text(encoding="utf-8"))
+    assert full["agent"]["model"] == "keep-this-too"
+
+    assert runner.invoke(app, ["channels", "disable", "discord"]).exit_code == 0
+    assert channels_cli._load_platforms(config)["discord"]["enabled"] is False
+
+
+def test_enable_creates_entry_when_missing(monkeypatch, tmp_path):
+    config = _set_home(monkeypatch, tmp_path)
+    _seed(config, "gateway:\n  platforms: {}\n")
+    assert runner.invoke(app, ["channels", "enable", "telegram"]).exit_code == 0
+    assert channels_cli._load_platforms(config)["telegram"]["enabled"] is True

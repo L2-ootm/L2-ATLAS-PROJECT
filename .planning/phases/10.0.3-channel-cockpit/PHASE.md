@@ -53,3 +53,18 @@ Full analysis: `.planning/phases/10.0.3-command-center/FOUNDATION-AND-CHANNELS-A
 - Two gateways stay distinct: Rust REST gateway (8484) ≠ Python messaging gateway. This phase lets the
   former control the latter's lifecycle but they remain separate processes.
 - Writes go through the CLI/config-service (D-022 contract), never direct YAML writes from Rust.
+
+## Delivered (2026-06-20) — management floor
+
+- CLI: `atlas channels enable/disable/json` (foundation `~/.hermes/config.yaml` round-trip, preserves
+  other keys; credential presence only, never values). `status` retained.
+- Gateway: `GET /v1/channels` (dispatch `atlas channels json`), `POST /v1/channels/{name}/toggle`
+  (dispatch enable/disable; user `name` passed after `--`).
+- React: System page **CHANNELS** panel — per-channel enable/disable toggles + credential-set badge +
+  empty state. (Stacked panel, consistent with the existing System layout; full tab-nav not needed.)
+- Tests: channels CLI (json/enable/disable round-trip/create-missing) + 2 gateway tests; web build green.
+
+**Deferred (remaining for this phase):** messaging-gateway *process* lifecycle (start/stop/status from
+the cockpit, `~/.atlas/gateway-messaging.pid`), the Providers tab (provider data already shown in the
+System RUNTIME CONFIG panel), and the P2 Discord guild/channel browser. The config-management floor —
+the highest-value 80% — is live.

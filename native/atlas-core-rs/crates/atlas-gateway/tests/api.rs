@@ -139,6 +139,33 @@ async fn config_view_returns_masked_json_from_cli() {
 }
 
 #[tokio::test]
+async fn channels_list_returns_cli_json() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"channels": [{"name": "discord", "enabled": true, "credential_present": true}]}"#,
+        &stub_dir,
+    );
+    let (status, body) = get_json(&router, "/v1/channels").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["channels"][0]["name"], "discord");
+    assert_eq!(body["channels"][0]["enabled"], true);
+}
+
+#[tokio::test]
+async fn channel_toggle_dispatches_and_echoes_state() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(seeded_db(&dir), "enabled discord", &stub_dir);
+    let (status, body) =
+        post_json(&router, "/v1/channels/discord/toggle", json!({ "enabled": true })).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["name"], "discord");
+    assert_eq!(body["enabled"], true);
+}
+
+#[tokio::test]
 async fn missions_list_returns_rows_newest_first() {
     let dir = tempfile::tempdir().unwrap();
     let router = test_app(seeded_db(&dir));
