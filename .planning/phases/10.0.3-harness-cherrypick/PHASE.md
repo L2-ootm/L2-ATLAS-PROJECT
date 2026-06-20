@@ -47,3 +47,12 @@ runtime that ingests good ideas.
 
 ## Notes
 - Treat as the harness analog of the Odysseus baseline: *borrow the direction, write our own code.*
+
+## Delivered (2026-06-20)
+
+- `docs/research/HARNESS_CHERRYPICK_PI_OPENCODE.md` — 9 patterns surveyed across both harnesses, each
+  classified adopt/adapt/skip with rationale + owning ATLAS phase, plus a license/ethics gate.
+- "PI" resolved to the `pi-mono` coding harness (earendil-works/pi), not Inflection's consumer Pi.
+- Top recommended adoptions: LSP-diagnostics-as-a-tool (OpenCode), the run-mode taxonomy incl. stdio
+  JSON-RPC (Pi → shapes 10.2 + 10.4 `tui_gateway`), minimal trusted tool core + risk-tiered manifest
+  (→ 10.0.4). No code changes; no repos cloned.
