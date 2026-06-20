@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0.5
 milestone_name: Mass-Adoption Launch Wedge
 status: in_progress
-last_updated: "2026-06-19T03:03:23.250Z"
-last_activity: 2026-06-19 -- Operator console window manager: draggable/tiled chat workbench, project/folder binding, native chat bridge, Claude Code SDK path wired
+last_updated: "2026-06-20T15:45:00.000Z"
+last_activity: 2026-06-20 -- Command Center complete (WP-0 through WP-6 DONE), loop-engineering slice complete (LE-0 through LE-5 DONE), NativeAtlasAgent wired to harness, goal hierarchy + compounding loop + operations all operational, Graphify visual refinement (lightning, auto-orbit, minimap sync), full session analysis + documentation produced
 progress:
   total_phases: 13
   completed_phases: 1
@@ -156,6 +156,17 @@ Loop note: pre-existing dirty state on branch `feat/cockpit-p3-glass-p4` (`.plan
     `cargo check -p atlas-gateway` green in `native/atlas-core-rs`; in-app browser verified `/console` no `agent is not defined`, Claude spawns separately,
     tile/free/tabs cycle, free resize and drag both mutate geometry live, `/projects` Open binds `/console?project=<id>`,
     New Project modal has browser-friendly folder-picker copy, and browser console errors stayed empty.
+### Six-item operator scope (added 2026-06-20, in-flight under 10.0.3)
+
+Operator added six items, sequenced for execution (index:
+`.planning/phases/10.0.3-SCOPE-SEQUENCE.md`; each has a PHASE.md):
+1. Memory router — FTS5 wiki retrieval into `context_service.assemble_context` (`10.0.3-memory-router`)
+2. Setup wizard + config-service — `atlas setup`, `~/.atlas/config.yaml` (`10.0.3-setup-wizard`)
+3. Channel cockpit UI — System page channel management + messaging gateway control (`10.0.3-channel-cockpit`, needs #2)
+4. Console hyprland BSP auto-tiling (`10.0.3-console-tiling`)
+5. Harness cherry-pick PI/OpenCode — research intake doc (`10.0.3-harness-cherrypick`)
+6. Foundation de-brand hermes→atlas (`10.0.7-foundation-debrand`, release-gate, last)
+
 ## Project Reference
 
 
@@ -424,6 +435,26 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 - [10.0-03]: IPC: gateway 127.0.0.1:8484 is loopback HTTP, NOT an IPC surface; no capability grant needed
 
 ---
+
+## Session Analysis Documentation (2026-06-19/20)
+
+Full codebase analysis, loop engineering synthesis, foundation mapping, and gateway audit produced:
+
+**Command Center (`.planning/phases/10.0.3-command-center/`):**
+- `PLAN.md` — all WPs marked DONE (WP-0 through WP-6, LE-0 through LE-5)
+- `SESSION-SUMMARY.md` — complete session arc, files created/modified, architecture delivered
+- `GATEWAY-BRIEF.md` — gateway 39 routes, CLI/TUI status, rebranding scope
+- `LOOP-ENGINEERING-SYNTHESIS.md` — 7-layer wiring plan (handoff, stops, claims, deep context, entropy, graph, loop specs)
+- `HERMES-MAP-AND-WIRING.md` — foundation map, Rust vs Python boundary, context budget wiring
+- `FOUNDATION-AND-CHANNELS-ANALYSIS.md` — foundation integration status, channel management suite design
+
+**Graphify (`.planning/phases/10.0.3-graphify-living-graph/`):**
+- `GAP-ANALYSIS.md` — 15 gaps identified, priority matrix
+- `SPEC.md` — entity model, storage, visuals, API design
+- `PHASE.md` — 8 work packages, 19-24 days
+- `CONTEXT.md` — system context, related systems
+- `AGENT-PROMPT.md` — refined agent prompt with 10 improvements
+- `CHECKPOINT.md` — post-refinement checkpoint
 
 ## Living Graph Documentation (2026-06-19)
 

@@ -112,6 +112,17 @@ artifacts: `output/brand/atlas-brand-sheet.html`, `output/brand/atlas-emblem-pro
 variants in-tree); ATLAS palette tokens + logo components + favicon + topographic shell + sidebar
 redesign landed and building; UI-SPEC + per-page wave outstanding.
 
+**In-flight operator-directed sub-phases (ahead-of-spine, under the 10.0.3 umbrella):**
+Index: `.planning/phases/10.0.3-SCOPE-SEQUENCE.md`. Pattern = same as `10.0.3-command-center`
+(DONE) and `10.0.3-graphify-living-graph`. Six-item scope added 2026-06-20, sequenced:
+
+- [ ] `10.0.3-memory-router` — FTS5 wiki retrieval → context assembly (item #1; in progress)
+- [ ] `10.0.3-setup-wizard` — `atlas setup` + `~/.atlas/config.yaml` config-service (item #2)
+- [ ] `10.0.3-channel-cockpit` — channel management cockpit + messaging gateway control (item #3; needs #2)
+- [ ] `10.0.3-console-tiling` — hyprland BSP auto-tiling in the Console workbench (item #4)
+- [ ] `10.0.3-harness-cherrypick` — PI/OpenCode pattern intake doc (item #5, research-only)
+- [ ] `10.0.7-foundation-debrand` — hermes→atlas rebrand, test-gated, release-gate (item #6, last)
+
 #### Phase 10.0.4: Developer Integrations & Tool Manifest
 
 **Goal:** ATLAS is useful against real developer workflows and proves it is an extensible harness, not a closed demo.
