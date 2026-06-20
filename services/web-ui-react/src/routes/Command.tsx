@@ -5,6 +5,7 @@ import { Crosshair, Plus, Pencil, Archive, Rocket, X } from 'lucide-react';
 import { Page } from '../components/Page';
 import TopoInput from '../components/TopoInput';
 import { GlassPanel } from '../components/GlassFx';
+import GlowBorder from '../components/GlowBorder';
 import { HudLabel, StatusBadge, AgentBadge } from '../components/hud';
 import LiveBadge from '../components/LiveBadge';
 import { useGatewayHealth } from '../lib/useGatewayHealth';
@@ -392,7 +393,7 @@ function ActivityFeed({
 
 function FeedRow({ r, first, onClick }: { r: RunWithMission; first: boolean; onClick: () => void }) {
 	const active = isActive(r.status);
-	return (
+	const inner = (
 		<div
 			role="button"
 			tabIndex={0}
@@ -404,7 +405,7 @@ function FeedRow({ r, first, onClick }: { r: RunWithMission; first: boolean; onC
 				flexDirection: 'column',
 				gap: 8,
 				padding: '13px 18px',
-				borderTop: first ? 'none' : '1px solid var(--l2-hairline)',
+				borderTop: first || active ? 'none' : '1px solid var(--l2-hairline)',
 				cursor: 'pointer',
 				transition: 'background var(--l2-duration-xs) var(--l2-ease)'
 			}}
@@ -427,6 +428,8 @@ function FeedRow({ r, first, onClick }: { r: RunWithMission; first: boolean; onC
 			</div>
 		</div>
 	);
+	// Running/pending rows get the electric border treatment, matching the Runs feed.
+	return active ? <GlowBorder active>{inner}</GlowBorder> : inner;
 }
 
 function FeedSkeleton() {
