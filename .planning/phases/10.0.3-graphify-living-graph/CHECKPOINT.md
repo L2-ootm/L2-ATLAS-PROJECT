@@ -104,9 +104,78 @@ Unknown folder-slug kinds → deterministic palette (stable, not heat).
 
 ---
 
+## Performance — graph load latency (known, non-critical)
+
+The first time a scope opens there's a visible delay before the graph appears.
+Documented here per operator request; not fixed yet.
+
+**Cause (in order of cost):**
+1. **Gateway cold scan.** `GET /v1/graph?scope=` dispatches the `atlas graph
+   build --scope …` CLI, which spawns a Python process and walks the markdown
+   tree (global ≈ 790 nodes is the heaviest). This is the dominant cost. It only
+   happens once per scope per session — `api.getGraph()` caches the result
+   client-side, so re-opening a tab is instant (REBUILD forces a rescan).
+2. **Graph JS chunk.** The lazy `/graph` route pulls `3d-force-graph` + `three`
+   + bloom (~1.37 MB / 370 KB gzip). First navigation parses this.
+3. **First-frame WebGL + force warmup.** Renderer/bloom init plus the d3 force
+   sim settling before `zoomToFit`.
+
+**Workaround options (when we pick this up):**
+- **Gateway-side cache / persist.** Cache the built `{nodes,links}` per scope on
+  the gateway with a TTL (or persist to disk keyed by a content hash of the
+  source tree), so the CLI scan is skipped on warm hits. Biggest win.
+- **Background prefetch.** Kick off `getGraph('global')` on app/dashboard mount
+  so the default scope is already cached by the time the user opens Graphify.
+- **Incremental / cheaper scan.** Cap or memoize the markdown walk; skip
+  unchanged files via mtime.
+- The chunk is already code-split; could be `modulepreload`ed from the nav.
+
 ## Stability assessment
 **STABLE.** Type-checks, builds, all scopes render, no console errors observed,
 effects are throttled/capped and config-driven. Safe to continue from here.
+
+## Follow-up pass (2026-06-20) — storm/atmosphere iteration
+
+Operator review drove a second visual iteration on top of the stabilize pass:
+
+- **Storm clouds enhanced, then removed.** Tried (a) brighter breathing fog
+  domes → read as "silly" glowing orbs; (b) procedural multi-puff smoke at
+  cluster centroids → read as "out of place" floating blobs when zoomed in.
+  Conclusion: the per-cluster sprite-fog approach doesn't land. **`GraphFog.ts`
+  deleted.** Storm Activity now toggles lightning only.
+- **Lightning added** (`GraphLightning.ts`, kept). Bright additive jagged bolts +
+  endpoint/midpoint discharge flashes, struck between nearby nodes inside the
+  densest clusters, flashing/decaying ~360 ms; bloom makes them glow. Config-
+  driven (`LIGHTNING` block). Confirmed firing live.
+- **Ambient auto-orbit** — OrbitControls `autoRotate` (speed `0.32`) around the
+  fitted center; user drag overrides and it resumes (`FORCE.autoRotateSpeed`).
+- **Minimap follows rotation** — root cause: auto-rotate moves the camera, not
+  the nodes, but the minimap rendered from a fixed front camera. Fixed: aim the
+  minimap camera along the main camera's view direction, pulled back to fit.
+
+## Deferred — bring back to the graph later (operator-requested backlog)
+
+Explicitly parked for a future graph pass; do NOT treat as lost:
+
+- **Atmosphere / smoke, refined.** Re-approach so it reads as real volumetric
+  fog, not sprite blobs. Candidate techniques: screen-space raymarched fog,
+  `THREE.FogExp2` scene fog, a shader nebula plane behind the graph, or a true
+  particle/volumetric system — anchored to the graph, never floating.
+- **Full "storm"** — coordinated storm state (clouds + lightning + density swell)
+  that escalates with activity, not just isolated bolts.
+- **Heat-map cloud overlay** — an *activity* heat layer (consultation/access
+  density) as a toggle, distinct from and never replacing the semantic category
+  colors (category hue rule still holds).
+- "…and a lot more" (operator) — living-graph visuals from GAP-ANALYSIS:
+  node pulse/breathe, curved/dendrite links, synaptic flashes, activity-driven
+  intensity once the runtime graph engine exists.
+
+## Deferred — Console page
+
+- **Console polish + full wiring** parked for a future time (operator). Only the
+  **free-mode close-window bug** was fixed this pass (pointer-capture on the
+  header swallowed the X click; the close button now stops `pointerdown`/
+  `mousedown` from reaching the drag handler).
 
 ## Next steps (future phase)
 1. Extract `GraphMinimap.tsx` + `GraphInteraction.ts` if interaction needs a
