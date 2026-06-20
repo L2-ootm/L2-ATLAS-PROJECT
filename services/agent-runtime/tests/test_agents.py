@@ -163,6 +163,19 @@ def test_native_secret_stop_blocks_run(db: sqlite3.Connection, lock: threading.L
     assert any(e.event_type == "failure" for e in events)
 
 
+def test_native_collapses_html_error(db: sqlite3.Connection, lock: threading.Lock) -> None:
+    mid = _pending_mission(db)
+    rid = _running_run(db, mid)
+    html = "<!DOCTYPE html><html><head></head><body>403 Forbidden</body></html>"
+    agent = _native_with(
+        {"final_response": "", "api_calls": 1, "completed": False, "failed": True, "error": html}
+    )
+    outcome = agent.execute(db, lock, mission_id=mid, run_id=rid, prompt="x")
+    assert outcome.status == "failed"
+    assert "<html" not in outcome.summary.lower()
+    assert "HTML error page" in outcome.summary
+
+
 def test_native_harness_unavailable_is_failed(db: sqlite3.Connection, lock: threading.Lock) -> None:
     mid = _pending_mission(db)
     rid = _running_run(db, mid)
