@@ -80,7 +80,10 @@ export const FORCE = {
 	alphaDecay: 0.02,
 	warmupTicks: 0,
 	cooldownTime: 12000,
-	orbitDamping: 0.12
+	orbitDamping: 0.12,
+	// Slow ambient orbit around the fitted center (OrbitControls.autoRotateSpeed
+	// ≈ rotations/min at 60fps). Subtle — the graph drifts, the user can grab it.
+	autoRotateSpeed: 0.32
 } as const;
 
 // ── Text tokens (contrast-audited) ───────────────────────────────────────────

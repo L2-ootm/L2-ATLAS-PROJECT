@@ -796,7 +796,17 @@ function WorkbenchWindow({
 				<Icon size={14} strokeWidth={1.6} style={{ color: 'var(--atlas-celestial)' }} />
 				<span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{win.title}</span>
 				<span style={busy ? liveBadgeStyle : tinyBadgeStyle}>{busy ? 'LIVE' : win.kind.toUpperCase()}</span>
-				<button type="button" onClick={(e) => { e.stopPropagation(); onClose(); }} style={miniIconButtonStyle} title="Close window">
+				<button
+					type="button"
+					// Stop pointer/mouse-down from reaching the header drag handler:
+					// in free mode it calls setPointerCapture, which redirects the
+					// pointerup and suppresses this button's click (window wouldn't close).
+					onPointerDown={(e) => e.stopPropagation()}
+					onMouseDown={(e) => e.stopPropagation()}
+					onClick={(e) => { e.stopPropagation(); onClose(); }}
+					style={miniIconButtonStyle}
+					title="Close window"
+				>
 					<X size={13} strokeWidth={1.7} />
 				</button>
 			</div>

@@ -7,7 +7,7 @@ import SpriteText from 'three-spritetext';
 import { Boxes, Crosshair, Lock, Maximize2, Minus, Plus, RefreshCw, Search, X } from 'lucide-react';
 import { Page } from '../components/Page';
 import { GlassPanel } from '../components/GlassFx';
-import { attachFog } from '../graph/GraphFog';
+import { attachLightning } from '../graph/GraphLightning';
 import { getGraph, getGraphFetchedAt, type GraphData, type GraphNode, type GraphScope } from '../lib/api';
 import {
 	BLOOM,
@@ -54,7 +54,13 @@ type GraphHandle = {
 	postProcessingComposer: () => { addPass: (p: unknown) => void };
 	scene: () => THREE.Scene;
 	camera: () => THREE.PerspectiveCamera;
-	controls: () => { target?: THREE.Vector3; enableDamping?: boolean; dampingFactor?: number };
+	controls: () => {
+		target?: THREE.Vector3;
+		enableDamping?: boolean;
+		dampingFactor?: number;
+		autoRotate?: boolean;
+		autoRotateSpeed?: number;
+	};
 	_destructor?: () => void;
 };
 
@@ -242,6 +248,10 @@ export default function Graph() {
 		if (controls) {
 			controls.enableDamping = true;
 			controls.dampingFactor = FORCE.orbitDamping;
+			// Ambient orbit: the camera slowly circles the fitted center while
+			// idle; user drag overrides it and it resumes after (OrbitControls).
+			controls.autoRotate = true;
+			controls.autoRotateSpeed = FORCE.autoRotateSpeed;
 		}
 
 		// Center the layout once it settles.
@@ -289,12 +299,12 @@ export default function Graph() {
 		);
 	}, [electricity]);
 
-	// Storm Activity → world-anchored knowledge mist (in-scene fog sprites at
-	// cluster centroids). Toggling on/off just attaches/detaches the fog.
+	// Storm Activity → lightning discharging within the densest clusters.
+	// (The per-cluster fog/smoke was removed — it read as out-of-place blobs.)
 	useEffect(() => {
 		const graph = graphRef.current;
 		if (!graph || !data || !storm) return;
-		return attachFog(graph.scene(), data.nodes, () => simNodesRef.current);
+		return attachLightning(graph.scene(), data.nodes, () => simNodesRef.current);
 	}, [data, storm]);
 
 	// Minimap = a true secondary viewport: a second WebGL renderer drawing the
@@ -369,7 +379,16 @@ export default function Graph() {
 				center.set((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2);
 				const radius = Math.max(maxX - minX, maxY - minY, maxZ - minZ) / 2 || 50;
 				miniDist = (radius / Math.tan(halfFov)) * 1.25 + 40;
-				cam.position.set(center.x, center.y, center.z + miniDist);
+				// Aim the minimap camera along the *main* camera's view direction
+				// (pulled back to fit every node) so it mirrors the live rotation
+				// instead of staying a fixed front view.
+				const mainCam = graph.camera();
+				const tgt = graph.controls()?.target ?? center;
+				const dir = mainCam.position.clone().sub(tgt);
+				if (dir.lengthSq() < 1e-6) dir.set(0, 0, 1);
+				dir.normalize();
+				cam.position.copy(center).addScaledVector(dir, miniDist);
+				cam.up.copy(mainCam.up);
 				cam.lookAt(center);
 				cam.updateProjectionMatrix();
 			}
