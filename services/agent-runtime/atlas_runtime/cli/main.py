@@ -15,7 +15,17 @@ import json
 
 import typer
 
-from atlas_runtime import console_service, db, graph_service, mission_service, project_service, run_service
+from atlas_runtime import (
+    console_service,
+    context_service,
+    db,
+    focus_service,
+    graph_service,
+    mission_service,
+    project_service,
+    run_executor,
+    run_service,
+)
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -38,6 +48,10 @@ console_app = typer.Typer(name="console", help="Cockpit console chat and workben
 app.add_typer(console_app, name="console")
 graph_app = typer.Typer(name="graph", help="Project knowledge graph for the cockpit Graphify view.")
 app.add_typer(graph_app, name="graph")
+run_app = typer.Typer(name="run", help="Execute an already-started run (background-safe).")
+app.add_typer(run_app, name="run")
+focus_app = typer.Typer(name="focus", help="Command Center: the operator's Current Focus.")
+app.add_typer(focus_app, name="focus")
 
 try:
     from atlas_wiki.cli.main import wiki_app
@@ -221,26 +235,14 @@ def run_mission(
     if not execute:
         return
 
-    try:
-        row = conn.execute(
-            "SELECT intent FROM missions WHERE id=?", (mission_id,)
-        ).fetchone()
-        prompt = row[0] if row and row[0] else ""
-        outcome = get_agent(agent).execute(
-            conn, lock, mission_id=mission_id, run_id=run.id, prompt=prompt
-        )
-        run_service.complete_run(
-            conn,
-            lock,
-            run_id=run.id,
-            mission_id=mission_id,
-            status=outcome.status,
-            summary=outcome.summary,
-        )
-        typer.echo(outcome.status)
-    except ValueError as exc:
-        typer.echo(f"Error: {exc}", err=True)
-        raise typer.Exit(1)
+    # Intelligence Layer: feed the agent the live, secret-redacted ATLAS context
+    # (Current Focus + Project + recent runs) ahead of the mission intent. The
+    # executor owns the terminal transition and never leaves the run 'running'.
+    prompt = _run_prompt(conn, mission_id)
+    outcome = run_executor.execute_run(
+        conn, lock, agent=get_agent(agent), mission_id=mission_id, run_id=run.id, prompt=prompt
+    )
+    typer.echo(outcome.status)
 
 
 @mission_app.command("cancel")
@@ -359,6 +361,119 @@ def project_list() -> None:
     conn = _get_connection()
     for p in project_service.list_projects(conn):
         typer.echo(f"{p.id}\t{p.name}\t{p.root_path}")
+
+
+# ---------------------------------------------------------------------------
+# run subcommands — background-safe execution of an already-started run
+# ---------------------------------------------------------------------------
+
+
+def _run_prompt(conn: sqlite3.Connection, mission_id: str) -> str:
+    """Assemble the secret-redacted operator context + mission intent."""
+    ctx = context_service.assemble_context(conn, mission_id=mission_id)
+    row = conn.execute("SELECT intent FROM missions WHERE id=?", (mission_id,)).fetchone()
+    intent = row[0] if row and row[0] else ""
+    return ctx.markdown + ("\n\n---\n\n" + intent if intent else "")
+
+
+@run_app.command("exec")
+def run_exec(
+    run_id: str = typer.Argument(..., help="Run ID (already started, 'running') to execute"),
+    agent: str = typer.Option("native", "--agent", help="Agent runtime: native | claude_code"),
+) -> None:
+    """Execute an already-started run to a terminal state.
+
+    Assembles context, drives the agent, and transitions the run. Intended to be
+    spawned by the gateway as a detached subprocess for background execution, so
+    `POST /v1/missions/{id}/run` can return the run_id immediately.
+    """
+    from atlas_runtime.agents import get_agent, known_agents
+
+    conn = _get_connection()
+    lock = _get_lock()
+    if agent not in known_agents():
+        typer.echo(f"Error: unknown agent {agent!r}; known: {known_agents()}", err=True)
+        raise typer.Exit(1)
+    row = conn.execute("SELECT mission_id, status FROM runs WHERE id=?", (run_id,)).fetchone()
+    if row is None:
+        typer.echo(f"Error: run {run_id!r} not found", err=True)
+        raise typer.Exit(1)
+    mission_id, status = row
+    if status != "running":
+        typer.echo(f"Error: run is {status!r}, not running", err=True)
+        raise typer.Exit(1)
+    prompt = _run_prompt(conn, mission_id)
+    outcome = run_executor.execute_run(
+        conn, lock, agent=get_agent(agent), mission_id=mission_id, run_id=run_id, prompt=prompt
+    )
+    typer.echo(outcome.status)
+
+
+# ---------------------------------------------------------------------------
+# focus subcommands — Command Center Current Focus
+# ---------------------------------------------------------------------------
+
+
+def _split_csv(raw: str) -> list[str]:
+    return [item.strip() for item in (raw or "").split(",") if item.strip()]
+
+
+@focus_app.command("create")
+def focus_create(
+    title: str = typer.Option(..., "--title", help="The current focus statement"),
+    framework: str = typer.Option("", "--framework", help="Operative framework/approach"),
+    priorities: str = typer.Option("", "--priorities", help="Comma-separated priorities"),
+    drivers: str = typer.Option("", "--drivers", help="Comma-separated drivers"),
+    project_id: str = typer.Option("", "--project", help="Bind to a project id"),
+) -> None:
+    """Create the Current Focus (archives any prior active one); prints its id."""
+    conn = _get_connection()
+    lock = _get_lock()
+    try:
+        focus = focus_service.create_focus(
+            conn,
+            lock,
+            title=title,
+            framework=framework,
+            priorities=_split_csv(priorities),
+            drivers=_split_csv(drivers),
+            project_id=project_id or None,
+        )
+    except focus_service.FocusError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(focus.id)
+
+
+@focus_app.command("show")
+def focus_show() -> None:
+    """Print the Current Focus as JSON, or 'none'."""
+    conn = _get_connection()
+    focus = focus_service.get_current_focus(conn)
+    typer.echo("none" if focus is None else json.dumps(focus.model_dump()))
+
+
+@focus_app.command("list")
+def focus_list(
+    include_archived: bool = typer.Option(False, "--all", help="Include archived focuses"),
+) -> None:
+    """Print Focus rows as a JSON array (active only unless --all)."""
+    conn = _get_connection()
+    items = focus_service.list_focus(conn, include_archived=include_archived)
+    typer.echo(json.dumps([f.model_dump() for f in items]))
+
+
+@focus_app.command("archive")
+def focus_archive(focus_id: str = typer.Argument(..., help="Focus ID to archive")) -> None:
+    """Archive a Focus (clears it as Current)."""
+    conn = _get_connection()
+    lock = _get_lock()
+    try:
+        focus_service.archive_focus(conn, lock, focus_id)
+    except focus_service.FocusError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo("archived")
 
 
 # ---------------------------------------------------------------------------
