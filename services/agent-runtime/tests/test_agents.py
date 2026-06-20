@@ -102,14 +102,79 @@ def test_get_agent_unknown_raises() -> None:
 # --- NativeAtlasAgent -------------------------------------------------------
 
 
+class _FakeHarness:
+    """Stand-in for the foundation AIAgent: returns a canned result dict."""
+
+    def __init__(self, result: dict) -> None:
+        self._result = result
+        self.calls: list[str] = []
+
+    def run_conversation(self, user_message: str, system_message=None):  # noqa: ANN001
+        self.calls.append(user_message)
+        return self._result
+
+
+def _native_with(result: dict, **kw) -> NativeAtlasAgent:
+    harness = _FakeHarness(result)
+    return NativeAtlasAgent(agent_factory=lambda session_id: harness, **kw)
+
+
 def test_native_executes_and_audits(db: sqlite3.Connection, lock: threading.Lock) -> None:
     mid = _pending_mission(db)
     rid = _running_run(db, mid)
-    outcome = NativeAtlasAgent().execute(db, lock, mission_id=mid, run_id=rid, prompt="x")
+    agent = _native_with(
+        {"final_response": "done it", "api_calls": 2, "completed": True, "failed": False, "error": None}
+    )
+    outcome = agent.execute(db, lock, mission_id=mid, run_id=rid, prompt="ship it")
     assert isinstance(outcome, RunOutcome)
     assert outcome.status == "succeeded"
+    assert outcome.summary == "done it"
+    # Layer 3 claim taxonomy populated.
+    assert any("model call" in e for e in outcome.evidence)
     events = get_events_for_run(db, rid)
     assert any(e.event_type == "tool_call" for e in events)
+    assert any(e.event_type == "llm_call" for e in events)
+
+
+def test_native_maps_failed_result(db: sqlite3.Connection, lock: threading.Lock) -> None:
+    mid = _pending_mission(db)
+    rid = _running_run(db, mid)
+    agent = _native_with(
+        {"final_response": "", "api_calls": 1, "completed": False, "failed": True, "error": "HTTP 403"}
+    )
+    outcome = agent.execute(db, lock, mission_id=mid, run_id=rid, prompt="x")
+    assert outcome.status == "failed"
+    assert any("403" in u for u in outcome.uncertainties)
+
+
+def test_native_secret_stop_blocks_run(db: sqlite3.Connection, lock: threading.Lock) -> None:
+    mid = _pending_mission(db)
+    rid = _running_run(db, mid)
+    harness = _FakeHarness({"completed": True})
+    agent = NativeAtlasAgent(agent_factory=lambda session_id: harness)
+    outcome = agent.execute(
+        db, lock, mission_id=mid, run_id=rid, prompt="use api_key=sk-secret-value to call it"
+    )
+    assert outcome.status == "failed"
+    assert outcome.stop_reason == "secret_in_prompt"
+    # The harness must never have been invoked.
+    assert harness.calls == []
+    events = get_events_for_run(db, rid)
+    assert any(e.event_type == "failure" for e in events)
+
+
+def test_native_harness_unavailable_is_failed(db: sqlite3.Connection, lock: threading.Lock) -> None:
+    mid = _pending_mission(db)
+    rid = _running_run(db, mid)
+
+    def boom(session_id):  # noqa: ANN001
+        raise RuntimeError("no foundation here")
+
+    outcome = NativeAtlasAgent(agent_factory=boom).execute(
+        db, lock, mission_id=mid, run_id=rid, prompt="x"
+    )
+    assert outcome.status == "failed"
+    assert outcome.stop_reason == "harness_unavailable"
 
 
 # --- ClaudeCodeAgent (injected fake SDK) -----------------------------------

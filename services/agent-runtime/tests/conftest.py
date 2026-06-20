@@ -81,3 +81,37 @@ def run_id_fixture(db: sqlite3.Connection) -> str:
 def lock_fixture() -> threading.Lock:
     """A threading.Lock for audit_service concurrency tests."""
     return threading.Lock()
+
+
+class _OfflineHarness:
+    """Deterministic stand-in for the foundation AIAgent — no network. Returns a
+    completed result so executor/daemon lifecycle tests resolve 'native' to a
+    succeeding run without invoking the real harness or any provider."""
+
+    def __init__(self, session_id: str) -> None:
+        self.session_id = session_id
+
+    def run_conversation(self, user_message: str, system_message=None):  # noqa: ANN001
+        return {
+            "final_response": "[offline] native runtime executed",
+            "messages": [],
+            "api_calls": 0,
+            "completed": True,
+            "failed": False,
+            "error": None,
+        }
+
+
+@pytest.fixture(autouse=True)
+def _offline_native_harness(monkeypatch) -> None:
+    """Autouse: never let the real native harness reach the network during tests.
+
+    Patches the NativeAtlasAgent default factory to an offline echo harness. Tests
+    that inject their own `agent_factory` bypass this entirely; lifecycle tests
+    that resolve 'native' from the registry get the deterministic offline harness.
+    """
+    from atlas_runtime.agents import native
+
+    monkeypatch.setattr(
+        native, "_default_factory", lambda session_id, max_iterations: _OfflineHarness(session_id)
+    )
