@@ -382,30 +382,68 @@ body,
 	z-index: 1;
 }
 
-/* ATLAS custom scrollbars — compact, glass-native, no default gray rails. */
+/* ATLAS scrollbars — minimal trace: a thin faint rail, transparent track, no
+   chrome. Brightens slightly on hover. Edge-limit pulse handled by JS overlay
+   (lib/scrollEdgePulse) so it works across overflow-clipped containers. */
 * {
 	scrollbar-width: thin;
-	scrollbar-color: rgba(79,139,255,0.42) rgba(237,234,224,0.04);
+	scrollbar-color: rgba(150,172,210,0.20) transparent;
 }
 
 *::-webkit-scrollbar {
-	width: 9px;
-	height: 9px;
+	width: 6px;
+	height: 6px;
 }
 
 *::-webkit-scrollbar-track {
-	background: rgba(237,234,224,0.035);
-	border-left: 1px solid rgba(237,234,224,0.04);
+	background: transparent;
 }
 
 *::-webkit-scrollbar-thumb {
-	background: linear-gradient(180deg, rgba(79,139,255,0.62), rgba(70,240,160,0.38));
-	border: 2px solid rgba(6,7,11,0.86);
-	border-radius: 2px;
+	background: rgba(150,172,210,0.16);
+	border-radius: 99px;
+	border: 1px solid transparent;
+	background-clip: padding-box;
+	transition: background 160ms var(--l2-ease);
 }
 
 *::-webkit-scrollbar-thumb:hover {
-	background: linear-gradient(180deg, rgba(79,139,255,0.86), rgba(70,240,160,0.58));
+	background: rgba(168,194,236,0.32);
+}
+
+*::-webkit-scrollbar-corner {
+	background: transparent;
+}
+
+/* Edge-limit pulse — a small light pulse in the new-mission hover tones
+   (emerald → celestial) when a scroll container hits its vertical limit. */
+.atlas-scroll-pulse {
+	position: fixed;
+	height: 2px;
+	pointer-events: none;
+	z-index: 9999;
+	border-radius: 2px;
+	background: linear-gradient(
+		90deg,
+		transparent 0%,
+		transparent 32%,
+		rgba(70, 240, 160, 0.85) 46%,
+		rgba(79, 139, 255, 0.9) 54%,
+		transparent 68%,
+		transparent 100%
+	);
+	box-shadow: 0 0 12px rgba(70, 240, 160, 0.55), 0 0 24px rgba(79, 139, 255, 0.4);
+	animation: atlas-scroll-pulse-fade 560ms var(--l2-ease) forwards;
+}
+
+@keyframes atlas-scroll-pulse-fade {
+	0% { opacity: 0; transform: scaleX(0.55); }
+	28% { opacity: 1; transform: scaleX(1); }
+	100% { opacity: 0; transform: scaleX(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.atlas-scroll-pulse { display: none; }
 }
 
 /* TopoScroll — fully custom overlay scrollbar (native rail hidden, gradient thumb). */
