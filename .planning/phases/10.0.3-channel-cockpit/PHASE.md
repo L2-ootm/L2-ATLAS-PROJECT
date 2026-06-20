@@ -88,4 +88,17 @@ gateway from the cockpit), completing the channel-cockpit management story:
   (agent-runtime 170 pass / 1 known `claude_agent_sdk` env fail; `cargo test -p atlas-gateway` 64 pass;
   web tsc/lint/build green).
 
-**Still deferred:** the P2 Discord guild/channel browser and the Providers tab.
+**Still deferred:** the P2 Discord guild/channel browser.
+
+## Delivered (2026-06-20, part 3) — model registry surface
+
+- React: System page **MODEL REGISTRY** panel (`ModelRegistryPanel`) — lists every model from the
+  existing `GET /v1/models` (model_id, active pill, health, provider), with seed-hint empty state and
+  graceful offline. Provider credentials remain in the RUNTIME CONFIG panel (no duplication), so this
+  closes the "Providers tab" deferral as a registry view rather than a redundant provider card.
+  Frontend-only over an already-tested endpoint; web tsc/lint/build green.
+
+**Still deferred (credential-dependent):** the P2 Discord guild/channel/role browser. This genuinely
+requires a live bot token + Discord API introspection, and the foundation exposes no CLI command for
+guild/channel listing — so it needs a foundation introspection command (or a direct adapter call)
+before a cockpit surface is buildable/verifiable. Left out rather than stubbed.

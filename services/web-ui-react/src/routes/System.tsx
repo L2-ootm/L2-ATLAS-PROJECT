@@ -6,6 +6,7 @@ import {
 	checkHealth,
 	getConfig,
 	listChannels,
+	listModels,
 	listModules,
 	messagingGatewayStatus,
 	setModuleActive,
@@ -15,6 +16,7 @@ import {
 	type AtlasConfigView,
 	type ChannelSummary,
 	type MessagingGatewayStatus,
+	type ModelEntry,
 	type Module
 } from '../lib/api';
 import { isTauri, startGatewayViaShell } from '../lib/host';
@@ -36,6 +38,7 @@ export default function System() {
 	const [modules, setModules] = useState<Module[]>([]);
 	const [config, setConfig] = useState<AtlasConfigView | null>(null);
 	const [channels, setChannels] = useState<ChannelSummary[]>([]);
+	const [models, setModels] = useState<ModelEntry[]>([]);
 	const [msgGw, setMsgGw] = useState<MessagingGatewayStatus>({ running: false, pid: null });
 	const [msgGwBusy, setMsgGwBusy] = useState(false);
 	const [load, setLoad] = useState<Load>({ s: 'loading' });
@@ -45,12 +48,13 @@ export default function System() {
 	const { epoch } = useGatewayHealth();
 
 	const refresh = useCallback(async () => {
-		const [h, m, c, ch, gw] = await Promise.allSettled([
+		const [h, m, c, ch, gw, md] = await Promise.allSettled([
 			checkHealth(),
 			listModules(),
 			getConfig(),
 			listChannels(),
-			messagingGatewayStatus()
+			messagingGatewayStatus(),
+			listModels()
 		]);
 		if (h.status === 'fulfilled') {
 			setHealth(h.value);
@@ -63,6 +67,7 @@ export default function System() {
 		setConfig(c.status === 'fulfilled' ? c.value : null);
 		setChannels(ch.status === 'fulfilled' ? ch.value.channels : []);
 		setMsgGw(gw.status === 'fulfilled' ? gw.value : { running: false, pid: null });
+		setModels(md.status === 'fulfilled' ? md.value.models : []);
 		setLoad({ s: h.status === 'rejected' && m.status === 'rejected' ? 'error' : 'ready' });
 	}, []);
 
@@ -132,6 +137,8 @@ export default function System() {
 			{online === false && <OfflinePanel onStarted={() => void refresh()} />}
 
 			{config && <RuntimeConfigPanel config={config} />}
+
+			<ModelRegistryPanel models={models} provider={config?.provider.name ?? null} />
 
 			<ChannelsPanel
 				channels={channels}
@@ -235,6 +242,73 @@ function RuntimeConfigPanel({ config }: { config: AtlasConfigView }) {
 					</div>
 				))}
 			</div>
+		</section>
+	);
+}
+
+// ── model registry panel ──────────────────────────────────────────────────────
+// The provider/model registry (GET /v1/models). Provider credentials live in the
+// RUNTIME CONFIG panel above; this lists every known model with its source and
+// active state. Read-only — discovery/seeding happens via the CLI.
+function ModelRegistryPanel({ models, provider }: { models: ModelEntry[]; provider: string | null }) {
+	const activeCount = models.filter((m) => m.active).length;
+	return (
+		<section style={glassPanel({ overflow: 'hidden', marginBottom: 16 })}>
+			<header
+				style={{
+					display: 'flex',
+					alignItems: 'center',
+					gap: 8,
+					padding: '14px 18px',
+					borderBottom: '1px solid var(--l2-hairline)'
+				}}
+			>
+				<Cpu size={14} strokeWidth={1.6} color="var(--atlas-bronze)" />
+				<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 11, letterSpacing: '0.22em', color: 'var(--atlas-bronze)' }}>
+					MODEL REGISTRY
+				</span>
+				<span style={{ marginLeft: 'auto', fontFamily: 'var(--l2-font-mono)', fontSize: 10, letterSpacing: '0.14em', color: 'var(--l2-fg-3)' }}>
+					{activeCount}/{models.length} ACTIVE
+				</span>
+			</header>
+
+			{models.length === 0 ? (
+				<div style={{ padding: '24px 18px', color: 'var(--l2-fg-3)', fontSize: 13, lineHeight: 1.6 }}>
+					No models registered{provider ? ` for ${provider}` : ''}. Seed the registry with{' '}
+					<code style={{ fontFamily: 'var(--l2-font-mono)', color: 'var(--atlas-celestial)' }}>atlas models discover</code>.
+				</div>
+			) : (
+				models.map((m, i) => (
+					<div
+						key={`${m.provider}/${m.model_id}`}
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							justifyContent: 'space-between',
+							gap: 16,
+							padding: '12px 18px',
+							borderTop: i === 0 ? 'none' : '1px solid var(--l2-hairline)'
+						}}
+					>
+						<div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+							<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 13, color: 'var(--l2-fg-1)', wordBreak: 'break-all' }}>
+								{m.model_id}
+							</span>
+							<StatusPill active={m.active} />
+						</div>
+						<div style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
+							{m.health && (
+								<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 9.5, letterSpacing: '0.1em', color: 'var(--l2-fg-3)' }}>
+									{m.health.toUpperCase()}
+								</span>
+							)}
+							<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 10, letterSpacing: '0.1em', color: 'var(--l2-fg-3)' }}>
+								{m.provider}
+							</span>
+						</div>
+					</div>
+				))
+			)}
 		</section>
 	);
 }
