@@ -374,7 +374,9 @@ pub fn goal_tree(path: &Path, focus_id: &str) -> Result<Vec<Value>, DbError> {
 }
 
 /// Run a query whose row's column index 1 is `goal_id`, grouping mapped rows by it.
-/// A missing table yields an empty map (graceful pre-0010 degradation).
+/// `goal_id` may be NULL (run-level observations from the compounding loop carry
+/// no goal) — those rows are skipped, they belong to no goal in the tree. A
+/// missing table yields an empty map (graceful pre-0010 degradation).
 fn group_by_goal(
     conn: &Connection,
     sql: &str,
@@ -387,12 +389,14 @@ fn group_by_goal(
         }
         Err(e) => return Err(e.into()),
     };
-    let rows: Vec<(String, Value)> = stmt
-        .query_map([], |row| Ok((row.get::<_, String>(1)?, mapper(row)?)))?
+    let rows: Vec<(Option<String>, Value)> = stmt
+        .query_map([], |row| Ok((row.get::<_, Option<String>>(1)?, mapper(row)?)))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     let mut map: HashMap<String, Vec<Value>> = HashMap::new();
     for (gid, v) in rows {
-        map.entry(gid).or_default().push(v);
+        if let Some(gid) = gid {
+            map.entry(gid).or_default().push(v);
+        }
     }
     Ok(map)
 }
