@@ -178,6 +178,25 @@ All work committed on `main` (commits `e3269cb`..`0c4600a`). Verification: agent
 (1 known env fail), `cargo test -p atlas-gateway` config/channel tests pass + compiles, web
 tsc/lint/build green.
 
+### Follow-up slice (2026-06-20): messaging-gateway lifecycle + STATE drift correction
+
+- **Item #3 deferral closed:** messaging-gateway *process* lifecycle now shipped —
+  `atlas_runtime/messaging_gateway_control.py` (detached spawn + `~/.atlas/gateway-messaging.json`
+  PID tracking, cross-platform liveness, idempotent stop), `atlas channels gateway start|status|stop
+  --json`, gateway `GET /v1/gateway/messaging/status` + `POST .../{start,stop}`, and a System CHANNELS
+  panel footer control. +10 Python / +3 Rust tests. agent-runtime 170 pass (1 known
+  `claude_agent_sdk` env fail), `cargo test -p atlas-gateway` 64 pass, web tsc/lint/build green.
+  See `10.0.3-channel-cockpit/PHASE.md` "Delivered part 2". Still deferred: Discord browser, Providers tab.
+- **DRIFT CORRECTION — two long-flagged gaps are already DONE (this STATE was stale):**
+  1. The `atlas db init` migration runner EXISTS: `atlas_runtime/db.py` has a `schema_migrations`
+     tracker + drift-tolerant `apply_migrations`/`migration_status`, wired as `atlas db init`/`status`
+     and called by the setup wizard; 5-test suite (`tests/test_db_migrations.py`). The "build the
+     runner before further schema work" prerequisite below is satisfied.
+  2. The async/background run executor EXISTS: `run_executor.start_and_execute_async` (daemon-thread
+     workers) + `runtime_daemon.py` (HTTP enqueue host), delivered under Command Center WP-1.
+  Treat the "NEXT SESSION (1)(2)" and antifragility "build the runner" notes in the big-plan log below
+  as historical/closed.
+
 ## Project Reference
 
 
