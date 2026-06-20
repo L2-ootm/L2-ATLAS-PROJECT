@@ -983,7 +983,10 @@ fn seeded_db_goals(dir: &tempfile::TempDir) -> PathBuf {
              '2026-06-10T10:01:00Z', '2026-06-10T10:01:00Z');
          INSERT INTO observations(id, goal_id, run_id, body, source, created_at)
          VALUES
-            ('o1', 'g-root', 'r1', 'tests green', 'run:r1', '2026-06-10T10:02:00Z');",
+            ('o1', 'g-root', 'r1', 'tests green', 'run:r1', '2026-06-10T10:02:00Z'),
+            -- run-level observation (compounding loop) with NULL goal_id: the tree
+            -- build must skip it, never error on the NULL grouping key.
+            ('o2', NULL, 'r1', 'run failed: no creds', 'compounding-loop', '2026-06-10T10:03:00Z');",
     )
     .unwrap();
     path
