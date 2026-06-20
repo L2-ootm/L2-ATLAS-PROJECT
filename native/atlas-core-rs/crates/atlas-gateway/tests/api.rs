@@ -1088,3 +1088,54 @@ async fn observation_create_forwards_args_and_returns_201() {
     assert!(args.windows(2).any(|w| w == ["--body", "found a bug"]));
     assert!(args.windows(2).any(|w| w == ["--goal", "g-root"]));
 }
+
+// --- Operations (WP-6 — premade autonomous operations) -----------------------
+
+#[tokio::test]
+async fn operations_list_parses_cli_json() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let db_path = seeded_db_goals(&dir);
+    // The CLI prints a JSON array; the gateway parses it into `operations`.
+    let stub = r#"[{"id":"elaborate","label":"Elaborate Goal","risk":"internal"}]"#;
+    let router = test_app_with_stub(db_path, stub, &stub_dir);
+    let (status, body) = get_json(&router, "/v1/operations").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["operations"][0]["id"], "elaborate");
+}
+
+#[tokio::test]
+async fn operation_run_prepares_and_returns_201() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let db_path = seeded_db(&dir); // has run r1
+    // Stub prints the seeded run id so the prepare read-back succeeds. (argv is not
+    // asserted here: operation_run dispatches twice — prepare + a detached
+    // `run exec` — which would race on a shared argv file. The response body
+    // proves prepare ran: r1 only resolves if `operation prepare` was invoked.)
+    let router = test_app_with_stub(db_path, "r1", &stub_dir);
+    let (status, body) = post_json(
+        &router,
+        "/v1/operations/elaborate/run",
+        json!({ "goal_id": "g-root" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(body["executing"], true);
+    assert_eq!(body["operation"], "elaborate");
+    assert_eq!(body["run"]["id"], "r1");
+}
+
+#[tokio::test]
+async fn operation_run_rejects_bad_agent() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_app(seeded_db(&dir));
+    let (status, body) = post_json(
+        &router,
+        "/v1/operations/elaborate/run",
+        json!({ "goal_id": "g-root", "agent": "rogue" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "bad_request");
+}
