@@ -181,7 +181,7 @@ class NativeAtlasAgent(AgentRuntime):
         api_calls = result.get("api_calls") or 0
         completed = bool(result.get("completed"))
         failed = bool(result.get("failed"))
-        error = result.get("error")
+        error = _clean_error(result.get("error"))
 
         self._safe_emit(
             conn, lock, run_id, event_type="llm_call",
@@ -235,3 +235,15 @@ class NativeAtlasAgent(AgentRuntime):
 
 def _contains_secret(text: str) -> bool:
     return any(p.search(text or "") for p in SECRET_PATTERNS)
+
+
+def _clean_error(error: Any) -> Optional[str]:
+    """Collapse noisy provider error payloads (e.g. an HTML 4xx page) into a
+    concise operator-facing message so summaries/observations stay readable."""
+    if not error:
+        return error
+    text = str(error)
+    low = text.lower()
+    if "<html" in low or "<!doctype" in low:
+        return "provider returned an HTML error page (likely auth/credentials — run `atlas-agent setup`)"
+    return text[:_SUMMARY_CAP]
