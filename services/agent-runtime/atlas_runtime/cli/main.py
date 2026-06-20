@@ -23,6 +23,7 @@ from atlas_runtime import (
     goal_service,
     graph_service,
     mission_service,
+    operation_service,
     project_service,
     run_executor,
     run_service,
@@ -59,6 +60,8 @@ task_app = typer.Typer(name="task", help="Command Center: tasks under a goal.")
 app.add_typer(task_app, name="task")
 observe_app = typer.Typer(name="observe", help="Command Center: observations on goals/runs.")
 app.add_typer(observe_app, name="observe")
+operation_app = typer.Typer(name="operation", help="Command Center: premade autonomous operations on goals.")
+app.add_typer(operation_app, name="operation")
 runtime_app = typer.Typer(name="runtime", help="In-process run executor daemon (background execution, b).")
 app.add_typer(runtime_app, name="runtime")
 
@@ -635,6 +638,55 @@ def observe_list(
     conn = _get_connection()
     items = goal_service.list_observations(conn, goal_id=goal_id or None, run_id=run_id or None)
     typer.echo(json.dumps([o.model_dump() for o in items]))
+
+
+@operation_app.command("list")
+def operation_list() -> None:
+    """Print the available premade operations as a JSON array."""
+    ops = operation_service.list_operations()
+    typer.echo(
+        json.dumps(
+            [{"id": o.id, "label": o.label, "description": o.description, "agent": o.agent, "risk": o.risk} for o in ops]
+        )
+    )
+
+
+@operation_app.command("prepare")
+def operation_prepare(
+    op_id: str = typer.Option(..., "--op", help="Operation id (elaborate|recon|blockers|decompose)"),
+    goal_id: str = typer.Option(..., "--goal", help="Goal id the operation targets"),
+    agent: str = typer.Option("", "--agent", help="Agent runtime override (else the operation default)"),
+) -> None:
+    """Create a mission+run for an operation on a goal; prints the run id.
+
+    Does NOT execute — the caller (gateway) spawns a detached `run exec` so the
+    response returns immediately. The rendered operation instruction becomes the
+    mission intent; the executor prepends the operator context ahead of it.
+    """
+    conn = _get_connection()
+    lock = _get_lock()
+    op = operation_service.get_operation(op_id)
+    if op is None:
+        typer.echo(f"Error: unknown operation {op_id!r}", err=True)
+        raise typer.Exit(1)
+    goal = goal_service.get_goal(conn, goal_id)
+    if goal is None:
+        typer.echo(f"Error: goal {goal_id!r} not found", err=True)
+        raise typer.Exit(1)
+    focus = focus_service.get_current_focus(conn)
+    try:
+        intent = operation_service.build_intent(op_id, goal=goal, focus=focus)
+    except operation_service.OperationError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    project_id = focus.project_id if focus is not None else None
+    mission = mission_service.create_mission(
+        conn, lock, title=f"{op.label}: {goal.title}"[:120], intent=intent, project_id=project_id
+    )
+    run = run_service.start_run(
+        conn, lock, mission_id=mission.id, agent_runtime=(agent or op.agent)  # type: ignore[arg-type]
+    )
+    typer.echo(run.id)
 
 
 # ---------------------------------------------------------------------------
