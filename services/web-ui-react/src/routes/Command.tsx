@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type * as React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Crosshair, Plus, Pencil, Archive, Rocket, X } from 'lucide-react';
+import { Crosshair, Plus, Pencil, Archive, Rocket, X, ListTree, Check, CornerDownRight } from 'lucide-react';
 import { Page } from '../components/Page';
 import TopoInput from '../components/TopoInput';
 import { GlassPanel } from '../components/GlassFx';
@@ -13,11 +13,17 @@ import {
 	getCurrentFocus,
 	createFocus,
 	archiveFocus,
+	getFocusTree,
+	createGoal,
+	archiveGoal,
+	createTask,
+	setTaskStatus,
 	createMission,
 	startRun,
 	listRuns,
 	agentRuntimeLabel,
 	type Focus,
+	type GoalNode,
 	type AgentRuntime,
 	type RunWithMission
 } from '../lib/api';
@@ -51,6 +57,7 @@ type FocusLoad = { s: 'loading' } | { s: 'ready'; focus: Focus | null } | { s: '
 export default function Command() {
 	const { online, epoch } = useGatewayHealth();
 	const [focusLoad, setFocusLoad] = useState<FocusLoad>({ s: 'loading' });
+	const [tree, setTree] = useState<GoalNode[]>([]);
 	const [runs, setRuns] = useState<RunWithMission[]>([]);
 	const [feedReady, setFeedReady] = useState(false);
 	const [editing, setEditing] = useState<Focus | 'new' | null>(null);
@@ -60,14 +67,28 @@ export default function Command() {
 
 	const focus = focusLoad.s === 'ready' ? focusLoad.focus : null;
 
+	const refreshTree = useCallback(async (focusId: string | null) => {
+		if (!focusId) {
+			setTree([]);
+			return;
+		}
+		try {
+			const { tree } = await getFocusTree(focusId);
+			setTree(tree);
+		} catch {
+			setTree([]);
+		}
+	}, []);
+
 	const refreshFocus = useCallback(async () => {
 		try {
 			const { focus } = await getCurrentFocus();
 			setFocusLoad({ s: 'ready', focus });
+			await refreshTree(focus?.id ?? null);
 		} catch {
 			setFocusLoad({ s: 'error' });
 		}
-	}, []);
+	}, [refreshTree]);
 
 	const refreshFeed = useCallback(async () => {
 		try {
@@ -137,6 +158,7 @@ export default function Command() {
 						onArchive={onArchive}
 						onSet={() => setEditing('new')}
 					/>
+					{focus && <GoalsPanel focus={focus} tree={tree} onChanged={() => void refreshTree(focus.id)} />}
 					<LaunchPanel focus={focus} busy={launchBusy} err={launchErr} onLaunch={onLaunch} />
 				</div>
 				<ActivityFeed
@@ -279,6 +301,223 @@ function FocusSkeleton() {
 		</div>
 	);
 }
+
+// ── Goals panel (the goal tree under the Current Focus) ────────────────────────
+function GoalsPanel({ focus, tree, onChanged }: { focus: Focus; tree: GoalNode[]; onChanged: () => void }) {
+	const [adding, setAdding] = useState(false);
+	const [busy, setBusy] = useState(false);
+
+	async function addRoot(title: string) {
+		setBusy(true);
+		try {
+			await createGoal({ title, focus: focus.id });
+			onChanged();
+		} finally {
+			setBusy(false);
+			setAdding(false);
+		}
+	}
+
+	return (
+		<GlassPanel style={{ padding: 0, overflow: 'hidden' }}>
+			<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 9, padding: '13px 18px', borderBottom: '1px solid var(--l2-hairline)' }}>
+				<span style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+					<ListTree size={14} strokeWidth={1.8} color="var(--atlas-bronze)" />
+					<HudLabel style={{ color: 'var(--atlas-bronze)' }}>GOALS</HudLabel>
+				</span>
+				<button
+					type="button"
+					onClick={() => setAdding((v) => !v)}
+					title="Add goal"
+					style={ghostIconStyle}
+				>
+					<Plus size={14} strokeWidth={2} />
+				</button>
+			</div>
+			<div style={{ padding: tree.length === 0 && !adding ? '20px 18px' : '12px 10px 14px' }}>
+				{adding && <InlineAdd placeholder="New goal…" busy={busy} onSubmit={addRoot} onCancel={() => setAdding(false)} />}
+				{tree.length === 0 && !adding && (
+					<div style={{ color: 'var(--l2-fg-3)', fontSize: 13, lineHeight: 1.5 }}>
+						No goals yet. Add goals, sub-goals, and tasks — the loop synthesizes run instructions from this tree.
+					</div>
+				)}
+				{tree.map((node) => (
+					<GoalNodeView key={node.id} node={node} focusId={focus.id} depth={0} onChanged={onChanged} />
+				))}
+			</div>
+		</GlassPanel>
+	);
+}
+
+const GOAL_STATUS_COLOR: Record<string, string> = {
+	open: 'var(--l2-fg-3)',
+	active: 'var(--atlas-celestial)',
+	done: 'var(--atlas-emerald)'
+};
+
+function GoalNodeView({ node, focusId, depth, onChanged }: { node: GoalNode; focusId: string; depth: number; onChanged: () => void }) {
+	const [mode, setMode] = useState<null | 'task' | 'subgoal'>(null);
+	const [busy, setBusy] = useState(false);
+
+	async function addTask(title: string) {
+		setBusy(true);
+		try {
+			await createTask(node.id, title);
+			onChanged();
+		} finally {
+			setBusy(false);
+			setMode(null);
+		}
+	}
+	async function addSub(title: string) {
+		setBusy(true);
+		try {
+			await createGoal({ title, focus: focusId, parent: node.id });
+			onChanged();
+		} finally {
+			setBusy(false);
+			setMode(null);
+		}
+	}
+	async function toggleTask(taskId: string, status: string) {
+		const next = status === 'todo' ? 'doing' : status === 'doing' ? 'done' : 'todo';
+		await setTaskStatus(taskId, next as 'todo' | 'doing' | 'done');
+		onChanged();
+	}
+
+	return (
+		<div style={{ paddingLeft: depth > 0 ? 14 : 0, borderLeft: depth > 0 ? '1px solid var(--l2-hairline)' : 'none', marginLeft: depth > 0 ? 6 : 0, marginBottom: 6 }}>
+			<div data-topo={node.status === 'active' ? 'info' : undefined} style={{ padding: '8px 8px', borderRadius: 2 }}>
+				<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+					<span aria-hidden style={{ width: 6, height: 6, borderRadius: '50%', background: GOAL_STATUS_COLOR[node.status] ?? 'var(--l2-fg-3)', flex: 'none' }} />
+					<span style={{ color: 'var(--l2-fg-1)', fontSize: 13.5, fontWeight: node.status === 'active' ? 600 : 400, flex: 1, minWidth: 0 }}>
+						{node.title}
+					</span>
+					<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 8.5, letterSpacing: '0.16em', color: GOAL_STATUS_COLOR[node.status] ?? 'var(--l2-fg-3)', textTransform: 'uppercase' }}>
+						{node.status}
+					</span>
+					<button type="button" title="Add sub-goal" onClick={() => setMode(mode === 'subgoal' ? null : 'subgoal')} style={miniIconStyle}>
+						<CornerDownRight size={12} strokeWidth={1.8} />
+					</button>
+					<button type="button" title="Add task" onClick={() => setMode(mode === 'task' ? null : 'task')} style={miniIconStyle}>
+						<Plus size={13} strokeWidth={2} />
+					</button>
+					<button type="button" title="Archive goal" onClick={() => { void archiveGoal(node.id).then(onChanged); }} style={miniIconStyle}>
+						<Archive size={12} strokeWidth={1.8} />
+					</button>
+				</div>
+				{node.description && (
+					<div style={{ color: 'var(--l2-fg-3)', fontSize: 12, marginTop: 4, marginLeft: 14, lineHeight: 1.45 }}>{node.description}</div>
+				)}
+				{node.tasks.length > 0 && (
+					<div style={{ marginTop: 6, marginLeft: 14, display: 'flex', flexDirection: 'column', gap: 3 }}>
+						{node.tasks.map((t) => (
+							<button
+								key={t.id}
+								type="button"
+								onClick={() => void toggleTask(t.id, t.status)}
+								title={`Status: ${t.status} — click to advance`}
+								style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}
+							>
+								<span aria-hidden style={{
+									width: 13, height: 13, borderRadius: 2, flex: 'none',
+									border: `1px solid ${t.status === 'done' ? 'var(--atlas-emerald)' : 'var(--l2-hairline)'}`,
+									background: t.status === 'done' ? 'rgba(70,240,160,0.18)' : t.status === 'doing' ? 'rgba(79,139,255,0.18)' : 'transparent',
+									display: 'inline-flex', alignItems: 'center', justifyContent: 'center'
+								}}>
+									{t.status === 'done' && <Check size={10} strokeWidth={2.6} color="var(--atlas-emerald)" />}
+									{t.status === 'doing' && <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--atlas-celestial)' }} />}
+								</span>
+								<span style={{ fontSize: 12.5, color: t.status === 'done' ? 'var(--l2-fg-3)' : 'var(--l2-fg-2)', textDecoration: t.status === 'done' ? 'line-through' : 'none' }}>
+									{t.title}
+								</span>
+							</button>
+						))}
+					</div>
+				)}
+				{node.observations.length > 0 && (
+					<div style={{ marginTop: 6, marginLeft: 14, display: 'flex', flexDirection: 'column', gap: 2 }}>
+						{node.observations.slice(0, 3).map((o) => (
+							<div key={o.id} style={{ fontSize: 11, color: 'var(--l2-fg-3)', fontFamily: 'var(--l2-font-mono)', lineHeight: 1.4 }}>
+								<span style={{ color: 'var(--atlas-bronze)' }}>· {o.source}:</span> {o.body}
+							</div>
+						))}
+					</div>
+				)}
+				{mode && (
+					<div style={{ marginLeft: 14, marginTop: 6 }}>
+						<InlineAdd
+							placeholder={mode === 'task' ? 'New task…' : 'New sub-goal…'}
+							busy={busy}
+							onSubmit={mode === 'task' ? addTask : addSub}
+							onCancel={() => setMode(null)}
+						/>
+					</div>
+				)}
+			</div>
+			{node.children.map((child) => (
+				<GoalNodeView key={child.id} node={child} focusId={focusId} depth={depth + 1} onChanged={onChanged} />
+			))}
+		</div>
+	);
+}
+
+function InlineAdd({ placeholder, busy, onSubmit, onCancel }: { placeholder: string; busy: boolean; onSubmit: (v: string) => void; onCancel: () => void }) {
+	const [value, setValue] = useState('');
+	function submit() {
+		const v = value.trim();
+		if (v) onSubmit(v);
+	}
+	return (
+		<div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
+			<input
+				autoFocus
+				value={value}
+				disabled={busy}
+				onChange={(e) => setValue(e.target.value)}
+				onKeyDown={(e) => {
+					if (e.key === 'Enter') submit();
+					if (e.key === 'Escape') onCancel();
+				}}
+				placeholder={placeholder}
+				style={{ flex: 1, minWidth: 0, height: 32, borderRadius: 2, border: '1px solid var(--l2-hairline)', background: 'rgba(9,11,16,0.72)', color: 'var(--l2-fg-1)', fontSize: 12.5, padding: '0 10px', outline: 'none' }}
+			/>
+			<button type="button" onClick={submit} disabled={busy} style={{ ...ghostIconStyle, borderColor: 'rgba(70,240,160,0.4)', color: 'var(--atlas-emerald)' }} title="Add">
+				<Check size={14} strokeWidth={2.2} />
+			</button>
+			<button type="button" onClick={onCancel} style={ghostIconStyle} title="Cancel">
+				<X size={14} strokeWidth={2} />
+			</button>
+		</div>
+	);
+}
+
+const ghostIconStyle: React.CSSProperties = {
+	display: 'inline-flex',
+	alignItems: 'center',
+	justifyContent: 'center',
+	width: 28,
+	height: 28,
+	borderRadius: 2,
+	border: '1px solid var(--l2-hairline)',
+	background: 'transparent',
+	color: 'var(--l2-fg-3)',
+	cursor: 'pointer'
+};
+
+const miniIconStyle: React.CSSProperties = {
+	display: 'inline-flex',
+	alignItems: 'center',
+	justifyContent: 'center',
+	width: 22,
+	height: 22,
+	borderRadius: 2,
+	border: 'none',
+	background: 'transparent',
+	color: 'var(--l2-fg-3)',
+	cursor: 'pointer',
+	flex: 'none'
+};
 
 // ── Launch panel (closes the loop) ────────────────────────────────────────────
 function LaunchPanel({

@@ -230,6 +230,101 @@ export async function archiveFocus(id: string): Promise<{ archived: boolean; id:
 	return apiFetch(`/v1/focus/${encodeURIComponent(id)}/archive`, { method: 'POST' });
 }
 
+// ── Goal hierarchy (loop-engineering slice: goals → tasks + observations) ──────
+
+/** A concrete objective under a Focus. Mirrors atlas_core.schemas.Goal. */
+export interface Goal {
+	id: string;
+	focus_id: string | null;
+	parent_goal_id: string | null;
+	title: string;
+	description: string;
+	status: 'open' | 'active' | 'done' | 'archived';
+	position: number;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface Task {
+	id: string;
+	goal_id: string;
+	title: string;
+	status: 'todo' | 'doing' | 'done';
+	position: number;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface Observation {
+	id: string;
+	goal_id: string | null;
+	run_id: string | null;
+	body: string;
+	source: string;
+	created_at: string;
+}
+
+/** A goal tree node: a Goal plus its tasks, recent observations, and sub-goals. */
+export interface GoalNode extends Goal {
+	tasks: Task[];
+	observations: Observation[];
+	children: GoalNode[];
+}
+
+/** The nested goal forest for a focus (goals → children → tasks → observations). */
+export async function getFocusTree(focusId: string): Promise<{ tree: GoalNode[] }> {
+	try {
+		return await apiFetch<{ tree: GoalNode[] }>(`/v1/focus/${encodeURIComponent(focusId)}/tree`);
+	} catch (err) {
+		// A pre-0010 gateway (no goal model) or absent DB renders an empty tree.
+		if (err instanceof ApiError && (err.status === 404 || err.status === 503)) {
+			return { tree: [] };
+		}
+		throw err;
+	}
+}
+
+export interface CreateGoalInput {
+	title: string;
+	description?: string;
+	focus?: string;
+	parent?: string;
+	status?: string;
+}
+
+export async function createGoal(input: CreateGoalInput): Promise<{ goal: Goal }> {
+	return apiFetch(`/v1/goals`, { method: 'POST', body: JSON.stringify(input) });
+}
+
+export async function archiveGoal(id: string): Promise<{ archived: boolean; id: string }> {
+	return apiFetch(`/v1/goals/${encodeURIComponent(id)}/archive`, { method: 'POST' });
+}
+
+export async function createTask(goal: string, title: string): Promise<{ created: boolean; id: string }> {
+	return apiFetch(`/v1/tasks`, { method: 'POST', body: JSON.stringify({ goal, title }) });
+}
+
+export async function setTaskStatus(
+	id: string,
+	status: 'todo' | 'doing' | 'done'
+): Promise<{ updated: boolean; id: string; status: string }> {
+	return apiFetch(`/v1/tasks/${encodeURIComponent(id)}/status`, {
+		method: 'POST',
+		body: JSON.stringify({ status })
+	});
+}
+
+export interface CreateObservationInput {
+	body: string;
+	goal?: string;
+	run?: string;
+	source?: string;
+}
+
+export async function createObservation(input: CreateObservationInput): Promise<{ created: boolean; id: string }> {
+	return apiFetch(`/v1/observations`, { method: 'POST', body: JSON.stringify(input) });
+}
+
 // ── Console chat endpoint (operator workbench) ──────────────────────────────
 
 export interface ConsoleChatEvent {
