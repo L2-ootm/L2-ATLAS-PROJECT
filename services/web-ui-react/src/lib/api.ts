@@ -26,6 +26,24 @@ export interface Project {
 	updated_at: string;
 }
 
+/**
+ * The operator's current working focus (WP-2 — Command Center). A single row is
+ * `active` at a time (the Current Focus). `priorities`/`drivers` are stored as
+ * JSON-array strings in SQLite and parsed back to arrays by db.rs focus_row.
+ * Mirrors atlas_core.schemas.Focus / db.rs FOCUS_COLS.
+ */
+export interface Focus {
+	id: string;
+	title: string;
+	framework: string;
+	priorities: string[];
+	drivers: string[];
+	project_id: string | null;
+	status: string;
+	created_at: string;
+	updated_at: string;
+}
+
 /** Agent runtime that executes a run: native ATLAS in-process, or the operator's
  * local Claude Code session. Mirrors the gateway's `agent` request field /
  * `agent_runtime` response field (P4 — modular agents). */
@@ -164,6 +182,52 @@ export async function listProjects(limit = 100): Promise<{ projects: Project[]; 
 		}
 		throw err;
 	}
+}
+
+// ── Focus endpoints (WP-2 — Command Center Current Focus) ─────────────────────
+
+export async function listFocus(limit = 50): Promise<{ focus: Focus[]; count: number }> {
+	try {
+		return await apiFetch<{ focus: Focus[]; count: number }>(`/v1/focus?limit=${limit}`);
+	} catch (err) {
+		// A pre-0009 gateway (no /v1/focus route) or absent DB renders empty.
+		if (err instanceof ApiError && (err.status === 404 || err.status === 503)) {
+			return { focus: [], count: 0 };
+		}
+		throw err;
+	}
+}
+
+/** The Current Focus, or `null` when none is set / the gateway predates WP-2. */
+export async function getCurrentFocus(): Promise<{ focus: Focus | null }> {
+	try {
+		return await apiFetch<{ focus: Focus | null }>(`/v1/focus/current`);
+	} catch (err) {
+		if (err instanceof ApiError && (err.status === 404 || err.status === 503)) {
+			return { focus: null };
+		}
+		throw err;
+	}
+}
+
+export interface CreateFocusInput {
+	title: string;
+	framework?: string;
+	priorities?: string[];
+	drivers?: string[];
+	project?: string;
+}
+
+/** Create the Current Focus (archives any prior active one on the backend). */
+export async function createFocus(input: CreateFocusInput): Promise<{ focus: Focus }> {
+	return apiFetch(`/v1/focus`, {
+		method: 'POST',
+		body: JSON.stringify(input)
+	});
+}
+
+export async function archiveFocus(id: string): Promise<{ archived: boolean; id: string }> {
+	return apiFetch(`/v1/focus/${encodeURIComponent(id)}/archive`, { method: 'POST' });
 }
 
 // ── Console chat endpoint (operator workbench) ──────────────────────────────
@@ -468,10 +532,23 @@ export async function cashflowSummary(): Promise<CashflowSummary> {
  * Trigger a mission run. `agent` selects the runtime the gateway records the run
  * against ("native" default | "claude_code"); it is sent in the JSON body only
  * when provided so a pre-P4 gateway still accepts the bodyless request.
+ *
+ * When `execute` is true the gateway spawns a *detached* `atlas run exec` so the
+ * run executes in the background (the autonomous loop) and the call returns the
+ * run_id immediately. Real background execution requires the rebuilt gateway; an
+ * old binary ignores `execute` and records the run only. The body carries
+ * `execute` only when true to stay compatible with pre-WP-1 gateways.
  */
-export async function startRun(missionId: string, agent?: AgentRuntime): Promise<{ run: Run }> {
+export async function startRun(
+	missionId: string,
+	agent?: AgentRuntime,
+	execute?: boolean
+): Promise<{ run: Run; executing?: boolean }> {
 	const init: RequestInit = { method: 'POST' };
-	if (agent) init.body = JSON.stringify({ agent });
+	const body: { agent?: AgentRuntime; execute?: boolean } = {};
+	if (agent) body.agent = agent;
+	if (execute) body.execute = true;
+	if (agent || execute) init.body = JSON.stringify(body);
 	return apiFetch(`/v1/missions/${encodeURIComponent(missionId)}/run`, init);
 }
 

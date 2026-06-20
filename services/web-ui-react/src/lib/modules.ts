@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
 	Compass,
+	Crosshair,
 	Map,
 	Activity,
 	MessageSquare,
@@ -44,6 +45,7 @@ export const navSections: NavSection[] = [
 	{
 		pillar: 'MISSION',
 		items: [
+			{ id: 'command', label: 'COMMAND', route: '/command', icon: Crosshair, status: 'active', ariaLabel: 'Command Center' },
 			{ id: 'missions', label: 'MISSIONS', route: '/missions', icon: Map, status: 'active', ariaLabel: 'Missions' },
 			{ id: 'runs', label: 'RUNS', route: '/runs', icon: Activity, status: 'active', ariaLabel: 'Runs' },
 			{ id: 'console', label: 'CONSOLE', route: '/console', icon: MessageSquare, status: 'active', ariaLabel: 'Console' }
