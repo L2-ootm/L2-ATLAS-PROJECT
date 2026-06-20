@@ -126,6 +126,61 @@ def test_purge_archived_command_prints_count(db, lock, monkeypatch):
     assert result.output.strip() == "1"
 
 
+def test_focus_create_show_list_archive(db, lock, monkeypatch):
+    """atlas focus create/show/list/archive round-trip."""
+    import atlas_runtime.cli.main as cli_main
+
+    monkeypatch.setattr(cli_main, "_get_connection", lambda: db)
+    monkeypatch.setattr(cli_main, "_get_lock", lambda: lock)
+
+    created = runner.invoke(
+        app,
+        ["focus", "create", "--title", "Ship loop", "--framework", "GSD",
+         "--priorities", "wp-1, wp-2", "--drivers", "wedge"],
+    )
+    assert created.exit_code == 0
+    focus_id = created.output.strip()
+    assert len(focus_id) == 36
+
+    shown = runner.invoke(app, ["focus", "show"])
+    assert shown.exit_code == 0
+    body = json.loads(shown.output)
+    assert body["title"] == "Ship loop"
+    assert json.loads(body["priorities"]) == ["wp-1", "wp-2"]
+
+    listed = runner.invoke(app, ["focus", "list"])
+    assert listed.exit_code == 0
+    assert len(json.loads(listed.output)) == 1
+
+    archived = runner.invoke(app, ["focus", "archive", focus_id])
+    assert archived.exit_code == 0
+    assert runner.invoke(app, ["focus", "show"]).output.strip() == "none"
+
+
+def test_run_exec_executes_started_run(db, lock, monkeypatch):
+    """atlas run exec <run_id> drives an already-started run to terminal."""
+    import atlas_runtime.cli.main as cli_main
+    from atlas_runtime import mission_service, run_service
+
+    monkeypatch.setattr(cli_main, "_get_connection", lambda: db)
+    monkeypatch.setattr(cli_main, "_get_lock", lambda: lock)
+    mission = mission_service.create_mission(db, lock, title="Exec Test", intent="do the thing")
+    run = run_service.start_run(db, lock, mission_id=mission.id)
+
+    result = runner.invoke(app, ["run", "exec", run.id])
+    assert result.exit_code == 0
+    assert result.output.strip() == "succeeded"
+    assert db.execute("SELECT status FROM runs WHERE id=?", (run.id,)).fetchone()[0] == "succeeded"
+
+
+def test_run_exec_unknown_run_exits_one(db, monkeypatch):
+    import atlas_runtime.cli.main as cli_main
+
+    monkeypatch.setattr(cli_main, "_get_connection", lambda: db)
+    result = runner.invoke(app, ["run", "exec", "no-such-run"])
+    assert result.exit_code == 1
+
+
 def test_console_chat_command_prints_json(tmp_path):
     result = runner.invoke(
         app,
