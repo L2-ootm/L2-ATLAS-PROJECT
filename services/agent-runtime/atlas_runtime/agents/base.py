@@ -14,17 +14,28 @@ import sqlite3
 import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Optional
 
 VALID_AGENTS = ("native", "claude_code")
 
 
 @dataclass(frozen=True)
 class RunOutcome:
-    """Terminal result of an AgentRuntime.execute() call."""
+    """Terminal result of an AgentRuntime.execute() call.
+
+    `evidence`/`inferences`/`uncertainties` are the L2 claim taxonomy (Layer 3):
+    what was verified vs deduced vs unverified, so the operator can trust the
+    summary. `stop_reason` is set when a stop condition (Layer 2) ended the run
+    (e.g. "secret_in_prompt", "max_runtime_exceeded"). All default empty so
+    existing constructions stay valid. Tuples keep the dataclass frozen/hashable.
+    """
 
     status: Literal["succeeded", "failed"]
     summary: str = ""
+    evidence: tuple[str, ...] = ()
+    inferences: tuple[str, ...] = ()
+    uncertainties: tuple[str, ...] = ()
+    stop_reason: Optional[str] = None
 
 
 class AgentRuntime(ABC):
