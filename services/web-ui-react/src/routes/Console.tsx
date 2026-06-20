@@ -43,9 +43,10 @@ import {
 	type Project
 } from '../lib/api';
 import { selectFolder } from '../lib/host';
+import { computeDwindle, type Rect } from '../lib/bspLayout';
 
 type Load = { s: 'loading' } | { s: 'ready'; projects: Project[] } | { s: 'error' };
-type LayoutMode = 'tile' | 'free' | 'tabs';
+type LayoutMode = 'tile' | 'free' | 'tabs' | 'bsp';
 type BindingMode = 'project' | 'folder';
 type WindowKind = 'chat' | 'audit' | 'tools' | 'context';
 type DragState = { id: string; pointerId?: number; startX: number; startY: number; x: number; y: number } | null;
@@ -134,6 +135,20 @@ export default function Console() {
 	const windowsRef = useRef(windows);
 	windowsRef.current = windows;
 
+	// BSP auto-tiling needs the live canvas size to compute window rects.
+	const canvasRef = useRef<HTMLDivElement>(null);
+	const [canvasSize, setCanvasSize] = useState({ w: 0, h: 0 });
+	useEffect(() => {
+		const el = canvasRef.current;
+		if (!el || typeof ResizeObserver === 'undefined') return;
+		const ro = new ResizeObserver((entries) => {
+			const r = entries[0]?.contentRect;
+			if (r) setCanvasSize({ w: r.width, h: r.height });
+		});
+		ro.observe(el);
+		return () => ro.disconnect();
+	}, []);
+
 	useEffect(() => {
 		let alive = true;
 		async function run() {
@@ -159,6 +174,15 @@ export default function Console() {
 	const activeConsoleWindow = windows.find((win) => win.id === activeWindow) ?? windows[0];
 	const activeChatAgent = activeConsoleWindow?.kind === 'chat' ? activeConsoleWindow.agent ?? 'native' : 'native';
 	const visibleWindows = layout === 'tabs' ? windows.filter((win) => win.id === activeWindow) : windows;
+	const bspRects: Map<string, Rect> | null =
+		layout === 'bsp' && canvasSize.w > 0 && canvasSize.h > 0
+			? computeDwindle(
+					visibleWindows.map((w) => w.id),
+					{ x: 0, y: 0, w: canvasSize.w, h: canvasSize.h },
+					8,
+					activeWindow
+				)
+			: null;
 	const projectState = useMemo(() => {
 		if (bindingMode === 'folder') {
 			return boundCwd
@@ -522,7 +546,9 @@ export default function Console() {
 	}, [drag, resize]);
 
 	function cycleLayout() {
-		setLayout((current) => (current === 'tile' ? 'free' : current === 'free' ? 'tabs' : 'tile'));
+		setLayout((current) =>
+			current === 'tile' ? 'bsp' : current === 'bsp' ? 'free' : current === 'free' ? 'tabs' : 'tile'
+		);
 	}
 
 	return (
@@ -537,8 +563,27 @@ export default function Console() {
 					<IconAction title="Spawn native chat" onClick={() => addWindow('chat', 'native')}>
 						<CopyPlus size={15} strokeWidth={1.7} />
 					</IconAction>
-					<IconAction title={layout === 'tile' ? 'Free window layout' : layout === 'free' ? 'Exclusive tab layout' : 'Tile windows'} onClick={cycleLayout}>
-						{layout === 'tile' ? <MousePointer2 size={15} strokeWidth={1.7} /> : layout === 'free' ? <BoxSelect size={15} strokeWidth={1.7} /> : <LayoutGrid size={15} strokeWidth={1.7} />}
+					<IconAction
+						title={
+							layout === 'tile'
+								? 'BSP auto-tile layout'
+								: layout === 'bsp'
+									? 'Free window layout'
+									: layout === 'free'
+										? 'Exclusive tab layout'
+										: 'Tile windows'
+						}
+						onClick={cycleLayout}
+					>
+						{layout === 'tile' ? (
+							<LayoutGrid size={15} strokeWidth={1.7} />
+						) : layout === 'bsp' ? (
+							<Columns3 size={15} strokeWidth={1.7} />
+						) : layout === 'free' ? (
+							<BoxSelect size={15} strokeWidth={1.7} />
+						) : (
+							<MousePointer2 size={15} strokeWidth={1.7} />
+						)}
 					</IconAction>
 				</>
 			}
@@ -561,12 +606,15 @@ export default function Console() {
 					onAddWindow={addWindow}
 				/>
 				<div
+					ref={canvasRef}
 					className={
 						layout === 'tile'
 							? 'atlas-workbench-tile'
 							: layout === 'free'
 								? 'atlas-workbench-free'
-								: 'atlas-workbench-tabs'
+								: layout === 'bsp'
+									? 'atlas-workbench-bsp'
+									: 'atlas-workbench-tabs'
 					}
 				>
 					{visibleWindows.map((win) => (
@@ -574,6 +622,7 @@ export default function Console() {
 							key={win.id}
 							win={win}
 							layout={layout}
+							rect={bspRects?.get(win.id)}
 							active={win.id === activeWindow}
 							busy={busyWindow === win.id}
 							dragging={drag?.id === win.id || tileDragId === win.id}
@@ -681,8 +730,8 @@ function WorkbenchBar({
 			<div style={{ flex: 1 }} />
 			<MiniMenu onPick={onAddWindow} />
 			<WorkbenchBadge
-				icon={layout === 'tile' ? <Columns3 size={13} /> : layout === 'free' ? <BoxSelect size={13} /> : <LayoutGrid size={13} />}
-				label={layout === 'tile' ? 'TILE MODE' : layout === 'free' ? 'FREE MODE' : 'EXCLUSIVE TABS'}
+				icon={layout === 'tile' ? <Columns3 size={13} /> : layout === 'bsp' ? <LayoutGrid size={13} /> : layout === 'free' ? <BoxSelect size={13} /> : <LayoutGrid size={13} />}
+				label={layout === 'tile' ? 'TILE MODE' : layout === 'bsp' ? 'BSP AUTO-TILE' : layout === 'free' ? 'FREE MODE' : 'EXCLUSIVE TABS'}
 			/>
 		</div>
 	);
@@ -691,6 +740,7 @@ function WorkbenchBar({
 function WorkbenchWindow({
 	win,
 	layout,
+	rect,
 	active,
 	busy,
 	dragging,
@@ -713,6 +763,7 @@ function WorkbenchWindow({
 }: {
 	win: ConsoleWindow;
 	layout: LayoutMode;
+	rect?: Rect;
 	active: boolean;
 	busy: boolean;
 	dragging: boolean;
@@ -750,6 +801,20 @@ function WorkbenchWindow({
 						: 'left 180ms var(--l2-ease), top 180ms var(--l2-ease), box-shadow 180ms var(--l2-ease), border-color 180ms var(--l2-ease)'
 				}
 			: {};
+	// BSP auto-tile: absolutely position from the computed rect (no manual drag).
+	const bspStyle =
+		layout === 'bsp' && rect
+			? {
+					position: 'absolute' as const,
+					left: rect.x,
+					top: rect.y,
+					width: rect.w,
+					height: rect.h,
+					zIndex: active ? 30 : 10,
+					transition:
+						'left 200ms var(--l2-ease), top 200ms var(--l2-ease), width 200ms var(--l2-ease), height 200ms var(--l2-ease), box-shadow 180ms var(--l2-ease), border-color 180ms var(--l2-ease)'
+				}
+			: {};
 	return (
 		<section
 			className={`atlas-workbench-window${dragging ? ' is-dragging' : ''}${resizing ? ' is-resizing' : ''}`}
@@ -777,6 +842,7 @@ function WorkbenchWindow({
 			style={{
 				...windowStyle,
 				...freeStyle,
+				...bspStyle,
 				borderColor: active ? 'rgba(79,139,255,0.42)' : 'var(--l2-hairline)',
 				boxShadow: active ? '0 0 0 1px rgba(79,139,255,0.10), 0 18px 52px rgba(0,0,0,0.45)' : 'inset 0 1px 0 rgba(237,234,224,0.05)'
 			}}
@@ -939,6 +1005,7 @@ function ToolsPane({
 			<SectionTitle>Layout</SectionTitle>
 			<div style={segStyle}>
 				<SegmentButton active={layout === 'tile'} onClick={() => onLayout('tile')}>Tile</SegmentButton>
+				<SegmentButton active={layout === 'bsp'} onClick={() => onLayout('bsp')}>BSP</SegmentButton>
 				<SegmentButton active={layout === 'free'} onClick={() => onLayout('free')}>Free</SegmentButton>
 				<SegmentButton active={layout === 'tabs'} onClick={() => onLayout('tabs')}>Tabs</SegmentButton>
 			</div>

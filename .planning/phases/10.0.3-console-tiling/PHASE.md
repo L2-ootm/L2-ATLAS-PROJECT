@@ -44,3 +44,18 @@ fill the space; no manual placement. This is the dwindle/BSP behavior operators 
 ## Notes
 - Pure-data BSP core first (unit-testable), UI second — keeps the trickiest logic out of React.
 - Reference behavior: hyprland `dwindle` layout (aspect-driven split direction).
+
+## Delivered (2026-06-20)
+
+- `src/lib/bspLayout.ts` — pure, framework-agnostic `computeDwindle(ids, container, gap, focusId)`:
+  aspect-driven recursive split (first window takes half, rest recurse the other half), focus takes the
+  largest cell, min-edge clamp, no overlap/gaps. This is the dwindle behavior as pure geometry.
+- Console: new `bsp` LayoutMode wired into the toolbar cycle (tile→bsp→free→tabs), the segment switch,
+  and the status badge. BSP windows are absolutely positioned from computed rects via a ResizeObserver on
+  the canvas, so opening a window splits the space and closing one reflows the rest (the rect set derives
+  from the live window list). Existing tile/free/tabs modes untouched.
+- Verified: `npm run check`/`lint`/`build` green (0 errors; pre-existing exhaustive-deps warning only).
+
+**Deferred:** draggable split-boundary manual resize (the dwindle auto-layout uses fixed 0.5 splits);
+keyboard window navigation; layout persistence. A JS unit-test runner (vitest) is not configured in this
+app, so `bspLayout.ts` is verified by tsc/build + (pending) Playwright visual check rather than unit tests.

@@ -135,6 +135,12 @@ body,
 	min-height: 220px;
 }
 
+.atlas-workbench-bsp {
+	position: relative;
+	min-height: 0;
+	overflow: hidden;
+}
+
 
 .atlas-projects-grid {
 	grid-template-columns: 28px minmax(0, 1fr) 110px 136px;
