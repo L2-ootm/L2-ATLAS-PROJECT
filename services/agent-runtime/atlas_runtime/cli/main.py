@@ -52,6 +52,8 @@ run_app = typer.Typer(name="run", help="Execute an already-started run (backgrou
 app.add_typer(run_app, name="run")
 focus_app = typer.Typer(name="focus", help="Command Center: the operator's Current Focus.")
 app.add_typer(focus_app, name="focus")
+runtime_app = typer.Typer(name="runtime", help="In-process run executor daemon (background execution, b).")
+app.add_typer(runtime_app, name="runtime")
 
 try:
     from atlas_wiki.cli.main import wiki_app
@@ -474,6 +476,28 @@ def focus_archive(focus_id: str = typer.Argument(..., help="Focus ID to archive"
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1)
     typer.echo("archived")
+
+
+# ---------------------------------------------------------------------------
+# runtime subcommands — in-process executor daemon (background execution, b)
+# ---------------------------------------------------------------------------
+
+
+@runtime_app.command("serve")
+def runtime_serve(
+    host: str = typer.Option("127.0.0.1", "--host", help="Bind host (loopback by default)"),
+    port: int = typer.Option(8585, "--port", help="Bind port"),
+) -> None:
+    """Run the long-lived run-executor daemon (blocks).
+
+    Hosts the in-process async executor over HTTP so the gateway can enqueue runs
+    that execute on daemon-managed threads (the alternative to detached
+    subprocesses). POST /v1/runs/enqueue {mission_id, agent}.
+    """
+    from atlas_runtime import runtime_daemon
+
+    typer.echo(f"atlas runtime daemon on http://{host}:{port}")
+    runtime_daemon.serve(host=host, port=port)
 
 
 # ---------------------------------------------------------------------------
