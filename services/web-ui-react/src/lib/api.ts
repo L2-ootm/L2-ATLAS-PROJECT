@@ -898,3 +898,31 @@ export async function toggleChannel(name: string, enabled: boolean): Promise<{ n
 		body: JSON.stringify({ enabled })
 	});
 }
+
+export interface MessagingGatewayStatus {
+	running: boolean;
+	pid: number | null;
+}
+
+/** Lifecycle status of the foundation messaging gateway (the bot daemon, not the
+ * Rust REST gateway). Returns stopped when no gateway/config is reachable. */
+export async function messagingGatewayStatus(): Promise<MessagingGatewayStatus> {
+	try {
+		return await apiFetch<MessagingGatewayStatus>('/v1/gateway/messaging/status');
+	} catch (err) {
+		if (err instanceof ApiError && (err.status === 404 || err.status === 500 || err.status === 503)) {
+			return { running: false, pid: null };
+		}
+		throw err;
+	}
+}
+
+/** Start the foundation messaging gateway (detached, pid-tracked). */
+export async function startMessagingGateway(): Promise<{ ok: boolean; message: string; running?: boolean; pid?: number | null }> {
+	return apiFetch('/v1/gateway/messaging/start', { method: 'POST' });
+}
+
+/** Stop the foundation messaging gateway (idempotent). */
+export async function stopMessagingGateway(): Promise<{ ok: boolean; message: string }> {
+	return apiFetch('/v1/gateway/messaging/stop', { method: 'POST' });
+}

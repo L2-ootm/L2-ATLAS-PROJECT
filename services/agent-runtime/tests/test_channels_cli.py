@@ -111,3 +111,47 @@ def test_enable_creates_entry_when_missing(monkeypatch, tmp_path):
     _seed(config, "gateway:\n  platforms: {}\n")
     assert runner.invoke(app, ["channels", "enable", "telegram"]).exit_code == 0
     assert channels_cli._load_platforms(config)["telegram"]["enabled"] is True
+
+
+# --- messaging-gateway process lifecycle (atlas channels gateway ...) ---------
+
+
+def test_gateway_status_json_stopped(monkeypatch, tmp_path):
+    import json
+
+    from atlas_runtime import messaging_gateway_control as mgc
+
+    monkeypatch.setattr(mgc, "STATE_FILE", tmp_path / "gw.json")
+    result = runner.invoke(app, ["channels", "gateway", "status", "--json"])
+    assert result.exit_code == 0
+    assert json.loads(result.output) == {"running": False, "pid": None}
+
+
+def test_gateway_start_json_reports_pid(monkeypatch, tmp_path):
+    import json
+
+    from atlas_runtime import messaging_gateway_control as mgc
+
+    monkeypatch.setattr(mgc, "STATE_FILE", tmp_path / "gw.json")
+    monkeypatch.setattr(mgc, "messaging_cli", lambda: ["atlas-agent"])
+    monkeypatch.setattr(mgc, "_pid_alive", lambda pid: True)
+
+    class _P:
+        pid = 8200
+
+    monkeypatch.setattr(mgc.subprocess, "Popen", lambda *a, **k: _P())
+    result = runner.invoke(app, ["channels", "gateway", "start", "--json"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data["ok"] is True and data["pid"] == 8200
+
+
+def test_gateway_stop_json_without_pid_is_idempotent(monkeypatch, tmp_path):
+    import json
+
+    from atlas_runtime import messaging_gateway_control as mgc
+
+    monkeypatch.setattr(mgc, "STATE_FILE", tmp_path / "gw.json")
+    result = runner.invoke(app, ["channels", "gateway", "stop", "--json"])
+    assert result.exit_code == 0
+    assert json.loads(result.output)["ok"] is True
