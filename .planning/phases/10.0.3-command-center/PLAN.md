@@ -29,9 +29,29 @@ Grounded in:
 | WP-2 | `Focus` entity + `focus_service` (+ migration 0009) | **DONE** (`ea01d4a`,`e564c4a`,`2def537`) | Model + `0009_focus.sql` + `focus_service.py` + `atlas focus create/show/list/archive` (JSON). **Gateway CRUD shipped** (`2def537`): `GET /v1/focus`, `GET /v1/focus/current`, `POST /v1/focus`, `POST /v1/focus/{id}/archive` per the P3 Project pattern (db.rs read fns + CLI-dispatch writes); 7 integration tests, gateway suite 50 green. |
 | WP-3 | Context-assembly step (Intelligence Layer **[A]**) | **DONE** (`fc75374`,`e564c4a`) | `context_service.assemble_context()` — secret-redacted (SECRET_PATTERNS) brief of Current Focus + Project + recent runs, with provenance sources. Wired into `mission run --execute` and `run exec`. Wiki = gated extension. |
 | WP-4 | Command Center dashboard (CC-1 UI) | **DONE** (`fd18b03`) | `/command` React route (COMMAND nav, MISSION pillar): Current Focus card (edit/archive), quick-capture → `createFocus`, **launch autonomous run** (agent + intent → `createMission` → `startRun(execute:true)`), live activity feed (`listRuns(20)` poll + reconnect). Poll-based feed (no SSE fan-out). tsc + vite build clean; eager import keeps three.js out of the bundle. Operator design-review checkpoint here. |
-| WP-5 | Compounding loop (output→input) | TODO | Run outcome/artifacts auto-update Focus context + wiki, so the next run inherits them. |
-| WP-6 | Named operations presets (**[B]**, daily agent commands) | TODO | Saved (focus + agent + prompt) presets the operator triggers from the dashboard; risk-gated; spawn mission+run. |
+| WP-5 | Compounding loop (output→input) | **DONE** (`c64027c`) | `run_executor` appends a provenance-tracked `Observation` (source="compounding-loop", run_id) on terminal transition (skipped on mid-flight cancel; fail-open). `context_service` surfaces recent observations so the next run inherits them. |
+| WP-6 | Named operations presets (**[B]**, daily agent commands) | TODO | Saved (focus + agent + prompt) presets the operator triggers from the dashboard; risk-gated; spawn mission+run. **Next up.** |
 | WP-7 | Tests across the slice | ongoing | TDD per WP; pytest (agent-runtime/core) + cargo (gateway) + tsc/build + Playwright. |
+
+## Loop-engineering slice (operator-directed continuation, 2026-06-20)
+
+Built end-to-end in sequence (spike → model → services → gateway → execution →
+synthesis → compounding → UI). Goal: `NativeAtlasAgent` does real work and runs
+are driven by a synthesized loop brief, not a bare title.
+
+| WP | Title | State | Notes |
+|----|-------|-------|-------|
+| **LE-0** | Execution spike | **DONE** | Confirmed the foundation `AIAgent` imports from agent-runtime, constructs, and `run_conversation` returns `{final_response, messages, api_calls, completed, failed, error}`. Output needs a provider (`atlas-agent setup`); none → honest 403/failed. |
+| **LE-1** | Goal hierarchy model | **DONE** (`acb8d58`) | `Goal`/`Task`/`Observation` frozen Pydantic + `0010_goal_model.sql` (goals self-nest via parent_goal_id). `goal_service` (CRUD + archive-cascade + `build_goal_tree`) + `atlas goal/task/observe` CLI. |
+| **LE-2** | Gateway goal CRUD | **DONE** (`0df97bd`) | `GET /v1/focus/{id}/tree` (Rust tree build) + `POST /v1/goals`, `/v1/goals/{id}/archive`, `/v1/tasks`, `/v1/tasks/{id}/status`, `/v1/observations` (D-022 CLI-dispatch). |
+| **LE-3** | Real execution + safety | **DONE** (`5a75e12`,`90cc86a`) | `NativeAtlasAgent` wired to the foundation harness (D-001: use, not edit). Layer 2 stop conditions (secret scan + max-runtime watchdog); Layer 3 claim taxonomy on `RunOutcome` (evidence/inferences/uncertainties/stop_reason). HTML error payloads collapsed. Autouse test fixture keeps the suite offline. |
+| **LE-4** | Loop synthesis | **DONE** (`c64027c`) | `context_service.assemble_context` walks the goal tree + appends an Operating Contract (advance focus/goals, stay in workspace, classify claims, redact secrets). |
+| **LE-5** | Goal-tree UI | **DONE** (`918d4b2`) | Command Center `GoalsPanel`: recursive tree, inline add goal/sub-goal/task, click-to-advance task status, archive, observations. Verified live against the rebuilt gateway. |
+
+**Live E2E (capstone):** launched a native run from the gateway → real harness
+executed → honest `failed` (no provider configured) → compounding observation
+written. Confirms the loop is real, not theater. Verification: agent-runtime
+133 / atlas-core 37 / gateway 52+3 green; tsc + vite build clean.
 
 ## Deferred (explicitly out of this slice)
 - **ATLAS-owned auth store** (paused phase 10.1) → gates **CC-2** flagship
