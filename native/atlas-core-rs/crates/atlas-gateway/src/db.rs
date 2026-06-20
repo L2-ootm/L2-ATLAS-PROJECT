@@ -3,6 +3,7 @@
 
 use rusqlite::{Connection, OpenFlags};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
@@ -276,6 +277,152 @@ pub fn get_focus(path: &Path, id: &str) -> Result<Option<Value>, DbError> {
         }
         Err(e) => Err(e.into()),
     }
+}
+
+fn goal_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
+    Ok(json!({
+        "id": row.get::<_, String>(0)?,
+        "focus_id": row.get::<_, Option<String>>(1)?,
+        "parent_goal_id": row.get::<_, Option<String>>(2)?,
+        "title": row.get::<_, String>(3)?,
+        "description": row.get::<_, String>(4)?,
+        "status": row.get::<_, String>(5)?,
+        "position": row.get::<_, i64>(6)?,
+        "created_at": row.get::<_, String>(7)?,
+        "updated_at": row.get::<_, String>(8)?,
+    }))
+}
+
+fn task_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
+    Ok(json!({
+        "id": row.get::<_, String>(0)?,
+        "goal_id": row.get::<_, String>(1)?,
+        "title": row.get::<_, String>(2)?,
+        "status": row.get::<_, String>(3)?,
+        "position": row.get::<_, i64>(4)?,
+        "created_at": row.get::<_, String>(5)?,
+        "updated_at": row.get::<_, String>(6)?,
+    }))
+}
+
+fn observation_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
+    Ok(json!({
+        "id": row.get::<_, String>(0)?,
+        "goal_id": row.get::<_, Option<String>>(1)?,
+        "run_id": row.get::<_, Option<String>>(2)?,
+        "body": row.get::<_, String>(3)?,
+        "source": row.get::<_, String>(4)?,
+        "created_at": row.get::<_, String>(5)?,
+    }))
+}
+
+const GOAL_COLS: &str =
+    "id, focus_id, parent_goal_id, title, description, status, position, created_at, updated_at";
+const TASK_COLS: &str = "id, goal_id, title, status, position, created_at, updated_at";
+const OBSERVATION_COLS: &str = "id, goal_id, run_id, body, source, created_at";
+
+/// Goal detail by id (read-back after create). `Ok(None)` if unknown / table absent.
+pub fn get_goal(path: &Path, id: &str) -> Result<Option<Value>, DbError> {
+    let conn = open_ro(path)?;
+    let sql = format!("SELECT {GOAL_COLS} FROM goals WHERE id = ?1");
+    match conn.query_row(&sql, [id], goal_row) {
+        Ok(v) => Ok(Some(v)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(rusqlite::Error::SqliteFailure(_, Some(ref msg))) if msg.contains("no such table") => {
+            Ok(None)
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// The non-archived goal forest for a focus: top-level goals each with nested
+/// `children`, their `tasks`, and recent `observations`. Mirrors
+/// goal_service.build_goal_tree. Returns `Ok(vec![])` when the `goals` table does
+/// not exist yet (pre-0010 DB) so the gateway never 503s.
+pub fn goal_tree(path: &Path, focus_id: &str) -> Result<Vec<Value>, DbError> {
+    let conn = open_ro(path)?;
+    let sql = format!(
+        "SELECT {GOAL_COLS} FROM goals WHERE focus_id = ?1 AND status != 'archived' \
+         ORDER BY position ASC, created_at ASC"
+    );
+    let mut stmt = match conn.prepare(&sql) {
+        Ok(s) => s,
+        Err(rusqlite::Error::SqliteFailure(_, Some(ref msg))) if msg.contains("no such table") => {
+            return Ok(vec![]);
+        }
+        Err(e) => return Err(e.into()),
+    };
+    // (id, parent_goal_id, base goal JSON)
+    let goals: Vec<(String, Option<String>, Value)> = stmt
+        .query_map([focus_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(2)?, goal_row(row)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    if goals.is_empty() {
+        return Ok(vec![]);
+    }
+
+    // Group tasks / observations by goal_id (tables co-created in 0010; tolerate absence).
+    let tasks_by_goal = group_by_goal(&conn, &format!(
+        "SELECT {TASK_COLS} FROM tasks ORDER BY position ASC, created_at ASC"
+    ), task_row)?;
+    let obs_by_goal = group_by_goal(&conn, &format!(
+        "SELECT {OBSERVATION_COLS} FROM observations ORDER BY created_at DESC"
+    ), observation_row)?;
+
+    Ok(build_goal_nodes(None, &goals, &tasks_by_goal, &obs_by_goal))
+}
+
+/// Run a query whose row's column index 1 is `goal_id`, grouping mapped rows by it.
+/// A missing table yields an empty map (graceful pre-0010 degradation).
+fn group_by_goal(
+    conn: &Connection,
+    sql: &str,
+    mapper: fn(&rusqlite::Row<'_>) -> rusqlite::Result<Value>,
+) -> Result<HashMap<String, Vec<Value>>, DbError> {
+    let mut stmt = match conn.prepare(sql) {
+        Ok(s) => s,
+        Err(rusqlite::Error::SqliteFailure(_, Some(ref msg))) if msg.contains("no such table") => {
+            return Ok(HashMap::new());
+        }
+        Err(e) => return Err(e.into()),
+    };
+    let rows: Vec<(String, Value)> = stmt
+        .query_map([], |row| Ok((row.get::<_, String>(1)?, mapper(row)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut map: HashMap<String, Vec<Value>> = HashMap::new();
+    for (gid, v) in rows {
+        map.entry(gid).or_default().push(v);
+    }
+    Ok(map)
+}
+
+/// Recursively assemble goal nodes whose parent matches `parent` (None = roots).
+fn build_goal_nodes(
+    parent: Option<&str>,
+    goals: &[(String, Option<String>, Value)],
+    tasks_by_goal: &HashMap<String, Vec<Value>>,
+    obs_by_goal: &HashMap<String, Vec<Value>>,
+) -> Vec<Value> {
+    let mut out = Vec::new();
+    for (id, p, base) in goals.iter() {
+        if p.as_deref() != parent {
+            continue;
+        }
+        let mut node = base.clone();
+        if let Some(obj) = node.as_object_mut() {
+            obj.insert("tasks".into(), json!(tasks_by_goal.get(id).cloned().unwrap_or_default()));
+            let obs: Vec<Value> =
+                obs_by_goal.get(id).cloned().unwrap_or_default().into_iter().take(10).collect();
+            obj.insert("observations".into(), json!(obs));
+            obj.insert(
+                "children".into(),
+                json!(build_goal_nodes(Some(id), goals, tasks_by_goal, obs_by_goal)),
+            );
+        }
+        out.push(node);
+    }
+    out
 }
 
 /// Optional modules ordered by id ASC. Returns `Ok(vec![])` when the `modules`
