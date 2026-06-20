@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type * as React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Crosshair, Plus, Pencil, Archive, Rocket, X, ListTree, Check, CornerDownRight } from 'lucide-react';
+import { Crosshair, Plus, Pencil, Archive, Rocket, X, ListTree, Check, CornerDownRight, Zap } from 'lucide-react';
 import { Page } from '../components/Page';
 import TopoInput from '../components/TopoInput';
 import { GlassPanel } from '../components/GlassFx';
@@ -18,12 +18,15 @@ import {
 	archiveGoal,
 	createTask,
 	setTaskStatus,
+	listOperations,
+	runOperation,
 	createMission,
 	startRun,
 	listRuns,
 	agentRuntimeLabel,
 	type Focus,
 	type GoalNode,
+	type Operation,
 	type AgentRuntime,
 	type RunWithMission
 } from '../lib/api';
@@ -58,6 +61,7 @@ export default function Command() {
 	const { online, epoch } = useGatewayHealth();
 	const [focusLoad, setFocusLoad] = useState<FocusLoad>({ s: 'loading' });
 	const [tree, setTree] = useState<GoalNode[]>([]);
+	const [operations, setOperations] = useState<Operation[]>([]);
 	const [runs, setRuns] = useState<RunWithMission[]>([]);
 	const [feedReady, setFeedReady] = useState(false);
 	const [editing, setEditing] = useState<Focus | 'new' | null>(null);
@@ -104,7 +108,25 @@ export default function Command() {
 	useEffect(() => {
 		void refreshFocus();
 		void refreshFeed();
+		listOperations()
+			.then(({ operations }) => setOperations(operations))
+			.catch(() => setOperations([]));
 	}, [epoch, refreshFocus, refreshFeed]);
+
+	const onRunOperation = useCallback(
+		async (opId: string, goalId: string) => {
+			try {
+				await runOperation(opId, goalId);
+				await refreshFeed();
+				// The agent writes tasks/observations back asynchronously; pull the
+				// tree again shortly so they surface without a manual refresh.
+				window.setTimeout(() => void refreshTree(focus?.id ?? null), 4000);
+			} catch {
+				/* surfaced via the activity feed / next refresh */
+			}
+		},
+		[refreshFeed, refreshTree, focus]
+	);
 
 	// Poll the activity feed so background runs surface without a manual refresh.
 	useEffect(() => {
@@ -158,7 +180,15 @@ export default function Command() {
 						onArchive={onArchive}
 						onSet={() => setEditing('new')}
 					/>
-					{focus && <GoalsPanel focus={focus} tree={tree} onChanged={() => void refreshTree(focus.id)} />}
+					{focus && (
+						<GoalsPanel
+							focus={focus}
+							tree={tree}
+							operations={operations}
+							onRunOperation={onRunOperation}
+							onChanged={() => void refreshTree(focus.id)}
+						/>
+					)}
 					<LaunchPanel focus={focus} busy={launchBusy} err={launchErr} onLaunch={onLaunch} />
 				</div>
 				<ActivityFeed
@@ -303,7 +333,19 @@ function FocusSkeleton() {
 }
 
 // ── Goals panel (the goal tree under the Current Focus) ────────────────────────
-function GoalsPanel({ focus, tree, onChanged }: { focus: Focus; tree: GoalNode[]; onChanged: () => void }) {
+function GoalsPanel({
+	focus,
+	tree,
+	operations,
+	onRunOperation,
+	onChanged
+}: {
+	focus: Focus;
+	tree: GoalNode[];
+	operations: Operation[];
+	onRunOperation: (opId: string, goalId: string) => void;
+	onChanged: () => void;
+}) {
 	const [adding, setAdding] = useState(false);
 	const [busy, setBusy] = useState(false);
 
@@ -342,7 +384,15 @@ function GoalsPanel({ focus, tree, onChanged }: { focus: Focus; tree: GoalNode[]
 					</div>
 				)}
 				{tree.map((node) => (
-					<GoalNodeView key={node.id} node={node} focusId={focus.id} depth={0} onChanged={onChanged} />
+					<GoalNodeView
+						key={node.id}
+						node={node}
+						focusId={focus.id}
+						depth={0}
+						operations={operations}
+						onRunOperation={onRunOperation}
+						onChanged={onChanged}
+					/>
 				))}
 			</div>
 		</GlassPanel>
@@ -355,8 +405,23 @@ const GOAL_STATUS_COLOR: Record<string, string> = {
 	done: 'var(--atlas-emerald)'
 };
 
-function GoalNodeView({ node, focusId, depth, onChanged }: { node: GoalNode; focusId: string; depth: number; onChanged: () => void }) {
+function GoalNodeView({
+	node,
+	focusId,
+	depth,
+	operations,
+	onRunOperation,
+	onChanged
+}: {
+	node: GoalNode;
+	focusId: string;
+	depth: number;
+	operations: Operation[];
+	onRunOperation: (opId: string, goalId: string) => void;
+	onChanged: () => void;
+}) {
 	const [mode, setMode] = useState<null | 'task' | 'subgoal'>(null);
+	const [opsOpen, setOpsOpen] = useState(false);
 	const [busy, setBusy] = useState(false);
 
 	async function addTask(title: string) {
@@ -396,6 +461,28 @@ function GoalNodeView({ node, focusId, depth, onChanged }: { node: GoalNode; foc
 					<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 8.5, letterSpacing: '0.16em', color: GOAL_STATUS_COLOR[node.status] ?? 'var(--l2-fg-3)', textTransform: 'uppercase' }}>
 						{node.status}
 					</span>
+					{operations.length > 0 && (
+						<div style={{ position: 'relative', flex: 'none' }}>
+							<button
+								type="button"
+								title="Run an operation on this goal"
+								onClick={() => setOpsOpen((v) => !v)}
+								style={{ ...miniIconStyle, color: opsOpen ? 'var(--atlas-celestial)' : 'var(--l2-fg-3)' }}
+							>
+								<Zap size={12} strokeWidth={1.9} />
+							</button>
+							{opsOpen && (
+								<OperationsMenu
+									operations={operations}
+									onPick={(opId) => {
+										setOpsOpen(false);
+										onRunOperation(opId, node.id);
+									}}
+									onClose={() => setOpsOpen(false)}
+								/>
+							)}
+						</div>
+					)}
 					<button type="button" title="Add sub-goal" onClick={() => setMode(mode === 'subgoal' ? null : 'subgoal')} style={miniIconStyle}>
 						<CornerDownRight size={12} strokeWidth={1.8} />
 					</button>
@@ -456,9 +543,59 @@ function GoalNodeView({ node, focusId, depth, onChanged }: { node: GoalNode; foc
 				)}
 			</div>
 			{node.children.map((child) => (
-				<GoalNodeView key={child.id} node={child} focusId={focusId} depth={depth + 1} onChanged={onChanged} />
+				<GoalNodeView
+					key={child.id}
+					node={child}
+					focusId={focusId}
+					depth={depth + 1}
+					operations={operations}
+					onRunOperation={onRunOperation}
+					onChanged={onChanged}
+				/>
 			))}
 		</div>
+	);
+}
+
+function OperationsMenu({ operations, onPick, onClose }: { operations: Operation[]; onPick: (opId: string) => void; onClose: () => void }) {
+	return (
+		<>
+			<div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+			<div
+				style={{
+					position: 'absolute',
+					top: 26,
+					right: 0,
+					zIndex: 41,
+					width: 248,
+					borderRadius: 2,
+					border: '1px solid var(--l2-hairline)',
+					background: 'linear-gradient(160deg, rgba(20,24,33,0.98), rgba(10,12,18,0.98))',
+					boxShadow: '0 18px 50px rgba(0,0,0,0.6)',
+					overflow: 'hidden'
+				}}
+			>
+				<div style={{ padding: '8px 12px', borderBottom: '1px solid var(--l2-hairline)', fontFamily: 'var(--l2-font-mono)', fontSize: 9, letterSpacing: '0.18em', color: 'var(--atlas-celestial)' }}>
+					RUN OPERATION
+				</div>
+				{operations.map((op) => (
+					<button
+						key={op.id}
+						type="button"
+						onClick={() => onPick(op.id)}
+						style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', background: 'none', border: 'none', borderBottom: '1px solid var(--l2-hairline)', cursor: 'pointer' }}
+						onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(79,139,255,0.08)')}
+						onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+					>
+						<div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+							<Zap size={12} strokeWidth={1.9} color="var(--atlas-celestial)" />
+							<span style={{ color: 'var(--l2-fg-1)', fontSize: 12.5 }}>{op.label}</span>
+						</div>
+						<div style={{ color: 'var(--l2-fg-3)', fontSize: 11, marginTop: 3, marginLeft: 19, lineHeight: 1.4 }}>{op.description}</div>
+					</button>
+				))}
+			</div>
+		</>
 	);
 }
 

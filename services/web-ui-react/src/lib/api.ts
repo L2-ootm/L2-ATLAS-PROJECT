@@ -325,6 +325,44 @@ export async function createObservation(input: CreateObservationInput): Promise<
 	return apiFetch(`/v1/observations`, { method: 'POST', body: JSON.stringify(input) });
 }
 
+// ── Operations (WP-6 — premade autonomous operations on goals) ────────────────
+
+/** A built-in operation template surfaced as a cockpit button. */
+export interface Operation {
+	id: string;
+	label: string;
+	description: string;
+	agent: string;
+	risk: string;
+}
+
+export async function listOperations(): Promise<{ operations: Operation[] }> {
+	try {
+		return await apiFetch<{ operations: Operation[] }>(`/v1/operations`);
+	} catch (err) {
+		// A pre-WP-6 gateway (no /v1/operations route) renders no operations.
+		if (err instanceof ApiError && (err.status === 404 || err.status === 503)) {
+			return { operations: [] };
+		}
+		throw err;
+	}
+}
+
+/** Trigger an operation on a goal → background run. Real execution needs the
+ * rebuilt gateway + a configured provider; otherwise the run records + fails. */
+export async function runOperation(
+	opId: string,
+	goalId: string,
+	agent?: AgentRuntime
+): Promise<{ run: Run; executing: boolean; operation: string }> {
+	const body: { goal_id: string; agent?: AgentRuntime } = { goal_id: goalId };
+	if (agent) body.agent = agent;
+	return apiFetch(`/v1/operations/${encodeURIComponent(opId)}/run`, {
+		method: 'POST',
+		body: JSON.stringify(body)
+	});
+}
+
 // ── Console chat endpoint (operator workbench) ──────────────────────────────
 
 export interface ConsoleChatEvent {
