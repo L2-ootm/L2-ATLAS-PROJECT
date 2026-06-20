@@ -106,6 +106,38 @@ def test_execute_run_unhandled_exception_fails_run(file_db):
     assert _run_status(conn, run.id) == "failed"
 
 
+def test_execute_run_records_compounding_observation(file_db):
+    _, conn = file_db
+    lock = threading.Lock()
+    mid = _new_mission(conn, lock)
+    run = start_run(conn, lock, mission_id=mid)
+    run_executor.execute_run(
+        conn, lock, agent=_FakeAgent(status="succeeded", summary="shipped it"),
+        mission_id=mid, run_id=run.id, prompt="hi",
+    )
+    from atlas_runtime import goal_service
+
+    obs = goal_service.list_observations(conn, run_id=run.id)
+    assert len(obs) == 1
+    assert obs[0].source == "compounding-loop"
+    assert "shipped it" in obs[0].body
+
+
+def test_cancelled_run_writes_no_compounding_observation(file_db):
+    _, conn = file_db
+    lock = threading.Lock()
+    mid = _new_mission(conn, lock)
+    run = start_run(conn, lock, mission_id=mid)
+    cancel_run(conn, lock, run_id=run.id, mission_id=mid)
+    run_executor.execute_run(
+        conn, lock, agent=_FakeAgent(status="succeeded"), mission_id=mid, run_id=run.id, prompt="hi",
+    )
+    from atlas_runtime import goal_service
+
+    # Cancellation wins → the compounding write is skipped.
+    assert goal_service.list_observations(conn, run_id=run.id) == []
+
+
 def test_execute_run_respects_cancellation(file_db):
     _, conn = file_db
     lock = threading.Lock()

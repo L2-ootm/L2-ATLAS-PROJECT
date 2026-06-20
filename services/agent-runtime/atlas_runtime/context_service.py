@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 
 from atlas_core.schemas.core import SECRET_PATTERNS
 
-from atlas_runtime import focus_service, mission_service, project_service
+from atlas_runtime import focus_service, goal_service, mission_service, project_service
 
 
 def _redact_match(match: "object") -> str:
@@ -50,6 +50,33 @@ class AgentContext:
 
     markdown: str
     sources: tuple[str, ...] = field(default_factory=tuple)
+
+
+def _render_goal_nodes(
+    nodes: list[dict], depth: int, lines: list[str], sources: list[str]
+) -> None:
+    """Render the goal tree (goals → sub-goals → tasks) as nested markdown, in
+    place. Records goal/observation provenance into `sources`."""
+    indent = "  " * depth
+    for node in nodes:
+        sources.append(f"goal:{node['id']}")
+        status = node.get("status", "open")
+        lines.append(f"{indent}- **{redact(node['title'])}** _({status})_")
+        desc = (node.get("description") or "").strip()
+        if desc:
+            lines.append(f"{indent}  {redact(desc)}")
+        # Open tasks first (what's actionable); completed ones noted compactly.
+        tasks = node.get("tasks") or []
+        for task in tasks:
+            mark = {"done": "x", "doing": "~"}.get(task.get("status", "todo"), " ")
+            lines.append(f"{indent}  - [{mark}] {redact(task['title'])}")
+        # Recent observations on this goal carry what prior runs learned.
+        for obs in (node.get("observations") or [])[:3]:
+            lines.append(
+                f"{indent}  · _obs ({redact(obs.get('source', ''))}):_ {redact(obs['body'])}"
+            )
+            sources.append(f"observation:{obs['id']}")
+        _render_goal_nodes(node.get("children") or [], depth + 1, lines, sources)
 
 
 def _recent_runs(conn: sqlite3.Connection, mission_id: str, limit: int) -> list[tuple[str, str, str, str]]:
@@ -94,6 +121,14 @@ def assemble_context(
             lines.extend(f"- {redact(d)}" for d in drivers)
         lines.append("")
 
+        # Goal tree under the Current Focus — the WHAT the run synthesizes from
+        # (Layer 4/7). Renders goals → sub-goals → tasks → recent observations.
+        tree = goal_service.build_goal_tree(conn, focus_id=focus.id)
+        if tree:
+            lines.append("## Goals")
+            _render_goal_nodes(tree, 0, lines, sources)
+            lines.append("")
+
     # Resolve the project (explicit id wins; else the mission's project).
     resolved_project_id = project_id
     if resolved_project_id is None and mission_id is not None:
@@ -117,6 +152,38 @@ def assemble_context(
                 summary_txt = f": {redact(summary)}" if summary else ""
                 lines.append(f"- **{status}** {started_at}{summary_txt}")
             lines.append("")
+
+    # Recent loop observations (WP-5 compounding loop) — what prior runs learned,
+    # fed forward so the next run inherits it. Newest first, bounded.
+    recent_obs = goal_service.list_observations(conn, limit=max_runs)
+    if recent_obs:
+        lines.append("## Recent Observations")
+        for obs in recent_obs:
+            sources.append(f"observation:{obs.id}")
+            lines.append(f"- _({redact(obs.source)})_ {redact(obs.body)}")
+        lines.append("")
+
+    # Loop-engineering operating contract (Layer 7) — turns the context above
+    # into instructions, so the run is driven by the synthesized brief rather
+    # than a bare title. Only emitted when there is operator context to act on.
+    if focus is not None:
+        lines.append("## Operating Contract")
+        lines.append(
+            "- Advance the Current Focus and its goals above; treat the open tasks "
+            "as the actionable surface and the observations as prior learning."
+        )
+        lines.append(
+            "- Stay within the project workspace. If the work would expand beyond "
+            "this Focus, stop and report rather than widening scope."
+        )
+        lines.append(
+            "- Classify your claims: state what you VERIFIED (evidence), what you "
+            "INFERRED, and what remains UNCERTAIN. Do not assert unverified results."
+        )
+        lines.append(
+            "- Never echo or request credentials/secrets; redact them if encountered."
+        )
+        lines.append("")
 
     markdown = "\n".join(lines).rstrip() + "\n"
     return AgentContext(markdown=markdown, sources=tuple(sources))
