@@ -12,7 +12,7 @@ import uuid
 import pytest
 
 from atlas_runtime import context_service as cs
-from atlas_runtime import focus_service, project_service
+from atlas_runtime import focus_service, goal_service, project_service
 from atlas_runtime.run_service import start_run
 
 
@@ -77,3 +77,44 @@ def test_assemble_empty_is_safe(db):
     ctx = cs.assemble_context(db)
     assert ctx.markdown.startswith("# ATLAS Operator Context")
     assert ctx.sources == ()
+
+
+def test_assemble_synthesizes_goal_tree_and_contract(db, lock):
+    focus = focus_service.create_focus(db, lock, title="Ship loop", framework="GSD")
+    root = goal_service.create_goal(
+        db, lock, title="Wire execution", description="harness + safety", focus_id=focus.id
+    )
+    sub = goal_service.create_goal(
+        db, lock, title="Stop conditions", focus_id=focus.id, parent_goal_id=root.id
+    )
+    goal_service.create_task(db, lock, goal_id=root.id, title="map result dict")
+    goal_service.add_observation(db, lock, body="403 without creds", goal_id=root.id, source="run:r1")
+
+    ctx = cs.assemble_context(db)
+    md = ctx.markdown
+    # Goals + nesting + tasks + observations render.
+    assert "## Goals" in md
+    assert "Wire execution" in md
+    assert "Stop conditions" in md  # sub-goal
+    assert "map result dict" in md  # task
+    assert "403 without creds" in md  # observation
+    # Loop-engineering contract synthesized (not just the focus title).
+    assert "## Operating Contract" in md
+    assert "VERIFIED" in md and "UNCERTAIN" in md
+    # Provenance covers goals + observations.
+    assert any(s.startswith("goal:") for s in ctx.sources)
+    assert any(s.startswith("observation:") for s in ctx.sources)
+
+
+def test_goal_tree_observation_secret_is_redacted(db, lock):
+    focus = focus_service.create_focus(db, lock, title="F")
+    g = goal_service.create_goal(db, lock, title="G", focus_id=focus.id)
+    goal_service.add_observation(db, lock, body="leaked token=zzz999secret", goal_id=g.id)
+    md = cs.assemble_context(db).markdown
+    assert "zzz999secret" not in md
+    assert "[REDACTED]" in md
+
+
+def test_no_operating_contract_without_focus(db):
+    # Without a Current Focus there is nothing to act on — no contract section.
+    assert "## Operating Contract" not in cs.assemble_context(db).markdown

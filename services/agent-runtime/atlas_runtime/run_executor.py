@@ -24,11 +24,13 @@ import threading
 from typing import Callable, Optional
 
 from atlas_core.schemas.core import Run
+from atlas_runtime import goal_service
 from atlas_runtime.agents import AgentRuntime, RunOutcome, get_agent
 from atlas_runtime.db import connect
 from atlas_runtime.run_service import complete_run, start_run
 
 _SUMMARY_CAP = 2000
+_OBS_CAP = 600
 
 # run_id -> worker thread, for await/graceful-shutdown and tests.
 _active_threads: dict[str, threading.Thread] = {}
@@ -64,9 +66,37 @@ def execute_run(
         )
     except ValueError:
         # Run is no longer 'running' (e.g. cancelled mid-flight) — respect the
-        # existing terminal state; do not clobber it.
+        # existing terminal state; do not clobber it. Skip the compounding write.
+        return outcome
+
+    # Compounding loop (WP-5): record the outcome as a provenance-tracked
+    # observation so the next run's context inherits it. Never mutates
+    # operator-owned goals. Fail-open: a feedback-write error must not affect
+    # the run's terminal state.
+    try:
+        _record_outcome_observation(conn, lock, run_id=run_id, outcome=outcome)
+    except Exception:  # noqa: BLE001 — compounding feedback is best-effort
         pass
     return outcome
+
+
+def _record_outcome_observation(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    *,
+    run_id: str,
+    outcome: RunOutcome,
+) -> None:
+    """Append a compounding-loop observation summarizing a terminal run."""
+    parts = [f"run {outcome.status}: {outcome.summary}".strip()]
+    if outcome.stop_reason:
+        parts.append(f"stop_reason={outcome.stop_reason}")
+    if outcome.uncertainties:
+        parts.append("uncertainties: " + "; ".join(outcome.uncertainties))
+    body = " | ".join(p for p in parts if p)[:_OBS_CAP]
+    goal_service.add_observation(
+        conn, lock, body=body, run_id=run_id, source="compounding-loop"
+    )
 
 
 def start_and_execute_async(
