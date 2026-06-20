@@ -166,6 +166,46 @@ async fn channel_toggle_dispatches_and_echoes_state() {
 }
 
 #[tokio::test]
+async fn messaging_gateway_status_returns_cli_json() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(seeded_db(&dir), r#"{"running": false, "pid": null}"#, &stub_dir);
+    let (status, body) = get_json(&router, "/v1/gateway/messaging/status").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["running"], false);
+    assert!(body["pid"].is_null());
+}
+
+#[tokio::test]
+async fn messaging_gateway_start_returns_pid() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"ok": true, "message": "messaging gateway starting (pid 8200)", "running": true, "pid": 8200}"#,
+        &stub_dir,
+    );
+    let (status, body) = post_json(&router, "/v1/gateway/messaging/start", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["ok"], true);
+    assert_eq!(body["pid"], 8200);
+}
+
+#[tokio::test]
+async fn messaging_gateway_stop_is_idempotent() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"ok": true, "message": "messaging gateway not running"}"#,
+        &stub_dir,
+    );
+    let (status, body) = post_json(&router, "/v1/gateway/messaging/stop", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["ok"], true);
+}
+
+#[tokio::test]
 async fn missions_list_returns_rows_newest_first() {
     let dir = tempfile::tempdir().unwrap();
     let router = test_app(seeded_db(&dir));

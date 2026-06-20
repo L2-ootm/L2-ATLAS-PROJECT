@@ -26,6 +26,13 @@ channels_app = typer.Typer(
     help="Inspect L2 BOT harness channel connections (foundation gateway).",
 )
 
+# Messaging-gateway *process* lifecycle (distinct from the Rust REST gateway).
+messaging_app = typer.Typer(
+    name="gateway",
+    help="Foundation messaging-gateway process: start, status, stop.",
+)
+channels_app.add_typer(messaging_app, name="gateway")
+
 # Credential-bearing keys we report presence (never values) for.
 _CREDENTIAL_KEYS = ("token", "api_key", "app_secret", "client_secret", "auth_token")
 
@@ -159,3 +166,54 @@ def disable(name: str = typer.Argument(..., help="Channel/platform name, e.g. di
     """Disable a channel in the foundation gateway config."""
     _set_enabled(_hermes_home() / "config.yaml", name, False)
     typer.echo(f"disabled {name}")
+
+
+# ---------------------------------------------------------------------------
+# messaging-gateway process lifecycle — `atlas channels gateway start/status/stop`
+# (the foundation messaging daemon; NOT the Rust REST gateway on :8484).
+# Each command supports --json so the Rust gateway can dispatch and parse it.
+# ---------------------------------------------------------------------------
+
+
+@messaging_app.command("status")
+def gateway_status(json_out: bool = typer.Option(False, "--json", help="Emit JSON.")) -> None:
+    """Show whether the foundation messaging gateway is running (+ pid)."""
+    from atlas_runtime import messaging_gateway_control as mgc
+
+    state = mgc.status()
+    if json_out:
+        typer.echo(json.dumps(state))
+        return
+    typer.echo(f"running (pid {state['pid']})" if state["running"] else "stopped")
+
+
+@messaging_app.command("start")
+def gateway_start(json_out: bool = typer.Option(False, "--json", help="Emit JSON.")) -> None:
+    """Start the foundation messaging gateway (detached; tracked by pid file)."""
+    from atlas_runtime import messaging_gateway_control as mgc
+
+    ok, message = mgc.start()
+    if json_out:
+        typer.echo(json.dumps({"ok": ok, "message": message, **mgc.status()}))
+        if not ok:
+            raise typer.Exit(1)
+        return
+    typer.echo(message)
+    if not ok:
+        raise typer.Exit(1)
+
+
+@messaging_app.command("stop")
+def gateway_stop(json_out: bool = typer.Option(False, "--json", help="Emit JSON.")) -> None:
+    """Stop a messaging gateway started by this CLI (via its pid file)."""
+    from atlas_runtime import messaging_gateway_control as mgc
+
+    ok, message = mgc.stop()
+    if json_out:
+        typer.echo(json.dumps({"ok": ok, "message": message}))
+        if not ok:
+            raise typer.Exit(1)
+        return
+    typer.echo(message)
+    if not ok:
+        raise typer.Exit(1)

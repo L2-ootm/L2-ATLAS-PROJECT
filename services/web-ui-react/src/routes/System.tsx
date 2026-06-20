@@ -7,10 +7,14 @@ import {
 	getConfig,
 	listChannels,
 	listModules,
+	messagingGatewayStatus,
 	setModuleActive,
+	startMessagingGateway,
+	stopMessagingGateway,
 	toggleChannel,
 	type AtlasConfigView,
 	type ChannelSummary,
+	type MessagingGatewayStatus,
 	type Module
 } from '../lib/api';
 import { isTauri, startGatewayViaShell } from '../lib/host';
@@ -32,6 +36,8 @@ export default function System() {
 	const [modules, setModules] = useState<Module[]>([]);
 	const [config, setConfig] = useState<AtlasConfigView | null>(null);
 	const [channels, setChannels] = useState<ChannelSummary[]>([]);
+	const [msgGw, setMsgGw] = useState<MessagingGatewayStatus>({ running: false, pid: null });
+	const [msgGwBusy, setMsgGwBusy] = useState(false);
 	const [load, setLoad] = useState<Load>({ s: 'loading' });
 	const [busyId, setBusyId] = useState<string | null>(null);
 	const [chBusy, setChBusy] = useState<string | null>(null);
@@ -39,11 +45,12 @@ export default function System() {
 	const { epoch } = useGatewayHealth();
 
 	const refresh = useCallback(async () => {
-		const [h, m, c, ch] = await Promise.allSettled([
+		const [h, m, c, ch, gw] = await Promise.allSettled([
 			checkHealth(),
 			listModules(),
 			getConfig(),
-			listChannels()
+			listChannels(),
+			messagingGatewayStatus()
 		]);
 		if (h.status === 'fulfilled') {
 			setHealth(h.value);
@@ -55,8 +62,23 @@ export default function System() {
 		if (m.status === 'fulfilled') setModules(m.value.modules);
 		setConfig(c.status === 'fulfilled' ? c.value : null);
 		setChannels(ch.status === 'fulfilled' ? ch.value.channels : []);
+		setMsgGw(gw.status === 'fulfilled' ? gw.value : { running: false, pid: null });
 		setLoad({ s: h.status === 'rejected' && m.status === 'rejected' ? 'error' : 'ready' });
 	}, []);
+
+	async function toggleMsgGw() {
+		setMsgGwBusy(true);
+		setErr(null);
+		try {
+			if (msgGw.running) await stopMessagingGateway();
+			else await startMessagingGateway();
+			await refresh();
+		} catch {
+			setErr('Could not control the messaging gateway — is the REST gateway running?');
+		} finally {
+			setMsgGwBusy(false);
+		}
+	}
 
 	async function toggleCh(ch: ChannelSummary) {
 		setChBusy(ch.name);
@@ -116,6 +138,9 @@ export default function System() {
 				offline={online === false}
 				busyName={chBusy}
 				onToggle={toggleCh}
+				gateway={msgGw}
+				gatewayBusy={msgGwBusy}
+				onGatewayToggle={toggleMsgGw}
 			/>
 
 			<ModulesPanel
@@ -222,12 +247,18 @@ function ChannelsPanel({
 	channels,
 	offline,
 	busyName,
-	onToggle
+	onToggle,
+	gateway,
+	gatewayBusy,
+	onGatewayToggle
 }: {
 	channels: ChannelSummary[];
 	offline: boolean;
 	busyName: string | null;
 	onToggle: (c: ChannelSummary) => void;
+	gateway: MessagingGatewayStatus;
+	gatewayBusy: boolean;
+	onGatewayToggle: () => void;
 }) {
 	return (
 		<section style={glassPanel({ overflow: 'hidden', marginBottom: 16 })}>
@@ -291,6 +322,52 @@ function ChannelsPanel({
 					</div>
 				))
 			)}
+
+			<div
+				style={{
+					display: 'flex',
+					alignItems: 'center',
+					justifyContent: 'space-between',
+					gap: 16,
+					padding: '14px 18px',
+					borderTop: '1px solid var(--l2-hairline)',
+					background: 'rgba(9,11,16,0.35)'
+				}}
+			>
+				<div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+					<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 9.5, letterSpacing: '0.14em', color: 'var(--l2-fg-2)' }}>
+						MESSAGING GATEWAY
+					</span>
+					<StatusPill active={gateway.running} />
+					{gateway.running && gateway.pid != null && (
+						<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 9.5, letterSpacing: '0.1em', color: 'var(--l2-fg-3)' }}>
+							PID {gateway.pid}
+						</span>
+					)}
+				</div>
+				<button
+					onClick={onGatewayToggle}
+					disabled={offline || gatewayBusy}
+					style={{
+						display: 'inline-flex',
+						alignItems: 'center',
+						gap: 7,
+						padding: '8px 14px',
+						borderRadius: 2,
+						border: `1px solid ${gateway.running ? 'var(--l2-error)' : 'var(--l2-hairline)'}`,
+						background: 'transparent',
+						color: offline ? 'var(--l2-fg-3)' : gateway.running ? 'var(--l2-error)' : 'var(--atlas-cyan)',
+						fontFamily: 'var(--l2-font-mono)',
+						fontSize: 11,
+						letterSpacing: '0.14em',
+						cursor: offline || gatewayBusy ? 'not-allowed' : 'pointer',
+						opacity: offline || gatewayBusy ? 0.5 : 1
+					}}
+				>
+					<Power size={13} strokeWidth={2} />
+					{gatewayBusy ? '…' : gateway.running ? 'STOP' : 'START'}
+				</button>
+			</div>
 		</section>
 	);
 }

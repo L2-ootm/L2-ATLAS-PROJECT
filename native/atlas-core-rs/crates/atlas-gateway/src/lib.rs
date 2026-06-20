@@ -532,6 +532,38 @@ async fn channel_toggle(
     Ok(Json(json!({ "name": name, "enabled": body.enabled })))
 }
 
+/// GET /v1/gateway/messaging/status — is the foundation messaging gateway running?
+/// Dispatches `atlas channels gateway status --json` -> {running, pid}. This is the
+/// Python *messaging* daemon's lifecycle, NOT the Rust REST gateway serving here.
+async fn messaging_gateway_status(State(state): State<AppState>) -> ApiResult {
+    let out =
+        dispatch_atlas(&state.atlas_cmd, &["channels", "gateway", "status", "--json"]).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("messaging gateway status parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+/// POST /v1/gateway/messaging/start — spawn the foundation messaging gateway.
+/// Returns the CLI's `{ok, message, running, pid}`. A missing foundation CLI is a
+/// genuine misconfiguration and surfaces as an error.
+async fn messaging_gateway_start(State(state): State<AppState>) -> ApiResult {
+    let out =
+        dispatch_atlas(&state.atlas_cmd, &["channels", "gateway", "start", "--json"]).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("messaging gateway start parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+/// POST /v1/gateway/messaging/stop — stop the foundation messaging gateway.
+/// Idempotent: stopping an already-stopped gateway succeeds.
+async fn messaging_gateway_stop(State(state): State<AppState>) -> ApiResult {
+    let out =
+        dispatch_atlas(&state.atlas_cmd, &["channels", "gateway", "stop", "--json"]).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("messaging gateway stop parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
 #[derive(Deserialize)]
 struct SelectFolderBody {
     title: Option<String>,
@@ -1470,6 +1502,9 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/config", get(config_view))
         .route("/v1/channels", get(channels_list))
         .route("/v1/channels/{name}/toggle", post(channel_toggle))
+        .route("/v1/gateway/messaging/status", get(messaging_gateway_status))
+        .route("/v1/gateway/messaging/start", post(messaging_gateway_start))
+        .route("/v1/gateway/messaging/stop", post(messaging_gateway_stop))
         .route("/v1/console/chat", post(console_chat))
         .route("/v1/console/stream", post(console_stream))
         .route("/v1/graph", get(graph_view))

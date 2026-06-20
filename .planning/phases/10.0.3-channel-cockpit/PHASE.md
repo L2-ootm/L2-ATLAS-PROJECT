@@ -64,7 +64,28 @@ Full analysis: `.planning/phases/10.0.3-command-center/FOUNDATION-AND-CHANNELS-A
   empty state. (Stacked panel, consistent with the existing System layout; full tab-nav not needed.)
 - Tests: channels CLI (json/enable/disable round-trip/create-missing) + 2 gateway tests; web build green.
 
-**Deferred (remaining for this phase):** messaging-gateway *process* lifecycle (start/stop/status from
-the cockpit, `~/.atlas/gateway-messaging.pid`), the Providers tab (provider data already shown in the
-System RUNTIME CONFIG panel), and the P2 Discord guild/channel browser. The config-management floor —
+**Deferred (remaining for this phase):** the Providers tab (provider data already shown in the
+System RUNTIME CONFIG panel) and the P2 Discord guild/channel browser. The config-management floor —
 the highest-value 80% — is live.
+
+## Delivered (2026-06-20, part 2) — messaging-gateway process lifecycle
+
+The deferred process-lifecycle piece is now live (start/stop/status of the foundation messaging
+gateway from the cockpit), completing the channel-cockpit management story:
+
+- `atlas_runtime/messaging_gateway_control.py` — start/stop/status primitive modeled on
+  `gateway_control.py`: resolves the foundation CLI (`ATLAS_MESSAGING_CLI` → `atlas-agent` → `hermes`
+  → `python -m hermes_cli.main`), spawns `gateway run` **detached**, tracks it via
+  `~/.atlas/gateway-messaging.json`, and reports running/pid via a dependency-free cross-platform PID
+  liveness check (no HTTP `/health` on the messaging daemon). `stop()` is idempotent. No foundation
+  edits (D-001); config/writes stay in the foundation CLI (D-022).
+- CLI: `atlas channels gateway start|status|stop` (each `--json` for gateway dispatch).
+- Gateway (Rust): `GET /v1/gateway/messaging/status`, `POST /v1/gateway/messaging/{start,stop}` —
+  dispatch the `--json` CLI and return parsed JSON (mirrors the channel/config dispatch pattern).
+- React: System → CHANNELS panel footer — MESSAGING GATEWAY status pill + PID + Start/Stop control;
+  `api.ts` `messagingGatewayStatus`/`startMessagingGateway`/`stopMessagingGateway` (graceful offline).
+- Tests: 7 control-module + 3 channels-CLI (Python) + 3 gateway route tests (Rust). Full suites green
+  (agent-runtime 170 pass / 1 known `claude_agent_sdk` env fail; `cargo test -p atlas-gateway` 64 pass;
+  web tsc/lint/build green).
+
+**Still deferred:** the P2 Discord guild/channel browser and the Providers tab.
