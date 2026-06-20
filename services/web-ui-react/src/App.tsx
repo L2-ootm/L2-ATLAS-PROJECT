@@ -7,6 +7,7 @@ import MissionDetail from './routes/MissionDetail';
 import Runs from './routes/Runs';
 import RunDetail from './routes/RunDetail';
 import Console from './routes/Console';
+import Command from './routes/Command';
 import Projects from './routes/Projects';
 import System from './routes/System';
 import Cashflow from './routes/Cashflow';
@@ -23,6 +24,7 @@ export const routes: RouteObject[] = [
 		element: <Layout />,
 		children: [
 			{ index: true, element: <Dashboard /> },
+			{ path: 'command', element: <Command /> },
 			{ path: 'missions', element: <Missions /> },
 			{ path: 'missions/:id', element: <MissionDetail /> },
 			{ path: 'runs', element: <Runs /> },
