@@ -422,3 +422,40 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 - [10.0-03]: IPC: Tauri 2 deny-by-default; PTY transports bytes not command strings (LANDMINE 5 NAT-03 hard gate)
 - [10.0-03]: IPC: pty_open fixed argv (atlas tui --profile <id>); profile_id validated against known profiles, never free-form
 - [10.0-03]: IPC: gateway 127.0.0.1:8484 is loopback HTTP, NOT an IPC surface; no capability grant needed
+
+---
+
+## Living Graph Documentation (2026-06-19)
+
+Full codebase analysis of the Graphify knowledge graph system completed. Documentation produced:
+
+**Gap Analysis:** `.planning/phases/10.0.3-graphify-living-graph/GAP-ANALYSIS.md`
+- 15 gaps identified across runtime integration, incremental updates, semantic edges, activity tracking, living visuals, wiki/memory integration, and more
+- Priority matrix: P0 (runtime entities, wiki integration, Agent Context tab), P1 (persistence, incremental updates, activity, living visuals), P2-P3 (semantic edges, mutations, export)
+
+**Design Spec:** `.planning/phases/10.0.3-graphify-living-graph/SPEC.md`
+- Entity model: 11 node types, 13 edge types with Pydantic schema
+- Storage: SQLite graph tables with recursive CTE traversal
+- Graph engine: entity extractors, incremental builder, activity scoring
+- Living visuals: node states (resting/active/firing/refractory/hot/cold), link effects (synaptic flash, dendrite curves, nebula glow)
+- API surface: 11 new gateway endpoints
+- Integration points: wiki, audit, memory provenance, console, RAG
+
+**Phase Plan:** `.planning/phases/10.0.3-graphify-living-graph/PHASE.md`
+- 8 work packages, 19-24 days estimated
+- WP-1: Graph schema & storage foundation
+- WP-2: Entity extractors (missions, runs, wiki, decisions, phases, audit, files, activity)
+- WP-3: Graph builder pipeline (incremental)
+- WP-4: Gateway endpoints (11 new routes)
+- WP-5: Activity scoring
+- WP-6: Agent Context tab (UI)
+- WP-7: Living visual effects (neuron animation, nebula storm)
+- WP-8: Tests
+
+**Context Document:** `.planning/phases/10.0.3-graphify-living-graph/CONTEXT.md`
+- Operator vision translation (neuron connections, nebula storms, wiki/RAG integration)
+- Current system inventory (backend, gateway, UI, visual language)
+- Related systems mapping (wiki, audit, memory provenance, 6-layer framework)
+- Files that will change, testing evidence, operator context
+
+**Key decisions pending:** D-025 (graph storage), D-026 (update strategy), D-027 (entity schema), D-028 (visual language), Rust vs Python for graph engine
