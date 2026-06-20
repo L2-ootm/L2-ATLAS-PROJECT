@@ -950,6 +950,81 @@ async fn projects_register(
 }
 
 // ---------------------------------------------------------------------------
+// Focus handlers (WP-2 — Command Center Current Focus, D-022 dispatch pattern)
+// ---------------------------------------------------------------------------
+
+async fn focus_list(
+    State(state): State<AppState>,
+    Query(params): Query<ListParams>,
+) -> ApiResult {
+    let path = state.db_path.clone();
+    let limit = clamp_limit(params.limit, 50, 200);
+    let focus = blocking(move || db::list_focus(&path, limit)).await?;
+    let count = focus.len();
+    Ok(Json(json!({ "focus": focus, "count": count })))
+}
+
+async fn focus_current(State(state): State<AppState>) -> ApiResult {
+    let path = state.db_path.clone();
+    let focus = blocking(move || db::current_focus(&path)).await?;
+    Ok(Json(json!({ "focus": focus })))
+}
+
+#[derive(Deserialize)]
+struct CreateFocusBody {
+    title: String,
+    framework: Option<String>,
+    /// Priorities / drivers arrive as string lists and are joined with commas for
+    /// the CLI (`_split_csv`). Commas inside a single value are a known limitation.
+    priorities: Option<Vec<String>>,
+    drivers: Option<Vec<String>>,
+    project: Option<String>,
+}
+
+async fn focus_create(
+    State(state): State<AppState>,
+    Json(body): Json<CreateFocusBody>,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    require_arg(&body.title, "title must be non-empty")?;
+    let framework = body.framework.unwrap_or_default();
+    let priorities = body.priorities.unwrap_or_default().join(",");
+    let drivers = body.drivers.unwrap_or_default().join(",");
+    let project = body.project.unwrap_or_default();
+    let mut args: Vec<&str> = vec!["focus", "create", "--title", &body.title];
+    if !framework.is_empty() {
+        args.extend_from_slice(&["--framework", &framework]);
+    }
+    if !priorities.is_empty() {
+        args.extend_from_slice(&["--priorities", &priorities]);
+    }
+    if !drivers.is_empty() {
+        args.extend_from_slice(&["--drivers", &drivers]);
+    }
+    if !project.is_empty() {
+        args.extend_from_slice(&["--project", &project]);
+    }
+    let id = dispatch_atlas(&state.atlas_cmd, &args).await?;
+    let path = state.db_path.clone();
+    let id_clone = id.clone();
+    let found = blocking(move || db::get_focus(&path, &id_clone)).await?;
+    match found {
+        Some(focus) => Ok((StatusCode::CREATED, Json(json!({ "focus": focus })))),
+        None => Err(ApiError::Internal(format!(
+            "focus '{id}' created but not found in db"
+        ))),
+    }
+}
+
+async fn focus_archive(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+) -> ApiResult {
+    require_arg(&id, "focus id must be non-empty")?;
+    dispatch_atlas(&state.atlas_cmd, &["focus", "archive", "--", &id]).await?;
+    Ok(Json(json!({ "archived": true, "id": id })))
+}
+
+// ---------------------------------------------------------------------------
 // Modules handlers (Decision 3b — optional activatable modules)
 // ---------------------------------------------------------------------------
 
@@ -1167,6 +1242,9 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/host/select-folder", post(select_folder))
         .route("/v1/projects", get(projects_list).post(projects_create))
         .route("/v1/projects/register", post(projects_register))
+        .route("/v1/focus", get(focus_list).post(focus_create))
+        .route("/v1/focus/current", get(focus_current))
+        .route("/v1/focus/{id}/archive", post(focus_archive))
         .route("/v1/modules", get(modules_list))
         .route("/v1/modules/{id}/activate", post(module_activate))
         .route("/v1/modules/{id}/deactivate", post(module_deactivate))

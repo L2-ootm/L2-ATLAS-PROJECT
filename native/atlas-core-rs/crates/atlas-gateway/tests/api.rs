@@ -825,3 +825,134 @@ async fn modules_list_empty_when_table_absent() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["count"], 0);
 }
+
+// --- Focus read + write surface (WP-2 — Command Center Current Focus) --------
+
+const MIGRATION_0009: &str = include_str!("../../../../../infra/migrations/0009_focus.sql");
+
+/// seeded_db + 0009 (focus) and two focus rows: an active Current Focus (newest)
+/// plus an archived one (must be excluded from the active list/current).
+fn seeded_db_focus(dir: &tempfile::TempDir) -> PathBuf {
+    let path = seeded_db(dir);
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    conn.execute_batch(MIGRATION_0009).unwrap();
+    conn.execute_batch(
+        "INSERT INTO focus
+            (id, title, framework, priorities, drivers, project_id, status, created_at, updated_at)
+         VALUES
+            ('f-old', 'Old focus', 'OKR', '[\"a\"]', '[]', NULL, 'archived',
+             '2026-06-01T10:00:00Z', '2026-06-01T10:00:00Z'),
+            ('f-cur', 'Ship the loop', 'GSD', '[\"latency\",\"trust\"]', '[\"operator\"]',
+             'atlas', 'active', '2026-06-10T10:00:00Z', '2026-06-10T10:00:00Z');",
+    )
+    .unwrap();
+    path
+}
+
+#[tokio::test]
+async fn focus_list_returns_active_with_parsed_arrays() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_app(seeded_db_focus(&dir));
+    let (status, body) = get_json(&router, "/v1/focus").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["count"], 1); // archived 'f-old' excluded
+    assert_eq!(body["focus"][0]["id"], "f-cur");
+    // priorities/drivers stored as JSON-array strings must come back as arrays.
+    assert_eq!(body["focus"][0]["priorities"][0], "latency");
+    assert_eq!(body["focus"][0]["priorities"][1], "trust");
+    assert_eq!(body["focus"][0]["drivers"][0], "operator");
+}
+
+#[tokio::test]
+async fn focus_current_returns_newest_active() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_app(seeded_db_focus(&dir));
+    let (status, body) = get_json(&router, "/v1/focus/current").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["focus"]["id"], "f-cur");
+    assert_eq!(body["focus"]["framework"], "GSD");
+}
+
+#[tokio::test]
+async fn focus_current_null_when_table_absent() {
+    // Pre-0009 DB: the endpoint must return focus: null, never 500.
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_app(seeded_db(&dir)); // 0009 not applied
+    let (status, body) = get_json(&router, "/v1/focus/current").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body["focus"].is_null());
+}
+
+#[tokio::test]
+async fn focus_list_empty_when_table_absent() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_app(seeded_db(&dir)); // 0009 not applied
+    let (status, body) = get_json(&router, "/v1/focus").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["count"], 0);
+}
+
+#[tokio::test]
+async fn focus_create_forwards_args_and_returns_201() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let db_path = seeded_db_focus(&dir);
+    let argv_path = stub_dir.path().join("argv.txt");
+    // The CLI prints the new id; point the stub at the seeded active row so the
+    // handler's read-back succeeds.
+    let router = test_app_with_arg_capture(db_path, "f-cur", &argv_path, &stub_dir);
+    let (status, body) = post_json(
+        &router,
+        "/v1/focus",
+        json!({
+            "title": "Ship the loop",
+            "framework": "GSD",
+            "priorities": ["latency", "trust"],
+            "drivers": ["operator"],
+            "project": "atlas"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(body["focus"]["id"], "f-cur");
+
+    let argv = std::fs::read_to_string(&argv_path).unwrap();
+    let args: Vec<&str> = argv.lines().collect();
+    assert_eq!(args.first().copied(), Some("focus"));
+    assert!(args.windows(2).any(|w| w == ["--title", "Ship the loop"]));
+    assert!(args.windows(2).any(|w| w == ["--framework", "GSD"]));
+    // Vec<String> priorities/drivers joined with commas for the CLI's _split_csv.
+    assert!(args.windows(2).any(|w| w == ["--priorities", "latency,trust"]));
+    assert!(args.windows(2).any(|w| w == ["--drivers", "operator"]));
+    assert!(args.windows(2).any(|w| w == ["--project", "atlas"]));
+}
+
+#[tokio::test]
+async fn focus_create_empty_title_is_400() {
+    let dir = tempfile::tempdir().unwrap();
+    // Rejected by require_arg before any dispatch — no stub needed.
+    let router = test_app(seeded_db_focus(&dir));
+    let (status, body) = post_json(&router, "/v1/focus", json!({ "title": "" })).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "bad_request");
+}
+
+#[tokio::test]
+async fn focus_archive_dispatches_and_returns_200() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let db_path = seeded_db_focus(&dir);
+    let argv_path = stub_dir.path().join("argv.txt");
+    let router = test_app_with_arg_capture(db_path, "archived", &argv_path, &stub_dir);
+    let (status, body) = post_json(&router, "/v1/focus/f-cur/archive", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["archived"], true);
+    assert_eq!(body["id"], "f-cur");
+
+    let argv = std::fs::read_to_string(&argv_path).unwrap();
+    let args: Vec<&str> = argv.lines().collect();
+    assert_eq!(args.first().copied(), Some("focus"));
+    assert!(args.contains(&"archive"));
+    // id passed after the `--` argument-injection guard.
+    assert_eq!(args.last().copied(), Some("f-cur"));
+}
