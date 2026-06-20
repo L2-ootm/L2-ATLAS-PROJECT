@@ -118,3 +118,94 @@ def test_goal_tree_observation_secret_is_redacted(db, lock):
 def test_no_operating_contract_without_focus(db):
     # Without a Current Focus there is nothing to act on — no contract section.
     assert "## Operating Contract" not in cs.assemble_context(db).markdown
+
+
+# ---------------------------------------------------------------------------
+# Memory router — FTS5 wiki retrieval into the context brief (item #1)
+# ---------------------------------------------------------------------------
+
+
+def _wiki_page(conn, lock, *, slug, title, body) -> str:
+    """Seed a wiki page; the FTS5 insert trigger auto-indexes it."""
+    pid = uuid.uuid4().hex
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    with lock:
+        with conn:
+            conn.execute(
+                "INSERT INTO wiki_pages(id,slug,title,body,created_at,updated_at,version) "
+                "VALUES (?,?,?,?,?,?,1)",
+                (pid, slug, title, body, now, now),
+            )
+    return pid
+
+
+def test_assemble_injects_relevant_wiki_knowledge(db, lock):
+    focus = focus_service.create_focus(db, lock, title="Ship the executor loop")
+    goal_service.create_goal(db, lock, title="Wire the run executor", focus_id=focus.id)
+    pid = _wiki_page(
+        db, lock,
+        slug="executor-notes",
+        title="Executor wiring",
+        body="How to wire the run executor subprocess and stop conditions.",
+    )
+    # An unrelated page must not surface for this query.
+    _wiki_page(db, lock, slug="lunch", title="Lunch menu", body="tacos and salad")
+
+    ctx = cs.assemble_context(db)
+    md = ctx.markdown
+    assert "## Relevant Knowledge" in md
+    assert "Executor wiring" in md
+    assert "Lunch menu" not in md
+    assert f"wiki:{pid}" in ctx.sources
+
+
+def test_relevant_knowledge_redacts_secrets(db, lock):
+    focus = focus_service.create_focus(db, lock, title="executor work")
+    _wiki_page(
+        db, lock,
+        slug="creds",
+        title="Executor config",
+        body="set api_key=sk-leakwiki999 before running the executor",
+    )
+    md = cs.assemble_context(db).markdown
+    assert "## Relevant Knowledge" in md
+    assert "sk-leakwiki999" not in md
+    assert "[REDACTED]" in md
+
+
+def test_relevant_knowledge_respects_page_budget(db, lock):
+    focus = focus_service.create_focus(db, lock, title="executor")
+    for i in range(8):
+        _wiki_page(
+            db, lock,
+            slug=f"executor-{i}",
+            title=f"Executor topic {i}",
+            body="executor executor executor wiring details",
+        )
+    ctx = cs.assemble_context(db)
+    injected = [s for s in ctx.sources if s.startswith("wiki:")]
+    assert 0 < len(injected) <= 5  # capped, not all 8
+
+
+def test_relevant_knowledge_truncates_long_body(db, lock):
+    focus = focus_service.create_focus(db, lock, title="executor")
+    _wiki_page(
+        db, lock,
+        slug="long",
+        title="Executor long",
+        body=("executor wiring details " * 60) + " ZZTAILMARKER",
+    )
+    md = cs.assemble_context(db).markdown
+    assert "Executor long" in md
+    assert "ZZTAILMARKER" not in md  # snippet truncated before the tail
+
+
+def test_no_knowledge_section_when_wiki_empty(db, lock):
+    focus_service.create_focus(db, lock, title="executor work")
+    assert "## Relevant Knowledge" not in cs.assemble_context(db).markdown
+
+
+def test_no_knowledge_section_without_focus(db, lock):
+    # No focus → no query terms → no retrieval.
+    _wiki_page(db, lock, slug="x", title="Executor", body="executor notes here")
+    assert "## Relevant Knowledge" not in cs.assemble_context(db).markdown
