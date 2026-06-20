@@ -159,13 +159,24 @@ Loop note: pre-existing dirty state on branch `feat/cockpit-p3-glass-p4` (`.plan
 ### Six-item operator scope (added 2026-06-20, in-flight under 10.0.3)
 
 Operator added six items, sequenced for execution (index:
-`.planning/phases/10.0.3-SCOPE-SEQUENCE.md`; each has a PHASE.md):
-1. Memory router — FTS5 wiki retrieval into `context_service.assemble_context` (`10.0.3-memory-router`)
-2. Setup wizard + config-service — `atlas setup`, `~/.atlas/config.yaml` (`10.0.3-setup-wizard`)
-3. Channel cockpit UI — System page channel management + messaging gateway control (`10.0.3-channel-cockpit`, needs #2)
-4. Console hyprland BSP auto-tiling (`10.0.3-console-tiling`)
-5. Harness cherry-pick PI/OpenCode — research intake doc (`10.0.3-harness-cherrypick`)
-6. Foundation de-brand hermes→atlas (`10.0.7-foundation-debrand`, release-gate, last)
+`.planning/phases/10.0.3-SCOPE-SEQUENCE.md`; each has a PHASE.md). Status as of 2026-06-20:
+1. **DONE** Memory router — FTS5 wiki retrieval into `context_service.assemble_context` (`18bbfb4`).
+   6 tests; 157 agent-runtime pass (1 pre-existing claude_agent_sdk env fail).
+2. **DONE** Setup wizard + config-service — `atlas setup`, `~/.atlas/config.yaml`, `atlas config
+   show/get/set/json`, gateway `GET /v1/config`, System RUNTIME CONFIG panel (`76df72d`). 14 tests.
+3. **DONE (management floor)** Channel cockpit — `atlas channels enable/disable/json`, gateway
+   `GET /v1/channels` + `POST /v1/channels/{name}/toggle`, System CHANNELS panel (`ad48554`). 6 tests.
+   Deferred: messaging-gateway process lifecycle, Discord browser (see PHASE.md).
+4. **DONE (core)** Console BSP auto-tiling — pure `bspLayout.computeDwindle` + `bsp` LayoutMode wired
+   into Console (`39f61aa`). Deferred: manual split-boundary resize; no JS test runner → tsc/build-gated.
+5. **DONE** Harness cherry-pick — `docs/research/HARNESS_CHERRYPICK_PI_OPENCODE.md`, 9 patterns
+   classified adopt/adapt/skip (`0c4600a`). PI = pi-mono harness.
+6. **DEFERRED** Foundation de-brand hermes→atlas (`10.0.7-foundation-debrand`) — operator-directed to a
+   dedicated session (~12.9k refs, foundation-locked tree, test-gated). PHASE.md is the ready plan.
+
+All work committed on `main` (commits `e3269cb`..`0c4600a`). Verification: agent-runtime 157 pass
+(1 known env fail), `cargo test -p atlas-gateway` config/channel tests pass + compiles, web
+tsc/lint/build green.
 
 ## Project Reference
 
