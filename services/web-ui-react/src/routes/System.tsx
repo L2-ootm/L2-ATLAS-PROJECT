@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Server, Database, Copy, Check, Power, Cpu } from 'lucide-react';
+import { Server, Database, Copy, Check, Power, Cpu, Radio } from 'lucide-react';
 import { Page } from '../components/Page';
 import { glassPanel } from '../lib/glass';
 import {
 	checkHealth,
 	getConfig,
+	listChannels,
 	listModules,
 	setModuleActive,
+	toggleChannel,
 	type AtlasConfigView,
+	type ChannelSummary,
 	type Module
 } from '../lib/api';
 import { isTauri, startGatewayViaShell } from '../lib/host';
@@ -28,13 +31,20 @@ export default function System() {
 	const [online, setOnline] = useState<boolean | null>(null);
 	const [modules, setModules] = useState<Module[]>([]);
 	const [config, setConfig] = useState<AtlasConfigView | null>(null);
+	const [channels, setChannels] = useState<ChannelSummary[]>([]);
 	const [load, setLoad] = useState<Load>({ s: 'loading' });
 	const [busyId, setBusyId] = useState<string | null>(null);
+	const [chBusy, setChBusy] = useState<string | null>(null);
 	const [err, setErr] = useState<string | null>(null);
 	const { epoch } = useGatewayHealth();
 
 	const refresh = useCallback(async () => {
-		const [h, m, c] = await Promise.allSettled([checkHealth(), listModules(), getConfig()]);
+		const [h, m, c, ch] = await Promise.allSettled([
+			checkHealth(),
+			listModules(),
+			getConfig(),
+			listChannels()
+		]);
 		if (h.status === 'fulfilled') {
 			setHealth(h.value);
 			setOnline(true);
@@ -44,8 +54,22 @@ export default function System() {
 		}
 		if (m.status === 'fulfilled') setModules(m.value.modules);
 		setConfig(c.status === 'fulfilled' ? c.value : null);
+		setChannels(ch.status === 'fulfilled' ? ch.value.channels : []);
 		setLoad({ s: h.status === 'rejected' && m.status === 'rejected' ? 'error' : 'ready' });
 	}, []);
+
+	async function toggleCh(ch: ChannelSummary) {
+		setChBusy(ch.name);
+		setErr(null);
+		try {
+			await toggleChannel(ch.name, !ch.enabled);
+			await refresh();
+		} catch {
+			setErr(`Could not toggle ${ch.name} — is the gateway running?`);
+		} finally {
+			setChBusy(null);
+		}
+	}
 
 	useEffect(() => {
 		void refresh();
@@ -86,6 +110,13 @@ export default function System() {
 			{online === false && <OfflinePanel onStarted={() => void refresh()} />}
 
 			{config && <RuntimeConfigPanel config={config} />}
+
+			<ChannelsPanel
+				channels={channels}
+				offline={online === false}
+				busyName={chBusy}
+				onToggle={toggleCh}
+			/>
 
 			<ModulesPanel
 				modules={modules}
@@ -179,6 +210,87 @@ function RuntimeConfigPanel({ config }: { config: AtlasConfigView }) {
 					</div>
 				))}
 			</div>
+		</section>
+	);
+}
+
+// ── channels panel ────────────────────────────────────────────────────────────
+// Messaging channels from the foundation gateway config. Toggling persists to
+// the foundation config.yaml via the gateway; credential presence only (never
+// values). Credentials/tokens are configured out-of-band (atlas setup / env).
+function ChannelsPanel({
+	channels,
+	offline,
+	busyName,
+	onToggle
+}: {
+	channels: ChannelSummary[];
+	offline: boolean;
+	busyName: string | null;
+	onToggle: (c: ChannelSummary) => void;
+}) {
+	return (
+		<section style={glassPanel({ overflow: 'hidden', marginBottom: 16 })}>
+			<header
+				style={{
+					display: 'flex',
+					alignItems: 'center',
+					gap: 8,
+					padding: '14px 18px',
+					borderBottom: '1px solid var(--l2-hairline)'
+				}}
+			>
+				<Radio size={14} strokeWidth={1.6} color="var(--atlas-bronze)" />
+				<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 11, letterSpacing: '0.22em', color: 'var(--atlas-bronze)' }}>
+					CHANNELS
+				</span>
+				<span style={{ marginLeft: 'auto', fontFamily: 'var(--l2-font-mono)', fontSize: 10, letterSpacing: '0.14em', color: 'var(--l2-fg-3)' }}>
+					{channels.filter((c) => c.enabled).length}/{channels.length} ENABLED
+				</span>
+			</header>
+
+			{channels.length === 0 ? (
+				<div style={{ padding: '24px 18px', color: 'var(--l2-fg-3)', fontSize: 13, lineHeight: 1.6 }}>
+					No messaging channels configured. Configure the foundation gateway with{' '}
+					<code style={{ fontFamily: 'var(--l2-font-mono)', color: 'var(--atlas-celestial)' }}>atlas setup</code>, then
+					enable channels here.
+				</div>
+			) : (
+				channels.map((c, i) => (
+					<div
+						key={c.name}
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							justifyContent: 'space-between',
+							gap: 16,
+							padding: '14px 18px',
+							borderTop: i === 0 ? 'none' : '1px solid var(--l2-hairline)'
+						}}
+					>
+						<div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+							<span style={{ color: 'var(--l2-fg-1)', fontSize: 14, textTransform: 'capitalize' }}>{c.name}</span>
+							<StatusPill active={c.enabled} />
+							<span
+								style={{
+									fontFamily: 'var(--l2-font-mono)',
+									fontSize: 9.5,
+									letterSpacing: '0.12em',
+									color: c.credential_present ? 'var(--atlas-cyan)' : 'var(--l2-fg-3)'
+								}}
+							>
+								{c.credential_present ? 'CREDENTIAL SET' : 'NO CREDENTIAL'}
+							</span>
+						</div>
+						<ToggleButton
+							active={c.enabled}
+							busy={busyName === c.name}
+							disabled={offline || busyName !== null}
+							onClick={() => onToggle(c)}
+						/>
+					</div>
+				))
+			)}
 		</section>
 	);
 }

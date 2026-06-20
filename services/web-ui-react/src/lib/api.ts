@@ -870,3 +870,31 @@ export interface AtlasConfigView {
 export async function getConfig(): Promise<AtlasConfigView> {
 	return apiFetch('/v1/config');
 }
+
+// ── Channels (foundation messaging gateway config) ────────────────────────────
+
+export interface ChannelSummary {
+	name: string;
+	enabled: boolean;
+	credential_present: boolean;
+}
+
+/** Configured messaging channels. Empty when no foundation config / gateway. */
+export async function listChannels(): Promise<{ channels: ChannelSummary[] }> {
+	try {
+		return await apiFetch<{ channels: ChannelSummary[] }>('/v1/channels');
+	} catch (err) {
+		if (err instanceof ApiError && (err.status === 404 || err.status === 500 || err.status === 503)) {
+			return { channels: [] };
+		}
+		throw err;
+	}
+}
+
+/** Enable/disable a channel; persists to the foundation config.yaml. */
+export async function toggleChannel(name: string, enabled: boolean): Promise<{ name: string; enabled: boolean }> {
+	return apiFetch(`/v1/channels/${encodeURIComponent(name)}/toggle`, {
+		method: 'POST',
+		body: JSON.stringify({ enabled })
+	});
+}
