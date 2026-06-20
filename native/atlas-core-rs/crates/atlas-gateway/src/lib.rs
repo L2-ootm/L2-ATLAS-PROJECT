@@ -1156,6 +1156,68 @@ async fn observation_create(
 }
 
 // ---------------------------------------------------------------------------
+// Operations handlers (WP-6 — premade autonomous operations on goals)
+// ---------------------------------------------------------------------------
+
+/// The built-in operation registry. Read via the CLI (operations are not a DB
+/// table — the Python registry is the single source of truth).
+async fn operations_list(State(state): State<AppState>) -> ApiResult {
+    let out = dispatch_atlas(&state.atlas_cmd, &["operation", "list"]).await?;
+    let operations: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("operation list parse: {e}")))?;
+    Ok(Json(json!({ "operations": operations })))
+}
+
+#[derive(Deserialize)]
+struct OperationRunBody {
+    goal_id: String,
+    agent: Option<String>,
+}
+
+/// Trigger an operation on a goal: prepare a mission+run (mission intent = the
+/// rendered operation instruction), then spawn a detached `run exec` so it
+/// executes in the background (mirrors start_run's execute path).
+async fn operation_run(
+    State(state): State<AppState>,
+    AxPath(op_id): AxPath<String>,
+    Json(body): Json<OperationRunBody>,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    require_arg(&op_id, "operation id must be non-empty")?;
+    require_arg(&body.goal_id, "goal_id must be non-empty")?;
+    let agent = body
+        .agent
+        .map(|a| a.trim().to_string())
+        .filter(|a| !a.is_empty())
+        .unwrap_or_else(|| "native".to_string());
+    if agent != "native" && agent != "claude_code" {
+        return Err(ApiError::BadRequest("agent must be 'native' or 'claude_code'"));
+    }
+    let run_id = dispatch_atlas(
+        &state.atlas_cmd,
+        &["operation", "prepare", "--op", &op_id, "--goal", &body.goal_id, "--agent", &agent],
+    )
+    .await?;
+    let path = state.db_path.clone();
+    let run_id_clone = run_id.clone();
+    let found = blocking(move || db::get_run(&path, &run_id_clone)).await?;
+    match found {
+        Some(run) => {
+            spawn_detached_atlas(
+                &state.atlas_cmd,
+                &["run", "exec", "--agent", &agent, "--", &run_id],
+            )?;
+            Ok((
+                StatusCode::CREATED,
+                Json(json!({ "run": run, "executing": true, "operation": op_id })),
+            ))
+        }
+        None => Err(ApiError::Internal(format!(
+            "operation run '{run_id}' prepared but not found in db"
+        ))),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Modules handlers (Decision 3b — optional activatable modules)
 // ---------------------------------------------------------------------------
 
@@ -1382,6 +1444,8 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/tasks", post(task_create))
         .route("/v1/tasks/{id}/status", post(task_set_status))
         .route("/v1/observations", post(observation_create))
+        .route("/v1/operations", get(operations_list))
+        .route("/v1/operations/{id}/run", post(operation_run))
         .route("/v1/modules", get(modules_list))
         .route("/v1/modules/{id}/activate", post(module_activate))
         .route("/v1/modules/{id}/deactivate", post(module_deactivate))
