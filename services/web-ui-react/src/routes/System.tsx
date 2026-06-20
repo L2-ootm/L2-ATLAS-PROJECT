@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Server, Database, Copy, Check, Power } from 'lucide-react';
+import { Server, Database, Copy, Check, Power, Cpu } from 'lucide-react';
 import { Page } from '../components/Page';
 import { glassPanel } from '../lib/glass';
 import {
 	checkHealth,
+	getConfig,
 	listModules,
 	setModuleActive,
+	type AtlasConfigView,
 	type Module
 } from '../lib/api';
 import { isTauri, startGatewayViaShell } from '../lib/host';
@@ -25,13 +27,14 @@ export default function System() {
 	const [health, setHealth] = useState<Health>(null);
 	const [online, setOnline] = useState<boolean | null>(null);
 	const [modules, setModules] = useState<Module[]>([]);
+	const [config, setConfig] = useState<AtlasConfigView | null>(null);
 	const [load, setLoad] = useState<Load>({ s: 'loading' });
 	const [busyId, setBusyId] = useState<string | null>(null);
 	const [err, setErr] = useState<string | null>(null);
 	const { epoch } = useGatewayHealth();
 
 	const refresh = useCallback(async () => {
-		const [h, m] = await Promise.allSettled([checkHealth(), listModules()]);
+		const [h, m, c] = await Promise.allSettled([checkHealth(), listModules(), getConfig()]);
 		if (h.status === 'fulfilled') {
 			setHealth(h.value);
 			setOnline(true);
@@ -40,6 +43,7 @@ export default function System() {
 			setOnline(false);
 		}
 		if (m.status === 'fulfilled') setModules(m.value.modules);
+		setConfig(c.status === 'fulfilled' ? c.value : null);
 		setLoad({ s: h.status === 'rejected' && m.status === 'rejected' ? 'error' : 'ready' });
 	}, []);
 
@@ -81,6 +85,8 @@ export default function System() {
 
 			{online === false && <OfflinePanel onStarted={() => void refresh()} />}
 
+			{config && <RuntimeConfigPanel config={config} />}
+
 			<ModulesPanel
 				modules={modules}
 				loading={load.s === 'loading'}
@@ -117,6 +123,63 @@ function StatusCard({
 				<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 18, letterSpacing: '0.06em', color }}>{value}</span>
 			</div>
 		</div>
+	);
+}
+
+// ── runtime config panel ─────────────────────────────────────────────────────
+// Reads ~/.atlas/config.yaml (masked) via the gateway. Secrets are env: refs only,
+// so no value is ever shown. Configure with `atlas setup` / `atlas config set`.
+function RuntimeConfigPanel({ config }: { config: AtlasConfigView }) {
+	const rows: Array<[string, string]> = [
+		['Provider', config.provider.name],
+		['Model', config.provider.model],
+		['API key', config.provider.api_key || '— (set via atlas setup)'],
+		['Default agent', config.runtime.default_agent],
+		['Iteration budget', String(config.runtime.iteration_budget)],
+		['Gateway port', String(config.gateway.rust_port)],
+		['Messaging', config.gateway.messaging_enabled ? 'enabled' : 'disabled'],
+		['Cockpit port', String(config.cockpit.port)],
+		['Branding', config.cockpit.branding]
+	];
+	return (
+		<section style={glassPanel({ overflow: 'hidden', marginBottom: 16 })}>
+			<header
+				style={{
+					display: 'flex',
+					alignItems: 'center',
+					gap: 8,
+					padding: '14px 18px',
+					borderBottom: '1px solid var(--l2-hairline)'
+				}}
+			>
+				<Cpu size={14} strokeWidth={1.6} color="var(--atlas-bronze)" />
+				<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 11, letterSpacing: '0.22em', color: 'var(--atlas-bronze)' }}>
+					RUNTIME CONFIG
+				</span>
+				<span style={{ marginLeft: 'auto', fontFamily: 'var(--l2-font-mono)', fontSize: 9.5, letterSpacing: '0.14em', color: 'var(--l2-fg-3)' }}>
+					~/.atlas/config.yaml
+				</span>
+			</header>
+			<div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
+				{rows.map(([k, v], i) => (
+					<div
+						key={k}
+						style={{
+							display: 'flex',
+							justifyContent: 'space-between',
+							gap: 12,
+							padding: '11px 18px',
+							borderTop: i < 2 ? 'none' : '1px solid var(--l2-hairline)'
+						}}
+					>
+						<span style={{ color: 'var(--l2-fg-3)', fontSize: 12.5 }}>{k}</span>
+						<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 12, color: 'var(--l2-fg-1)', textAlign: 'right', wordBreak: 'break-all' }}>
+							{v}
+						</span>
+					</div>
+				))}
+			</div>
+		</section>
 	);
 }
 

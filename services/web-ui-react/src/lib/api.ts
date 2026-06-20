@@ -855,3 +855,18 @@ export async function listModels(): Promise<{ models: ModelEntry[]; count: numbe
 export async function checkHealth(): Promise<{ status: string; db: string }> {
 	return apiFetch('/health');
 }
+
+// ── Config (~/.atlas/config.yaml, masked) ─────────────────────────────────────
+
+export interface AtlasConfigView {
+	provider: { name: string; model: string; api_key: string; base_url: string | null };
+	runtime: { default_agent: string; iteration_budget: number; compression: string };
+	gateway: { rust_port: number; messaging_enabled: boolean; messaging_port: number };
+	cockpit: { port: number; branding: string };
+	modules: Record<string, boolean>;
+}
+
+/** Masked ATLAS config from the gateway. Secrets are env: refs only. */
+export async function getConfig(): Promise<AtlasConfigView> {
+	return apiFetch('/v1/config');
+}

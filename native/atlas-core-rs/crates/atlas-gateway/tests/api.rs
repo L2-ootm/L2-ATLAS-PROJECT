@@ -123,6 +123,22 @@ async fn health_reports_db_absent() {
 }
 
 #[tokio::test]
+async fn config_view_returns_masked_json_from_cli() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    // Stub `atlas config json` output: masked config (env: ref, no secret value).
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"provider": {"name": "openrouter", "api_key": "env:OPENROUTER_API_KEY"}}"#,
+        &stub_dir,
+    );
+    let (status, body) = get_json(&router, "/v1/config").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["provider"]["name"], "openrouter");
+    assert_eq!(body["provider"]["api_key"], "env:OPENROUTER_API_KEY");
+}
+
+#[tokio::test]
 async fn missions_list_returns_rows_newest_first() {
     let dir = tempfile::tempdir().unwrap();
     let router = test_app(seeded_db(&dir));

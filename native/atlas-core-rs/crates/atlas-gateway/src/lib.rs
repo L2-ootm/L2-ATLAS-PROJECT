@@ -494,6 +494,18 @@ fn spawn_detached_atlas(atlas_cmd: &[String], args: &[&str]) -> Result<(), ApiEr
         .map_err(|e| ApiError::Internal(format!("failed to spawn detached atlas: {e}")))
 }
 
+/// GET /v1/config — the masked ATLAS config (~/.atlas/config.yaml).
+///
+/// Config parsing lives in Python (single source of truth, D-022); the gateway
+/// dispatches `atlas config json` and returns the already-masked JSON. Secrets
+/// are env: refs only, so nothing sensitive crosses this surface.
+async fn config_view(State(state): State<AppState>) -> ApiResult {
+    let out = dispatch_atlas(&state.atlas_cmd, &["config", "json"]).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("config json parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
 #[derive(Deserialize)]
 struct SelectFolderBody {
     title: Option<String>,
@@ -1429,6 +1441,7 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/wiki/pages/{slug}", get(wiki_page_detail).put(wiki_update))
         .route("/v1/wiki/search", get(wiki_search))
         .route("/v1/models", get(models_list))
+        .route("/v1/config", get(config_view))
         .route("/v1/console/chat", post(console_chat))
         .route("/v1/console/stream", post(console_stream))
         .route("/v1/graph", get(graph_view))
