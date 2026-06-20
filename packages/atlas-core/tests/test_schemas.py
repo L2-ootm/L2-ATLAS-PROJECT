@@ -188,3 +188,52 @@ def test_frozen_model() -> None:
     m = Mission(title="t")
     with pytest.raises(Exception):
         m.title = "mutated"  # type: ignore[misc]
+
+
+# --- Goal model slice (loop-engineering: Goal / Task / Observation) ---
+
+
+def test_goal_model_importable_and_json_safe() -> None:
+    """Goal/Task/Observation import, instantiate, and serialize JSON-safe."""
+    from atlas_core.schemas.core import Goal, Observation, Task
+
+    g = Goal(title="Ship the loop", description="full slice", focus_id="f1")
+    t = Task(goal_id=g.id, title="write the migration")
+    o = Observation(goal_id=g.id, run_id="r1", body="tests green", source="run:r1")
+
+    for model in (g, t, o):
+        dumped = model.model_dump()
+        json.dumps(dumped)  # must not raise
+        assert isinstance(dumped["created_at"], str)
+
+
+def test_goal_defaults_and_nesting() -> None:
+    """Goal defaults: open status, nullable parent/focus; sub-goal via parent_goal_id."""
+    from atlas_core.schemas.core import Goal
+
+    root = Goal(title="root")
+    assert root.status == "open"
+    assert root.parent_goal_id is None and root.focus_id is None
+    child = Goal(title="sub", parent_goal_id=root.id)
+    assert child.parent_goal_id == root.id
+
+
+def test_goal_model_status_enums() -> None:
+    """Status literals are enforced by Pydantic."""
+    from pydantic import ValidationError
+
+    from atlas_core.schemas.core import Goal, Task
+
+    with pytest.raises(ValidationError):
+        Goal(title="x", status="bogus")  # type: ignore[arg-type]
+    with pytest.raises(ValidationError):
+        Task(goal_id="g", title="x", status="bogus")  # type: ignore[arg-type]
+
+
+def test_goal_model_json_schema() -> None:
+    """model_json_schema() returns a dict with 'properties' for each new model."""
+    from atlas_core.schemas.core import Goal, Observation, Task
+
+    for model in (Goal, Task, Observation):
+        schema = model.model_json_schema()
+        assert isinstance(schema, dict) and "properties" in schema

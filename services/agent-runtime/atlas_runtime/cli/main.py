@@ -20,6 +20,7 @@ from atlas_runtime import (
     context_service,
     db,
     focus_service,
+    goal_service,
     graph_service,
     mission_service,
     project_service,
@@ -52,6 +53,12 @@ run_app = typer.Typer(name="run", help="Execute an already-started run (backgrou
 app.add_typer(run_app, name="run")
 focus_app = typer.Typer(name="focus", help="Command Center: the operator's Current Focus.")
 app.add_typer(focus_app, name="focus")
+goal_app = typer.Typer(name="goal", help="Command Center: goals, sub-goals, and the goal tree.")
+app.add_typer(goal_app, name="goal")
+task_app = typer.Typer(name="task", help="Command Center: tasks under a goal.")
+app.add_typer(task_app, name="task")
+observe_app = typer.Typer(name="observe", help="Command Center: observations on goals/runs.")
+app.add_typer(observe_app, name="observe")
 runtime_app = typer.Typer(name="runtime", help="In-process run executor daemon (background execution, b).")
 app.add_typer(runtime_app, name="runtime")
 
@@ -476,6 +483,158 @@ def focus_archive(focus_id: str = typer.Argument(..., help="Focus ID to archive"
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1)
     typer.echo("archived")
+
+
+# ---------------------------------------------------------------------------
+# goal / task / observe subcommands — Command Center goal hierarchy
+# ---------------------------------------------------------------------------
+
+
+@goal_app.command("create")
+def goal_create(
+    title: str = typer.Option(..., "--title", help="Goal title"),
+    description: str = typer.Option("", "--description", help="Rich goal description/brief"),
+    focus_id: str = typer.Option("", "--focus", help="Focus id this goal serves"),
+    parent_goal_id: str = typer.Option("", "--parent", help="Parent goal id (creates a sub-goal)"),
+    status: str = typer.Option("open", "--status", help="open|active|done|archived"),
+) -> None:
+    """Create a goal (or sub-goal via --parent); prints its id."""
+    conn = _get_connection()
+    lock = _get_lock()
+    try:
+        goal = goal_service.create_goal(
+            conn, lock,
+            title=title, description=description,
+            focus_id=focus_id or None, parent_goal_id=parent_goal_id or None, status=status,
+        )
+    except goal_service.GoalError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(goal.id)
+
+
+@goal_app.command("list")
+def goal_list(
+    focus_id: str = typer.Option("", "--focus", help="Filter to a focus id"),
+    include_archived: bool = typer.Option(False, "--all", help="Include archived goals"),
+) -> None:
+    """Print goals as a JSON array (non-archived unless --all)."""
+    conn = _get_connection()
+    items = goal_service.list_goals(
+        conn, focus_id=focus_id or None, include_archived=include_archived
+    )
+    typer.echo(json.dumps([g.model_dump() for g in items]))
+
+
+@goal_app.command("tree")
+def goal_tree(focus_id: str = typer.Argument(..., help="Focus id to build the tree for")) -> None:
+    """Print the nested goal tree (goals → children → tasks → observations) as JSON."""
+    conn = _get_connection()
+    typer.echo(json.dumps(goal_service.build_goal_tree(conn, focus_id=focus_id)))
+
+
+@goal_app.command("update")
+def goal_update(
+    goal_id: str = typer.Argument(..., help="Goal id"),
+    title: str = typer.Option("", "--title", help="New title"),
+    description: str = typer.Option("", "--description", help="New description"),
+    status: str = typer.Option("", "--status", help="open|active|done|archived"),
+) -> None:
+    """Patch a goal's fields (only provided ones change); prints 'updated'."""
+    conn = _get_connection()
+    lock = _get_lock()
+    try:
+        goal_service.update_goal(
+            conn, lock, goal_id,
+            title=title or None, description=description or None, status=status or None,
+        )
+    except goal_service.GoalError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo("updated")
+
+
+@goal_app.command("archive")
+def goal_archive(goal_id: str = typer.Argument(..., help="Goal id to archive (cascades to sub-goals)")) -> None:
+    """Archive a goal and its sub-goals."""
+    conn = _get_connection()
+    lock = _get_lock()
+    try:
+        goal_service.archive_goal(conn, lock, goal_id)
+    except goal_service.GoalError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo("archived")
+
+
+@task_app.command("add")
+def task_add(
+    goal_id: str = typer.Option(..., "--goal", help="Goal id this task belongs to"),
+    title: str = typer.Option(..., "--title", help="Task title"),
+) -> None:
+    """Add a task under a goal; prints its id."""
+    conn = _get_connection()
+    lock = _get_lock()
+    try:
+        task = goal_service.create_task(conn, lock, goal_id=goal_id, title=title)
+    except goal_service.GoalError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(task.id)
+
+
+@task_app.command("list")
+def task_list(goal_id: str = typer.Argument(..., help="Goal id")) -> None:
+    """Print a goal's tasks as a JSON array."""
+    conn = _get_connection()
+    typer.echo(json.dumps([t.model_dump() for t in goal_service.list_tasks(conn, goal_id=goal_id)]))
+
+
+@task_app.command("status")
+def task_status(
+    task_id: str = typer.Argument(..., help="Task id"),
+    status: str = typer.Option(..., "--status", help="todo|doing|done"),
+) -> None:
+    """Set a task's status; prints 'updated'."""
+    conn = _get_connection()
+    lock = _get_lock()
+    try:
+        goal_service.set_task_status(conn, lock, task_id, status)
+    except goal_service.GoalError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo("updated")
+
+
+@observe_app.command("add")
+def observe_add(
+    body: str = typer.Option(..., "--body", help="The observation text"),
+    goal_id: str = typer.Option("", "--goal", help="Goal id to attach to"),
+    run_id: str = typer.Option("", "--run", help="Run id to attach to"),
+    source: str = typer.Option("operator", "--source", help="Provenance: operator|run:<id>|compounding-loop"),
+) -> None:
+    """Append an observation to a goal and/or run; prints its id."""
+    conn = _get_connection()
+    lock = _get_lock()
+    try:
+        obs = goal_service.add_observation(
+            conn, lock, body=body, goal_id=goal_id or None, run_id=run_id or None, source=source
+        )
+    except goal_service.GoalError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(obs.id)
+
+
+@observe_app.command("list")
+def observe_list(
+    goal_id: str = typer.Option("", "--goal", help="Filter to a goal id"),
+    run_id: str = typer.Option("", "--run", help="Filter to a run id"),
+) -> None:
+    """Print observations as a JSON array (newest first)."""
+    conn = _get_connection()
+    items = goal_service.list_observations(conn, goal_id=goal_id or None, run_id=run_id or None)
+    typer.echo(json.dumps([o.model_dump() for o in items]))
 
 
 # ---------------------------------------------------------------------------

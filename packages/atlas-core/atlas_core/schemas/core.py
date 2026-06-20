@@ -119,6 +119,83 @@ class Focus(BaseModel):
         return None if dt is None else dt.isoformat()
 
 
+class Goal(BaseModel):
+    """A concrete objective under a Focus (Command Center loop-engineering slice).
+
+    Goals form a tree via `parent_goal_id` (self-nesting → sub-goals) and are
+    served by a Focus via `focus_id`. `description` is the rich brief the
+    context-assembly step synthesizes loop instructions from. DDL in
+    0010_goal_model.sql mirrors these fields 1:1."""
+
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    focus_id: Optional[str] = None
+    parent_goal_id: Optional[str] = None
+    title: str
+    description: str = ""
+    status: Literal["open", "active", "done", "archived"] = "open"
+    position: int = 0
+    created_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+    updated_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_dt(self, dt: datetime.datetime | None) -> str | None:
+        """Return ISO 8601 string so model_dump() is JSON-safe."""
+        return None if dt is None else dt.isoformat()
+
+
+class Task(BaseModel):
+    """A small actionable unit under a Goal. The leaf of the goal tree; the
+    operator (or the loop) checks these off. DDL in 0010_goal_model.sql."""
+
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    goal_id: str
+    title: str
+    status: Literal["todo", "doing", "done"] = "todo"
+    position: int = 0
+    created_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+    updated_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_dt(self, dt: datetime.datetime | None) -> str | None:
+        """Return ISO 8601 string so model_dump() is JSON-safe."""
+        return None if dt is None else dt.isoformat()
+
+
+class Observation(BaseModel):
+    """A timestamped finding attached to a Goal and/or Run. The unit the
+    compounding loop appends on run completion (provenance via `source`), so the
+    next context assembly inherits what was learned. Never mutates operator-owned
+    Goals. DDL in 0010_goal_model.sql."""
+
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    goal_id: Optional[str] = None
+    run_id: Optional[str] = None
+    body: str
+    source: str = "operator"  # "operator" | "run:<id>" | "compounding-loop"
+    created_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+
+    @field_serializer("created_at")
+    def serialize_dt(self, dt: datetime.datetime | None) -> str | None:
+        """Return ISO 8601 string so model_dump() is JSON-safe."""
+        return None if dt is None else dt.isoformat()
+
+
 class Module(BaseModel):
     """An optional, activatable ATLAS module (e.g. cashflow). Off by default;
     toggled from the System page (DDL in 0007_modules.sql — Decision 3b). `id` is
