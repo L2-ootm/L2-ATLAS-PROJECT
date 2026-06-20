@@ -18,12 +18,27 @@ Wiki pages are a documented extension point: the wiki lives in the optional
 """
 from __future__ import annotations
 
+import re
 import sqlite3
 from dataclasses import dataclass, field
 
 from atlas_core.schemas.core import SECRET_PATTERNS
 
 from atlas_runtime import focus_service, goal_service, mission_service, project_service
+
+# Memory router (item #1) — FTS5 retrieval over the LLM Wiki into the brief.
+# We query the shared wiki_pages/wiki_fts tables directly (same connection) rather
+# than depending on the optional atlas-wiki package, and gate on table presence so
+# this is safe on databases without the wiki schema.
+_KNOWLEDGE_TOKEN = re.compile(r"[A-Za-z0-9]+")
+_KNOWLEDGE_STOPWORDS = frozenset(
+    {"the", "a", "an", "and", "or", "to", "of", "for", "in", "on", "with", "is",
+     "it", "this", "that", "be", "as", "by", "at", "from", "into", "via"}
+)
+_KNOWLEDGE_MAX_TERMS = 12
+_KNOWLEDGE_MAX_PAGES = 5
+_KNOWLEDGE_SNIPPET_CHARS = 400
+_KNOWLEDGE_BUDGET_CHARS = 1400
 
 
 def _redact_match(match: "object") -> str:
@@ -89,6 +104,78 @@ def _recent_runs(conn: sqlite3.Connection, mission_id: str, limit: int) -> list[
     return [(r[0], r[1], r[2], r[3] or "") for r in cursor]
 
 
+def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
+    return (
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type IN ('table','view') AND name=?",
+            (name,),
+        ).fetchone()
+        is not None
+    )
+
+
+def _collect_open_titles(nodes: list[dict], out: list[str]) -> None:
+    """Gather open goal/task titles from the goal tree to seed the wiki query."""
+    for node in nodes:
+        if node.get("status", "open") != "done":
+            out.append(node.get("title", "") or "")
+        for task in node.get("tasks") or []:
+            if task.get("status") != "done":
+                out.append(task.get("title", "") or "")
+        _collect_open_titles(node.get("children") or [], out)
+
+
+def _knowledge_terms(focus_title: str | None, tree: list[dict]) -> list[str]:
+    """Deduplicated keyword terms from the Focus + open goals/tasks, for FTS5."""
+    titles = [focus_title or ""]
+    _collect_open_titles(tree, titles)
+    seen: set[str] = set()
+    terms: list[str] = []
+    for title in titles:
+        for tok in _KNOWLEDGE_TOKEN.findall(title.lower()):
+            if len(tok) < 3 or tok in _KNOWLEDGE_STOPWORDS or tok in seen:
+                continue
+            seen.add(tok)
+            terms.append(tok)
+            if len(terms) >= _KNOWLEDGE_MAX_TERMS:
+                return terms
+    return terms
+
+
+def _relevant_knowledge(
+    conn: sqlite3.Connection, terms: list[str]
+) -> tuple[list[str], list[str]]:
+    """Retrieve top-k wiki pages matching the terms (FTS5/bm25), redacted and
+    budget-capped. Returns (markdown lines, provenance sources). Safe on DBs
+    without the wiki schema (returns empties)."""
+    if not terms or not _table_exists(conn, "wiki_fts"):
+        return [], []
+    # Terms are bare [A-Za-z0-9]+ tokens, so quoting each is injection-safe and
+    # neutralizes FTS5 operator parsing; OR-join for recall, bm25 ranks relevance.
+    match = " OR ".join(f'"{t}"' for t in terms)
+    try:
+        rows = conn.execute(
+            "SELECT wp.id, wp.slug, wp.title, substr(wp.body,1,?) "
+            "FROM wiki_fts JOIN wiki_pages wp ON wiki_fts.rowid = wp.rowid "
+            "WHERE wiki_fts MATCH ? ORDER BY bm25(wiki_fts) LIMIT ?",
+            (_KNOWLEDGE_SNIPPET_CHARS, match, _KNOWLEDGE_MAX_PAGES),
+        ).fetchall()
+    except sqlite3.Error:
+        return [], []
+    lines: list[str] = []
+    sources: list[str] = []
+    used = 0
+    for page_id, slug, title, snippet in rows:
+        snippet = " ".join((snippet or "").split())  # collapse whitespace/newlines
+        entry = f"- **{redact(title)}** (`{redact(slug)}`): {redact(snippet)}"
+        if lines and used + len(entry) > _KNOWLEDGE_BUDGET_CHARS:
+            break
+        lines.append(entry)
+        sources.append(f"wiki:{page_id}")
+        used += len(entry)
+    return lines, sources
+
+
 def assemble_context(
     conn: sqlite3.Connection,
     *,
@@ -103,6 +190,7 @@ def assemble_context(
     """
     sources: list[str] = []
     lines: list[str] = ["# ATLAS Operator Context", "", "_Generated for this run · secret-redacted._", ""]
+    tree: list[dict] = []
 
     focus = focus_service.get_current_focus(conn)
     if focus is not None:
@@ -162,6 +250,18 @@ def assemble_context(
             sources.append(f"observation:{obs.id}")
             lines.append(f"- _({redact(obs.source)})_ {redact(obs.body)}")
         lines.append("")
+
+    # Memory router (item #1) — retrieve the operator's own knowledge (LLM Wiki,
+    # FTS5) relevant to the Focus + open goals, so the run inherits what is already
+    # written down instead of re-deriving it. Redacted, budget-capped, provenance.
+    if focus is not None:
+        k_lines, k_sources = _relevant_knowledge(conn, _knowledge_terms(focus.title, tree))
+        if k_lines:
+            lines.append("## Relevant Knowledge")
+            lines.append("_Retrieved from the LLM Wiki (FTS5), most relevant first._")
+            lines.extend(k_lines)
+            lines.append("")
+            sources.extend(k_sources)
 
     # Loop-engineering operating contract (Layer 7) — turns the context above
     # into instructions, so the run is driven by the synthesized brief rather
