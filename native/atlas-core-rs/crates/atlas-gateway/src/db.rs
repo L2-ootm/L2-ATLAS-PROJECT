@@ -86,6 +86,24 @@ fn module_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
     }))
 }
 
+fn focus_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
+    // priorities/drivers are JSON-array strings in SQLite (0009_focus.sql) — parse
+    // back to JSON arrays for the API; tolerate malformed values as empty arrays.
+    let priorities: String = row.get(3)?;
+    let drivers: String = row.get(4)?;
+    Ok(json!({
+        "id": row.get::<_, String>(0)?,
+        "title": row.get::<_, String>(1)?,
+        "framework": row.get::<_, String>(2)?,
+        "priorities": serde_json::from_str::<Value>(&priorities).unwrap_or_else(|_| json!([])),
+        "drivers": serde_json::from_str::<Value>(&drivers).unwrap_or_else(|_| json!([])),
+        "project_id": row.get::<_, Option<String>>(5)?,
+        "status": row.get::<_, String>(6)?,
+        "created_at": row.get::<_, String>(7)?,
+        "updated_at": row.get::<_, String>(8)?,
+    }))
+}
+
 const MISSION_COLS: &str = "id, title, intent, status, project, created_at, updated_at";
 const MISSION_ARCHIVE_COLS: &str =
     "m.id, m.title, m.intent, m.status, m.project, m.created_at, m.updated_at, \
@@ -94,6 +112,8 @@ const RUN_COLS: &str =
     "id, mission_id, session_id, status, started_at, finished_at, summary, agent_runtime";
 const PROJECT_COLS: &str = "id, name, root_path, created_at, updated_at";
 const MODULE_COLS: &str = "id, name, description, status, activated_at";
+const FOCUS_COLS: &str =
+    "id, title, framework, priorities, drivers, project_id, status, created_at, updated_at";
 
 pub fn list_missions(path: &Path, limit: i64) -> Result<Vec<Value>, DbError> {
     let conn = open_ro(path)?;
@@ -204,6 +224,58 @@ pub fn get_project(path: &Path, id: &str) -> Result<Option<(Value, Vec<Value>)>,
         Err(e) => return Err(e.into()),
     };
     Ok(Some((project, missions)))
+}
+
+/// Active focus rows ordered by created_at DESC. Returns `Ok(vec![])` when the
+/// `focus` table does not exist yet (pre-0009 DB) so the gateway never 503s.
+pub fn list_focus(path: &Path, limit: i64) -> Result<Vec<Value>, DbError> {
+    let conn = open_ro(path)?;
+    let sql = format!(
+        "SELECT {FOCUS_COLS} FROM focus WHERE status = 'active' ORDER BY created_at DESC LIMIT ?1"
+    );
+    let mut stmt = match conn.prepare(&sql) {
+        Ok(s) => s,
+        Err(rusqlite::Error::SqliteFailure(_, Some(ref msg))) if msg.contains("no such table") => {
+            return Ok(vec![]);
+        }
+        Err(e) => return Err(e.into()),
+    };
+    let rows = stmt
+        .query_map([limit], focus_row)?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+/// The single newest active focus (the Current Focus). `Ok(None)` when there is
+/// no active focus or the `focus` table does not exist yet.
+pub fn current_focus(path: &Path) -> Result<Option<Value>, DbError> {
+    let conn = open_ro(path)?;
+    let sql = format!(
+        "SELECT {FOCUS_COLS} FROM focus WHERE status = 'active' ORDER BY created_at DESC LIMIT 1"
+    );
+    match conn.query_row(&sql, [], focus_row) {
+        Ok(v) => Ok(Some(v)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(rusqlite::Error::SqliteFailure(_, Some(ref msg))) if msg.contains("no such table") => {
+            Ok(None)
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Focus detail by id (used for read-back after create). `Ok(None)` when the id
+/// is unknown or the `focus` table does not exist yet.
+pub fn get_focus(path: &Path, id: &str) -> Result<Option<Value>, DbError> {
+    let conn = open_ro(path)?;
+    let sql = format!("SELECT {FOCUS_COLS} FROM focus WHERE id = ?1");
+    match conn.query_row(&sql, [id], focus_row) {
+        Ok(v) => Ok(Some(v)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(rusqlite::Error::SqliteFailure(_, Some(ref msg))) if msg.contains("no such table") => {
+            Ok(None)
+        }
+        Err(e) => Err(e.into()),
+    }
 }
 
 /// Optional modules ordered by id ASC. Returns `Ok(vec![])` when the `modules`
