@@ -469,6 +469,31 @@ async fn dispatch_atlas_with_timeout(
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+/// Fire-and-forget: spawn the atlas CLI as a detached background process and
+/// return immediately. The child keeps running after the returned handle is
+/// dropped (std::process does NOT kill on drop), so a long-running `run exec`
+/// outlives this request — that's how the gateway drives autonomous runs in the
+/// background. User-controlled values are passed after a `--` separator by the
+/// caller (argument-injection guard), same as dispatch_atlas.
+fn spawn_detached_atlas(atlas_cmd: &[String], args: &[&str]) -> Result<(), ApiError> {
+    if atlas_cmd.is_empty() {
+        return Err(ApiError::Internal("atlas_cmd is empty".into()));
+    }
+    let mut cmd = std::process::Command::new(&atlas_cmd[0]);
+    for pre in &atlas_cmd[1..] {
+        cmd.arg(pre);
+    }
+    for arg in args {
+        cmd.arg(arg);
+    }
+    cmd.stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    cmd.spawn()
+        .map(|_child| ()) // drop the handle; the process keeps running
+        .map_err(|e| ApiError::Internal(format!("failed to spawn detached atlas: {e}")))
+}
+
 #[derive(Deserialize)]
 struct SelectFolderBody {
     title: Option<String>,
@@ -688,9 +713,12 @@ async fn create_mission(
 #[derive(Deserialize, Default)]
 struct StartRunBody {
     /// Agent runtime selector: "native" (default) or "claude_code". Mirrors the
-    /// `atlas mission run --agent` flag (P4 — modular agents). The gateway stays
-    /// record-only: it dispatches the run row write, never `--execute`.
+    /// `atlas mission run --agent` flag (P4 — modular agents).
     agent: Option<String>,
+    /// When true, the gateway spawns a *detached* `atlas run exec` after creating
+    /// the run, so it executes in the background (autonomous loop) while this
+    /// endpoint returns the run_id immediately. Default false = record-only.
+    execute: Option<bool>,
 }
 
 async fn start_run(
@@ -700,8 +728,11 @@ async fn start_run(
     body: Option<Json<StartRunBody>>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
     require_arg(&mission_id, "mission id must be non-empty")?;
-    let agent = body
-        .and_then(|Json(b)| b.agent)
+    let (agent_opt, execute) = match body {
+        Some(Json(b)) => (b.agent, b.execute.unwrap_or(false)),
+        None => (None, false),
+    };
+    let agent = agent_opt
         .map(|a| a.trim().to_string())
         .filter(|a| !a.is_empty())
         .unwrap_or_else(|| "native".to_string());
@@ -719,7 +750,21 @@ async fn start_run(
     let run_id_clone = run_id.clone();
     let found = blocking(move || db::get_run(&path, &run_id_clone)).await?;
     match found {
-        Some(run) => Ok((StatusCode::CREATED, Json(json!({ "run": run })))),
+        Some(run) => {
+            // (a) Background execution: spawn a detached `atlas run exec` that
+            // drives the just-started run to completion (assembles context, runs
+            // the agent, emits audit/SSE) without blocking this response.
+            if execute {
+                spawn_detached_atlas(
+                    &state.atlas_cmd,
+                    &["run", "exec", "--agent", &agent, "--", &run_id],
+                )?;
+            }
+            Ok((
+                StatusCode::CREATED,
+                Json(json!({ "run": run, "executing": execute })),
+            ))
+        }
         None => Err(ApiError::Internal(format!(
             "run '{run_id}' started but not found in db"
         ))),
