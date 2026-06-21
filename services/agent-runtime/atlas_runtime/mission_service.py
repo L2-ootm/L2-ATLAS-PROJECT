@@ -17,6 +17,48 @@ from typing import Optional
 
 from atlas_core.schemas.core import Mission
 
+OPERATOR_RUN_ID = "operator"
+
+
+def ensure_operator_run(conn: sqlite3.Connection, lock: threading.Lock) -> str:
+    """Idempotently create the synthetic operator mission/run pair; return its id.
+
+    Operator-initiated writes (wiki edits, gated Discord actions, …) carry
+    run_id="operator", but audit_events.run_id is NOT NULL REFERENCES runs(id).
+    On a fresh database no such run exists, so the write would fail the FK check.
+    Bootstrap the pseudo-run lazily rather than relaxing the schema — the audit
+    chain stays referentially intact. Mirrors the wiki-runtime precedent.
+    """
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    with lock:
+        with conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO missions(id, title, intent, status, project, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    OPERATOR_RUN_ID,
+                    "Operator console",
+                    "Synthetic mission for operator-initiated writes outside agent runs",
+                    "archived",
+                    "",
+                    now,
+                    now,
+                ),
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO runs(id, mission_id, session_id, status, started_at, summary) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    OPERATOR_RUN_ID,
+                    OPERATOR_RUN_ID,
+                    OPERATOR_RUN_ID,
+                    "completed",
+                    now,
+                    "Synthetic run recording operator-initiated writes",
+                ),
+            )
+    return OPERATOR_RUN_ID
+
 
 def create_mission(
     conn: sqlite3.Connection,
