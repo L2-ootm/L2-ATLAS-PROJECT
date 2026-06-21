@@ -134,6 +134,48 @@ def archive_mission(
     return mission
 
 
+def retry_mission(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    *,
+    mission_id: str,
+) -> Mission:
+    """Reopen a failed/cancelled mission so it can be run again, in place.
+
+    A mission whose last run failed (or was cancelled) is otherwise terminal:
+    ``start_run`` requires a ``pending`` mission. This reopens it by cycling the
+    status ``failed|cancelled -> pending`` so the normal run path applies again.
+
+    Prior ``runs`` rows are left untouched — they remain attached as attempt
+    history (the compounding-loop provenance of earlier failures). No audit is
+    emitted here; the subsequent ``start_run`` records the ``started`` transition.
+    Mirrors ``archive_mission``'s atomic guarded-UPDATE shape.
+    """
+    with lock:
+        with conn:
+            row = conn.execute(
+                "SELECT status FROM missions WHERE id=?", (mission_id,)
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"Mission {mission_id!r} not found")
+            status = str(row[0]).lower()
+            if status not in {"failed", "cancelled"}:
+                raise ValueError(
+                    f"Cannot retry mission in state {row[0]!r} "
+                    "(only failed or cancelled missions can be retried)"
+                )
+            updated_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            conn.execute(
+                "UPDATE missions SET status='pending', updated_at=? WHERE id=?",
+                (updated_at, mission_id),
+            )
+
+    mission = get_mission(conn, mission_id)
+    if mission is None:
+        raise ValueError(f"Mission {mission_id!r} not found after retry")
+    return mission
+
+
 def purge_expired_archives(
     conn: sqlite3.Connection,
     lock: threading.Lock,

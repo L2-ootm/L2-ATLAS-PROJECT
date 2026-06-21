@@ -267,6 +267,53 @@ def run_mission(
     typer.echo(outcome.status)
 
 
+@mission_app.command("retry")
+def retry_mission(
+    mission_id: str = typer.Argument(..., help="Failed/cancelled mission ID to retry"),
+    agent: str = typer.Option(
+        "native", "--agent", help="Agent runtime to record/use: native | claude_code"
+    ),
+    execute: bool = typer.Option(
+        False,
+        "--execute",
+        help="Execute the retry run synchronously via the selected agent runtime (blocks)",
+    ),
+) -> None:
+    """Reopen a failed/cancelled mission and start a fresh run; print the run ID.
+
+    Reopens the mission in place (``failed|cancelled -> pending``), preserving
+    prior runs as attempt history, then starts a new run on the same mission.
+    With --execute, the new run is executed synchronously like ``mission run``.
+    """
+    from atlas_runtime.agents import get_agent, known_agents
+
+    conn = _get_connection()
+    lock = _get_lock()
+
+    if agent not in known_agents():
+        typer.echo(f"Error: unknown agent {agent!r}; known: {known_agents()}", err=True)
+        raise typer.Exit(1)
+
+    try:
+        mission_service.retry_mission(conn, lock, mission_id=mission_id)
+        run = run_service.start_run(
+            conn, lock, mission_id=mission_id, agent_runtime=agent
+        )
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(run.id)
+
+    if not execute:
+        return
+
+    prompt = _run_prompt(conn, mission_id)
+    outcome = run_executor.execute_run(
+        conn, lock, agent=get_agent(agent), mission_id=mission_id, run_id=run.id, prompt=prompt
+    )
+    typer.echo(outcome.status)
+
+
 @mission_app.command("cancel")
 def cancel(
     mission_id: str = typer.Argument(..., help="Mission ID to cancel"),
