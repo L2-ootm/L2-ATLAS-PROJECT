@@ -64,6 +64,18 @@ def test_redact_applied_at_boundary():
     assert sources == ["x:1"]
 
 
+def test_default_router_toggles_semantic_and_skills():
+    full = mr.default_router()
+    assert any(isinstance(r, mr.HybridKnowledgeRetriever) for r in full.retrievers)
+    assert any(isinstance(r, mr.SkillRetriever) for r in full.retrievers)
+
+    minimal = mr.default_router(enable_semantic=False, enable_skills=False)
+    assert not any(isinstance(r, mr.SkillRetriever) for r in minimal.retrievers)
+    assert not any(isinstance(r, mr.HybridKnowledgeRetriever) for r in minimal.retrievers)
+    # Pure FTS5 knowledge retriever remains.
+    assert any(type(r) is mr.WikiFtsRetriever for r in minimal.retrievers)
+
+
 def test_section_skipped_when_no_snippets():
     r = _FakeRetriever("## Empty", [])
     lines, sources = mr.MemoryRouter(retrievers=[r]).assemble(None, mr.RouterQuery())

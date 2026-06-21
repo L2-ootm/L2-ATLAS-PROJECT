@@ -26,7 +26,7 @@ import re
 import sqlite3
 from dataclasses import dataclass, field
 
-from atlas_runtime import focus_service, goal_service, mission_service, project_service
+from atlas_runtime import config_service, focus_service, goal_service, mission_service, project_service
 from atlas_runtime.memory_router import RouterQuery, default_router, redact
 
 # `redact` is re-exported from memory_router so existing callers (and tests) keep
@@ -173,7 +173,11 @@ def assemble_context(
         project_id=resolved_project_id,
         max_runs=max_runs,
     )
-    dyn_lines, dyn_sources = default_router().assemble(conn, query)
+    ctx_cfg = config_service.load_config().context
+    router = default_router(
+        enable_semantic=ctx_cfg.enable_semantic, enable_skills=ctx_cfg.enable_skills
+    )
+    dyn_lines, dyn_sources = router.assemble(conn, query, token_budget=ctx_cfg.token_budget)
     lines.extend(dyn_lines)
     sources.extend(dyn_sources)
 

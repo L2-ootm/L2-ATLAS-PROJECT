@@ -503,15 +503,19 @@ class MemoryRouter:
         return lines, sources
 
 
-def default_router() -> MemoryRouter:
+def default_router(*, enable_semantic: bool = True, enable_skills: bool = True) -> MemoryRouter:
     """The default retriever set, in brief order: runs → prior failures →
-    observations → wiki knowledge → relevant skills."""
-    return MemoryRouter(
-        retrievers=[
-            RecentRunsRetriever(),
-            FailurePatternRetriever(),
-            ObservationRetriever(),
-            HybridKnowledgeRetriever(),
-            SkillRetriever(),
-        ]
-    )
+    observations → wiki knowledge → relevant skills.
+
+    `enable_semantic` toggles the semantic blend (pure FTS5 when off);
+    `enable_skills` toggles the skill-matching section."""
+    knowledge: Retriever = HybridKnowledgeRetriever() if enable_semantic else WikiFtsRetriever()
+    retrievers: list[Retriever] = [
+        RecentRunsRetriever(),
+        FailurePatternRetriever(),
+        ObservationRetriever(),
+        knowledge,
+    ]
+    if enable_skills:
+        retrievers.append(SkillRetriever())
+    return MemoryRouter(retrievers=retrievers)

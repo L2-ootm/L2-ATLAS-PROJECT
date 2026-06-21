@@ -71,11 +71,20 @@ class CockpitConfig(BaseModel):
     branding: str = "atlas"
 
 
+class ContextConfig(BaseModel):
+    """Controls the MemoryRouter brief assembled before each agent run."""
+
+    token_budget: int = 8000  # global budget for the dynamic (retrieved) sections
+    enable_semantic: bool = True  # blend semantic wiki hits when embeddings exist
+    enable_skills: bool = True  # surface matching skills from the inventory
+
+
 class AtlasConfig(BaseModel):
     provider: ProviderConfig = Field(default_factory=ProviderConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     cockpit: CockpitConfig = Field(default_factory=CockpitConfig)
+    context: ContextConfig = Field(default_factory=ContextConfig)
     modules: dict[str, bool] = Field(default_factory=lambda: {"wiki": True, "graph": True, "cashflow": False})
 
 
