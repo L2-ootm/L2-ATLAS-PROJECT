@@ -113,5 +113,7 @@ def _offline_native_harness(monkeypatch) -> None:
     from atlas_runtime.agents import native
 
     monkeypatch.setattr(
-        native, "_default_factory", lambda session_id, max_iterations: _OfflineHarness(session_id)
+        native,
+        "_default_factory",
+        lambda session_id, max_iterations, **_kw: _OfflineHarness(session_id),
     )

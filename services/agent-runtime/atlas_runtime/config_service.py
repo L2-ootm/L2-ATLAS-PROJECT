@@ -89,6 +89,34 @@ def load_config(path: pathlib.Path | None = None) -> AtlasConfig:
     return AtlasConfig.model_validate(data)
 
 
+def resolve_provider(
+    cfg: AtlasConfig | None = None, *, focus_framework: str | None = None
+) -> dict[str, str]:
+    """Resolve the provider/model an agent run should use.
+
+    The ATLAS ``provider`` config is the baseline. A non-empty ``focus_framework``
+    (the active Focus's ``framework`` field) pins the model for that Focus's work
+    — a per-mission override. The ``api_key`` is dereferenced from its stored
+    ``env:VAR`` form to the actual environment value (empty when unset, so the
+    foundation harness falls back to its own credential resolution rather than
+    authenticating with a blank key).
+
+    Returns a dict with keys ``provider``, ``model``, ``base_url``, ``api_key``.
+    """
+    cfg = cfg or load_config()
+    p = cfg.provider
+    model = (focus_framework or "").strip() or p.model
+    api_key = ""
+    if p.api_key.startswith("env:"):
+        api_key = os.environ.get(p.api_key[len("env:"):], "")
+    return {
+        "provider": p.name,
+        "model": model,
+        "base_url": p.base_url or "",
+        "api_key": api_key,
+    }
+
+
 def save_config(cfg: AtlasConfig, path: pathlib.Path | None = None) -> pathlib.Path:
     """Atomically write config to ``path`` (default ``~/.atlas/config.yaml``)."""
     path = path or default_config_path()
