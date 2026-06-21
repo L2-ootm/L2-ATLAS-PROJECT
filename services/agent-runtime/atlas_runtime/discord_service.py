@@ -227,18 +227,39 @@ def _execute(approval: DiscordApproval, reason: str) -> dict:
 
 
 def approve(
-    conn: sqlite3.Connection, lock: threading.Lock, *, approval_id: str
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    *,
+    approval_id: str,
+    reason: Optional[str] = None,
 ) -> DiscordApproval:
-    """Execute a pending write via the sidecar; flip to executed/failed; emit audit."""
-    approval = _load(conn, approval_id)
-    if approval.status != "pending":
-        raise DiscordApprovalError(
-            f"approval {approval_id!r} is {approval.status!r}, not pending"
-        )
+    """Execute a pending write via the sidecar; flip to executed/failed; emit audit.
+
+    Concurrency-safe: the pending->executing transition is a single atomic UPDATE
+    guarded on `status='pending'`. Only the approver whose UPDATE affects one row
+    proceeds to execute, so two concurrent `approve` calls cannot double-execute
+    the same write (TOCTOU guard)."""
+    approval = _load(conn, approval_id)  # raises if the id is unknown
 
     run_id = mission_service.ensure_operator_run(conn, lock)
-    audit_reason = f"ATLAS operator approved {approval.action}"
     now = datetime.datetime.now(datetime.timezone.utc)
+
+    # Atomically claim the row. A second concurrent approver sees rowcount 0.
+    with lock:
+        with conn:
+            cur = conn.execute(
+                "UPDATE discord_approvals SET status = 'executing' "
+                "WHERE id = ? AND status = 'pending'",
+                (approval_id,),
+            )
+            claimed = cur.rowcount == 1
+    if not claimed:
+        current = _load(conn, approval_id)
+        raise DiscordApprovalError(
+            f"approval {approval_id!r} is {current.status!r}, not pending"
+        )
+
+    audit_reason = reason or f"ATLAS operator approved {approval.action}"
 
     try:
         result = _execute(approval, audit_reason)
