@@ -87,6 +87,9 @@ app.add_typer(channels_app, name="channels")
 from atlas_runtime.cli.discord import discord_app
 app.add_typer(discord_app, name="discord")
 
+from atlas_runtime.cli.tui import tui as _tui_cmd
+app.command("tui", help="Launch the ATLAS terminal UI (foundation Ink TUI, ATLAS-skinned).")(_tui_cmd)
+
 # Module-level lock singleton (monkeypatched in tests via _get_lock)
 _LOCK = threading.Lock()
 
