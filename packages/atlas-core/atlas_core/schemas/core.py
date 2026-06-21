@@ -261,6 +261,7 @@ class AuditEvent(BaseModel):
         "wiki_update",
         "memory_change",
         "failure",
+        "discord_action",
     ]
     tool_name: Optional[str] = None
     timestamp: datetime.datetime = Field(
