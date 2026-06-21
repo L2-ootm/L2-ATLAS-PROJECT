@@ -1,6 +1,18 @@
 from aiohttp import web
 import discord
 
+async def _reason_from(request, default='Dashboard'):
+    """Extract the ATLAS audit reason from a request body, tolerant of an empty
+    or non-JSON body (DELETE requests may carry only {"reason": ...} or nothing)."""
+    try:
+        data = await request.json()
+    except Exception:
+        return default
+    if isinstance(data, dict):
+        return data.get('reason') or default
+    return default
+
+
 def _channel_type_str(ch):
     type_map = {
         discord.ChannelType.text: 'text',
@@ -213,6 +225,7 @@ async def create_channel(request):
     channel_type = data.get('type', 'text')
     category_id = data.get('category_id')
     topic = data.get('topic') or ''
+    reason = data.get('reason') or 'Dashboard'
 
     cat = None
     if category_id:
@@ -225,19 +238,19 @@ async def create_channel(request):
 
     try:
         if channel_type == 'text':
-            kwargs = {'category': cat, 'reason': 'Dashboard'}
+            kwargs = {'category': cat, 'reason': reason}
             if topic:
                 kwargs['topic'] = topic
             ch = await guild.create_text_channel(name, **kwargs)
         elif channel_type == 'voice':
-            ch = await guild.create_voice_channel(name, category=cat, reason='Dashboard')
+            ch = await guild.create_voice_channel(name, category=cat, reason=reason)
         elif channel_type == 'forum':
-            kwargs = {'category': cat, 'reason': 'Dashboard'}
+            kwargs = {'category': cat, 'reason': reason}
             if topic:
                 kwargs['topic'] = topic
             ch = await guild.create_forum(name, **kwargs)
         elif channel_type == 'category':
-            ch = await guild.create_category_channel(name, reason='Dashboard')
+            ch = await guild.create_category_channel(name, reason=reason)
         else:
             return web.json_response({'error': f'Unknown channel type: {channel_type}'}, status=400)
         return web.json_response({'id': str(ch.id), 'name': ch.name})
@@ -294,7 +307,7 @@ async def edit_channel(request):
         edit_kwargs['topic'] = data['topic']
 
     try:
-        await channel.edit(**edit_kwargs, reason='Dashboard')
+        await channel.edit(**edit_kwargs, reason=(data.get('reason') or 'Dashboard'))
         return web.json_response({'success': True})
     except discord.Forbidden:
         return web.json_response({'error': 'Forbidden'}, status=403)
@@ -327,7 +340,7 @@ async def delete_channel(request):
         return web.json_response({'error': 'Channel not found'}, status=404)
 
     try:
-        await channel.delete(reason='Dashboard')
+        await channel.delete(reason=await _reason_from(request))
         return web.json_response({'success': True})
     except discord.Forbidden:
         return web.json_response({'error': 'Forbidden'}, status=403)
@@ -407,7 +420,7 @@ async def create_role(request):
             color=color,
             hoist=bool(hoist),
             permissions=build_permissions(permissions_dict),
-            reason='Dashboard',
+            reason=(data.get('reason') or 'Dashboard'),
         )
         return web.json_response({'id': str(role.id), 'name': role.name})
     except discord.Forbidden:
@@ -457,7 +470,7 @@ async def edit_role(request):
         if 'permissions' in data and isinstance(data['permissions'], dict):
             edit_kwargs['permissions'] = build_permissions(data['permissions'])
 
-        await role.edit(**edit_kwargs, reason='Dashboard')
+        await role.edit(**edit_kwargs, reason=(data.get('reason') or 'Dashboard'))
         return web.json_response({'success': True})
     except discord.Forbidden:
         return web.json_response({'error': 'Forbidden'}, status=403)
@@ -490,7 +503,7 @@ async def delete_role(request):
         return web.json_response({'error': 'Role not found'}, status=404)
 
     try:
-        await role.delete(reason='Dashboard')
+        await role.delete(reason=await _reason_from(request))
         return web.json_response({'success': True})
     except discord.Forbidden:
         return web.json_response({'error': 'Forbidden'}, status=403)
@@ -544,7 +557,7 @@ async def set_channel_permissions(request):
             if hasattr(overwrite, perm):
                 setattr(overwrite, perm, False)
 
-        await channel.set_permissions(role, overwrite=overwrite, reason='Dashboard')
+        await channel.set_permissions(role, overwrite=overwrite, reason=(data.get('reason') or 'Dashboard'))
         return web.json_response({'success': True})
     except discord.Forbidden:
         return web.json_response({'error': 'Forbidden'}, status=403)
