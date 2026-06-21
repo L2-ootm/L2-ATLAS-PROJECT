@@ -51,6 +51,7 @@ fn test_app(db_path: PathBuf) -> axum::Router {
     app(AppState {
         db_path,
         atlas_cmd: vec!["atlas".to_string()],
+        repo_root: PathBuf::from("."),
     })
 }
 
@@ -67,6 +68,7 @@ fn test_app_with_stub(db_path: PathBuf, stub_output: &str, dir: &tempfile::TempD
     app(AppState {
         db_path,
         atlas_cmd: vec![python.to_string(), stub.to_string_lossy().to_string()],
+        repo_root: PathBuf::from("."),
     })
 }
 
@@ -515,6 +517,7 @@ async fn post_mission_atlas_not_found_is_500() {
         db_path: seeded_db(&dir),
         // Point to a binary that definitely does not exist
         atlas_cmd: vec!["__nonexistent_atlas_binary__".to_string()],
+        repo_root: PathBuf::from("."),
     });
     let (status, body) = post_json(
         &router,
@@ -579,6 +582,7 @@ fn test_app_with_arg_capture(
     app(AppState {
         db_path,
         atlas_cmd: vec![python.to_string(), stub.to_string_lossy().to_string()],
+        repo_root: PathBuf::from("."),
     })
 }
 
@@ -691,6 +695,7 @@ async fn start_run_atlas_not_found_is_500() {
     let router = app(AppState {
         db_path: seeded_db(&dir),
         atlas_cmd: vec!["__nonexistent_atlas_binary__".to_string()],
+        repo_root: PathBuf::from("."),
     });
     let resp = router
         .clone()
@@ -900,6 +905,7 @@ async fn cancel_run_atlas_not_found_is_500() {
     let router = app(AppState {
         db_path: seeded_db(&dir),
         atlas_cmd: vec!["__nonexistent_atlas_binary__".to_string()],
+        repo_root: PathBuf::from("."),
     });
     let resp = router
         .clone()
