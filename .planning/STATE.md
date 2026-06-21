@@ -4,7 +4,7 @@ milestone: v1.0.5
 milestone_name: Mass-Adoption Launch Wedge
 status: in_progress
 last_updated: "2026-06-22T01:00:00.000Z"
-last_activity: 2026-06-21 -- Phase C COMPLETE + PUSHED (ec070e1, origin/main in sync): TOCTOU fix (atomic UPDATE…WHERE status='pending' + transient 'executing' state), --reason on approve, set_permissions contract documented. 301 Python (259 agent-runtime + 44 atlas-core) + 37 wiki + 73 Rust + 7 sidecar green; cockpit tsc/build clean. Phases A+B+C landed on main (22 commits since Phase A start).
+last_activity: 2026-06-22 -- Phase 10.0.1 COMPLETE (Repo Hygiene & Trust Package): root LICENSE (MIT), SECURITY.md, CONTRIBUTING.md, CODE_OF_CONDUCT.md, LIMITATIONS.md, ARCHITECTURE.md, ATTRIBUTION.md, .github/ISSUE_TEMPLATE/ (bug report + feature request). Secret scan clean. All 4 wedge success criteria met.
 prior_activity: 2026-06-21 -- Phase B COMPLETE (Context Intelligence, B1-B6): budget-aware MemoryRouter unifying recent-runs/prior-failures/observations/wiki-knowledge/skills under a token budget with boundary redaction + provenance; semantic embeddings real (sqlite-vec+fastembed, 384-dim, embed-on-write + `atlas wiki reindex`, FTS5 fallback preserved); ContextConfig + `atlas mission run --show-context`
 progress:
   total_phases: 13

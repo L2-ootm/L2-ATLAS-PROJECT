@@ -68,7 +68,7 @@ Source: `l2_atlas_30_day_mass_adoption_wedge_plan.md`. v1.0 already shipped the 
 3. Trust docs exist: `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `LIMITATIONS.md`, `ARCHITECTURE.md`, `ATTRIBUTION.md`.
 4. Issue templates (bug report, feature request) and a `good first issue` label scheme exist.
 
-**Plans:** 0 plans (not yet planned — run `/gsd-plan-phase 10.0.1`)
+**Status:** ✅ Complete (2026-06-22) — root LICENSE (MIT), SECURITY.md, CONTRIBUTING.md, CODE_OF_CONDUCT.md, LIMITATIONS.md, ARCHITECTURE.md, ATTRIBUTION.md, .github/ISSUE_TEMPLATE/ (bug report + feature request). Secret scan clean.
 
 #### Phase 10.0.2: One-Command Install Path
 
@@ -261,7 +261,7 @@ Post-v1.0 inspection showed the archived CLI is a thin operational surface, not 
 | 9. Skill Inventory & Classification | v1.0 | 1/1 | Complete | 2026-06-15 |
 | 9.5 Public Hardening & Manual Acceptance | v1.0 | — | Complete | 2026-06-15 |
 | 10.0 Harness Architecture & Threat-Model Design | v1.1 | 3/3 | Complete   | 2026-06-16 |
-| 10.0.1 Repo Hygiene & Trust Package | v1.0.5 | 0/? | Not started | — |
+| 10.0.1 Repo Hygiene & Trust Package | v1.0.5 | 0/? | Complete | 2026-06-22 |
 | 10.0.2 One-Command Install Path | v1.0.5 | 0/? | Not started | — |
 | 10.0.3 WebUI Cockpit Completion | v1.0.5 | 0/? | Not started | — |
 | 10.0.4 Developer Integrations & Tool Manifest | v1.0.5 | 0/? | Not started | — |
