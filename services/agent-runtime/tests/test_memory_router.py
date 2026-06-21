@@ -7,12 +7,22 @@ real retrievers against the shared `db` fixture (all migrations applied).
 from __future__ import annotations
 
 import datetime
+import importlib.util
 import threading
 import uuid
 
 import pytest
 
 from atlas_runtime import memory_router as mr
+
+_HAS_SEMANTIC = bool(
+    importlib.util.find_spec("sqlite_vec")
+    and importlib.util.find_spec("fastembed")
+    and importlib.util.find_spec("atlas_wiki")
+)
+requires_semantic = pytest.mark.skipif(
+    not _HAS_SEMANTIC, reason="optional [semantic] deps / atlas_wiki not installed"
+)
 
 
 @pytest.fixture(name="lock")
@@ -198,6 +208,32 @@ def test_skill_retriever_matches_and_ranks(tmp_path):
     snippets = r.retrieve(None, mr.RouterQuery(terms=("executor", "loop"), has_focus=True))
     assert [s.source for s in snippets] == ["skill:executor-runner"]
     assert "executor-runner" in snippets[0].text
+
+
+def test_hybrid_knowledge_pure_fts_without_embeddings(db, lock):
+    # No wiki_vec table / no embeddings -> hybrid == pure FTS5 (no regression).
+    _wiki_page(db, lock, slug="exec", title="Executor wiring", body="how to wire the executor")
+    q = mr.RouterQuery(terms=("executor",), has_focus=True)
+    hybrid = mr.HybridKnowledgeRetriever().retrieve(db, q)
+    fts = mr.WikiFtsRetriever().retrieve(db, q)
+    assert [s.source for s in hybrid] == [s.source for s in fts]
+
+
+@requires_semantic
+def test_hybrid_knowledge_blends_semantic(db, lock, tmp_path):
+    from atlas_wiki import wiki_service
+
+    wiki_service.update_wiki_page(
+        db, lock, slug="exec", title="Executor wiring",
+        body="wiring the run executor subprocess and its stop conditions",
+        run_id="operator", wiki_dir=tmp_path,
+    )
+    assert db.execute("SELECT COUNT(*) FROM wiki_vec").fetchone()[0] >= 1
+    snippets = mr.HybridKnowledgeRetriever().retrieve(
+        db, mr.RouterQuery(terms=("executor", "loop"), has_focus=True)
+    )
+    assert any(s.source.startswith("wiki:") for s in snippets)
+    assert any("Executor wiring" in s.text for s in snippets)
 
 
 def test_skill_retriever_missing_file_is_empty(tmp_path):
