@@ -51,8 +51,22 @@ def _find_foundation() -> Optional[Path]:
     return None
 
 
-def _default_factory(session_id: str, max_iterations: int) -> Any:
-    """Construct a real foundation AIAgent (lazy import; path-injected)."""
+def _default_factory(
+    session_id: str,
+    max_iterations: int,
+    *,
+    model: str = "",
+    provider: Optional[str] = None,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> Any:
+    """Construct a real foundation AIAgent (lazy import; path-injected).
+
+    `model`/`provider`/`base_url`/`api_key` are resolved from ATLAS config +
+    the active Focus by the caller (A4). Empty values are omitted so the
+    foundation falls back to its own resolution rather than overriding with
+    blanks — preserving the honest-failure path when nothing is configured.
+    """
     foundation = _find_foundation()
     if foundation is not None:
         import sys
@@ -62,14 +76,21 @@ def _default_factory(session_id: str, max_iterations: int) -> Any:
             sys.path.insert(0, path)
     from run_agent import AIAgent  # noqa: PLC0415 — lazy, optional dependency
 
-    return AIAgent(
-        model="",
+    kwargs: dict[str, Any] = dict(
+        model=model,
         quiet_mode=True,
         skip_context_files=True,
         skip_memory=True,
         max_iterations=max_iterations,
         session_id=session_id,
     )
+    if provider:
+        kwargs["provider"] = provider
+    if base_url:
+        kwargs["base_url"] = base_url
+    if api_key:
+        kwargs["api_key"] = api_key
+    return AIAgent(**kwargs)
 
 
 class NativeAtlasAgent(AgentRuntime):
@@ -81,10 +102,37 @@ class NativeAtlasAgent(AgentRuntime):
         *,
         max_runtime_s: float = _DEFAULT_MAX_RUNTIME_S,
         max_iterations: int = _DEFAULT_MAX_ITERATIONS,
+        model: str = "",
+        provider: Optional[str] = None,
     ) -> None:
         self._agent_factory = agent_factory
         self._max_runtime_s = max_runtime_s
         self._max_iterations = max_iterations
+        # Explicit overrides take precedence over ATLAS-config resolution; left
+        # empty, execute() resolves them from config + the active Focus (A4).
+        self._model = model
+        self._provider = provider
+
+    def _resolve_provider(
+        self, conn: sqlite3.Connection
+    ) -> tuple[str, Optional[str], Optional[str], Optional[str]]:
+        """Resolve (model, provider, base_url, api_key) for this run from ATLAS
+        config, with the active Focus.framework overriding the model. Fail-open
+        to the constructor values so a config/DB hiccup never blocks a run."""
+        model, provider, base_url, api_key = self._model, self._provider, None, None
+        try:
+            from atlas_runtime import config_service, focus_service  # noqa: PLC0415
+
+            focus = focus_service.get_current_focus(conn)
+            framework = (focus.framework if focus else "") or ""
+            resolved = config_service.resolve_provider(focus_framework=framework)
+            model = self._model or resolved["model"]
+            provider = self._provider or resolved["provider"]
+            base_url = resolved["base_url"] or None
+            api_key = resolved["api_key"] or None
+        except Exception as exc:  # noqa: BLE001 — never block a run on config
+            logger.debug("native provider resolution fell back to defaults: %s", exc)
+        return model, provider, base_url, api_key
 
     def execute(
         self,
@@ -114,9 +162,19 @@ class NativeAtlasAgent(AgentRuntime):
         )
 
         # --- resolve the harness factory -----------------------------------
-        factory = self._agent_factory or (
-            lambda session_id: _default_factory(session_id, self._max_iterations)
-        )
+        # The default factory selects provider/model from ATLAS config + the
+        # active Focus (A4); an injected factory (tests) bypasses resolution.
+        factory = self._agent_factory
+        if factory is None:
+            model, provider, base_url, api_key = self._resolve_provider(conn)
+            factory = lambda session_id: _default_factory(  # noqa: E731
+                session_id,
+                self._max_iterations,
+                model=model,
+                provider=provider,
+                base_url=base_url,
+                api_key=api_key,
+            )
         try:
             agent = factory(session_id=run_id)
         except Exception as exc:  # foundation missing / construction error
