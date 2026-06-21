@@ -24,6 +24,8 @@ sqlite-vec / fastembed lazily with an FTS5 fallback.
 from __future__ import annotations
 
 import json
+import pathlib
+import re
 import sqlite3
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
@@ -301,6 +303,93 @@ class WikiFtsRetriever:
 
 
 # ---------------------------------------------------------------------------
+# Skill-matching retriever (B-WP3)
+# ---------------------------------------------------------------------------
+
+# In-repo skill source (no sibling-repo dependency). memory_router.py lives at
+# services/agent-runtime/atlas_runtime/ -> parents[3] = repo root (matches db.py).
+SKILL_INVENTORY_PATH = (
+    pathlib.Path(__file__).resolve().parents[3] / "docs" / "imports" / "SKILL_INVENTORY.md"
+)
+_SKILL_CLASSES = frozenset(
+    {"core", "operator", "l2-internal", "personal-private", "experimental",
+     "deprecated", "external-reference"}
+)
+_SKILL_MAX = 4
+_SKILL_TOKEN = re.compile(r"[a-z0-9]+")
+_skill_cache: dict[tuple[str, float], list[tuple[str, str, frozenset[str]]]] = {}
+
+
+def _parse_skill_inventory(path: pathlib.Path) -> list[tuple[str, str, frozenset[str]]]:
+    """Parse the markdown inventory into (name, description, tokens). Skill rows are
+    table rows tagged with a known class value; that selects them and excludes the
+    taxonomy/schema tables. Cached by file mtime; absent file -> empty (no hard dep)."""
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return []
+    cached = _skill_cache.get((str(path), mtime))
+    if cached is not None:
+        return cached
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    entries: list[tuple[str, str, frozenset[str]]] = []
+    for line in text.splitlines():
+        if not line.lstrip().startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if not any(c in _SKILL_CLASSES for c in cells):
+            continue
+        name = cells[0].strip("`* ")
+        if not name or name.lower() in {"skill", "class", "name"}:
+            continue
+        desc = max((c for c in cells[1:] if c not in _SKILL_CLASSES), key=len, default="")
+        tokens = frozenset(_SKILL_TOKEN.findall(f"{name} {desc}".lower()))
+        entries.append((name, desc, tokens))
+    _skill_cache[(str(path), mtime)] = entries
+    return entries
+
+
+class SkillRetriever:
+    """Match curated ATLAS skills (from the in-repo inventory) to the Focus terms,
+    so a run is reminded of the tooling already available for the work."""
+
+    def __init__(self, path: pathlib.Path | None = None):
+        self._path = path or SKILL_INVENTORY_PATH
+
+    def section_lines(self, query: RouterQuery) -> list[str]:
+        return [
+            "## Relevant Skills",
+            "_From the ATLAS skill inventory, matched to the current Focus._",
+        ]
+
+    def retrieve(self, conn: sqlite3.Connection, query: RouterQuery) -> list[MemorySnippet]:
+        terms = {t.lower() for t in query.terms}
+        if not terms or not query.has_focus:
+            return []
+        scored: list[tuple[int, str, str]] = []
+        for name, desc, tokens in _parse_skill_inventory(self._path):
+            overlap = len(terms & tokens)
+            if overlap > 0:
+                scored.append((overlap, name, desc))
+        scored.sort(key=lambda e: (-e[0], e[1]))
+        out: list[MemorySnippet] = []
+        for overlap, name, desc in scored[:_SKILL_MAX]:
+            text = f"- **{name}** — {desc}" if desc else f"- **{name}**"
+            out.append(
+                MemorySnippet(
+                    text=text,
+                    score=float(overlap),
+                    source=f"skill:{name}",
+                    approx_tokens=estimate_tokens(text),
+                )
+            )
+        return out
+
+
+# ---------------------------------------------------------------------------
 # Router
 # ---------------------------------------------------------------------------
 
@@ -349,12 +438,13 @@ class MemoryRouter:
 
 def default_router() -> MemoryRouter:
     """The default retriever set, in brief order: runs → prior failures →
-    observations → wiki knowledge."""
+    observations → wiki knowledge → relevant skills."""
     return MemoryRouter(
         retrievers=[
             RecentRunsRetriever(),
             FailurePatternRetriever(),
             ObservationRetriever(),
             WikiFtsRetriever(),
+            SkillRetriever(),
         ]
     )

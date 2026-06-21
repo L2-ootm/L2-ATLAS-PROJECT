@@ -185,6 +185,34 @@ def test_failure_retriever_empty_without_mission(db):
     assert mr.FailurePatternRetriever().retrieve(db, mr.RouterQuery(mission_id=None)) == []
 
 
+def test_skill_retriever_matches_and_ranks(tmp_path):
+    inv = tmp_path / "SKILL_INVENTORY.md"
+    inv.write_text(
+        "| skill | class | reason |\n"
+        "|---|---|---|\n"
+        "| executor-runner | operator | Runs the executor subprocess loop. |\n"
+        "| lunch-orderer | operator | Orders tacos for the team. |\n",
+        encoding="utf-8",
+    )
+    r = mr.SkillRetriever(path=inv)
+    snippets = r.retrieve(None, mr.RouterQuery(terms=("executor", "loop"), has_focus=True))
+    assert [s.source for s in snippets] == ["skill:executor-runner"]
+    assert "executor-runner" in snippets[0].text
+
+
+def test_skill_retriever_missing_file_is_empty(tmp_path):
+    r = mr.SkillRetriever(path=tmp_path / "nope.md")
+    assert r.retrieve(None, mr.RouterQuery(terms=("executor",), has_focus=True)) == []
+
+
+def test_skill_retriever_empty_without_focus_or_terms(tmp_path):
+    inv = tmp_path / "SKILL_INVENTORY.md"
+    inv.write_text("| s | operator | x |\n", encoding="utf-8")
+    r = mr.SkillRetriever(path=inv)
+    assert r.retrieve(None, mr.RouterQuery(terms=("x",), has_focus=False)) == []
+    assert r.retrieve(None, mr.RouterQuery(terms=(), has_focus=True)) == []
+
+
 def test_failure_retriever_redacted_through_router(db, lock):
     mid = _mission_row(db, lock)
     _failed_run(db, lock, mid, summary="auth failed api_key=sk-failleak123")
