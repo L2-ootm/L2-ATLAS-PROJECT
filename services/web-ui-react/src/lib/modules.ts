@@ -11,7 +11,8 @@ import {
 	Cable,
 	FolderGit2,
 	Share2,
-	SlidersHorizontal
+	SlidersHorizontal,
+	Hash
 } from 'lucide-react';
 
 export type ModuleStatus = 'active' | 'beta' | 'planned';
@@ -64,6 +65,7 @@ export const navSections: NavSection[] = [
 			{ id: 'graph', label: 'GRAPHIFY', route: '/graph', icon: Share2, status: 'active', ariaLabel: 'Knowledge Graph' },
 			{ id: 'wiki', label: 'CODEX', route: '/wiki', icon: BookOpen, status: 'active', ariaLabel: 'Codex' },
 			{ id: 'models', label: 'MODELS', route: '/models', icon: Boxes, status: 'active', ariaLabel: 'Model Registry' },
+			{ id: 'discord', label: 'DISCORD', route: '/discord', icon: Hash, status: 'active', ariaLabel: 'Discord' },
 			{ id: 'integrations', label: 'INTEGRATIONS', route: '/integrations', icon: Cable, status: 'beta', ariaLabel: 'Integrations' }
 		]
 	},

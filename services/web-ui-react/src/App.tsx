@@ -10,6 +10,7 @@ import Console from './routes/Console';
 import Command from './routes/Command';
 import Projects from './routes/Projects';
 import System from './routes/System';
+import Discord from './routes/Discord';
 import Cashflow from './routes/Cashflow';
 import Migrating from './routes/Migrating';
 
@@ -37,6 +38,7 @@ export const routes: RouteObject[] = [
 			{ path: 'wiki', element: <Migrating pillar="STRUCTURE" name="Codex" /> },
 			{ path: 'models', element: <Migrating pillar="STRUCTURE" name="Models" /> },
 			{ path: 'integrations', element: <Migrating pillar="STRUCTURE" name="Integrations" /> },
+			{ path: 'discord', element: <Discord /> },
 			{ path: 'system', element: <System /> },
 			{ path: '*', element: <Migrating pillar="ATLAS" name="Not Found" /> }
 		]

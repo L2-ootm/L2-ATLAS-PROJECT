@@ -84,6 +84,9 @@ app.add_typer(models_app, name="models")
 from atlas_runtime.cli.channels import channels_app
 app.add_typer(channels_app, name="channels")
 
+from atlas_runtime.cli.discord import discord_app
+app.add_typer(discord_app, name="discord")
+
 # Module-level lock singleton (monkeypatched in tests via _get_lock)
 _LOCK = threading.Lock()
 

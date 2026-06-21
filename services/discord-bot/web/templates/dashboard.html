@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>L2 BOT — Dashboard</title>
+    <meta name="description" content="L2-BOT web control center — manage your Discord server with AI-powered tools and manual controls.">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=3">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+
+<body>
+<div class="app-shell">
+
+    <!-- ═══════ HEADER ════════════════════════════════════════ -->
+    <header>
+        <h1>L2 BOT</h1>
+        <div class="user-info">
+            {% if user %}
+            <img src="https://cdn.discordapp.com/avatars/{{ user.id }}/{{ user.avatar }}.png" alt="User Avatar">
+            <span>{{ user.username }}</span>
+            {% endif %}
+        </div>
+    </header>
+
+    <!-- ═══════ APP BODY ══════════════════════════════════════ -->
+    <div class="app-body">
+
+        <!-- ── SIDEBAR ──────────────────────────────────────── -->
+        <aside class="sidebar" id="sidebar">
+
+            <!-- Guild Switcher (NAV-02) -->
+            <div class="guild-switcher" id="guild-switcher">
+                <button class="guild-switcher-btn" id="guild-switcher-btn" type="button" aria-label="Switch server">
+                    <div class="guild-icon-placeholder" id="guild-icon">?</div>
+                    <span class="guild-name" id="guild-name">Loading...</span>
+                    <svg class="guild-chevron" width="14" height="14" viewBox="0 0 24 24"
+                         fill="none" stroke="currentColor" stroke-width="2.5"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </button>
+                <div class="guild-dropdown" id="guild-dropdown" role="listbox" aria-label="Available servers"></div>
+            </div>
+
+            <!-- Nav Items (NAV-01) -->
+            <nav class="sidebar-nav" aria-label="Dashboard navigation">
+                <div class="nav-item active" data-panel="panel-overview" id="nav-overview" role="button" tabindex="0" aria-current="page">
+                    <span class="nav-icon" aria-hidden="true">📊</span>
+                    <span>Overview</span>
+                </div>
+                <div class="nav-item" data-panel="panel-visualizer" id="nav-visualizer" role="button" tabindex="0">
+                    <span class="nav-icon" aria-hidden="true">🗺️</span>
+                    <span>Server Visualizer</span>
+                </div>
+                <div class="nav-item" data-panel="panel-manual" id="nav-manual" role="button" tabindex="0">
+                    <span class="nav-icon" aria-hidden="true">⚙️</span>
+                    <span>Manual Controls</span>
+                </div>
+                <div class="nav-item" data-panel="panel-ai" id="nav-ai" role="button" tabindex="0">
+                    <span class="nav-icon" aria-hidden="true">🤖</span>
+                    <span>AI Console</span>
+                </div>
+                <div class="nav-item" data-panel="panel-audit" id="nav-audit" role="button" tabindex="0">
+                    <span class="nav-icon" aria-hidden="true">📋</span>
+                    <span>Audit Log</span>
+                </div>
+            </nav>
+
+            <!-- Sidebar Footer -->
+            <div class="sidebar-footer">
+                {% if user %}
+                <a href="/logout" class="nav-item" id="nav-logout" aria-label="Log out">
+                    <span class="nav-icon" aria-hidden="true">🔓</span>
+                    <span>Logout</span>
+                </a>
+                {% else %}
+                <a href="/login" class="nav-item" id="nav-login" aria-label="Log in with Discord">
+                    <span class="nav-icon" aria-hidden="true">🔑</span>
+                    <span>Login with Discord</span>
+                </a>
+                {% endif %}
+            </div>
+
+        </aside><!-- /.sidebar -->
+
+        <!-- ── CONTENT AREA ──────────────────────────────────── -->
+        <main class="content-area" id="content-area">
+
+            <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                 PANEL: Overview
+                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+            <div class="panel active" id="panel-overview" role="tabpanel" aria-labelledby="nav-overview">
+                <div class="panel-header">
+                    <h2>Overview</h2>
+                    <p>System status and quick stats for the active server.</p>
+                </div>
+
+                <div class="stat-grid">
+                    <div class="stat-card" id="stat-card-channels">
+                        <span class="stat-icon" aria-hidden="true">💬</span>
+                        <div class="stat-label">Channels</div>
+                        <div class="stat-value" id="stat-channels">—</div>
+                    </div>
+                    <div class="stat-card" id="stat-card-roles">
+                        <span class="stat-icon" aria-hidden="true">🎭</span>
+                        <div class="stat-label">Roles</div>
+                        <div class="stat-value" id="stat-roles">—</div>
+                    </div>
+                    <div class="stat-card" id="stat-card-tickets">
+                        <span class="stat-icon" aria-hidden="true">🎫</span>
+                        <div class="stat-label">Open Tickets</div>
+                        <div class="stat-value" id="stat-tickets">—</div>
+                    </div>
+                    <div class="stat-card" id="stat-card-status">
+                        <span class="stat-icon" aria-hidden="true">🟢</span>
+                        <div class="stat-label">Bot Status</div>
+                        <div class="stat-value" style="font-size:1.1rem;font-weight:700;color:#10b981">Online</div>
+                    </div>
+                </div>
+            </div><!-- /#panel-overview -->
+
+
+            <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                 PANEL: Server Visualizer (Phase 5 — Coming Soon)
+                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+            <div class="panel" id="panel-visualizer" role="tabpanel" aria-labelledby="nav-visualizer">
+                <div class="panel-header">
+                    <div class="panel-header-row">
+                        <div>
+                            <h2>Server Visualizer</h2>
+                            <p>Interactive guild hierarchy — categories, channels, and role permissions.</p>
+                        </div>
+                        <button id="viz-refresh-btn" class="secondary-btn" type="button">&#8635; Refresh</button>
+                    </div>
+                </div>
+                <div class="viz-layout">
+                    <div class="viz-tree-col" id="viz-tree-col">
+                        <p class="viz-loading">Select a server to load its structure.</p>
+                    </div>
+                    <div class="viz-detail-pane" id="viz-detail-pane">
+                        <p class="viz-detail-placeholder">Select a node to inspect</p>
+                    </div>
+                </div>
+            </div><!-- /#panel-visualizer -->
+
+
+            <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                 PANEL: Manual Controls (migrated from v1.0)
+                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+            <div class="panel" id="panel-manual" role="tabpanel" aria-labelledby="nav-manual">
+                <div class="panel-header">
+                    <h2>Manual Controls</h2>
+                    <p>Send messages, construct embeds, and broadcast to Discord channels.</p>
+                </div>
+
+                <!-- Sub-tab navigation bar -->
+                <div class="manual-tabs" role="tablist" aria-label="Manual Controls sections">
+                    <button class="manual-tab-btn manual-tab-btn--active" role="tab"
+                            aria-selected="true" aria-controls="manual-tab-channels"
+                            data-tab="manual-tab-channels" type="button">Channels</button>
+                    <button class="manual-tab-btn" role="tab"
+                            aria-selected="false" aria-controls="manual-tab-roles"
+                            data-tab="manual-tab-roles" type="button">Roles</button>
+                    <button class="manual-tab-btn" role="tab"
+                            aria-selected="false" aria-controls="manual-tab-perms"
+                            data-tab="manual-tab-perms" type="button">Permissions</button>
+                    <button class="manual-tab-btn" role="tab"
+                            aria-selected="false" aria-controls="manual-tab-broadcast"
+                            data-tab="manual-tab-broadcast" type="button">Broadcast</button>
+                </div>
+
+                <!-- Tab panels -->
+                <div class="manual-tab-panel active" id="manual-tab-channels"
+                     role="tabpanel" aria-labelledby="nav-manual">
+
+                    <!-- Form mode strip: Create / Edit / Delete -->
+                    <div class="form-mode-strip" id="channel-mode-strip">
+                        <button type="button" class="form-mode-btn form-mode-btn--active" data-mode="create">Create</button>
+                        <button type="button" class="form-mode-btn" data-mode="edit">Edit</button>
+                        <button type="button" class="form-mode-btn form-mode-btn--delete" data-mode="delete">Delete</button>
+                    </div>
+
+                    <!-- Create Channel form -->
+                    <div id="channel-form-create">
+                        <div class="form-group">
+                            <label for="chan-create-name">Channel Name</label>
+                            <input type="text" id="chan-create-name" placeholder="e.g. general" autocomplete="off">
+                        </div>
+                        <div class="form-group">
+                            <label for="chan-create-type">Channel Type</label>
+                            <select id="chan-create-type">
+                                <option value="text">Text</option>
+                                <option value="voice">Voice</option>
+                                <option value="forum">Forum</option>
+                                <option value="category">Category</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="chan-create-category">Category (optional)</label>
+                            <select id="chan-create-category">
+                                <option value="">No category</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="chan-create-topic-wrap">
+                            <label for="chan-create-topic">Topic (optional)</label>
+                            <textarea id="chan-create-topic" rows="2" placeholder="Enter a channel topic..."></textarea>
+                        </div>
+                        <button type="button" id="chan-create-submit" class="primary-btn">Create Channel</button>
+                    </div>
+
+                    <!-- Edit Channel form -->
+                    <div id="channel-form-edit" style="display:none">
+                        <div class="form-group">
+                            <label for="chan-edit-select">Channel to Edit</label>
+                            <select id="chan-edit-select">
+                                <option value="">Select a channel...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="chan-edit-name">New Name (optional)</label>
+                            <input type="text" id="chan-edit-name" placeholder="Leave blank to keep current name" autocomplete="off">
+                        </div>
+                        <div class="form-group">
+                            <label for="chan-edit-category">Move to Category (optional)</label>
+                            <select id="chan-edit-category">
+                                <option value="">No change</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="chan-edit-topic">Topic (optional, text/forum only)</label>
+                            <textarea id="chan-edit-topic" rows="2" placeholder="Leave blank to keep current topic..."></textarea>
+                        </div>
+                        <button type="button" id="chan-edit-submit" class="primary-btn">Update Channel</button>
+                    </div>
+
+                    <!-- Delete Channel form -->
+                    <div id="channel-form-delete" style="display:none">
+                        <div class="form-group">
+                            <label for="chan-delete-select">Channel to Delete</label>
+                            <select id="chan-delete-select">
+                                <option value="">Select a channel...</option>
+                            </select>
+                        </div>
+                        <p class="danger-text">This will permanently delete the channel and all its messages. This action cannot be undone.</p>
+                        <button type="button" id="chan-delete-submit" class="primary-btn danger-btn">Delete Channel</button>
+                    </div>
+
+                </div>
+
+                <div class="manual-tab-panel" id="manual-tab-roles"
+                     role="tabpanel" aria-labelledby="nav-manual">
+
+                    <!-- Form mode strip: Create / Edit / Delete -->
+                    <div class="form-mode-strip" id="role-mode-strip">
+                        <button type="button" class="form-mode-btn form-mode-btn--active" data-mode="create">Create</button>
+                        <button type="button" class="form-mode-btn" data-mode="edit">Edit</button>
+                        <button type="button" class="form-mode-btn form-mode-btn--delete" data-mode="delete">Delete</button>
+                    </div>
+
+                    <!-- Create Role form -->
+                    <div id="role-form-create">
+                        <div class="form-group">
+                            <label for="role-create-name">Role Name</label>
+                            <input type="text" id="role-create-name" placeholder="e.g. Moderator" autocomplete="off">
+                        </div>
+                        <div class="form-group">
+                            <label for="role-create-color">Role Color</label>
+                            <input type="color" id="role-create-color" value="#000000">
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="role-create-hoist">
+                                Display role members separately in sidebar
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label>Permissions</label>
+                            <div class="permission-checkbox-group" id="role-create-perms">
+                                <label><input type="checkbox" data-perm="administrator"> Administrator</label>
+                                <label><input type="checkbox" data-perm="manage_guild"> Manage Server</label>
+                                <label><input type="checkbox" data-perm="manage_channels"> Manage Channels</label>
+                                <label><input type="checkbox" data-perm="manage_roles"> Manage Roles</label>
+                                <label><input type="checkbox" data-perm="manage_messages"> Manage Messages</label>
+                                <label><input type="checkbox" data-perm="kick_members"> Kick Members</label>
+                                <label><input type="checkbox" data-perm="ban_members"> Ban Members</label>
+                                <label><input type="checkbox" data-perm="view_channel"> View Channel</label>
+                                <label><input type="checkbox" data-perm="send_messages"> Send Messages</label>
+                                <label><input type="checkbox" data-perm="read_message_history"> Read Message History</label>
+                                <label><input type="checkbox" data-perm="manage_nicknames"> Manage Nicknames</label>
+                                <label><input type="checkbox" data-perm="attach_files"> Attach Files</label>
+                                <label><input type="checkbox" data-perm="embed_links"> Embed Links</label>
+                                <label><input type="checkbox" data-perm="mention_everyone"> Mention Everyone</label>
+                                <label><input type="checkbox" data-perm="add_reactions"> Add Reactions</label>
+                            </div>
+                        </div>
+                        <button type="button" id="role-create-submit" class="primary-btn">Create Role</button>
+                    </div>
+
+                    <!-- Edit Role form -->
+                    <div id="role-form-edit" style="display:none">
+                        <div class="form-group">
+                            <label for="role-edit-select">Role to Edit</label>
+                            <select id="role-edit-select">
+                                <option value="">Select a role...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="role-edit-name">Role Name</label>
+                            <input type="text" id="role-edit-name" placeholder="Role name" autocomplete="off">
+                        </div>
+                        <div class="form-group">
+                            <label for="role-edit-color">Role Color</label>
+                            <input type="color" id="role-edit-color" value="#000000">
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="role-edit-hoist">
+                                Display role members separately in sidebar
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label>Permissions</label>
+                            <div class="permission-checkbox-group" id="role-edit-perms">
+                                <label><input type="checkbox" data-perm="administrator"> Administrator</label>
+                                <label><input type="checkbox" data-perm="manage_guild"> Manage Server</label>
+                                <label><input type="checkbox" data-perm="manage_channels"> Manage Channels</label>
+                                <label><input type="checkbox" data-perm="manage_roles"> Manage Roles</label>
+                                <label><input type="checkbox" data-perm="manage_messages"> Manage Messages</label>
+                                <label><input type="checkbox" data-perm="kick_members"> Kick Members</label>
+                                <label><input type="checkbox" data-perm="ban_members"> Ban Members</label>
+                                <label><input type="checkbox" data-perm="view_channel"> View Channel</label>
+                                <label><input type="checkbox" data-perm="send_messages"> Send Messages</label>
+                                <label><input type="checkbox" data-perm="read_message_history"> Read Message History</label>
+                                <label><input type="checkbox" data-perm="manage_nicknames"> Manage Nicknames</label>
+                                <label><input type="checkbox" data-perm="attach_files"> Attach Files</label>
+                                <label><input type="checkbox" data-perm="embed_links"> Embed Links</label>
+                                <label><input type="checkbox" data-perm="mention_everyone"> Mention Everyone</label>
+                                <label><input type="checkbox" data-perm="add_reactions"> Add Reactions</label>
+                            </div>
+                        </div>
+                        <button type="button" id="role-edit-submit" class="primary-btn">Update Role</button>
+                    </div>
+
+                    <!-- Delete Role form -->
+                    <div id="role-form-delete" style="display:none">
+                        <div class="form-group">
+                            <label for="role-delete-select">Role to Delete</label>
+                            <select id="role-delete-select">
+                                <option value="">Select a role...</option>
+                            </select>
+                        </div>
+                        <p class="danger-text">This will permanently delete the role from the server. All members will lose this role.</p>
+                        <button type="button" id="role-delete-submit" class="primary-btn danger-btn">Delete Role</button>
+                    </div>
+
+                </div>
+
+                <div class="manual-tab-panel" id="manual-tab-perms"
+                     role="tabpanel" aria-labelledby="nav-manual">
+                    <div class="form-group">
+                        <label for="perm-channel-select">Channel</label>
+                        <select id="perm-channel-select">
+                            <option value="">Select a channel...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="perm-role-select">Role</label>
+                        <select id="perm-role-select">
+                            <option value="">Select a role...</option>
+                        </select>
+                    </div>
+                    <button type="button" id="perm-load-btn" class="secondary-btn">Load Permissions</button>
+                    <div class="permission-grid" id="perm-grid"></div>
+                    <button type="button" id="perm-apply-btn" class="primary-btn" style="margin-top:16px">Apply Overrides</button>
+                </div>
+
+                <div class="manual-tab-panel" id="manual-tab-broadcast"
+                     role="tabpanel" aria-labelledby="nav-manual">
+
+                    <!-- Embed Constructor (preserved from v1.0, moved to Broadcast tab per D-02) -->
+                    <div class="panel-grid-2-aside">
+
+                        <div class="card controls">
+                            <h2>
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                </svg>
+                                Message Constructor
+                            </h2>
+                            <form id="embed-form" novalidate>
+                                <div class="form-group">
+                                    <label for="guild-select">Server</label>
+                                    <select id="guild-select" required aria-required="true">
+                                        <option value="">Loading servers...</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <button type="button" id="broadcast-select-all" class="secondary-btn">Select All</button>
+                                    <div id="broadcast-channel-list" class="channel-checkbox-list"></div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="template-select">Load Template</label>
+                                    <div class="template-controls">
+                                        <select id="template-select" aria-label="Select embed template">
+                                            <option value="">Select a template...</option>
+                                        </select>
+                                        <button type="button" id="save-template-btn" class="secondary-btn">Save as Template</button>
+                                    </div>
+                                </div>
+
+                                <div style="height:1px;background:var(--border-color);margin:1.5rem 0"></div>
+
+                                <div class="form-group">
+                                    <label for="embed-title">Embed Title</label>
+                                    <input type="text" id="embed-title" placeholder="Enter a title...">
+                                </div>
+                                <div class="form-group">
+                                    <label for="embed-description">Embed Description</label>
+                                    <textarea id="embed-description" rows="5"
+                                        placeholder="Enter a description (Markdown supported)..."></textarea>
+                                </div>
+                                <div class="form-group">
+                                    <label for="embed-color">Embed Color</label>
+                                    <input type="color" id="embed-color" value="#4f545c">
+                                </div>
+                                <div class="form-group">
+                                    <label for="embed-footer">Embed Footer Text</label>
+                                    <input type="text" id="embed-footer" placeholder="Enter footer text...">
+                                </div>
+
+                                <div class="button-group">
+                                    <button type="submit" id="send-embed-btn" class="primary-btn">Send Message</button>
+                                    <button type="button" id="clear-form-btn" class="danger-btn">Clear</button>
+                                </div>
+                                <div id="broadcast-results"></div>
+                            </form>
+                        </div><!-- /.card.controls -->
+
+                        <!-- Right column: preview + markdown cheat sheet -->
+                        <div>
+                            <!-- Live Preview (preserved from v1.0) -->
+                            <div class="card preview" style="margin-bottom:1.5rem">
+                                <h2>
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                        <circle cx="12" cy="12" r="3"></circle>
+                                    </svg>
+                                    Live Preview
+                                </h2>
+                                <div id="embed-preview" class="discord-embed" aria-live="polite">
+                                    <div id="preview-title" class="embed-title"></div>
+                                    <div id="preview-description" class="embed-description"></div>
+                                    <div id="preview-footer" class="embed-footer"></div>
+                                </div>
+                            </div>
+
+                            <!-- Markdown Cheat Sheet -->
+                            <div class="card cheat-sheet">
+                                <h2>
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                        <polyline points="14 2 14 8 20 8"></polyline>
+                                    </svg>
+                                    Markdown
+                                </h2>
+                                <div class="cheat-sheet-grid">
+                                    <div class="cheat-item"><code>**bold**</code><span><b>bold</b></span></div>
+                                    <div class="cheat-item"><code>*italic*</code><span><i>italic</i></span></div>
+                                    <div class="cheat-item"><code>__underline__</code><span><u>underline</u></span></div>
+                                    <div class="cheat-item"><code>~~strike~~</code><span><s>strike</s></span></div>
+                                    <div class="cheat-item"><code>`code`</code><span class="code-span">code</span></div>
+                                    <div class="cheat-item"><code>[Link](url)</code><span class="link-span">Link</span></div>
+                                    <div class="cheat-item"><code>&gt; Quote</code><span class="quote-span">Quote</span></div>
+                                    <div class="cheat-item"><code># Header 1</code><span class="h1-span">Header 1</span></div>
+                                </div>
+                            </div>
+                        </div><!-- /right column -->
+
+                    </div><!-- /.panel-grid-2-aside (inside broadcast tab) -->
+
+                </div><!-- /#manual-tab-broadcast -->
+
+            </div><!-- /#panel-manual -->
+
+
+            <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                 PANEL: AI Console (Phase 7 — Coming Soon)
+                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+            <div class="panel" id="panel-ai" role="tabpanel" aria-labelledby="nav-ai">
+                <div class="panel-header">
+                    <h2>AI Console</h2>
+                    <p>Chat with the L2 AI agent directly from the dashboard.</p>
+                </div>
+                <div class="panel-empty-state">
+                    <div class="empty-icon" aria-hidden="true">🤖</div>
+                    <h3>Coming in Phase 7</h3>
+                    <p>The web AI console will proxy directly to the bot's L2Agent — ask it to restructure your server, summarize channels, manage roles, or run dry-run previews you can approve with one click.</p>
+                    <span class="coming-soon-badge">🚧 In Roadmap</span>
+                </div>
+            </div><!-- /#panel-ai -->
+
+
+            <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                 PANEL: Audit Log — SSE Stream (migrated from v1.0)
+                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+            <div class="panel panel-audit" id="panel-audit" role="tabpanel" aria-labelledby="nav-audit">
+                <div class="panel-header">
+                    <h2>Audit Log</h2>
+                    <p>Live system event stream — all bot and dashboard actions logged in real time.</p>
+                </div>
+                <div class="card logs-card">
+                    <h2>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <line x1="8" y1="6" x2="21" y2="6"></line>
+                            <line x1="8" y1="12" x2="21" y2="12"></line>
+                            <line x1="8" y1="18" x2="21" y2="18"></line>
+                            <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                            <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                            <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                        </svg>
+                        System Audit Stream
+                    </h2>
+                    <div class="logs-container" id="logs-container" role="log" aria-live="polite" aria-label="System event log">
+                        <div class="log-entry system-msg">[00:00:00] Initializing telemetry stream...</div>
+                    </div>
+                </div>
+            </div><!-- /#panel-audit -->
+
+        </main><!-- /.content-area -->
+
+    </div><!-- /.app-body -->
+</div><!-- /.app-shell -->
+
+<!-- Notification toast -->
+<div id="notification" class="notification" role="status" aria-live="polite"></div>
+
+<div id="toast-container" class="toast-container" role="status" aria-live="polite"></div>
+
+<script src="{{ url_for('static', filename='js/marked.min.js') }}?v=3"></script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}?v=3"></script>
+</body>
+
+</html>
