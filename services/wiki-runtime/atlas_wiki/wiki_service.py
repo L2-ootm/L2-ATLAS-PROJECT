@@ -98,6 +98,118 @@ def _append_log(wiki_dir: pathlib.Path, page: WikiPage, event: AuditEvent) -> No
 
 
 # ---------------------------------------------------------------------------
+# Semantic embedding infrastructure (Phase B, B-WP4)
+# ---------------------------------------------------------------------------
+#
+# Embeddings are optional: the heavy deps (sqlite-vec, fastembed) load lazily and
+# every entry point degrades to a no-op / FTS5 fallback when they are absent. The
+# `wiki_vec` vec0 table is created HERE in Python (after loading the extension),
+# never via a SQL migration — the migration runner has no extension loaded.
+
+_EMBED_MODEL_NAME = "BAAI/bge-small-en-v1.5"  # fastembed default, 384-dim
+_EMBED_DIM = 384
+_EMBED_MODEL = None  # lazily-constructed TextEmbedding singleton
+
+
+def _get_embedder():
+    """Lazily construct and cache the embedding model (heavy; downloads on first use)."""
+    global _EMBED_MODEL
+    if _EMBED_MODEL is None:
+        from fastembed import TextEmbedding  # type: ignore[import]
+
+        _EMBED_MODEL = TextEmbedding()
+    return _EMBED_MODEL
+
+
+def _embed(text: str):
+    """Return the embedding vector (numpy array) for `text`."""
+    return list(_get_embedder().embed([text]))[0]
+
+
+def _ensure_vec_table(conn: sqlite3.Connection) -> bool:
+    """Load sqlite-vec and create `wiki_vec` if needed. Returns True when the
+    semantic store is available on this connection, False otherwise (deps absent)."""
+    try:
+        import sqlite_vec  # type: ignore[import]
+
+        conn.enable_load_extension(True)
+        sqlite_vec.load(conn)
+        conn.enable_load_extension(False)
+        conn.execute(
+            f"CREATE VIRTUAL TABLE IF NOT EXISTS wiki_vec USING vec0(embedding float[{_EMBED_DIM}])"
+        )
+        return True
+    except Exception:
+        return False
+
+
+def _index_embedding(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    *,
+    page_id: str,
+    body: str,
+) -> bool:
+    """Best-effort: compute and store the embedding for one page (keyed by the
+    wiki_pages rowid) and stamp `wiki_embeddings_meta`. Never raises — a missing
+    optional dep or an embed failure must not fail the page write."""
+    try:
+        if not _ensure_vec_table(conn):
+            return False
+        row = conn.execute("SELECT rowid FROM wiki_pages WHERE id=?", (page_id,)).fetchone()
+        if row is None:
+            return False
+        rowid = row[0]
+        vector = _embed(body)
+        body_sha = hashlib.sha256((body or "").encode("utf-8")).hexdigest()
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        with lock:
+            with conn:
+                # vec0 has no UPSERT — replace any existing vector for this rowid.
+                conn.execute("DELETE FROM wiki_vec WHERE rowid=?", (rowid,))
+                conn.execute(
+                    "INSERT INTO wiki_vec(rowid, embedding) VALUES (?, ?)",
+                    (rowid, vector.tobytes()),
+                )
+                conn.execute(
+                    "INSERT INTO wiki_embeddings_meta(page_id, model, dim, body_sha, embedded_at) "
+                    "VALUES (?,?,?,?,?) ON CONFLICT(page_id) DO UPDATE SET "
+                    "model=excluded.model, dim=excluded.dim, body_sha=excluded.body_sha, "
+                    "embedded_at=excluded.embedded_at",
+                    (page_id, _EMBED_MODEL_NAME, _EMBED_DIM, body_sha, now),
+                )
+        return True
+    except Exception as exc:  # noqa: BLE001 — embeddings are best-effort
+        print(f"wiki embedding skipped ({type(exc).__name__}: {exc})")
+        return False
+
+
+def reindex(conn: sqlite3.Connection, lock: threading.Lock) -> int:
+    """(Re)embed every wiki page whose stored embedding is missing or stale.
+
+    Returns the number of pages (re)embedded. No-op (0) when the semantic deps are
+    unavailable. Staleness is detected by comparing the page body SHA against
+    `wiki_embeddings_meta.body_sha`."""
+    if not _ensure_vec_table(conn):
+        return 0
+    try:
+        meta = {
+            r[0]: r[1]
+            for r in conn.execute("SELECT page_id, body_sha FROM wiki_embeddings_meta").fetchall()
+        }
+    except sqlite3.Error:
+        meta = {}
+    count = 0
+    for page_id, body in conn.execute("SELECT id, body FROM wiki_pages").fetchall():
+        body_sha = hashlib.sha256((body or "").encode("utf-8")).hexdigest()
+        if meta.get(page_id) == body_sha:
+            continue
+        if _index_embedding(conn, lock, page_id=page_id, body=body or ""):
+            count += 1
+    return count
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -305,6 +417,11 @@ def update_wiki_page(
     _update_index(wiki_dir, conn)
     _append_log(wiki_dir, return_page, event)
 
+    # Best-effort semantic index (B-WP4): compute + store the page embedding so
+    # semantic_search works. A missing optional dep is a silent no-op — the page
+    # write has already succeeded and must not depend on embeddings.
+    _index_embedding(conn, lock, page_id=final_page_id, body=body)
+
     return return_page
 
 
@@ -349,36 +466,25 @@ def semantic_search(
     T-06-SC: sqlite_vec and fastembed imports are inside this function body
     inside try/except — never at module level.
     """
-    # Attempt to load sqlite_vec (optional heavy dependency)
-    try:
-        import sqlite_vec  # type: ignore[import]
-        conn.enable_load_extension(True)
-        sqlite_vec.load(conn)
-        conn.enable_load_extension(False)
-    except Exception:
+    # Load sqlite-vec + ensure the wiki_vec table (shared with the write path).
+    if not _ensure_vec_table(conn):
         print(
             "sqlite-vec not loaded — semantic search unavailable; using FTS5 fallback"
         )
         return search_wiki(conn, query, limit)
 
-    # Attempt to load fastembed for query embedding
+    # Full semantic search path (sqlite_vec + fastembed available). Reuses the
+    # cached embedder; vec0 KNN is `embedding MATCH ? ORDER BY distance LIMIT k`.
     try:
-        from fastembed import TextEmbedding  # type: ignore[import]
-    except ImportError:
-        print("fastembed not installed — using FTS5 fallback")
-        return search_wiki(conn, query, limit)
-
-    # Full semantic search path (sqlite_vec + fastembed available)
-    try:
-        model = TextEmbedding()
-        embedding = list(model.embed([query]))[0]
+        embedding = _embed(query)
+        # vec0 KNN requires an explicit `k = ?` constraint (not a plain LIMIT) when
+        # the vec table is joined to metadata.
         cursor = conn.execute(
-            "SELECT wp.slug, wp.source_id, distance "
+            "SELECT wp.id, wp.slug, wp.title, wp.source_id, wv.distance "
             "FROM wiki_vec wv "
             "JOIN wiki_pages wp ON wv.rowid = wp.rowid "
-            "WHERE wiki_vec MATCH ? "
-            "ORDER BY distance "
-            "LIMIT ?",
+            "WHERE wv.embedding MATCH ? AND k = ? "
+            "ORDER BY wv.distance",
             (embedding.tobytes(), limit),
         )
         cols = [d[0] for d in cursor.description]
