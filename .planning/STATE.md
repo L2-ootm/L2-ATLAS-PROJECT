@@ -197,6 +197,25 @@ tsc/lint/build green.
   Treat the "NEXT SESSION (1)(2)" and antifragility "build the runner" notes in the big-plan log below
   as historical/closed.
 
+### Discord surface (2026-06-21): L2-BOT vendored as a sidecar
+
+- **Channel-cockpit Discord-browser deferral CLOSED** — built on a different substrate than the
+  enumeration-less foundation adapter. Vendored `C:\...\L2-BOT` into `services/discord-bot` (cashflow
+  sidecar pattern; secrets/state gitignored, secret gate clean) and shipped a read-only `/discord`
+  cockpit route: sidecar lifecycle + guild → channels(by category) + roles.
+- Stack: `discord_control.py` (detached spawn + `~/.atlas/discord-bot.json` pid + `/health` probe),
+  `discord_api.py` (stdlib HTTP read client), `atlas discord start|status|stop|guilds|structure`,
+  gateway `GET /v1/discord/status|guilds|guilds/{id}/structure` + `POST start|stop`, React `/discord`.
+  No foundation edits (D-001); gateway dispatches the CLI, Python owns the HTTP call (D-022). Added
+  `GET /health` to the vendored bot. See `.planning/phases/10.0.3-discord-surface/PHASE.md`.
+- Tests: +12 Python, +4 Rust. agent-runtime 182 pass (1 known env fail); `cargo test -p atlas-gateway`
+  68 pass; web tsc/lint/build green. **E2E verified with the operator's real bot token**: connected to
+  guild "L2", live guilds + structure (20 categories, 18 roles), clean stop.
+- Deferred (gated slice 2): write/management (create/edit/delete channels & roles, send embeds,
+  permission overwrites) — needs approval-gating + audit per the L2-BOT operating-model non-negotiables.
+- Coexistence: do not run the vendored L2-BOT and the foundation messaging gateway's Discord adapter on
+  the same bot token simultaneously.
+
 ## Project Reference
 
 
