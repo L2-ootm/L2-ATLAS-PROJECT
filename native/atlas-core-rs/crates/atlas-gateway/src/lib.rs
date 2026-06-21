@@ -442,6 +442,30 @@ async fn wiki_pages(
 const DISPATCH_TIMEOUT: Duration = Duration::from_secs(30);
 const CONSOLE_DISPATCH_TIMEOUT: Duration = Duration::from_secs(180);
 
+/// The atlas CLI is a console-subsystem program (python.exe). When the gateway
+/// runs detached (no console of its own — `atlas gateway start`), each child
+/// spawn makes Windows allocate a NEW console window, so every dispatched route
+/// flashes a terminal that also steals focus from the cockpit. CREATE_NO_WINDOW
+/// suppresses that console without affecting stdout capture or GUI children
+/// (e.g. the folder-picker dialog still shows). No-op on non-Windows.
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+#[cfg(windows)]
+fn hide_console_tokio(cmd: &mut tokio::process::Command) {
+    cmd.creation_flags(CREATE_NO_WINDOW);
+}
+#[cfg(not(windows))]
+fn hide_console_tokio(_cmd: &mut tokio::process::Command) {}
+
+#[cfg(windows)]
+fn hide_console_std(cmd: &mut std::process::Command) {
+    use std::os::windows::process::CommandExt;
+    cmd.creation_flags(CREATE_NO_WINDOW);
+}
+#[cfg(not(windows))]
+fn hide_console_std(_cmd: &mut std::process::Command) {}
+
 /// Reject empty/whitespace user input destined for CLI positional arguments.
 /// Values starting with `-` are also rejected: even behind a `--` separator
 /// they read as options to a human and signal a malformed request.
@@ -473,6 +497,7 @@ async fn dispatch_atlas_with_timeout(
         return Err(ApiError::Internal("atlas_cmd is empty".into()));
     }
     let mut cmd = tokio::process::Command::new(&atlas_cmd[0]);
+    hide_console_tokio(&mut cmd);
     for pre in &atlas_cmd[1..] {
         cmd.arg(pre);
     }
@@ -505,6 +530,7 @@ fn spawn_detached_atlas(atlas_cmd: &[String], args: &[&str]) -> Result<(), ApiEr
         return Err(ApiError::Internal("atlas_cmd is empty".into()));
     }
     let mut cmd = std::process::Command::new(&atlas_cmd[0]);
+    hide_console_std(&mut cmd);
     for pre in &atlas_cmd[1..] {
         cmd.arg(pre);
     }
@@ -764,6 +790,7 @@ if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
 }
 "#;
     let mut cmd = tokio::process::Command::new("powershell.exe");
+    hide_console_tokio(&mut cmd);
     cmd.arg("-NoProfile")
         .arg("-STA")
         .arg("-ExecutionPolicy")
@@ -851,6 +878,7 @@ async fn console_stream(
     }
 
     let mut cmd = tokio::process::Command::new(&state.atlas_cmd[0]);
+    hide_console_tokio(&mut cmd);
     for pre in &state.atlas_cmd[1..] {
         cmd.arg(pre);
     }
