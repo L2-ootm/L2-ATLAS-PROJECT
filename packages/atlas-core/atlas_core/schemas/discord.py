@@ -33,9 +33,10 @@ DiscordAction = Literal[
     "set_permissions",
 ]
 
-# pending -> executed | rejected | failed (terminal). Approve drives executed/failed;
-# reject drives rejected. There is no un-reject / re-open in this slice.
-DiscordApprovalStatus = Literal["pending", "executed", "rejected", "failed"]
+# pending -> executing -> executed | failed ;  pending -> rejected.
+# `executing` is a transient claim state set atomically by approve() so two
+# concurrent approvers cannot both execute the same write (TOCTOU guard).
+DiscordApprovalStatus = Literal["pending", "executing", "executed", "rejected", "failed"]
 
 
 class DiscordApproval(BaseModel):

@@ -193,7 +193,11 @@ def set_permissions(
     deny: Optional[list] = None,
     reason: str = "Dashboard",
 ) -> dict:
-    """POST /guilds/{id}/channels/{channel_id}/permissions -> {success}."""
+    """POST /guilds/{id}/channels/{channel_id}/permissions -> {success}.
+
+    `allow`/`deny` are lists of permission flag NAMES (e.g. ["view_channel"]).
+    The sidecar iterates them and sets each flag on the role's overwrite; an
+    empty list leaves that side untouched."""
     return _request(
         "POST",
         f"/guilds/{guild_id}/channels/{channel_id}/permissions",

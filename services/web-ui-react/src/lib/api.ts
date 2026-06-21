@@ -1043,7 +1043,7 @@ export type DiscordAction =
 	| 'send_message'
 	| 'set_permissions';
 
-export type DiscordApprovalStatus = 'pending' | 'executed' | 'rejected' | 'failed';
+export type DiscordApprovalStatus = 'pending' | 'executing' | 'executed' | 'rejected' | 'failed';
 
 export interface DiscordApproval {
 	id: string;

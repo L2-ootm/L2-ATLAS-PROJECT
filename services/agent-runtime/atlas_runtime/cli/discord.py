@@ -209,6 +209,7 @@ def approvals(
 @discord_app.command("approve")
 def approve(
     approval_id: str = typer.Argument(..., help="Approval id to execute."),
+    reason: Optional[str] = typer.Option(None, "--reason", help="Override the audit reason."),
     json_out: bool = typer.Option(False, "--json", help="Emit JSON."),
 ) -> None:
     """Approve + execute a pending Discord write via the sidecar."""
@@ -217,7 +218,7 @@ def approve(
     conn = _get_connection()
     lock = _get_lock()
     try:
-        approval = discord_service.approve(conn, lock, approval_id=approval_id)
+        approval = discord_service.approve(conn, lock, approval_id=approval_id, reason=reason)
     except discord_service.DiscordApprovalError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1)

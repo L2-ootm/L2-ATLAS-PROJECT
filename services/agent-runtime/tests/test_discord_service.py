@@ -120,6 +120,33 @@ def test_approve_unknown_id_raises(db, lock):
         discord_service.approve(db, lock, approval_id="does-not-exist")
 
 
+def test_approve_claim_guard_blocks_already_claimed(db, lock, monkeypatch):
+    # Simulate a concurrent approver having already claimed the row (status set to
+    # 'executing'): the atomic UPDATE ... WHERE status='pending' affects 0 rows,
+    # so this approver must refuse rather than double-execute.
+    monkeypatch.setattr(discord_api, "delete_channel", lambda *a, **k: {"success": True})
+    a = discord_service.propose(
+        db, lock, action="delete_channel", guild_id="g1", target_id="c1", params={}
+    )
+    db.execute("UPDATE discord_approvals SET status='executing' WHERE id=?", (a.id,))
+    db.commit()
+    with pytest.raises(discord_service.DiscordApprovalError):
+        discord_service.approve(db, lock, approval_id=a.id)
+
+
+def test_approve_reason_override_reaches_sidecar(db, lock, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        discord_api, "create_channel",
+        lambda g, **kw: seen.update(kw) or {"id": "1", "name": kw["name"]},
+    )
+    a = discord_service.propose(
+        db, lock, action="create_channel", guild_id="g1", params={"name": "ops"}
+    )
+    discord_service.approve(db, lock, approval_id=a.id, reason="ticket-42 cleanup")
+    assert seen["reason"] == "ticket-42 cleanup"
+
+
 # ---------------------------------------------------------------------------
 # reject
 # ---------------------------------------------------------------------------
