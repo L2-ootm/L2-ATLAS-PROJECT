@@ -158,12 +158,17 @@ def setup() -> None:
     typer.echo(f"\nwrote {path}")
 
     if typer.confirm("initialize the database now (atlas db init)?", default=True):
-        from atlas_runtime import db
+        import threading
+
+        from atlas_runtime import db, model_registry
 
         conn = db.connect()
         applied = db.apply_migrations(conn)
         typer.echo(
             "migrations: " + (", ".join(applied) if applied else "already up to date")
         )
+        seeded = model_registry.seed_default_models(conn, threading.Lock())
+        if seeded:
+            typer.echo("seeded default models: " + ", ".join(seeded))
 
     typer.echo("setup complete — start with: atlas gateway start")

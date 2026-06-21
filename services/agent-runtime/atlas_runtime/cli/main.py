@@ -804,6 +804,14 @@ def db_init() -> None:
     else:
         typer.echo("already up to date")
 
+    import threading
+
+    from atlas_runtime import model_registry
+
+    seeded = model_registry.seed_default_models(conn, threading.Lock())
+    if seeded:
+        typer.echo(f"seeded default models: {', '.join(seeded)}")
+
 
 @db_app.command("status")
 def db_status() -> None:

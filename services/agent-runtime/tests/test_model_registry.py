@@ -80,6 +80,36 @@ def test_list_models_active_only_filters(conn, lock):
     assert len(model_registry.list_models(conn, active_only=False)) == 2
 
 
+def test_seed_default_models_inserts_baseline(conn, lock):
+    inserted = model_registry.seed_default_models(conn, lock)
+    assert inserted == [m for m, _ in model_registry.DEFAULT_SEED_MODELS]
+    rows = {r["model_id"]: r for r in model_registry.list_models(conn)}
+    assert set(rows) == {m for m, _ in model_registry.DEFAULT_SEED_MODELS}
+    assert all(r["source"] == model_registry.SEED_SOURCE for r in rows.values())
+
+
+def test_seed_default_models_is_idempotent(conn, lock):
+    model_registry.seed_default_models(conn, lock)
+    again = model_registry.seed_default_models(conn, lock)
+    assert again == []
+    assert len(model_registry.list_models(conn, active_only=False)) == len(
+        model_registry.DEFAULT_SEED_MODELS
+    )
+
+
+def test_seed_never_clobbers_discovered_model(conn, lock):
+    # A real refresh discovers a model id that the seed list also contains; the
+    # later seed must NOT overwrite its (gateway) source/provider.
+    shared = model_registry.DEFAULT_SEED_MODELS[0][0]
+    model_registry.refresh(
+        conn, lock, source="gw", fetcher=lambda: [{"id": shared, "owned_by": "openrouter"}]
+    )
+    model_registry.seed_default_models(conn, lock)
+    row = next(r for r in model_registry.list_models(conn) if r["model_id"] == shared)
+    assert row["source"] == "gw"
+    assert row["provider"] == "openrouter"
+
+
 def test_cli_refresh_and_list(monkeypatch, conn, lock):
     from typer.testing import CliRunner
     from atlas_runtime.cli import main as cli_main
