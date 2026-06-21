@@ -656,6 +656,36 @@ async fn start_run_invalid_agent_is_400() {
 }
 
 #[tokio::test]
+async fn retry_mission_dispatches_mission_retry_and_returns_201() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let db_path = seeded_db(&dir);
+    let argv_path = stub_dir.path().join("argv.txt");
+    // Stub echoes "r1" (already in seeded DB) as the new run id.
+    let router = test_app_with_arg_capture(db_path, "r1", &argv_path, &stub_dir);
+    let (status, body) = post_json(
+        &router,
+        "/v1/missions/m1/retry",
+        json!({ "agent": "claude_code" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(body["run"]["id"], "r1");
+    assert_eq!(body["run"]["mission_id"], "m1");
+    // The gateway must dispatch `mission retry --agent claude_code -- m1`.
+    let argv = std::fs::read_to_string(&argv_path).unwrap();
+    let args: Vec<&str> = argv.lines().collect();
+    assert_eq!(args.first().copied(), Some("mission"));
+    assert_eq!(args.get(1).copied(), Some("retry"));
+    let idx = args
+        .iter()
+        .position(|a| *a == "--agent")
+        .expect("--agent flag missing from dispatched args");
+    assert_eq!(args.get(idx + 1).copied(), Some("claude_code"));
+    assert!(args.contains(&"m1"));
+}
+
+#[tokio::test]
 async fn console_chat_forwards_agent_prompt_and_cwd() {
     let dir = tempfile::tempdir().unwrap();
     let stub_dir = tempfile::tempdir().unwrap();
