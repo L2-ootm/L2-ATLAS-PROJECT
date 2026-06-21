@@ -685,6 +685,25 @@ export async function startRun(
 	return apiFetch(`/v1/missions/${encodeURIComponent(missionId)}/run`, init);
 }
 
+/**
+ * Retry a failed/cancelled mission. The gateway reopens the mission in place
+ * (`failed|cancelled -> pending`) and starts a fresh run, returning the new run.
+ * Prior runs stay attached as attempt history. Same `agent`/`execute` semantics
+ * as {@link startRun}; the body is sent only when needed for pre-retry gateways.
+ */
+export async function retryMission(
+	missionId: string,
+	agent?: AgentRuntime,
+	execute?: boolean
+): Promise<{ run: Run; executing?: boolean }> {
+	const init: RequestInit = { method: 'POST' };
+	const body: { agent?: AgentRuntime; execute?: boolean } = {};
+	if (agent) body.agent = agent;
+	if (execute) body.execute = true;
+	if (agent || execute) init.body = JSON.stringify(body);
+	return apiFetch(`/v1/missions/${encodeURIComponent(missionId)}/retry`, init);
+}
+
 export async function getRun(id: string): Promise<{ run: Run }> {
 	return apiFetch(`/v1/runs/${encodeURIComponent(id)}`);
 }

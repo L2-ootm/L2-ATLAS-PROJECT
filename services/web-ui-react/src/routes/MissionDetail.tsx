@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Archive, Play, Ban, X } from 'lucide-react';
+import { Archive, Play, Ban, X, RotateCcw } from 'lucide-react';
 import { Page } from '../components/Page';
 import { AgentBadge, GlassPanel, HudLabel, StatusBadge } from '../components/hud';
 import RunTimeline from '../components/RunTimeline';
 import LiveBadge from '../components/LiveBadge';
 import BorderGlow from '../components/BorderGlow';
 import GlassTopo from '../components/GlassTopo';
-import { archiveMission, getMission, startRun, cancelRun, type AgentRuntime, type Mission, type Run } from '../lib/api';
+import { archiveMission, getMission, startRun, retryMission, cancelRun, type AgentRuntime, type Mission, type Run } from '../lib/api';
 import sealMark from '../brand/assets/seal.webp';
 
 type Load =
@@ -37,6 +37,7 @@ export default function MissionDetail() {
 	const [agent, setAgent] = useState<AgentRuntime>('native');
 	const [launching, setLaunching] = useState(false);
 	const [launchError, setLaunchError] = useState<string | null>(null);
+	const [retrying, setRetrying] = useState(false);
 	const [confirmCancel, setConfirmCancel] = useState(false);
 	const [cancelError, setCancelError] = useState<string | null>(null);
 	const [archiveOpen, setArchiveOpen] = useState(false);
@@ -67,6 +68,19 @@ export default function MissionDetail() {
 		} catch (e) {
 			setLaunchError(`RUN LAUNCH FAILED — ${e instanceof Error ? e.message : String(e)}. Mission status reverted.`);
 			setLaunching(false);
+		}
+	}
+
+	async function retry() {
+		if (retrying || load.s !== 'ready') return;
+		setRetrying(true);
+		setLaunchError(null);
+		try {
+			const { run } = await retryMission(load.mission.id, agent);
+			nav(`/runs/${run.id}`);
+		} catch (e) {
+			setLaunchError(`RETRY FAILED — ${e instanceof Error ? e.message : String(e)}. Mission status unchanged.`);
+			setRetrying(false);
 		}
 	}
 
@@ -102,6 +116,7 @@ export default function MissionDetail() {
 	const hasActive = runs.some((r) => isRunActive(r.status));
 	const missionStatus = mission?.status.toUpperCase() ?? '';
 	const canLaunch = missionStatus === 'PENDING';
+	const canRetry = missionStatus === 'FAILED' || missionStatus === 'CANCELLED';
 	const canArchive = missionStatus === 'SUCCEEDED' || missionStatus === 'COMPLETED';
 	const archived = missionStatus === 'ARCHIVED';
 
@@ -112,7 +127,7 @@ export default function MissionDetail() {
 			actions={
 				load.s === 'ready' ? (
 					<>
-						{canLaunch && <AgentSelect value={agent} onChange={setAgent} disabled={launching} />}
+						{(canLaunch || canRetry) && <AgentSelect value={agent} onChange={setAgent} disabled={launching || retrying} />}
 						{canArchive && (
 							<GhostButton icon={<Archive size={15} strokeWidth={1.5} />} onClick={() => setArchiveOpen(true)}>
 								Archive
@@ -122,6 +137,11 @@ export default function MissionDetail() {
 							<GhostButton icon={<Ban size={15} strokeWidth={1.5} />} onClick={() => setConfirmCancel(true)} danger>
 								Cancel
 							</GhostButton>
+						)}
+						{canRetry && (
+							<PrimaryButton icon={<RotateCcw size={15} strokeWidth={2} />} onClick={retry} disabled={retrying}>
+								{retrying ? 'Retrying…' : 'Retry mission'}
+							</PrimaryButton>
 						)}
 						{canLaunch && (
 							<PrimaryButton icon={<Play size={15} strokeWidth={2} />} onClick={launch} disabled={launching}>
