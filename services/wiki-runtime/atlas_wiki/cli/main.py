@@ -150,6 +150,17 @@ def semantic(
         typer.echo("no results")
 
 
+@wiki_app.command("reindex")
+def reindex_cmd() -> None:
+    """(Re)compute embeddings for pages with missing/stale vectors (semantic search).
+
+    No-op when the optional semantic deps (sqlite-vec, fastembed) are absent."""
+    conn = _get_connection()
+    lock = _get_lock()
+    count = wiki_service.reindex(conn, lock)
+    typer.echo(f"reindexed {count} page(s)")
+
+
 @wiki_app.command("lint")
 def lint_cmd() -> None:
     """Lint wiki pages for structural issues and print findings."""

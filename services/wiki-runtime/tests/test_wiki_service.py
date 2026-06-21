@@ -7,7 +7,16 @@ import threading
 
 import pytest
 
+import importlib.util
+
 from atlas_wiki import wiki_service
+
+_HAS_SEMANTIC = bool(
+    importlib.util.find_spec("sqlite_vec") and importlib.util.find_spec("fastembed")
+)
+requires_semantic = pytest.mark.skipif(
+    not _HAS_SEMANTIC, reason="optional [semantic] deps (sqlite-vec, fastembed) not installed"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -505,3 +514,91 @@ def test_operator_write_bootstrap_is_idempotent(
         "SELECT COUNT(*) FROM runs WHERE id=?", (wiki_service.OPERATOR_RUN_ID,)
     ).fetchone()[0]
     assert runs == 1, "operator run must be bootstrapped exactly once"
+
+
+# ---------------------------------------------------------------------------
+# Semantic embeddings (B-WP4) — optional-dep path, skip-gated
+# ---------------------------------------------------------------------------
+
+
+def test_update_without_semantic_deps_never_fails(
+    db: sqlite3.Connection,
+    lock: threading.Lock,
+    wiki_dir: pathlib.Path,
+    monkeypatch,
+) -> None:
+    """A page write succeeds even when the vector store is unavailable — embeddings
+    are strictly best-effort and must not break the write path."""
+    monkeypatch.setattr(wiki_service, "_ensure_vec_table", lambda conn: False)
+    page = wiki_service.update_wiki_page(
+        db, lock, slug="no-vec", title="No Vec", body="body text here",
+        run_id=wiki_service.OPERATOR_RUN_ID, wiki_dir=wiki_dir,
+    )
+    assert page.slug == "no-vec"
+    # No vec rows written; semantic_search degrades to FTS5 (no exception).
+    results = wiki_service.semantic_search(db, "body text", limit=5)
+    assert isinstance(results, list)
+
+
+@requires_semantic
+def test_update_computes_and_stores_embedding(
+    db: sqlite3.Connection,
+    lock: threading.Lock,
+    wiki_dir: pathlib.Path,
+) -> None:
+    wiki_service.update_wiki_page(
+        db, lock, slug="exec-notes", title="Executor wiring",
+        body="how to wire the run executor subprocess and stop conditions",
+        run_id=wiki_service.OPERATOR_RUN_ID, wiki_dir=wiki_dir,
+    )
+    vec_count = db.execute("SELECT COUNT(*) FROM wiki_vec").fetchone()[0]
+    meta = db.execute(
+        "SELECT model, dim FROM wiki_embeddings_meta WHERE page_id IN "
+        "(SELECT id FROM wiki_pages WHERE slug='exec-notes')"
+    ).fetchone()
+    assert vec_count == 1
+    assert meta is not None and meta[1] == wiki_service._EMBED_DIM
+
+
+@requires_semantic
+def test_semantic_search_ranks_by_meaning(
+    db: sqlite3.Connection,
+    lock: threading.Lock,
+    wiki_dir: pathlib.Path,
+) -> None:
+    wiki_service.update_wiki_page(
+        db, lock, slug="exec", title="Executor wiring",
+        body="wiring the run executor subprocess and its stop conditions",
+        run_id=wiki_service.OPERATOR_RUN_ID, wiki_dir=wiki_dir,
+    )
+    wiki_service.update_wiki_page(
+        db, lock, slug="lunch", title="Lunch menu",
+        body="tacos burritos and a fresh garden salad",
+        run_id=wiki_service.OPERATOR_RUN_ID, wiki_dir=wiki_dir,
+    )
+    results = wiki_service.semantic_search(db, "how do I start the execution loop", limit=2)
+    assert results, "semantic search returned no results"
+    # The executor page should rank above the unrelated lunch page.
+    assert results[0]["slug"] == "exec"
+
+
+@requires_semantic
+def test_reindex_backfills_and_is_idempotent(
+    db: sqlite3.Connection,
+    lock: threading.Lock,
+    wiki_dir: pathlib.Path,
+) -> None:
+    # Seed a page directly (bypassing the embed-on-write path) to simulate a
+    # legacy page with no embedding.
+    import datetime
+
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    with lock:
+        with db:
+            db.execute(
+                "INSERT INTO wiki_pages(id,slug,title,body,created_at,updated_at,version) "
+                "VALUES ('p1','legacy','Legacy','legacy body about executors',?,?,1)",
+                (now, now),
+            )
+    assert wiki_service.reindex(db, lock) == 1  # one page embedded
+    assert wiki_service.reindex(db, lock) == 0  # nothing stale on the second pass

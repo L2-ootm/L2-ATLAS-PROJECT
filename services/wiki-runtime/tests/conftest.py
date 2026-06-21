@@ -31,6 +31,15 @@ MIGRATION_0002 = (
     / "0002_wiki_provenance.sql"
 )
 
+# Semantic-search bookkeeping table (Phase B). Additive; the embed-on-write path
+# and reindex stamp it when the optional [semantic] deps are present.
+MIGRATION_0011 = (
+    pathlib.Path(__file__).parent.parent.parent.parent
+    / "infra"
+    / "migrations"
+    / "0011_wiki_embeddings_meta.sql"
+)
+
 
 @pytest.fixture(name="db")
 def db_fixture() -> sqlite3.Connection:  # type: ignore[return]
@@ -43,7 +52,7 @@ def db_fixture() -> sqlite3.Connection:  # type: ignore[return]
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys = ON")
 
-    for migration_path in (MIGRATION_0001, MIGRATION_0002):
+    for migration_path in (MIGRATION_0001, MIGRATION_0002, MIGRATION_0011):
         if not migration_path.exists():
             pytest.fail(
                 f"Required migration not found: {migration_path}\n"
