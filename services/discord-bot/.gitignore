@@ -1,0 +1,36 @@
+# Secrets / local configuration
+.env
+.env.*
+*.env
+*.env.local
+
+# Runtime state / databases
+database.db
+*.sqlite
+*.sqlite3
+*.db
+sessions/
+logs/
+scratch/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+
+# Agent/editor local state
+.codex/
+.kilo/
+.vercel/
+
+# Node/build artifacts
+node_modules/
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db

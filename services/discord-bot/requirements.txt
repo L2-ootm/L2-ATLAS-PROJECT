@@ -1,0 +1,14 @@
+discord.py
+Quart
+requests
+quart-auth
+requests-oauthlib
+langchain
+langchain-openai
+langchain-huggingface
+langchain-chroma
+sentence-transformers
+aiohttp
+aiosqlite
+supabase
+openai

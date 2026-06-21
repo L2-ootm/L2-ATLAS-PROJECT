@@ -926,3 +926,88 @@ export async function startMessagingGateway(): Promise<{ ok: boolean; message: s
 export async function stopMessagingGateway(): Promise<{ ok: boolean; message: string }> {
 	return apiFetch('/v1/gateway/messaging/stop', { method: 'POST' });
 }
+
+// ── Discord surface (vendored L2-BOT sidecar) ─────────────────────────────────
+
+export interface DiscordSidecarStatus {
+	running: boolean;
+	pid: number | null;
+	ready: boolean;
+	guild_count: number;
+}
+
+export interface DiscordGuild {
+	id: string;
+	name: string;
+}
+
+export interface DiscordChannel {
+	id: string;
+	name: string;
+	type: string;
+	position?: number;
+	topic?: string | null;
+	category_name?: string | null;
+}
+
+export interface DiscordCategory {
+	id: string;
+	name: string;
+	position: number;
+	channels: DiscordChannel[];
+}
+
+export interface DiscordRole {
+	id: string;
+	name: string;
+	color: string;
+	position: number;
+	mentionable?: boolean;
+	hoist?: boolean;
+	managed?: boolean;
+}
+
+export interface DiscordStructure {
+	guild: { id: string; name: string; member_count: number };
+	categories: DiscordCategory[];
+	uncategorized: DiscordChannel[];
+	roles: DiscordRole[];
+}
+
+/** Discord sidecar lifecycle status. Stopped when unreachable. */
+export async function discordStatus(): Promise<DiscordSidecarStatus> {
+	try {
+		return await apiFetch<DiscordSidecarStatus>('/v1/discord/status');
+	} catch (err) {
+		if (err instanceof ApiError && (err.status === 404 || err.status === 500 || err.status === 503)) {
+			return { running: false, pid: null, ready: false, guild_count: 0 };
+		}
+		throw err;
+	}
+}
+
+export async function startDiscord(): Promise<{ ok: boolean; message: string; running?: boolean; pid?: number | null }> {
+	return apiFetch('/v1/discord/start', { method: 'POST' });
+}
+
+export async function stopDiscord(): Promise<{ ok: boolean; message: string }> {
+	return apiFetch('/v1/discord/stop', { method: 'POST' });
+}
+
+/** Guilds the bot is in. Empty when the sidecar is not running. */
+export async function listGuilds(): Promise<DiscordGuild[]> {
+	try {
+		const data = await apiFetch<{ guilds: DiscordGuild[] }>('/v1/discord/guilds');
+		return data.guilds ?? [];
+	} catch (err) {
+		if (err instanceof ApiError && (err.status === 404 || err.status === 500 || err.status === 503)) {
+			return [];
+		}
+		throw err;
+	}
+}
+
+/** A guild's structure: categories → channels, plus roles. */
+export async function getGuildStructure(guildId: string): Promise<DiscordStructure> {
+	return apiFetch(`/v1/discord/guilds/${encodeURIComponent(guildId)}/structure`);
+}

@@ -71,3 +71,8 @@ atlas.cmd
 
 # Local Claude Code state (plans, worktrees, settings) — never publish
 .claude/
+
+# Vendored Discord sidecar (services/discord-bot) — runtime state the bot regenerates.
+# Secrets (.env), *.db, __pycache__, .venv, .pytest_cache are already covered above.
+services/discord-bot/chroma_db/
+services/discord-bot/data/

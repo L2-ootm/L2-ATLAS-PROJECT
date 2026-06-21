@@ -1,0 +1,72 @@
+{
+  "brand": "L2 Systems",
+  "style": "dark liquid glass, minimal technical, violet/cyan accents, operational systems aesthetic",
+  "palette": {
+    "void": "#050712",
+    "indigo": "#11183a",
+    "violet": "#7a5cff",
+    "cyan": "#00e5ff",
+    "ice": "#dcecff",
+    "muted": "#6e7c96"
+  },
+  "server_alignment": {
+    "guild_id": "1058835686385532969",
+    "roles_reflected": [
+      "L²",
+      "L² ENTERPRENEUR",
+      "Systems Engineer",
+      "Full Stack Engineer",
+      "Product Engineer",
+      "Build Engineer",
+      "Ops Engineer",
+      "Member/@everyone"
+    ],
+    "permission_copy_principle": "minimum necessary access, role-based operational responsibility, no unsupported claims beyond current role/channel inventory"
+  },
+  "assets": [
+    {
+      "name": "start-here",
+      "channel_id": "1509401628145619106",
+      "file": "C:/Users/Davi/Desktop/Projects/L2-BOT/assets/onboarding-banners/start-here.png",
+      "dimensions": [
+        1600,
+        600
+      ],
+      "title": "START HERE",
+      "subtitle": "OPERATIONAL ENTRYPOINT"
+    },
+    {
+      "name": "quem-somos",
+      "channel_id": "1509401632809549824",
+      "file": "C:/Users/Davi/Desktop/Projects/L2-BOT/assets/onboarding-banners/quem-somos.png",
+      "dimensions": [
+        1600,
+        600
+      ],
+      "title": "QUEM SOMOS",
+      "subtitle": "IDENTITY LAYER"
+    },
+    {
+      "name": "o-que-fazemos",
+      "channel_id": "1509401638983696576",
+      "file": "C:/Users/Davi/Desktop/Projects/L2-BOT/assets/onboarding-banners/o-que-fazemos.png",
+      "dimensions": [
+        1600,
+        600
+      ],
+      "title": "O QUE FAZEMOS",
+      "subtitle": "EXECUTION LAYER"
+    },
+    {
+      "name": "hierarquia",
+      "channel_id": "1509401643966271539",
+      "file": "C:/Users/Davi/Desktop/Projects/L2-BOT/assets/onboarding-banners/hierarquia.png",
+      "dimensions": [
+        1600,
+        600
+      ],
+      "title": "HIERARQUIA",
+      "subtitle": "AUTHORITY + ACCESS MODEL"
+    }
+  ]
+}

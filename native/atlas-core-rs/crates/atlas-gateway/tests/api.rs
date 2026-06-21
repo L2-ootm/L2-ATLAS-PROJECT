@@ -206,6 +206,65 @@ async fn messaging_gateway_stop_is_idempotent() {
 }
 
 #[tokio::test]
+async fn discord_status_returns_cli_json() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"running": true, "pid": 1234, "ready": true, "guild_count": 3}"#,
+        &stub_dir,
+    );
+    let (status, body) = get_json(&router, "/v1/discord/status").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["running"], true);
+    assert_eq!(body["guild_count"], 3);
+}
+
+#[tokio::test]
+async fn discord_guilds_returns_cli_json() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"guilds": [{"id": "111", "name": "L2 HQ"}]}"#,
+        &stub_dir,
+    );
+    let (status, body) = get_json(&router, "/v1/discord/guilds").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["guilds"][0]["id"], "111");
+    assert_eq!(body["guilds"][0]["name"], "L2 HQ");
+}
+
+#[tokio::test]
+async fn discord_structure_returns_cli_json() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"guild": {"id": "111", "name": "L2 HQ", "member_count": 9}, "categories": [], "uncategorized": [], "roles": []}"#,
+        &stub_dir,
+    );
+    let (status, body) = get_json(&router, "/v1/discord/guilds/111/structure").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["guild"]["name"], "L2 HQ");
+}
+
+#[tokio::test]
+async fn discord_start_returns_cli_json() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"ok": true, "message": "discord bot starting (pid 4321)", "running": true, "pid": 4321, "ready": false, "guild_count": 0}"#,
+        &stub_dir,
+    );
+    let (status, body) = post_json(&router, "/v1/discord/start", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["ok"], true);
+    assert_eq!(body["pid"], 4321);
+}
+
+#[tokio::test]
 async fn missions_list_returns_rows_newest_first() {
     let dir = tempfile::tempdir().unwrap();
     let router = test_app(seeded_db(&dir));

@@ -564,6 +564,58 @@ async fn messaging_gateway_stop(State(state): State<AppState>) -> ApiResult {
     Ok(Json(value))
 }
 
+// ---------------------------------------------------------------------------
+// Discord surface — the vendored L2-BOT sidecar (services/discord-bot). The
+// gateway only dispatches `atlas discord ...` (D-022); the CLI calls the bot's
+// loopback API. Read-only browse; writes are a gated follow-up.
+// ---------------------------------------------------------------------------
+
+/// GET /v1/discord/status — sidecar lifecycle {running, pid, ready, guild_count}.
+async fn discord_status(State(state): State<AppState>) -> ApiResult {
+    let out = dispatch_atlas(&state.atlas_cmd, &["discord", "status", "--json"]).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("discord status parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+/// POST /v1/discord/start — start the Discord sidecar (detached).
+async fn discord_start(State(state): State<AppState>) -> ApiResult {
+    let out = dispatch_atlas(&state.atlas_cmd, &["discord", "start", "--json"]).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("discord start parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+/// POST /v1/discord/stop — stop the Discord sidecar (idempotent).
+async fn discord_stop(State(state): State<AppState>) -> ApiResult {
+    let out = dispatch_atlas(&state.atlas_cmd, &["discord", "stop", "--json"]).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("discord stop parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+/// GET /v1/discord/guilds — guilds the bot is in: {guilds: [{id, name}]}.
+async fn discord_guilds(State(state): State<AppState>) -> ApiResult {
+    let out = dispatch_atlas(&state.atlas_cmd, &["discord", "guilds", "--json"]).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("discord guilds parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+/// GET /v1/discord/guilds/{id}/structure — a guild's categories/channels/roles.
+/// The user-controlled `id` is passed after `--` (injection guard); `--json`
+/// stays BEFORE `--` so it is parsed as the flag, not a positional arg.
+async fn discord_structure(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+) -> ApiResult {
+    let out =
+        dispatch_atlas(&state.atlas_cmd, &["discord", "structure", "--json", "--", &id]).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("discord structure parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
 #[derive(Deserialize)]
 struct SelectFolderBody {
     title: Option<String>,
@@ -1505,6 +1557,11 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/gateway/messaging/status", get(messaging_gateway_status))
         .route("/v1/gateway/messaging/start", post(messaging_gateway_start))
         .route("/v1/gateway/messaging/stop", post(messaging_gateway_stop))
+        .route("/v1/discord/status", get(discord_status))
+        .route("/v1/discord/start", post(discord_start))
+        .route("/v1/discord/stop", post(discord_stop))
+        .route("/v1/discord/guilds", get(discord_guilds))
+        .route("/v1/discord/guilds/{id}/structure", get(discord_structure))
         .route("/v1/console/chat", post(console_chat))
         .route("/v1/console/stream", post(console_stream))
         .route("/v1/graph", get(graph_view))

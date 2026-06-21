@@ -98,7 +98,7 @@ gateway from the cockpit), completing the channel-cockpit management story:
   closes the "Providers tab" deferral as a registry view rather than a redundant provider card.
   Frontend-only over an already-tested endpoint; web tsc/lint/build green.
 
-**Still deferred (credential-dependent):** the P2 Discord guild/channel/role browser. This genuinely
-requires a live bot token + Discord API introspection, and the foundation exposes no CLI command for
-guild/channel listing — so it needs a foundation introspection command (or a direct adapter call)
-before a cockpit surface is buildable/verifiable. Left out rather than stubbed.
+**Discord browser — DONE (2026-06-21) via a different substrate:** rather than the
+enumeration-less foundation adapter, the vendored **L2-BOT sidecar** powers a read-only Discord
+browser at `/discord`. See `.planning/phases/10.0.3-discord-surface/PHASE.md`. Write/management
+(create/edit/delete channels & roles, send embeds) remains deferred to that phase's gated slice 2.
