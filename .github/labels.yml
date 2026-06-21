@@ -1,0 +1,59 @@
+# ATLAS issue/PR label scheme.
+#
+# Source of truth for the repository's labels. Apply with a label-sync tool, e.g.:
+#   npx github-label-sync --access-token <token> --labels .github/labels.yml <owner>/<repo>
+# (compatible with github-label-sync and EndBug/label-sync). Colors are 6-digit
+# hex without the leading '#'.
+
+# ── Contributor on-ramp ──────────────────────────────────────────────────────
+- name: "good first issue"
+  color: "7057ff"
+  description: "Good for newcomers — small, well-scoped, mentored if needed"
+- name: "help wanted"
+  color: "008672"
+  description: "Extra attention is welcome on this issue"
+
+# ── Type ─────────────────────────────────────────────────────────────────────
+- name: "bug"
+  color: "d73a4a"
+  description: "Something is not working as intended"
+- name: "enhancement"
+  color: "a2eeef"
+  description: "New feature or improvement request"
+- name: "documentation"
+  color: "0075ca"
+  description: "Docs, examples, or README changes"
+- name: "question"
+  color: "d876e3"
+  description: "Further information is requested"
+
+# ── Triage / lifecycle ───────────────────────────────────────────────────────
+- name: "needs triage"
+  color: "ededed"
+  description: "Awaiting maintainer review and classification"
+- name: "blocked"
+  color: "b60205"
+  description: "Cannot proceed until a dependency is resolved"
+- name: "wontfix"
+  color: "ffffff"
+  description: "This will not be worked on"
+- name: "duplicate"
+  color: "cfd3d7"
+  description: "Already tracked by another issue or PR"
+
+# ── Area (mirrors the repo layout in ARCHITECTURE.md / CONTRIBUTING.md) ───────
+- name: "area: gateway"
+  color: "5319e7"
+  description: "Rust REST gateway (native/atlas-core-rs)"
+- name: "area: runtime"
+  color: "1d76db"
+  description: "ATLAS agent runtime, CLI, services (services/agent-runtime)"
+- name: "area: cockpit"
+  color: "0e8a16"
+  description: "React operator cockpit (services/web-ui-react)"
+- name: "area: schemas"
+  color: "fbca04"
+  description: "Pydantic domain models (packages/atlas-core)"
+- name: "area: foundation"
+  color: "c5def5"
+  description: "Vendored Hermes foundation integration (foundation/atlas-hermes)"
