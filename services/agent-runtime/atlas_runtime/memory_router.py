@@ -23,6 +23,7 @@ sqlite-vec / fastembed lazily with an FTS5 fallback.
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
@@ -168,6 +169,91 @@ class ObservationRetriever:
         return out
 
 
+_FAILURE_MAX = 5
+_FAILURE_MSG_CHARS = 240
+
+
+def _failure_message(data_str: str) -> str:
+    """Best-effort human message from an audit event's JSON `data` blob."""
+    try:
+        data = json.loads(data_str)
+    except (ValueError, TypeError):
+        return (data_str or "").strip()
+    if isinstance(data, dict):
+        for key in ("error", "message", "summary", "reason", "detail"):
+            val = data.get(key)
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+    return ""
+
+
+class FailurePatternRetriever:
+    """Recurring failures from this mission's prior runs — so a retried mission
+    does not repeat the same mistake (pairs with the Phase A retry loop).
+
+    Mines two mission-scoped signals: failed runs' `summary`, and `failure`
+    audit events' `data`. Dedupes by normalized message, scoring recurring
+    failures highest, then most recent.
+    """
+
+    def section_lines(self, query: RouterQuery) -> list[str]:
+        return ["## Prior Failures (avoid repeating)"]
+
+    def retrieve(self, conn: sqlite3.Connection, query: RouterQuery) -> list[MemorySnippet]:
+        if query.mission_id is None:
+            return []
+        candidates: list[tuple[str, str]] = []  # (message, run_id) newest-first
+        for run_id, summary in conn.execute(
+            "SELECT id, summary FROM runs WHERE mission_id=? AND status='failed' "
+            "AND summary != '' ORDER BY finished_at DESC",
+            (query.mission_id,),
+        ).fetchall():
+            candidates.append((summary, run_id))
+        try:
+            rows = conn.execute(
+                "SELECT ae.run_id, ae.data FROM audit_events ae "
+                "JOIN runs r ON ae.run_id = r.id "
+                "WHERE r.mission_id=? AND ae.event_type='failure' "
+                "ORDER BY ae.timestamp DESC",
+                (query.mission_id,),
+            ).fetchall()
+        except sqlite3.Error:
+            rows = []
+        for run_id, data_str in rows:
+            msg = _failure_message(data_str)
+            if msg:
+                candidates.append((msg, run_id))
+
+        # Dedupe by normalized message; track frequency and most-recent run.
+        agg: dict[str, dict] = {}
+        for index, (msg, run_id) in enumerate(candidates):
+            key = " ".join(msg.split()).lower()[:200]
+            if not key:
+                continue
+            entry = agg.get(key)
+            if entry is None:
+                agg[key] = {"text": msg.strip(), "run_id": run_id, "count": 1, "index": index}
+            else:
+                entry["count"] += 1  # earlier index already the most recent
+
+        # Recurring first, then most recent.
+        ordered = sorted(agg.values(), key=lambda e: (-e["count"], e["index"]))
+        out: list[MemorySnippet] = []
+        for entry in ordered[:_FAILURE_MAX]:
+            msg = entry["text"][:_FAILURE_MSG_CHARS]
+            prefix = f"(×{entry['count']}) " if entry["count"] > 1 else ""
+            text = f"- {prefix}{msg}"
+            out.append(
+                MemorySnippet(
+                    text=text,
+                    score=float(entry["count"]),
+                    source=f"failure:{entry['run_id']}",
+                    approx_tokens=estimate_tokens(text),
+                )
+            )
+        return out
+
+
 class WikiFtsRetriever:
     """Top-k LLM Wiki pages matching the query terms (FTS5 / bm25). Safe on DBs
     without the wiki schema. Ported from context_service._relevant_knowledge."""
@@ -262,10 +348,12 @@ class MemoryRouter:
 
 
 def default_router() -> MemoryRouter:
-    """The B-WP1 retriever set, in brief order: runs → observations → wiki."""
+    """The default retriever set, in brief order: runs → prior failures →
+    observations → wiki knowledge."""
     return MemoryRouter(
         retrievers=[
             RecentRunsRetriever(),
+            FailurePatternRetriever(),
             ObservationRetriever(),
             WikiFtsRetriever(),
         ]

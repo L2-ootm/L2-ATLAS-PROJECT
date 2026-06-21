@@ -126,3 +126,72 @@ def test_recent_runs_retriever_orders_newest_first(db, lock):
 
 def test_recent_runs_retriever_empty_without_mission(db):
     assert mr.RecentRunsRetriever().retrieve(db, mr.RouterQuery(mission_id=None)) == []
+
+
+# ---------------------------------------------------------------------------
+# Failure-pattern retriever (B-WP2)
+# ---------------------------------------------------------------------------
+
+
+def _failed_run(conn, lock, mission_id, *, summary) -> str:
+    from atlas_runtime import run_service
+
+    # Reopen to pending first so successive failed runs accumulate (the retry loop).
+    with lock:
+        with conn:
+            conn.execute("UPDATE missions SET status='pending' WHERE id=?", (mission_id,))
+    run = run_service.start_run(conn, lock, mission_id=mission_id)
+    run_service.complete_run(
+        conn, lock, run_id=run.id, mission_id=mission_id, status="failed", summary=summary
+    )
+    return run.id
+
+
+def _mission_row(conn, lock) -> str:
+    mid = uuid.uuid4().hex
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    with lock:
+        with conn:
+            conn.execute(
+                "INSERT INTO missions(id,title,intent,status,project,created_at,updated_at) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (mid, "m", "", "pending", "", now, now),
+            )
+    return mid
+
+
+def test_failure_retriever_surfaces_failed_run_summary(db, lock):
+    mid = _mission_row(db, lock)
+    _failed_run(db, lock, mid, summary="403 from provider without credentials")
+    snippets = mr.FailurePatternRetriever().retrieve(db, mr.RouterQuery(mission_id=mid))
+    assert len(snippets) == 1
+    assert "403 from provider" in snippets[0].text
+    assert snippets[0].source.startswith("failure:")
+
+
+def test_failure_retriever_dedupes_and_counts_recurring(db, lock):
+    mid = _mission_row(db, lock)
+    _failed_run(db, lock, mid, summary="connection refused on port 8484")
+    _failed_run(db, lock, mid, summary="connection refused on port 8484")
+    _failed_run(db, lock, mid, summary="unique one-off error")
+    snippets = mr.FailurePatternRetriever().retrieve(db, mr.RouterQuery(mission_id=mid))
+    # Two distinct messages; the recurring one is first and carries a count.
+    assert len(snippets) == 2
+    assert "(×2)" in snippets[0].text
+    assert "connection refused" in snippets[0].text
+
+
+def test_failure_retriever_empty_without_mission(db):
+    assert mr.FailurePatternRetriever().retrieve(db, mr.RouterQuery(mission_id=None)) == []
+
+
+def test_failure_retriever_redacted_through_router(db, lock):
+    mid = _mission_row(db, lock)
+    _failed_run(db, lock, mid, summary="auth failed api_key=sk-failleak123")
+    lines, sources = mr.MemoryRouter(retrievers=[mr.FailurePatternRetriever()]).assemble(
+        db, mr.RouterQuery(mission_id=mid)
+    )
+    body = "\n".join(lines)
+    assert "## Prior Failures (avoid repeating)" in body
+    assert "sk-failleak123" not in body
+    assert "[REDACTED]" in body
