@@ -302,6 +302,73 @@ class WikiFtsRetriever:
         return out
 
 
+class HybridKnowledgeRetriever:
+    """Wiki knowledge: semantic vector hits (when embeddings exist) blended ahead
+    of FTS5 keyword hits, deduped by page. Degrades to pure FTS5 on databases with
+    no embeddings, so behavior is unchanged where the semantic store is absent.
+
+    The semantic side lazily imports the optional wiki runtime; if it is not
+    installed, or there are no stored vectors, only the FTS5 hits are returned."""
+
+    def __init__(self):
+        self._fts = WikiFtsRetriever()
+
+    def section_lines(self, query: RouterQuery) -> list[str]:
+        return self._fts.section_lines(query)
+
+    def _semantic(self, conn: sqlite3.Connection, query: RouterQuery) -> list[MemorySnippet]:
+        if not query.terms or not query.has_focus or not _table_exists(conn, "wiki_vec"):
+            return []
+        try:
+            if conn.execute("SELECT 1 FROM wiki_vec LIMIT 1").fetchone() is None:
+                return []  # no embeddings stored — nothing to add over FTS
+        except sqlite3.Error:
+            return []
+        try:
+            from atlas_wiki import wiki_service  # optional dependency
+        except ImportError:
+            return []
+        rows = wiki_service.semantic_search(conn, " ".join(query.terms), limit=_KNOWLEDGE_MAX_PAGES)
+        out: list[MemorySnippet] = []
+        for i, row in enumerate(rows):
+            slug = row.get("slug", "")
+            page_id = row.get("id")
+            if page_id is None:
+                found = conn.execute("SELECT id FROM wiki_pages WHERE slug=?", (slug,)).fetchone()
+                page_id = found[0] if found else slug
+            body_row = conn.execute(
+                "SELECT title, substr(body,1,?) FROM wiki_pages WHERE slug=?",
+                (_KNOWLEDGE_SNIPPET_CHARS, slug),
+            ).fetchone()
+            if body_row is None:
+                continue
+            title, snippet = body_row[0], " ".join((body_row[1] or "").split())
+            entry = f"- **{title}** (`{slug}`): {snippet}"
+            out.append(
+                MemorySnippet(
+                    text=entry,
+                    score=float(100 - i),  # rank semantic hits above FTS
+                    source=f"wiki:{page_id}",
+                    approx_tokens=estimate_tokens(entry),
+                )
+            )
+        return out
+
+    def retrieve(self, conn: sqlite3.Connection, query: RouterQuery) -> list[MemorySnippet]:
+        fts = self._fts.retrieve(conn, query)
+        semantic = self._semantic(conn, query)
+        if not semantic:
+            return fts
+        seen: set[str] = set()
+        merged: list[MemorySnippet] = []
+        for snip in semantic + fts:
+            if snip.source in seen:
+                continue
+            seen.add(snip.source)
+            merged.append(snip)
+        return merged[:_KNOWLEDGE_MAX_PAGES]
+
+
 # ---------------------------------------------------------------------------
 # Skill-matching retriever (B-WP3)
 # ---------------------------------------------------------------------------
@@ -444,7 +511,7 @@ def default_router() -> MemoryRouter:
             RecentRunsRetriever(),
             FailurePatternRetriever(),
             ObservationRetriever(),
-            WikiFtsRetriever(),
+            HybridKnowledgeRetriever(),
             SkillRetriever(),
         ]
     )
