@@ -42,6 +42,18 @@ $atlasExe = Join-Path $venv 'Scripts\atlas.exe'
 $shim = "@echo off`r`n`"$venvPy`" -m atlas_runtime.cli.main %*`r`n"
 Set-Content -Path (Join-Path $root 'atlas.cmd') -Value $shim -Encoding ascii -NoNewline
 
+# Build the terminal UI bundle so `atlas tui` runs without a first-run build.
+# Skipped gracefully when node/npm are absent (the launcher still builds on
+# first run). dist/ and node_modules/ are gitignored, machine-local artifacts.
+$tui = Join-Path $root 'foundation/atlas-hermes/ui-tui'
+if ((Get-Command npm -ErrorAction SilentlyContinue) -and (Test-Path $tui)) {
+    Write-Host "Building the terminal UI ($tui)"
+    Push-Location $tui
+    try { npm install --silent; npm run build } finally { Pop-Location }
+} else {
+    Write-Host "Skipping TUI build (npm not found); 'atlas tui' will build on first run."
+}
+
 # Bootstrap / migrate the DB (idempotent, non-destructive).
 & $atlasExe db init
 
