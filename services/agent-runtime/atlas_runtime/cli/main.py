@@ -229,6 +229,11 @@ def run_mission(
         "--execute",
         help="Execute the run synchronously via the selected agent runtime (blocks)",
     ),
+    show_context: bool = typer.Option(
+        False,
+        "--show-context",
+        help="Print the assembled context brief and exit without starting a run (debug)",
+    ),
 ) -> None:
     """Start a Run for the given mission and print the run ID.
 
@@ -240,6 +245,10 @@ def run_mission(
 
     conn = _get_connection()
     lock = _get_lock()
+
+    if show_context:
+        _print_context(conn, mission_id)
+        return
 
     if agent not in known_agents():
         typer.echo(f"Error: unknown agent {agent!r}; known: {known_agents()}", err=True)
@@ -443,6 +452,17 @@ def _run_prompt(conn: sqlite3.Connection, mission_id: str) -> str:
     row = conn.execute("SELECT intent FROM missions WHERE id=?", (mission_id,)).fetchone()
     intent = row[0] if row and row[0] else ""
     return ctx.markdown + ("\n\n---\n\n" + intent if intent else "")
+
+
+def _print_context(conn: sqlite3.Connection, mission_id: str) -> None:
+    """Print the assembled context brief with a provenance/budget header (debug)."""
+    from atlas_runtime.memory_router import estimate_tokens
+
+    ctx = context_service.assemble_context(conn, mission_id=mission_id)
+    typer.echo(f"# context: {len(ctx.sources)} sources, ~{estimate_tokens(ctx.markdown)} tokens")
+    if ctx.sources:
+        typer.echo("# sources: " + ", ".join(ctx.sources))
+    typer.echo(ctx.markdown)
 
 
 @run_app.command("exec")

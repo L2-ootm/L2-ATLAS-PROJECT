@@ -47,6 +47,21 @@ def test_config_get_unknown_key(monkeypatch, tmp_path):
     assert "unknown key" in result.output
 
 
+def test_config_has_context_defaults(monkeypatch, tmp_path):
+    _home(monkeypatch, tmp_path)
+    cfg = cfgsvc.load_config(tmp_path / "config.yaml")
+    assert cfg.context.token_budget == 8000
+    assert cfg.context.enable_semantic is True
+    assert cfg.context.enable_skills is True
+
+
+def test_config_get_context_token_budget(monkeypatch, tmp_path):
+    _home(monkeypatch, tmp_path)
+    result = runner.invoke(app, ["config", "get", "context.token_budget"])
+    assert result.exit_code == 0
+    assert "8000" in result.output
+
+
 def test_config_export_to_stdout(monkeypatch, tmp_path):
     _home(monkeypatch, tmp_path)
     result = runner.invoke(app, ["config", "export"])

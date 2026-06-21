@@ -87,6 +87,27 @@ def test_retry_command_rejects_non_terminal(db, lock, monkeypatch):
     assert "Cannot retry" in result.output
 
 
+def test_run_show_context_prints_brief_and_starts_no_run(db, lock, monkeypatch):
+    """atlas mission run <id> --show-context prints the brief and starts no run."""
+    import atlas_runtime.cli.main as cli_main
+    from atlas_runtime import focus_service, mission_service
+
+    monkeypatch.setattr(cli_main, "_get_connection", lambda: db)
+    monkeypatch.setattr(cli_main, "_get_lock", lambda: lock)
+    focus_service.create_focus(db, lock, title="Ship the executor loop")
+    mission = mission_service.create_mission(db, lock, title="Ctx Mission")
+
+    result = runner.invoke(app, ["mission", "run", mission.id, "--show-context"])
+    assert result.exit_code == 0
+    assert "# context:" in result.output
+    assert "ATLAS Operator Context" in result.output
+    # Pure inspector — no run was created.
+    count = db.execute(
+        "SELECT COUNT(*) FROM runs WHERE mission_id=?", (mission.id,)
+    ).fetchone()[0]
+    assert count == 0
+
+
 def test_status_command_exits_zero(db, monkeypatch):
     """atlas mission status <id> exits 0 and prints 'pending' for a new mission."""
     import atlas_runtime.cli.main as cli_main
