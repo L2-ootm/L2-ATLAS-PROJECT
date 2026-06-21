@@ -60,7 +60,33 @@ services/discord-bot (vendored L2-BOT) → discord.py + aiohttp API :8081 → Di
   `discord stop` cleanly killed the tree. (Full AI cogs need the complete `requirements.txt` incl.
   torch; not required for the browser surface.)
 
-## Deferred (slice 2 — write/management, gated)
+## Delivered (slice 2 — gated writes, Phase C) — 2026-06-21
+
+Write actions now ship as a **two-phase, approval-gated, audited** pipeline (propose → approve →
+execute), satisfying the operating-model non-negotiable. State lives in Python/SQLite; the Rust
+gateway only dispatches the CLI (D-022).
+
+- **Schema** (`packages/atlas-core`): `AuditEvent.event_type` gains `discord_action` (TEXT column,
+  no migration); new frozen `DiscordApproval` model; migration `0012_discord_approvals.sql`.
+- **Write client** `discord_api.py`: `_request` + typed wrappers (create/edit/delete channel & role,
+  send embed, set permissions), each forwarding a `reason`.
+- **Sidecar** `bot/api.py`: write `reason` parameterized (default `Dashboard`) for real Discord
+  audit-log attribution.
+- **Service** `discord_service.py`: propose (pending row + `approval` audit), approve (sidecar write
+  + flip `executed`/`failed` + `discord_action`/`failure` audit), reject. `params` redacted once and
+  is the single source of truth for audit + execution. Reuses `mission_service.ensure_operator_run`.
+- **CLI** `atlas discord propose|approvals|approve|reject` (`--json` for dispatch).
+- **Gateway**: `POST /v1/discord/writes`, `GET /v1/discord/approvals`,
+  `POST /v1/discord/approvals/{id}/{approve,reject}` (dispatch-only).
+- **Cockpit** `/discord`: create/edit/delete channel & role, send embed, permission-overwrite modals
+  (clean glass) that PROPOSE (never execute inline) + a Pending Approvals panel with Approve/Reject.
+- **Coexistence guard**: best-effort non-fatal warning when the sidecar and the foundation messaging
+  gateway share a bot token (fingerprint compare; raw token never logged).
+- **Tests**: +28 agent-runtime (schema/api/service/cli/control), +7 atlas-core, +1 sidecar, +4 Rust.
+
+**Still deferred:** bot activity/stats dashboard, member/role assignment, MCP formalization.
+
+## Deferred (original slice 2 scope — write/management, gated)
 
 L2-BOT already exposes the endpoints; ATLAS write actions must be **approval-gated + audited** per the
 operating-model non-negotiables: create/edit/delete channels & roles, send embeds, permission

@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0.5
 milestone_name: Mass-Adoption Launch Wedge
 status: in_progress
-last_updated: "2026-06-21T23:30:00.000Z"
-last_activity: 2026-06-21 -- Phase B COMPLETE (Context Intelligence, B1-B6) on branch feat/phase-b-context-intelligence (stacked on Phase A): budget-aware MemoryRouter unifying recent-runs/prior-failures/observations/wiki-knowledge/skills under a token budget with boundary redaction + provenance; semantic embeddings real (sqlite-vec+fastembed, 384-dim, embed-on-write + `atlas wiki reindex`, FTS5 fallback preserved); ContextConfig + `atlas mission run --show-context`. 266 Python (229 agent-runtime + 37 atlas-core) + 37 wiki + 69 Rust green
-prior_activity: 2026-06-21 -- Phase A COMPLETE (A1-A6): A5 failed/cancelled mission retry (reopen-in-place service + `atlas mission retry` + POST /v1/missions/{id}/retry + cockpit Retry button); A6 config YAML export/import round-trip. 244 Python + 69 Rust green; cockpit build clean
+last_updated: "2026-06-22T00:00:00.000Z"
+last_activity: 2026-06-21 -- Phase C COMPLETE (Discord Write Surface, C-WP1..8) on branch feat/phase-c-discord-write: two-phase approval-gated + audited Discord writes (propose -> approve -> execute) with state in Python/SQLite and Rust gateway dispatch-only (D-022). DiscordApproval model + migration 0012 + discord_action audit type; discord_api write client; sidecar reason parameterized; discord_service state machine (params redacted once = single source of truth for audit + exec); `atlas discord propose|approvals|approve|reject`; 4 gateway routes; cockpit write/approve modals + Pending Approvals panel; best-effort token-coexistence warning. 301 Python (257 agent-runtime + 44 atlas-core) + 37 wiki + 73 Rust green; cockpit tsc/build clean
+prior_activity: 2026-06-21 -- Phase B COMPLETE (Context Intelligence, B1-B6): budget-aware MemoryRouter unifying recent-runs/prior-failures/observations/wiki-knowledge/skills under a token budget with boundary redaction + provenance; semantic embeddings real (sqlite-vec+fastembed, 384-dim, embed-on-write + `atlas wiki reindex`, FTS5 fallback preserved); ContextConfig + `atlas mission run --show-context`
 progress:
   total_phases: 13
   completed_phases: 1
@@ -15,6 +15,49 @@ progress:
 ---
 
 # STATE — L2 ATLAS
+
+## Phase C — Discord Write Surface (2026-06-21, branch `feat/phase-c-discord-write`)
+
+Closed the gated slice-2 deferral of the Discord surface: the vendored L2-BOT sidecar already
+exposed every write endpoint, but ATLAS could only read. Phase C adds **approval-gated, audited**
+writes as a two-phase pipeline. Architecture decision (against the pre-analysis's gateway-resident
+option): approval state lives in **Python/SQLite**, the Rust gateway stays **dispatch-only** (D-022),
+and the lifecycle is **audit-first** (D-002) — the schema already anticipated it (`event_type`
+`approval` + new `discord_action`, `ToolCall.requires_approval`).
+
+- **C-WP1 — schema.** `packages/atlas-core` (ATLAS-owned, not the D-001 Hermes foundation): added
+  `discord_action` to the `AuditEvent.event_type` Literal (TEXT column → no migration); new frozen
+  `DiscordApproval` (action/status Literals, JSON-string `params`, operator `run_id`); migration
+  `0012_discord_approvals.sql` (additive queue table, `run_id` not FK-enforced — the emitted audit
+  event carries the `runs(id)` FK).
+- **C-WP2 — write client.** `discord_api._request` + typed wrappers for every sidecar mutation
+  (create/edit/delete channel & role, send embed, set permissions); HTTP `{error}` bodies surfaced.
+- **C-WP3 — sidecar attribution.** `bot/api.py` write handlers thread a body `reason` into Discord's
+  audit log (default `Dashboard`, backward-compatible); tolerant `_reason_from` for DELETE bodies.
+- **C-WP4 — state machine.** `discord_service.propose/approve/reject/list`. propose → pending row +
+  `approval` audit; approve → sidecar write + flip `executed`/`failed` + `discord_action`/`failure`
+  audit; reject → `rejected` + audit. `params` is secret-**redacted once** and is the single source
+  of truth for both audit and execution (a smuggled secret never persists or reaches Discord).
+  Factored `mission_service.ensure_operator_run` (shared with the wiki precedent) for the FK.
+- **C-WP5 — CLI.** `atlas discord propose <action> --guild [--target] [--params|flags] --reason`,
+  `approvals [--status]`, `approve <id>`, `reject <id>` (each `--json`). approve exits 0 on a
+  processed outcome (executed OR failed) so the status reaches the gateway.
+- **C-WP6 — gateway.** `POST /v1/discord/writes`, `GET /v1/discord/approvals`,
+  `POST /v1/discord/approvals/{id}/{approve,reject}` — dispatch-only, user values after `--`.
+- **C-WP7 — cockpit.** `/discord` write/approve UI: create/edit/delete channel & role, send embed,
+  permission-overwrite modals (clean glass) that PROPOSE (never execute inline) + a Pending Approvals
+  panel (Approve/Reject). `api.ts` client + types; graceful offline.
+- **C-WP8 — coexistence guard.** Best-effort, non-fatal warning when the sidecar and the foundation
+  messaging gateway share a bot token (sha256 fingerprint compare; raw token never logged).
+
+Tests: agent-runtime **257** (was 229), atlas-core **44** (was 37), wiki **37**, Rust **73** (was
+69), sidecar `test_phase06_api` **7** (pytest installed into the bot venv as a dev dep). Cockpit
+tsc/lint/build clean. Atomic commit per WP (C-WP1..C-WP8).
+
+**Live verification (manual, real creds):** `atlas discord start` → `atlas discord propose
+create_channel --guild <id> --name zzz-atlas-test` → `approvals` → `approve <id>` creates the channel
++ emits a `discord_action` event → propose/approve `delete_channel` to clean up. Use a throwaway
+channel.
 
 ## Phase A — Foundation Polish (2026-06-21, branch `feat/phase-a-foundation-polish`)
 

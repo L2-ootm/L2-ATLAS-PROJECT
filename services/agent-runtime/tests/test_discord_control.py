@@ -26,6 +26,28 @@ def test_status_stopped_when_unreachable(monkeypatch) -> None:
     assert dc.status() == {"running": False, "pid": None, "ready": False, "guild_count": 0}
 
 
+def test_coexistence_warning_on_shared_token(monkeypatch) -> None:
+    monkeypatch.setattr(dc, "_bot_token", lambda: "same-token")
+    monkeypatch.setattr(dc, "_foundation_discord_token", lambda: "same-token")
+    warning = dc.coexistence_warning()
+    assert warning is not None and "share a bot token" in warning
+
+
+def test_coexistence_silent_on_distinct_or_missing(monkeypatch) -> None:
+    monkeypatch.setattr(dc, "_bot_token", lambda: "bot-token")
+    monkeypatch.setattr(dc, "_foundation_discord_token", lambda: "other-token")
+    assert dc.coexistence_warning() is None
+    # Missing foundation token -> no warning (can't tell).
+    monkeypatch.setattr(dc, "_foundation_discord_token", lambda: None)
+    assert dc.coexistence_warning() is None
+
+
+def test_token_fingerprint_never_returns_raw_token() -> None:
+    fp = dc._token_fingerprint("super-secret-token")
+    assert fp is not None and "secret" not in fp and len(fp) == 12
+    assert dc._token_fingerprint(None) is None
+
+
 def test_status_running_from_health(monkeypatch) -> None:
     dc._write_state({"pid": 4242})
     monkeypatch.setattr(dc, "_health_payload", lambda timeout=1.0: {"ready": True, "guild_count": 3})
