@@ -103,6 +103,15 @@ def test_fully_patched_no_tracker_is_adopted_without_error(db_path) -> None:
     conn.close()
 
 
+def test_discord_approvals_table_created(db_path) -> None:
+    # 0012 creates the gated-write queue table mirroring DiscordApproval.
+    conn = db.connect(db_path)
+    db.apply_migrations(conn)
+    cols = _cols(conn, "discord_approvals")
+    assert {"id", "action", "guild_id", "status", "params", "requested_at"} <= cols
+    conn.close()
+
+
 def test_migration_status_reflects_applied_and_pending(db_path) -> None:
     conn = db.connect(db_path)
     before = db.migration_status(conn)
