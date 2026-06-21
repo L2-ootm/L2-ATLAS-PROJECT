@@ -137,7 +137,11 @@ backfilled embeddings cleared). Phase B (Context Intelligence, B1–B6) fully co
 
 ## Current Position
 
-Phase: 10.0.1 — not started (planned next: Repo Hygiene & Trust Package, v1.0.5 wedge)
+Phase: 10.0.1 — ✅ COMPLETE + VERIFIED (2026-06-21). Trust package landed (LICENSE/MIT,
+  SECURITY/CONTRIBUTING/CODE_OF_CONDUCT/LIMITATIONS/ARCHITECTURE/ATTRIBUTION, issue templates);
+  verification pass re-ran the secret scan clean and closed the criterion-4 gap by adding
+  `.github/labels.yml` (good first issue scheme). Next unstarted phase: 10.0.2 — One-Command
+  Install Path (0 plans; start with `/gsd-discuss-phase 10.0.2`).
 Plan: 10.0 closed; 10.1 not yet planned
 Status: in_progress
 In-flight (ahead of spine, operator-directed): 10.0.3 ATLAS Identity & Cockpit Redesign — brand
