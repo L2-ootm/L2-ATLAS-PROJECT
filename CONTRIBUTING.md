@@ -29,6 +29,13 @@ See `ARCHITECTURE.md` for the full system overview.
 - **D-012:** Pydantic v2 models are the schema source of truth.
 - **D-013:** All models are frozen. `model_dump()` produces JSON-safe output.
 
+## Good First Issues
+
+New here? Look for issues labeled
+[`good first issue`](https://github.com/L2-ootm/L2-ATLAS-PROJECT/labels/good%20first%20issue) —
+they are small, well-scoped, and a good entry point. The full label scheme lives in
+`.github/labels.yml` (maintainers sync it with a label-sync tool).
+
 ## Pull Requests
 
 1. Fork the repository and create a feature branch
