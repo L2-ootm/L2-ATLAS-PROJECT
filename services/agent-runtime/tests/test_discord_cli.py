@@ -65,3 +65,72 @@ def test_start_json_reports_status(monkeypatch):
     assert result.exit_code == 0
     data = json.loads(result.output)
     assert data["ok"] is True and data["pid"] == 8200
+
+
+# ---------------------------------------------------------------------------
+# Gated writes — propose / approvals / approve / reject (Phase C)
+# ---------------------------------------------------------------------------
+
+
+def _isolate_db(monkeypatch):
+    """Point the discord CLI at an in-memory DB with all migrations applied."""
+    import sqlite3
+    import threading
+
+    from atlas_runtime import db as dbmod
+    from atlas_runtime.cli import discord as cli_discord
+
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    conn.execute("PRAGMA foreign_keys = ON")
+    for sql_path in sorted(dbmod.MIGRATIONS_DIR.glob("*.sql")):
+        conn.executescript(sql_path.read_text(encoding="utf-8"))
+    monkeypatch.setattr(cli_discord, "_get_connection", lambda: conn)
+    monkeypatch.setattr(cli_discord, "_get_lock", lambda: threading.Lock())
+    return conn
+
+
+def test_propose_then_approvals_json(monkeypatch):
+    _isolate_db(monkeypatch)
+    result = runner.invoke(
+        app,
+        ["discord", "propose", "create_channel", "--guild", "g1", "--name", "ops", "--json"],
+    )
+    assert result.exit_code == 0
+    approval = json.loads(result.output)
+    assert approval["status"] == "pending" and approval["action"] == "create_channel"
+
+    listed = runner.invoke(app, ["discord", "approvals", "--json"])
+    ids = [a["id"] for a in json.loads(listed.output)["approvals"]]
+    assert approval["id"] in ids
+
+
+def test_propose_invalid_action_exits_1(monkeypatch):
+    _isolate_db(monkeypatch)
+    result = runner.invoke(app, ["discord", "propose", "nuke", "--guild", "g1", "--json"])
+    assert result.exit_code == 1
+    assert "unknown discord action" in result.output
+
+
+def test_approve_executes(monkeypatch):
+    _isolate_db(monkeypatch)
+    from atlas_runtime import discord_api
+
+    monkeypatch.setattr(discord_api, "create_channel", lambda g, **kw: {"id": "1", "name": kw["name"]})
+    proposed = runner.invoke(
+        app, ["discord", "propose", "create_channel", "--guild", "g1", "--name", "ops", "--json"]
+    )
+    aid = json.loads(proposed.output)["id"]
+    approved = runner.invoke(app, ["discord", "approve", aid, "--json"])
+    assert approved.exit_code == 0
+    assert json.loads(approved.output)["status"] == "executed"
+
+
+def test_reject_marks_rejected(monkeypatch):
+    _isolate_db(monkeypatch)
+    proposed = runner.invoke(
+        app, ["discord", "propose", "create_role", "--guild", "g1", "--name", "mod", "--json"]
+    )
+    aid = json.loads(proposed.output)["id"]
+    rejected = runner.invoke(app, ["discord", "reject", aid, "--reason", "no", "--json"])
+    assert rejected.exit_code == 0
+    assert json.loads(rejected.output)["status"] == "rejected"
