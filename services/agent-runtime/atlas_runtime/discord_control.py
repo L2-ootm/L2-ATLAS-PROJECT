@@ -14,6 +14,7 @@ gateway handshake; it returns once spawned and the UI polls status.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import pathlib
@@ -56,6 +57,63 @@ def bot_python() -> str:
     else:
         venv = DISCORD_DIR / ".venv" / "bin" / "python"
     return str(venv) if venv.exists() else "python"
+
+
+def _token_fingerprint(token: str | None) -> str | None:
+    """A non-reversible 12-hex fingerprint of a bot token (never the token itself)."""
+    token = (token or "").strip()
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()[:12] if token else None
+
+
+def _bot_token() -> str | None:
+    """The vendored bot's DISCORD_BOT_TOKEN from services/discord-bot/.env (best-effort)."""
+    env_path = DISCORD_DIR / ".env"
+    try:
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith("DISCORD_BOT_TOKEN") and "=" in line:
+                return line.split("=", 1)[1].strip().strip('"').strip("'")
+    except Exception:
+        return None
+    return None
+
+
+def _foundation_discord_token() -> str | None:
+    """The foundation messaging gateway's Discord token from ~/.hermes/config.yaml
+    (best-effort; absent on most installs)."""
+    cfg = pathlib.Path.home() / ".hermes" / "config.yaml"
+    try:
+        import yaml  # lazy; only needed for the coexistence check
+
+        data = yaml.safe_load(cfg.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return None
+    # Walk channels.discord.* looking for a token-bearing value, tolerant of layout.
+    try:
+        node = data.get("channels", {}).get("discord", {})
+        for key in ("token", "bot_token", "api_key"):
+            val = node.get(key)
+            if isinstance(val, str) and val and not val.startswith("env:"):
+                return val
+    except Exception:
+        return None
+    return None
+
+
+def coexistence_warning() -> str | None:
+    """Non-fatal warning when the vendored sidecar and the foundation messaging
+    gateway are configured against the SAME bot token (duplicate Discord gateway
+    connections would disconnect one). Returns None when it can't tell — it never
+    blocks startup and never logs the raw token (only a fingerprint comparison)."""
+    a = _token_fingerprint(_bot_token())
+    b = _token_fingerprint(_foundation_discord_token())
+    if a and b and a == b:
+        return (
+            "warning: the vendored Discord sidecar and the foundation messaging "
+            "gateway share a bot token — running both will disconnect one. Use a "
+            "separate bot token, or do not start the foundation Discord adapter."
+        )
+    return None
 
 
 def _health_payload(timeout: float = 1.0) -> dict | None:
@@ -118,7 +176,11 @@ def start(poll_seconds: float = 0.0) -> tuple[bool, str]:
         **kwargs,
     )
     _write_state({"pid": proc.pid})
-    return True, f"discord bot starting (pid {proc.pid}); {DISCORD_URL} shortly"
+    message = f"discord bot starting (pid {proc.pid}); {DISCORD_URL} shortly"
+    warning = coexistence_warning()
+    if warning:
+        message = f"{message} — {warning}"
+    return True, message
 
 
 def stop() -> tuple[bool, str]:
