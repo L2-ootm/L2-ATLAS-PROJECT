@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0.5
 milestone_name: Mass-Adoption Launch Wedge
 status: in_progress
-last_updated: "2026-06-21T20:30:00.000Z"
-last_activity: 2026-06-21 -- Phase A COMPLETE (A1-A6) on branch feat/phase-a-foundation-polish: A5 failed/cancelled mission retry (reopen-in-place service + `atlas mission retry` + POST /v1/missions/{id}/retry + cockpit Retry button); A6 config YAML export/import round-trip (replace semantics, env:VAR-safe, inline-secret rejected). 244 Python (207 agent-runtime + 37 atlas-core) + 69 Rust tests green; cockpit tsc+vite build clean
-prior_activity: 2026-06-21 -- L2-BOT vendored as ATLAS-controlled Discord sidecar (read-only browser), setup wizard + config service, channel management cockpit, model registry panel, BSP auto-tiling console, full session documentation (FINAL-STATE-AND-NEXT.md), 44 gateway endpoints, 182+68 tests green
+last_updated: "2026-06-21T23:30:00.000Z"
+last_activity: 2026-06-21 -- Phase B COMPLETE (Context Intelligence, B1-B6) on branch feat/phase-b-context-intelligence (stacked on Phase A): budget-aware MemoryRouter unifying recent-runs/prior-failures/observations/wiki-knowledge/skills under a token budget with boundary redaction + provenance; semantic embeddings real (sqlite-vec+fastembed, 384-dim, embed-on-write + `atlas wiki reindex`, FTS5 fallback preserved); ContextConfig + `atlas mission run --show-context`. 266 Python (229 agent-runtime + 37 atlas-core) + 37 wiki + 69 Rust green
+prior_activity: 2026-06-21 -- Phase A COMPLETE (A1-A6): A5 failed/cancelled mission retry (reopen-in-place service + `atlas mission retry` + POST /v1/missions/{id}/retry + cockpit Retry button); A6 config YAML export/import round-trip. 244 Python + 69 Rust green; cockpit build clean
 progress:
   total_phases: 13
   completed_phases: 1
@@ -54,6 +54,43 @@ Closed the four foundation gaps that blocked the just-shipped cockpit (see
 
 Verification: 244 Python (207 agent-runtime + 37 atlas-core) + 69 Rust tests green; cockpit
 tsc+vite build clean. Phase A (Foundation Polish, A1–A6) fully complete.
+
+## Phase B — Context Intelligence (2026-06-21, branch `feat/phase-b-context-intelligence`, stacked on Phase A)
+
+Deepened what the agent knows at run time. Grounding correction recorded during planning: FTS5
+wiki retrieval was ALREADY wired into the brief (retrospective's B2 was stale); semantic search was
+a non-functional stub (`wiki_vec` never created, embeddings never computed); the migration runner
+cannot create a `vec0` table (plain connection, no extension) — so the vec table is created lazily
+in Python.
+
+- **B-WP1 — MemoryRouter spine.** New `memory_router.py`: a budget-aware assembler that ranks,
+  token-budgets (tokenizer-free chars/4 `estimate_tokens`), and secret-redacts the dynamic brief
+  sections through pluggable `Retriever`s. Ported the three existing inline retrievals (recent runs,
+  observations, wiki FTS5) onto it; `context_service.assemble_context` refactored to drive it,
+  byte-stable for existing sections. Redaction now happens once at the router boundary.
+- **B-WP2 — Prior-failures retriever.** Mines this mission's failed runs + `failure` audit events,
+  dedupes by normalized message, surfaces recurring failures first (×N). Mission-scoped — pairs with
+  the Phase A retry loop so a retried mission inherits what went wrong.
+- **B-WP3 — Skill matching.** Parses the in-repo `docs/imports/SKILL_INVENTORY.md` (class-tagged
+  rows), matches curated skills to Focus terms; absent file → no-op (no sibling-repo coupling).
+- **B-WP4 — Semantic storage.** De-risk PASSED on this Windows box: sqlite-vec + fastembed
+  (BAAI/bge-small-en-v1.5, 384-dim) load and round-trip (symlink warning, falls back, succeeds).
+  `0011_wiki_embeddings_meta.sql` (plain bookkeeping table); `wiki_service` lazily creates the `vec0`
+  `wiki_vec` table and embeds on write — strictly best-effort (a missing dep / embed failure is a
+  logged no-op; the page write never fails). `atlas wiki reindex` backfills stale pages. KNN read uses
+  the required `k = ?` constraint. Deps are the existing `wiki-runtime[semantic]` extra.
+- **B-WP5 — Hybrid knowledge.** `HybridKnowledgeRetriever` blends semantic vector hits ahead of FTS5
+  hits (deduped) when embeddings exist; pure FTS5 (no regression) when they don't.
+- **B-WP6 — Config + inspector.** `ContextConfig` (token_budget=8000, enable_semantic, enable_skills)
+  read by `assemble_context`; `default_router` toggles. `atlas mission run --show-context` prints the
+  assembled brief (sources/token header) without starting a run.
+
+Verification: 266 Python (229 agent-runtime + 37 atlas-core) + 37 wiki-runtime + 69 Rust tests green;
+end-to-end smoke confirmed the full brief (all sections), semantic embedding, and reindex. NOTE: the
+smoke transiently mutated the real `~/.atlas/atlas.db` (the CLI DB path ignores `ATLAS_HOME` — see
+memory `cli-db-path-not-atlas-home`); state was hand-restored (prior Focus reactivated, artifacts +
+backfilled embeddings cleared). Phase B (Context Intelligence, B1–B6) fully complete. Six WP commits
++ STATE on `feat/phase-b-context-intelligence`.
 
 ## Current Position
 
