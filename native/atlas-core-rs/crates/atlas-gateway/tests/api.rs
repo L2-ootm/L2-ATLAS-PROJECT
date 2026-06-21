@@ -252,6 +252,69 @@ async fn discord_structure_returns_cli_json() {
 }
 
 #[tokio::test]
+async fn discord_propose_returns_cli_json() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"id": "ap1", "status": "pending", "action": "create_channel", "summary": "create text channel #ops"}"#,
+        &stub_dir,
+    );
+    let (status, body) = post_json(
+        &router,
+        "/v1/discord/writes",
+        json!({"action": "create_channel", "guild": "g1", "params": {"name": "ops"}}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["id"], "ap1");
+    assert_eq!(body["status"], "pending");
+}
+
+#[tokio::test]
+async fn discord_approvals_returns_cli_json() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"approvals": [{"id": "ap1", "status": "pending", "action": "create_channel"}]}"#,
+        &stub_dir,
+    );
+    let (status, body) = get_json(&router, "/v1/discord/approvals").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["approvals"][0]["id"], "ap1");
+}
+
+#[tokio::test]
+async fn discord_approve_returns_cli_json() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"id": "ap1", "status": "executed", "result": "ok"}"#,
+        &stub_dir,
+    );
+    let (status, body) = post_json(&router, "/v1/discord/approvals/ap1/approve", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["status"], "executed");
+}
+
+#[tokio::test]
+async fn discord_reject_returns_cli_json() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"id": "ap1", "status": "rejected", "reason": "not now"}"#,
+        &stub_dir,
+    );
+    let (status, body) =
+        post_json(&router, "/v1/discord/approvals/ap1/reject", json!({"reason": "not now"})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["status"], "rejected");
+}
+
+#[tokio::test]
 async fn discord_start_returns_cli_json() {
     let dir = tempfile::tempdir().unwrap();
     let stub_dir = tempfile::tempdir().unwrap();
