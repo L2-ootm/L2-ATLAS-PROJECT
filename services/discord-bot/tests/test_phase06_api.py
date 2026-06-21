@@ -36,6 +36,23 @@ async def test_channel_create(api_client, mock_guild, mock_channel):
     assert resp2.status == 404
 
 
+async def test_channel_create_threads_reason(api_client, mock_guild, mock_channel):
+    """POST /guilds/{id}/channels forwards a supplied `reason` to Discord's audit log.
+
+    ATLAS sends an attributed reason (e.g. "ATLAS operator approved create_channel");
+    when none is supplied the handler falls back to 'Dashboard'.
+    """
+    guild_id = mock_guild.id
+
+    resp = await api_client.post(
+        f'/guilds/{guild_id}/channels',
+        json={'name': 'general', 'type': 'text', 'reason': 'ATLAS operator approved'}
+    )
+    assert resp.status == 200
+    call_kwargs = mock_guild.create_text_channel.call_args.kwargs
+    assert call_kwargs.get('reason') == 'ATLAS operator approved'
+
+
 async def test_channel_edit_notfound(api_client, mock_guild):
     """PATCH /guilds/{id}/channels/{cid} returns 404 for unknown channel."""
     guild_id = mock_guild.id
