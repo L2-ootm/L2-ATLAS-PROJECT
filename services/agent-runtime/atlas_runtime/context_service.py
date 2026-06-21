@@ -6,15 +6,19 @@ Current Focus, the run's Project, and recent runs for the mission, renders a
 **secret-redacted** markdown brief (suitable to seed `CLAUDE.md` in the project
 cwd or pass as system context), and reports provenance (which sources fed it).
 
+The static sections (Focus, Goals, Project, Operating Contract) are rendered here;
+the dynamic, retrieved sections (recent runs, loop observations, wiki knowledge,
+and — as Phase B lands — prior failures and relevant skills) are delegated to the
+budget-aware `MemoryRouter` (`memory_router.py`), which ranks, budgets, and
+redacts them.
+
 Trust deltas honored (see .planning/prep/intelligence-layer-alignment.md):
   - Secret redaction: every dynamic value passes through SECRET_PATTERNS before
-    it can enter an agent prompt.
+    it can enter an agent prompt (the router redacts retrieved snippets; this
+    module redacts the static sections it renders directly).
   - Provenance: `AgentContext.sources` records exactly what contributed
-    (focus:<id>, project:<id>, run:<id>), traceable per the MemoryProvenance
-    philosophy. (Writing MemoryProvenance rows is a later extension.)
-
-Wiki pages are a documented extension point: the wiki lives in the optional
-`atlas-wiki` package, so it is gated and skipped when unavailable.
+    (focus:<id>, project:<id>, run:<id>, ...), traceable per the MemoryProvenance
+    philosophy.
 """
 from __future__ import annotations
 
@@ -22,41 +26,21 @@ import re
 import sqlite3
 from dataclasses import dataclass, field
 
-from atlas_core.schemas.core import SECRET_PATTERNS
-
 from atlas_runtime import focus_service, goal_service, mission_service, project_service
+from atlas_runtime.memory_router import RouterQuery, default_router, redact
 
-# Memory router (item #1) — FTS5 retrieval over the LLM Wiki into the brief.
-# We query the shared wiki_pages/wiki_fts tables directly (same connection) rather
-# than depending on the optional atlas-wiki package, and gate on table presence so
-# this is safe on databases without the wiki schema.
+# `redact` is re-exported from memory_router so existing callers (and tests) keep
+# using `context_service.redact`; it is the single secret-redaction implementation.
+__all__ = ["AgentContext", "assemble_context", "redact"]
+
+# Keyword extraction for the wiki/skill retrievers — turns the Focus + open goals
+# into FTS query terms.
 _KNOWLEDGE_TOKEN = re.compile(r"[A-Za-z0-9]+")
 _KNOWLEDGE_STOPWORDS = frozenset(
     {"the", "a", "an", "and", "or", "to", "of", "for", "in", "on", "with", "is",
      "it", "this", "that", "be", "as", "by", "at", "from", "into", "via"}
 )
 _KNOWLEDGE_MAX_TERMS = 12
-_KNOWLEDGE_MAX_PAGES = 5
-_KNOWLEDGE_SNIPPET_CHARS = 400
-_KNOWLEDGE_BUDGET_CHARS = 1400
-
-
-def _redact_match(match: "object") -> str:
-    # All three SECRET_PATTERNS capture the secret value in group(2); keep the
-    # surrounding key/structure, replace just the value.
-    full = match.group(0)  # type: ignore[attr-defined]
-    secret = match.group(2)  # type: ignore[attr-defined]
-    return full.replace(secret, "[REDACTED]")
-
-
-def redact(text: str) -> str:
-    """Replace credential values (token/api_key/secret/password/bearer) with
-    [REDACTED], preserving surrounding structure."""
-    if not text:
-        return text
-    for pattern in SECRET_PATTERNS:
-        text = pattern.sub(_redact_match, text)
-    return text
 
 
 @dataclass(frozen=True)
@@ -94,26 +78,6 @@ def _render_goal_nodes(
         _render_goal_nodes(node.get("children") or [], depth + 1, lines, sources)
 
 
-def _recent_runs(conn: sqlite3.Connection, mission_id: str, limit: int) -> list[tuple[str, str, str, str]]:
-    """(run_id, status, started_at, summary) newest-first for a mission."""
-    cursor = conn.execute(
-        "SELECT id, status, started_at, summary FROM runs WHERE mission_id=? "
-        "ORDER BY started_at DESC LIMIT ?",
-        (mission_id, limit),
-    )
-    return [(r[0], r[1], r[2], r[3] or "") for r in cursor]
-
-
-def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
-    return (
-        conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type IN ('table','view') AND name=?",
-            (name,),
-        ).fetchone()
-        is not None
-    )
-
-
 def _collect_open_titles(nodes: list[dict], out: list[str]) -> None:
     """Gather open goal/task titles from the goal tree to seed the wiki query."""
     for node in nodes:
@@ -126,7 +90,7 @@ def _collect_open_titles(nodes: list[dict], out: list[str]) -> None:
 
 
 def _knowledge_terms(focus_title: str | None, tree: list[dict]) -> list[str]:
-    """Deduplicated keyword terms from the Focus + open goals/tasks, for FTS5."""
+    """Deduplicated keyword terms from the Focus + open goals/tasks, for retrieval."""
     titles = [focus_title or ""]
     _collect_open_titles(tree, titles)
     seen: set[str] = set()
@@ -140,40 +104,6 @@ def _knowledge_terms(focus_title: str | None, tree: list[dict]) -> list[str]:
             if len(terms) >= _KNOWLEDGE_MAX_TERMS:
                 return terms
     return terms
-
-
-def _relevant_knowledge(
-    conn: sqlite3.Connection, terms: list[str]
-) -> tuple[list[str], list[str]]:
-    """Retrieve top-k wiki pages matching the terms (FTS5/bm25), redacted and
-    budget-capped. Returns (markdown lines, provenance sources). Safe on DBs
-    without the wiki schema (returns empties)."""
-    if not terms or not _table_exists(conn, "wiki_fts"):
-        return [], []
-    # Terms are bare [A-Za-z0-9]+ tokens, so quoting each is injection-safe and
-    # neutralizes FTS5 operator parsing; OR-join for recall, bm25 ranks relevance.
-    match = " OR ".join(f'"{t}"' for t in terms)
-    try:
-        rows = conn.execute(
-            "SELECT wp.id, wp.slug, wp.title, substr(wp.body,1,?) "
-            "FROM wiki_fts JOIN wiki_pages wp ON wiki_fts.rowid = wp.rowid "
-            "WHERE wiki_fts MATCH ? ORDER BY bm25(wiki_fts) LIMIT ?",
-            (_KNOWLEDGE_SNIPPET_CHARS, match, _KNOWLEDGE_MAX_PAGES),
-        ).fetchall()
-    except sqlite3.Error:
-        return [], []
-    lines: list[str] = []
-    sources: list[str] = []
-    used = 0
-    for page_id, slug, title, snippet in rows:
-        snippet = " ".join((snippet or "").split())  # collapse whitespace/newlines
-        entry = f"- **{redact(title)}** (`{redact(slug)}`): {redact(snippet)}"
-        if lines and used + len(entry) > _KNOWLEDGE_BUDGET_CHARS:
-            break
-        lines.append(entry)
-        sources.append(f"wiki:{page_id}")
-        used += len(entry)
-    return lines, sources
 
 
 def assemble_context(
@@ -231,37 +161,21 @@ def assemble_context(
             lines.append(f"{redact(project.name)} — `{redact(project.root_path)}`")
             lines.append("")
 
-    if mission_id is not None:
-        runs = _recent_runs(conn, mission_id, max_runs)
-        if runs:
-            lines.append(f"## Recent Runs (mission {mission_id})")
-            for run_id, status, started_at, summary in runs:
-                sources.append(f"run:{run_id}")
-                summary_txt = f": {redact(summary)}" if summary else ""
-                lines.append(f"- **{status}** {started_at}{summary_txt}")
-            lines.append("")
-
-    # Recent loop observations (WP-5 compounding loop) — what prior runs learned,
-    # fed forward so the next run inherits it. Newest first, bounded.
-    recent_obs = goal_service.list_observations(conn, limit=max_runs)
-    if recent_obs:
-        lines.append("## Recent Observations")
-        for obs in recent_obs:
-            sources.append(f"observation:{obs.id}")
-            lines.append(f"- _({redact(obs.source)})_ {redact(obs.body)}")
-        lines.append("")
-
-    # Memory router (item #1) — retrieve the operator's own knowledge (LLM Wiki,
-    # FTS5) relevant to the Focus + open goals, so the run inherits what is already
-    # written down instead of re-deriving it. Redacted, budget-capped, provenance.
-    if focus is not None:
-        k_lines, k_sources = _relevant_knowledge(conn, _knowledge_terms(focus.title, tree))
-        if k_lines:
-            lines.append("## Relevant Knowledge")
-            lines.append("_Retrieved from the LLM Wiki (FTS5), most relevant first._")
-            lines.extend(k_lines)
-            lines.append("")
-            sources.extend(k_sources)
+    # Dynamic, retrieved sections (recent runs, loop observations, wiki knowledge,
+    # and — as Phase B lands — prior failures, relevant skills): ranked, budgeted,
+    # and redacted by the MemoryRouter. Terms come from the Focus + open goals; the
+    # wiki retriever no-ops when there is no focus (empty terms).
+    terms = _knowledge_terms(focus.title, tree) if focus is not None else []
+    query = RouterQuery(
+        terms=tuple(terms),
+        has_focus=focus is not None,
+        mission_id=mission_id,
+        project_id=resolved_project_id,
+        max_runs=max_runs,
+    )
+    dyn_lines, dyn_sources = default_router().assemble(conn, query)
+    lines.extend(dyn_lines)
+    sources.extend(dyn_sources)
 
     # Loop-engineering operating contract (Layer 7) — turns the context above
     # into instructions, so the run is driven by the synthesized brief rather
