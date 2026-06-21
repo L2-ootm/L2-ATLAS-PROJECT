@@ -82,6 +82,53 @@ def test_archive_mission_rejects_pending(db, lock):
         archive_mission(db, lock, mission_id=mission.id, delete_after_days=7)
 
 
+@pytest.mark.parametrize("terminal", ["failed", "cancelled"])
+def test_retry_mission_reopens_terminal_state(db, lock, terminal):
+    """retry_mission() cycles a failed/cancelled mission back to pending."""
+    from atlas_runtime.mission_service import create_mission, retry_mission
+
+    mission = create_mission(db, lock, title="Retry Test")
+    db.execute("UPDATE missions SET status=? WHERE id=?", (terminal, mission.id))
+    db.commit()
+
+    reopened = retry_mission(db, lock, mission_id=mission.id)
+    assert reopened.status == "pending"
+    row = db.execute("SELECT status FROM missions WHERE id=?", (mission.id,)).fetchone()
+    assert row[0] == "pending"
+
+
+@pytest.mark.parametrize("state", ["pending", "running", "succeeded"])
+def test_retry_mission_rejects_non_terminal(db, lock, state):
+    """retry_mission() refuses any mission not failed/cancelled."""
+    from atlas_runtime.mission_service import create_mission, retry_mission
+
+    mission = create_mission(db, lock, title="Bad Retry")
+    db.execute("UPDATE missions SET status=? WHERE id=?", (state, mission.id))
+    db.commit()
+
+    with pytest.raises(ValueError, match="Cannot retry"):
+        retry_mission(db, lock, mission_id=mission.id)
+
+
+def test_retry_mission_preserves_prior_runs(db, lock):
+    """Reopening a mission leaves its earlier run rows attached as history."""
+    from atlas_runtime.mission_service import create_mission, retry_mission
+    from atlas_runtime import run_service
+
+    mission = create_mission(db, lock, title="History Test")
+    run = run_service.start_run(db, lock, mission_id=mission.id)
+    run_service.complete_run(
+        db, lock, run_id=run.id, mission_id=mission.id, status="failed"
+    )
+
+    retry_mission(db, lock, mission_id=mission.id)
+
+    assert db.execute("SELECT 1 FROM runs WHERE id=?", (run.id,)).fetchone() is not None
+    # After reopen, start_run's pending precondition is satisfied again.
+    new_run = run_service.start_run(db, lock, mission_id=mission.id)
+    assert new_run.id != run.id
+
+
 def test_purge_expired_archives_deletes_dependents(db, lock):
     from atlas_runtime.mission_service import archive_mission, create_mission, purge_expired_archives
     from atlas_runtime import run_service

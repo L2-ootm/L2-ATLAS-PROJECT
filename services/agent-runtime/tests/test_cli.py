@@ -56,6 +56,37 @@ def test_cancel_command_exits_zero(db, lock, monkeypatch):
     assert result.exit_code == 0
 
 
+def test_retry_command_reopens_and_prints_run_id(db, lock, monkeypatch):
+    """atlas mission retry <id> reopens a failed mission and prints a new run id."""
+    import atlas_runtime.cli.main as cli_main
+    from atlas_runtime import mission_service
+
+    monkeypatch.setattr(cli_main, "_get_connection", lambda: db)
+    monkeypatch.setattr(cli_main, "_get_lock", lambda: lock)
+    mission = mission_service.create_mission(db, lock, title="Retry CLI")
+    db.execute("UPDATE missions SET status='failed' WHERE id=?", (mission.id,))
+    db.commit()
+
+    result = runner.invoke(app, ["mission", "retry", mission.id])
+    assert result.exit_code == 0
+    assert len(result.output.strip()) == 36  # a fresh run UUID
+    status = db.execute("SELECT status FROM missions WHERE id=?", (mission.id,)).fetchone()[0]
+    assert status == "running"  # start_run moved pending -> running
+
+
+def test_retry_command_rejects_non_terminal(db, lock, monkeypatch):
+    """atlas mission retry on a pending mission exits 1."""
+    import atlas_runtime.cli.main as cli_main
+    from atlas_runtime import mission_service
+
+    monkeypatch.setattr(cli_main, "_get_connection", lambda: db)
+    monkeypatch.setattr(cli_main, "_get_lock", lambda: lock)
+    mission = mission_service.create_mission(db, lock, title="No Retry")
+    result = runner.invoke(app, ["mission", "retry", mission.id])
+    assert result.exit_code == 1
+    assert "Cannot retry" in result.output
+
+
 def test_status_command_exits_zero(db, monkeypatch):
     """atlas mission status <id> exits 0 and prints 'pending' for a new mission."""
     import atlas_runtime.cli.main as cli_main
