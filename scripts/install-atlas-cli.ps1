@@ -14,19 +14,38 @@ param([switch]$Claude)
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$py = (Get-Command python).Source
+
+# Target a dedicated repo venv, never the ambient `python` on PATH — on a
+# foundation-only machine that PATH python is the pip-less Hermes venv, which
+# cannot pip-install. Create the venv if missing using the py launcher.
+$venv   = Join-Path $root '.venv'
+$venvPy = Join-Path $venv 'Scripts\python.exe'
+if (-not (Test-Path $venvPy)) {
+    Write-Host "Creating venv at $venv"
+    if (Get-Command py -ErrorAction SilentlyContinue) { & py -3 -m venv $venv }
+    else { & python -m venv $venv }
+}
+& $venvPy -m pip install --upgrade pip | Out-Null
 Write-Host "Repo:   $root"
-Write-Host "Python: $py"
+Write-Host "Python: $venvPy"
 
 # Editable installs (order matters: core is a dependency of the runtimes).
-& $py -m pip install -e "$root/packages/atlas-core"
+& $venvPy -m pip install -e "$root/packages/atlas-core"
 $runtimeSpec = if ($Claude) { "$root/services/agent-runtime[claude]" } else { "$root/services/agent-runtime" }
-& $py -m pip install -e $runtimeSpec
-& $py -m pip install -e "$root/services/wiki-runtime"
+& $venvPy -m pip install -e $runtimeSpec
+& $venvPy -m pip install -e "$root/services/wiki-runtime"
+
+# Regenerate the portable `atlas` shim at repo root, pointing at THIS repo's
+# venv (so `.\atlas ...` works from the repo without touching PATH). The gateway
+# self-resolves its own ATLAS_CLI from the venv interpreter (gateway_control).
+$atlasExe = Join-Path $venv 'Scripts\atlas.exe'
+$shim = "@echo off`r`n`"$venvPy`" -m atlas_runtime.cli.main %*`r`n"
+Set-Content -Path (Join-Path $root 'atlas.cmd') -Value $shim -Encoding ascii -NoNewline
 
 # Bootstrap / migrate the DB (idempotent, non-destructive).
-& atlas db init
+& $atlasExe db init
 
-# Verify the console script resolved on PATH.
-& atlas --help | Select-Object -First 1
-Write-Host "`nDone. 'atlas' is on PATH and the DB is bootstrapped. Restart open shells if needed."
+# Verify the console script resolved inside the venv.
+& $atlasExe --help | Select-Object -First 1
+Write-Host "`nDone. The 'atlas' console script lives at $atlasExe."
+Write-Host "Use '.\atlas <cmd>' from the repo root, or add '$venv\Scripts' to PATH for a bare 'atlas'."
