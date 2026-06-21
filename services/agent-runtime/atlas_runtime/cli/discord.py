@@ -221,14 +221,13 @@ def approve(
     except discord_service.DiscordApprovalError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1)
+    # A failed Discord write is a processed outcome (status="failed"), not a CLI
+    # error — exit 0 so the JSON/status reaches the gateway/cockpit. Only an
+    # un-processable approval (bad id / not pending) exits non-zero (above).
     if json_out:
         typer.echo(json.dumps(approval.model_dump()))
-        if approval.status == "failed":
-            raise typer.Exit(1)
         return
     typer.echo(f"{approval.id}\t{approval.status}")
-    if approval.status == "failed":
-        raise typer.Exit(1)
 
 
 @discord_app.command("reject")

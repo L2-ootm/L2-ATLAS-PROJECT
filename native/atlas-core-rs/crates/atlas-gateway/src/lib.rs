@@ -642,6 +642,104 @@ async fn discord_structure(
 }
 
 #[derive(Deserialize)]
+struct DiscordWriteBody {
+    action: String,
+    guild: String,
+    target: Option<String>,
+    params: Option<Value>,
+    reason: Option<String>,
+}
+
+/// POST /v1/discord/writes — propose a gated Discord write (does NOT execute).
+/// Approval state lives in Python/SQLite (D-022); this only dispatches the CLI.
+/// The user-controlled `action` is passed after `--`; option VALUES (guild,
+/// target, reason, params-json) are separate argv entries, never shell-parsed.
+async fn discord_propose(
+    State(state): State<AppState>,
+    Json(body): Json<DiscordWriteBody>,
+) -> ApiResult {
+    require_arg(&body.action, "action must be non-empty")?;
+    require_arg(&body.guild, "guild must be non-empty")?;
+    let params_json = body.params.as_ref().map(|p| p.to_string());
+
+    let mut args: Vec<String> = vec![
+        "discord".into(),
+        "propose".into(),
+        "--json".into(),
+        "--guild".into(),
+        body.guild.clone(),
+    ];
+    if let Some(t) = &body.target {
+        args.push("--target".into());
+        args.push(t.clone());
+    }
+    if let Some(r) = &body.reason {
+        args.push("--reason".into());
+        args.push(r.clone());
+    }
+    if let Some(p) = &params_json {
+        args.push("--params".into());
+        args.push(p.clone());
+    }
+    args.push("--".into());
+    args.push(body.action.clone());
+
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let out = dispatch_atlas(&state.atlas_cmd, &arg_refs).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("discord propose parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+/// GET /v1/discord/approvals — pending gated writes awaiting operator decision.
+async fn discord_approvals(State(state): State<AppState>) -> ApiResult {
+    let out = dispatch_atlas(&state.atlas_cmd, &["discord", "approvals", "--json"]).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("discord approvals parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+/// POST /v1/discord/approvals/{id}/approve — execute a pending write via the
+/// sidecar. A failed Discord write returns 200 with status="failed" (the CLI
+/// exits 0 on a processed outcome); only an unknown/non-pending id errors.
+async fn discord_approve(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+) -> ApiResult {
+    let out = dispatch_atlas(&state.atlas_cmd, &["discord", "approve", "--json", "--", &id]).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("discord approve parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+#[derive(Deserialize)]
+struct DiscordRejectBody {
+    reason: Option<String>,
+}
+
+/// POST /v1/discord/approvals/{id}/reject — reject a pending write (never runs).
+async fn discord_reject(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    body: Option<Json<DiscordRejectBody>>,
+) -> ApiResult {
+    let mut args: Vec<String> = vec!["discord".into(), "reject".into(), "--json".into()];
+    if let Some(Json(b)) = &body {
+        if let Some(r) = &b.reason {
+            args.push("--reason".into());
+            args.push(r.clone());
+        }
+    }
+    args.push("--".into());
+    args.push(id.clone());
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let out = dispatch_atlas(&state.atlas_cmd, &arg_refs).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("discord reject parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+#[derive(Deserialize)]
 struct SelectFolderBody {
     title: Option<String>,
 }
@@ -1640,6 +1738,10 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/discord/stop", post(discord_stop))
         .route("/v1/discord/guilds", get(discord_guilds))
         .route("/v1/discord/guilds/{id}/structure", get(discord_structure))
+        .route("/v1/discord/writes", post(discord_propose))
+        .route("/v1/discord/approvals", get(discord_approvals))
+        .route("/v1/discord/approvals/{id}/approve", post(discord_approve))
+        .route("/v1/discord/approvals/{id}/reject", post(discord_reject))
         .route("/v1/console/chat", post(console_chat))
         .route("/v1/console/stream", post(console_stream))
         .route("/v1/graph", get(graph_view))
