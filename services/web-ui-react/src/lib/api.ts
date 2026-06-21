@@ -1030,3 +1030,78 @@ export async function listGuilds(): Promise<DiscordGuild[]> {
 export async function getGuildStructure(guildId: string): Promise<DiscordStructure> {
 	return apiFetch(`/v1/discord/guilds/${encodeURIComponent(guildId)}/structure`);
 }
+
+// ── Gated Discord writes (propose → approve → execute) ───────────────────────
+
+export type DiscordAction =
+	| 'create_channel'
+	| 'edit_channel'
+	| 'delete_channel'
+	| 'create_role'
+	| 'edit_role'
+	| 'delete_role'
+	| 'send_message'
+	| 'set_permissions';
+
+export type DiscordApprovalStatus = 'pending' | 'executed' | 'rejected' | 'failed';
+
+export interface DiscordApproval {
+	id: string;
+	action: DiscordAction;
+	guild_id: string;
+	target_id: string | null;
+	params: string;
+	summary: string;
+	status: DiscordApprovalStatus;
+	reason: string | null;
+	result: string | null;
+	run_id: string;
+	requested_at: string;
+	decided_at: string | null;
+}
+
+/** Propose a gated Discord write. Records a pending approval; nothing executes. */
+export async function proposeDiscordWrite(args: {
+	action: DiscordAction;
+	guild: string;
+	target?: string | null;
+	params?: Record<string, unknown>;
+	reason?: string;
+}): Promise<DiscordApproval> {
+	return apiFetch('/v1/discord/writes', {
+		method: 'POST',
+		body: JSON.stringify({
+			action: args.action,
+			guild: args.guild,
+			target: args.target ?? null,
+			params: args.params ?? {},
+			reason: args.reason ?? null
+		})
+	});
+}
+
+/** Pending gated writes awaiting an operator decision. Empty when offline. */
+export async function listDiscordApprovals(): Promise<DiscordApproval[]> {
+	try {
+		const data = await apiFetch<{ approvals: DiscordApproval[] }>('/v1/discord/approvals');
+		return data.approvals ?? [];
+	} catch (err) {
+		if (err instanceof ApiError && (err.status === 404 || err.status === 500 || err.status === 503)) {
+			return [];
+		}
+		throw err;
+	}
+}
+
+/** Approve + execute a pending write via the sidecar. Returns the terminal row. */
+export async function approveDiscordWrite(id: string): Promise<DiscordApproval> {
+	return apiFetch(`/v1/discord/approvals/${encodeURIComponent(id)}/approve`, { method: 'POST' });
+}
+
+/** Reject a pending write (it will never execute). */
+export async function rejectDiscordWrite(id: string, reason?: string): Promise<DiscordApproval> {
+	return apiFetch(`/v1/discord/approvals/${encodeURIComponent(id)}/reject`, {
+		method: 'POST',
+		body: JSON.stringify({ reason: reason ?? null })
+	});
+}
