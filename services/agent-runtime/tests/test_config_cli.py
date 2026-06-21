@@ -47,6 +47,45 @@ def test_config_get_unknown_key(monkeypatch, tmp_path):
     assert "unknown key" in result.output
 
 
+def test_config_export_to_stdout(monkeypatch, tmp_path):
+    _home(monkeypatch, tmp_path)
+    result = runner.invoke(app, ["config", "export"])
+    assert result.exit_code == 0
+    assert "provider:" in result.output
+    assert "openrouter" in result.output
+
+
+def test_config_export_import_round_trip(monkeypatch, tmp_path):
+    _home(monkeypatch, tmp_path)
+    # Mutate a value, export, reset, then import it back.
+    runner.invoke(app, ["config", "set", "runtime.iteration_budget", "55"])
+    out = tmp_path / "exported.yaml"
+    r_exp = runner.invoke(app, ["config", "export", "-o", str(out)])
+    assert r_exp.exit_code == 0
+    assert out.is_file()
+
+    runner.invoke(app, ["config", "set", "runtime.iteration_budget", "1"])
+    r_imp = runner.invoke(app, ["config", "import", str(out)])
+    assert r_imp.exit_code == 0
+    assert cfgsvc.load_config(tmp_path / "config.yaml").runtime.iteration_budget == 55
+
+
+def test_config_import_missing_file_exits_one(monkeypatch, tmp_path):
+    _home(monkeypatch, tmp_path)
+    result = runner.invoke(app, ["config", "import", str(tmp_path / "nope.yaml")])
+    assert result.exit_code == 1
+    assert "not found" in result.output
+
+
+def test_config_import_inline_secret_rejected(monkeypatch, tmp_path):
+    _home(monkeypatch, tmp_path)
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("provider:\n  api_key: sk-leak123\n", encoding="utf-8")
+    result = runner.invoke(app, ["config", "import", str(bad)])
+    assert result.exit_code == 1
+    assert "invalid config" in result.output
+
+
 def test_setup_writes_config_accepting_defaults(monkeypatch, tmp_path):
     _home(monkeypatch, tmp_path)
     # Accept every default; decline the DB init prompt (final 'n').

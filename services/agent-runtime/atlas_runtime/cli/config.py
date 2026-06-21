@@ -7,6 +7,7 @@ the wizard asks for an env var NAME, never a key value.
 from __future__ import annotations
 
 import json
+import pathlib
 
 import typer
 import yaml
@@ -59,6 +60,51 @@ def set_value(
         raise typer.Exit(1)
     cfgsvc.save_config(cfg)
     typer.echo(f"set {key} = {cfgsvc.get_value(cfg, key)}")
+
+
+@config_app.command("export")
+def export_config(
+    output: str = typer.Option(
+        None, "--output", "-o", help="Write to this path (default: stdout)"
+    ),
+) -> None:
+    """Export the full config as YAML (to a file or stdout).
+
+    The file is already secret-safe — credentials are stored only as ``env:VAR``
+    references, never inline values — so the export is a plain round-trippable dump.
+    """
+    cfg = cfgsvc.load_config()
+    body = yaml.safe_dump(cfg.model_dump(), sort_keys=False)
+    if output:
+        path = pathlib.Path(output)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body, encoding="utf-8")
+        typer.echo(f"exported -> {path}")
+    else:
+        typer.echo(body.rstrip())
+
+
+@config_app.command("import")
+def import_config(
+    path: str = typer.Argument(..., help="YAML config file to import (replaces current config)"),
+) -> None:
+    """Import a config from a YAML file (replace semantics, atomically saved).
+
+    Validation enforces the no-inline-secret rule: a file with an inline
+    ``provider.api_key`` is rejected before anything is written.
+    """
+    src = pathlib.Path(path)
+    if not src.is_file():
+        typer.echo(f"Error: file not found: {src}", err=True)
+        raise typer.Exit(1)
+    try:
+        data = yaml.safe_load(src.read_text(encoding="utf-8")) or {}
+        cfg = cfgsvc.AtlasConfig.model_validate(data)
+    except Exception as exc:  # parse or validation error
+        typer.echo(f"Error: invalid config in {src}: {exc}", err=True)
+        raise typer.Exit(1)
+    saved = cfgsvc.save_config(cfg)
+    typer.echo(f"imported -> {saved}")
 
 
 def setup() -> None:
