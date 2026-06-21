@@ -919,6 +919,57 @@ async fn start_run(
     }
 }
 
+/// Retry a failed/cancelled mission: reopen it in place and start a fresh run.
+/// Mirrors `start_run` — the CLI `mission retry` reopens (`failed|cancelled ->
+/// pending`) and starts the run, returning the new run_id; with `execute` we
+/// spawn a detached `run exec` to drive it in the background. Prior runs stay
+/// attached as attempt history.
+async fn retry_mission(
+    State(state): State<AppState>,
+    AxPath(mission_id): AxPath<String>,
+    body: Option<Json<StartRunBody>>,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    require_arg(&mission_id, "mission id must be non-empty")?;
+    let (agent_opt, execute) = match body {
+        Some(Json(b)) => (b.agent, b.execute.unwrap_or(false)),
+        None => (None, false),
+    };
+    let agent = agent_opt
+        .map(|a| a.trim().to_string())
+        .filter(|a| !a.is_empty())
+        .unwrap_or_else(|| "native".to_string());
+    if agent != "native" && agent != "claude_code" {
+        return Err(ApiError::BadRequest(
+            "agent must be 'native' or 'claude_code'",
+        ));
+    }
+    let run_id = dispatch_atlas(
+        &state.atlas_cmd,
+        &["mission", "retry", "--agent", &agent, "--", &mission_id],
+    )
+    .await?;
+    let path = state.db_path.clone();
+    let run_id_clone = run_id.clone();
+    let found = blocking(move || db::get_run(&path, &run_id_clone)).await?;
+    match found {
+        Some(run) => {
+            if execute {
+                spawn_detached_atlas(
+                    &state.atlas_cmd,
+                    &["run", "exec", "--agent", &agent, "--", &run_id],
+                )?;
+            }
+            Ok((
+                StatusCode::CREATED,
+                Json(json!({ "run": run, "executing": execute })),
+            ))
+        }
+        None => Err(ApiError::Internal(format!(
+            "retry run '{run_id}' started but not found in db"
+        ))),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Wiki write + detail handlers (Phase 8 — D-022 dispatch pattern)
 // ---------------------------------------------------------------------------
@@ -1569,6 +1620,7 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/missions/{id}", get(mission_detail))
         .route("/v1/missions/{id}/archive", post(archive_mission))
         .route("/v1/missions/{id}/run", post(start_run))
+        .route("/v1/missions/{id}/retry", post(retry_mission))
         .route("/v1/missions/{id}/cancel", post(cancel_run))
         .route("/v1/runs/{id}", get(run_detail))
         .route("/v1/runs/{id}/events", get(run_events))
