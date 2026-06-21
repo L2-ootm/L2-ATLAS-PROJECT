@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0.5
 milestone_name: Mass-Adoption Launch Wedge
 status: in_progress
-last_updated: "2026-06-22T00:00:00.000Z"
-last_activity: 2026-06-21 -- Phase C COMPLETE (Discord Write Surface, C-WP1..8) on branch feat/phase-c-discord-write: two-phase approval-gated + audited Discord writes (propose -> approve -> execute) with state in Python/SQLite and Rust gateway dispatch-only (D-022). DiscordApproval model + migration 0012 + discord_action audit type; discord_api write client; sidecar reason parameterized; discord_service state machine (params redacted once = single source of truth for audit + exec); `atlas discord propose|approvals|approve|reject`; 4 gateway routes; cockpit write/approve modals + Pending Approvals panel; best-effort token-coexistence warning. 301 Python (257 agent-runtime + 44 atlas-core) + 37 wiki + 73 Rust green; cockpit tsc/build clean
+last_updated: "2026-06-22T01:00:00.000Z"
+last_activity: 2026-06-21 -- Phase C COMPLETE + PUSHED (ec070e1, origin/main in sync): TOCTOU fix (atomic UPDATE…WHERE status='pending' + transient 'executing' state), --reason on approve, set_permissions contract documented. 301 Python (259 agent-runtime + 44 atlas-core) + 37 wiki + 73 Rust + 7 sidecar green; cockpit tsc/build clean. Phases A+B+C landed on main (22 commits since Phase A start).
 prior_activity: 2026-06-21 -- Phase B COMPLETE (Context Intelligence, B1-B6): budget-aware MemoryRouter unifying recent-runs/prior-failures/observations/wiki-knowledge/skills under a token budget with boundary redaction + provenance; semantic embeddings real (sqlite-vec+fastembed, 384-dim, embed-on-write + `atlas wiki reindex`, FTS5 fallback preserved); ContextConfig + `atlas mission run --show-context`
 progress:
   total_phases: 13
-  completed_phases: 1
+  completed_phases: 4
   total_plans: 3
   completed_plans: 3
-  percent: 8
+  percent: 31
 ---
 
 # STATE — L2 ATLAS
