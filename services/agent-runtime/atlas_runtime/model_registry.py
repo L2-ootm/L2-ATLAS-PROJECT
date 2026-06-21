@@ -63,6 +63,49 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.execute(_SCHEMA)
 
 
+# Deterministic baseline registry for fresh installs / offline use. This REPLACES
+# the old untracked one-off that seeded these same rows into ~/.atlas/atlas.db with
+# no code provenance. source="seed" keeps them distinct from gateway-discovered
+# rows, and refresh()'s source-scoped deactivation never touches them, so they act
+# as an offline fallback when no LLM gateway is configured.
+SEED_SOURCE = "seed"
+DEFAULT_SEED_MODELS: tuple[tuple[str, str], ...] = (
+    ("claude-fable-5", "anthropic"),
+    ("claude-sonnet-4-6", "anthropic"),
+    ("gemini-2.5-pro", "google"),
+)
+
+
+def seed_default_models(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    *,
+    models: tuple[tuple[str, str], ...] = DEFAULT_SEED_MODELS,
+) -> list[str]:
+    """Insert the baseline default models if absent (idempotent). Returns ids inserted.
+
+    Keyed on the model_id PRIMARY KEY via INSERT OR IGNORE: an existing row (seeded
+    OR gateway-discovered) is never overwritten, so re-running is a no-op and a real
+    `refresh` of the same id always wins. Called from `atlas db init` / `atlas setup`.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    inserted: list[str] = []
+    with lock:
+        with conn:
+            ensure_schema(conn)
+            for model_id, provider in models:
+                cur = conn.execute(
+                    "INSERT OR IGNORE INTO model_registry "
+                    "(model_id, provider, source, first_seen, last_seen, active) "
+                    "VALUES (?,?,?,?,?,1)",
+                    (model_id, provider, SEED_SOURCE, now, now),
+                )
+                if cur.rowcount:
+                    inserted.append(model_id)
+    logger.info("model_registry.seed_default_models: inserted=%d", len(inserted))
+    return inserted
+
+
 def gateway_base_url() -> str:
     """Resolve the gateway base URL (env ATLAS_LLM_GATEWAY_URL, else default)."""
     return os.environ.get("ATLAS_LLM_GATEWAY_URL", DEFAULT_GATEWAY_URL).rstrip("/")

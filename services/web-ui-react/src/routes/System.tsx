@@ -251,7 +251,26 @@ function RuntimeConfigPanel({ config }: { config: AtlasConfigView }) {
 // RUNTIME CONFIG panel above; this lists every known model with its source and
 // active state. Read-only — discovery/seeding happens via the CLI.
 function ModelRegistryPanel({ models, provider }: { models: ModelEntry[]; provider: string | null }) {
+	const [query, setQuery] = useState('');
 	const activeCount = models.filter((m) => m.active).length;
+
+	// Filter by model id or provider; grouping + a capped-scroll body keep the
+	// panel bounded once `atlas models refresh` pulls a real (hundreds-long) list.
+	const q = query.trim().toLowerCase();
+	const filtered = q
+		? models.filter((m) => m.model_id.toLowerCase().includes(q) || m.provider.toLowerCase().includes(q))
+		: models;
+
+	const groups = new Map<string, ModelEntry[]>();
+	for (const m of filtered) {
+		const key = m.provider || 'unknown';
+		const bucket = groups.get(key);
+		if (bucket) bucket.push(m);
+		else groups.set(key, [m]);
+	}
+	const providerKeys = [...groups.keys()].sort();
+	for (const k of providerKeys) groups.get(k)!.sort((a, b) => a.model_id.localeCompare(b.model_id));
+
 	return (
 		<section style={glassPanel({ overflow: 'hidden', marginBottom: 16 })}>
 			<header
@@ -274,40 +293,100 @@ function ModelRegistryPanel({ models, provider }: { models: ModelEntry[]; provid
 
 			{models.length === 0 ? (
 				<div style={{ padding: '24px 18px', color: 'var(--l2-fg-3)', fontSize: 13, lineHeight: 1.6 }}>
-					No models registered{provider ? ` for ${provider}` : ''}. Seed the registry with{' '}
-					<code style={{ fontFamily: 'var(--l2-font-mono)', color: 'var(--atlas-celestial)' }}>atlas models discover</code>.
+					No models registered{provider ? ` for ${provider}` : ''}. Sync the registry with{' '}
+					<code style={{ fontFamily: 'var(--l2-font-mono)', color: 'var(--atlas-celestial)' }}>atlas models refresh</code>.
 				</div>
 			) : (
-				models.map((m, i) => (
-					<div
-						key={`${m.provider}/${m.model_id}`}
-						style={{
-							display: 'flex',
-							alignItems: 'center',
-							justifyContent: 'space-between',
-							gap: 16,
-							padding: '12px 18px',
-							borderTop: i === 0 ? 'none' : '1px solid var(--l2-hairline)'
-						}}
-					>
-						<div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-							<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 13, color: 'var(--l2-fg-1)', wordBreak: 'break-all' }}>
-								{m.model_id}
+				<>
+					{models.length > 8 && (
+						<div
+							style={{
+								display: 'flex',
+								alignItems: 'center',
+								gap: 12,
+								padding: '10px 18px',
+								borderBottom: '1px solid var(--l2-hairline)'
+							}}
+						>
+							<input
+								value={query}
+								onChange={(e) => setQuery(e.target.value)}
+								placeholder="Filter by model or provider…"
+								style={{
+									flex: 1,
+									minWidth: 0,
+									background: 'transparent',
+									border: 'none',
+									outline: 'none',
+									color: 'var(--l2-fg-1)',
+									fontFamily: 'var(--l2-font-mono)',
+									fontSize: 12,
+									letterSpacing: '0.04em'
+								}}
+							/>
+							<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 10, letterSpacing: '0.12em', color: 'var(--l2-fg-3)', flexShrink: 0 }}>
+								{q ? `${filtered.length}/${models.length}` : `${models.length}`}
 							</span>
-							<StatusPill active={m.active} />
 						</div>
-						<div style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
-							{m.health && (
-								<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 9.5, letterSpacing: '0.1em', color: 'var(--l2-fg-3)' }}>
-									{m.health.toUpperCase()}
-								</span>
-							)}
-							<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 10, letterSpacing: '0.1em', color: 'var(--l2-fg-3)' }}>
-								{m.provider}
-							</span>
-						</div>
+					)}
+					<div style={{ maxHeight: 320, overflowY: 'auto' }}>
+						{filtered.length === 0 ? (
+							<div style={{ padding: '20px 18px', color: 'var(--l2-fg-3)', fontSize: 13 }}>
+								No models match “{query.trim()}”.
+							</div>
+						) : (
+							providerKeys.map((pk) => (
+								<div key={pk}>
+									<div
+										style={{
+											position: 'sticky',
+											top: 0,
+											display: 'flex',
+											alignItems: 'center',
+											gap: 8,
+											padding: '7px 18px',
+											background: 'rgba(11, 13, 18, 0.92)',
+											borderTop: '1px solid var(--l2-hairline)',
+											borderBottom: '1px solid var(--l2-hairline)'
+										}}
+									>
+										<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 10, letterSpacing: '0.18em', color: 'var(--atlas-bronze)', textTransform: 'uppercase' }}>
+											{pk}
+										</span>
+										<span style={{ marginLeft: 'auto', fontFamily: 'var(--l2-font-mono)', fontSize: 10, letterSpacing: '0.1em', color: 'var(--l2-fg-3)' }}>
+											{groups.get(pk)!.length}
+										</span>
+									</div>
+									{groups.get(pk)!.map((m, i) => (
+										<div
+											key={`${m.provider}/${m.model_id}`}
+											style={{
+												display: 'flex',
+												alignItems: 'center',
+												justifyContent: 'space-between',
+												gap: 16,
+												padding: '11px 18px',
+												borderTop: i === 0 ? 'none' : '1px solid var(--l2-hairline)'
+											}}
+										>
+											<div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+												<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 13, color: 'var(--l2-fg-1)', wordBreak: 'break-all' }}>
+													{m.model_id}
+												</span>
+												<StatusPill active={m.active} />
+											</div>
+											{m.health && (
+												<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 9.5, letterSpacing: '0.1em', color: 'var(--l2-fg-3)', flexShrink: 0 }}>
+													{m.health.toUpperCase()}
+												</span>
+											)}
+										</div>
+									))}
+								</div>
+							))
+						)}
 					</div>
-				))
+				</>
 			)}
 		</section>
 	);
