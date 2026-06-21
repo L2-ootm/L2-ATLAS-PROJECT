@@ -1,6 +1,6 @@
 //! atlas-gateway binary — loopback-only HTTP server (Phase 7, D-022).
 
-use atlas_gateway::{app, default_atlas_cli, default_db_path, AppState, VERSION};
+use atlas_gateway::{app, default_atlas_cli, default_db_path, default_repo_root, AppState, VERSION};
 use std::net::SocketAddr;
 
 #[tokio::main]
@@ -14,6 +14,7 @@ async fn main() {
     let state = AppState {
         db_path: default_db_path(),
         atlas_cmd: default_atlas_cli(),
+        repo_root: default_repo_root(),
     };
     let listener = tokio::net::TcpListener::bind(addr)
         .await

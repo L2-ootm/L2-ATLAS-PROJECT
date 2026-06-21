@@ -33,6 +33,10 @@ pub struct AppState {
     /// pre-arguments (e.g. ["atlas"] in production, ["python", "stub.py"] in
     /// tests). Write handlers append subcommand + flags after these.
     pub atlas_cmd: Vec<String>,
+    /// Project root passed to CLI commands that scan the tree (e.g.
+    /// `atlas graph build --root <repo_root>`). The gateway's CWD is its own
+    /// crate dir, so a bare "." would scan the wrong tree and return nothing.
+    pub repo_root: PathBuf,
 }
 
 /// Default atlas CLI invocation from ATLAS_CLI, else "atlas" on PATH.
@@ -59,6 +63,27 @@ pub fn default_db_path() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_default();
     home.join(".atlas").join("atlas.db")
+}
+
+/// Resolve the project root for tree-scanning CLI commands.
+///
+/// Priority: `$ATLAS_REPO_ROOT` (set by the Python gateway launcher,
+/// `gateway_control._child_env`) → derived from the running executable
+/// (`native/atlas-core-rs/target/<profile>/atlas-gateway` → 5 ancestors up) →
+/// `"."` as a last resort (preserves the legacy behaviour).
+pub fn default_repo_root() -> PathBuf {
+    if let Some(p) = std::env::var_os("ATLAS_REPO_ROOT") {
+        let p = PathBuf::from(p);
+        if !p.as_os_str().is_empty() {
+            return p;
+        }
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(root) = exe.ancestors().nth(5) {
+            return root.to_path_buf();
+        }
+    }
+    PathBuf::from(".")
 }
 
 // ---------------------------------------------------------------------------
@@ -784,7 +809,8 @@ async fn graph_view(State(state): State<AppState>, Query(params): Query<GraphPar
         Some(s) if matches!(s, "atlas" | "global" | "projects" | "obsidian") => s,
         _ => "atlas",
     };
-    let args = ["graph", "build", "--root", ".", "--scope", scope];
+    let root = state.repo_root.to_string_lossy();
+    let args = ["graph", "build", "--root", root.as_ref(), "--scope", scope];
     let out = dispatch_atlas_with_timeout(&state.atlas_cmd, &args, CONSOLE_DISPATCH_TIMEOUT).await?;
     let value: Value = serde_json::from_str(&out).map_err(|e| {
         ApiError::Internal(format!("atlas graph build returned invalid JSON: {e}"))

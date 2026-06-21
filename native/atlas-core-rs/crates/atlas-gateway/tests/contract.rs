@@ -49,6 +49,7 @@ fn test_app(db_path: PathBuf) -> axum::Router {
     app(AppState {
         db_path,
         atlas_cmd: vec!["atlas".to_string()],
+        repo_root: PathBuf::from("."),
     })
 }
 
