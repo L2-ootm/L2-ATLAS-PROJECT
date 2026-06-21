@@ -3,8 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0.5
 milestone_name: Mass-Adoption Launch Wedge
 status: in_progress
-last_updated: "2026-06-20T15:45:00.000Z"
-last_activity: 2026-06-20 -- Command Center complete (WP-0 through WP-6 DONE), loop-engineering slice complete (LE-0 through LE-5 DONE), NativeAtlasAgent wired to harness, goal hierarchy + compounding loop + operations all operational, Graphify visual refinement (lightning, auto-orbit, minimap sync), full session analysis + documentation produced
+last_updated: "2026-06-21T18:30:00.000Z"
+last_activity: 2026-06-21 -- Phase A (Foundation Polish A1-A4) on branch feat/phase-a-foundation-polish: fixed atlas-cli installer to target a dedicated venv + rebuilt the stale gateway (operations/graph/config endpoints now 200, were 500/404); built the TUI dist + install-time build; added `atlas tui` entry point; wired native-agent provider/model routing (config default + Focus override). 195 Python + 68 Rust tests green
+prior_activity: 2026-06-21 -- L2-BOT vendored as ATLAS-controlled Discord sidecar (read-only browser), setup wizard + config service, channel management cockpit, model registry panel, BSP auto-tiling console, full session documentation (FINAL-STATE-AND-NEXT.md), 44 gateway endpoints, 182+68 tests green
 progress:
   total_phases: 13
   completed_phases: 1
@@ -14,6 +15,31 @@ progress:
 ---
 
 # STATE — L2 ATLAS
+
+## Phase A — Foundation Polish (2026-06-21, branch `feat/phase-a-foundation-polish`)
+
+Closed the four foundation gaps that blocked the just-shipped cockpit (see
+`.planning/phases/10.0.3-command-center/FINAL-STATE-AND-NEXT.md` for the gap list).
+
+- **A1 — `atlas` resolvable to the gateway.** Root cause: the running gateway binary
+  was stale (`/v1/config` 404) and started without a resolvable `atlas`, so CLI-dispatch
+  endpoints 500'd. Rebuilt the binary and restarted via `.venv` so `gateway_control._child_env`
+  injects a working `ATLAS_CLI`; `/v1/operations`, `/v1/graph`, `/v1/config` now 200. Hardened
+  `scripts/install-atlas-cli.ps1` to target a dedicated repo `.venv` (the ambient PATH python is
+  the pip-less Hermes venv) and regenerate the machine-local `atlas.cmd` shim.
+- **A2 — TUI dist built.** `foundation/atlas-hermes/ui-tui` → `dist/entry.js` (2.9mb esbuild
+  bundle); installer now builds it (guarded by npm). dist/ + node_modules/ stay gitignored.
+- **A3 — `atlas tui`.** New `atlas_runtime/cli/tui.py`: thin D-001-safe wrapper over the
+  foundation Ink TUI (`_launch_tui`), forwarding only explicit --model/--provider/--dev. 4 tests.
+- **A4 — native provider/model routing.** `config_service.resolve_provider` (config baseline +
+  Focus.framework model override + env:VAR api_key deref); resolved inside `NativeAtlasAgent.execute`,
+  the single path all run surfaces flow through. Empty creds fall back to the foundation (honest
+  failure preserved). 8 tests.
+
+Verification: 195 Python + 68 Rust tests green; gateway endpoints reprobed 200.
+Known follow-up (out of A1 scope): `/v1/graph` returns 0 nodes because the gateway passes
+`--root .` with CWD = `native/atlas-core-rs`; graph-root should resolve to the project root.
+Deferred from Phase A: A5 (failed-mission retry/recovery), A6 (config import/export).
 
 ## Current Position
 
