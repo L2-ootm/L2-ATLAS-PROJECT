@@ -36,9 +36,12 @@ Closed the four foundation gaps that blocked the just-shipped cockpit (see
   the single path all run surfaces flow through. Empty creds fall back to the foundation (honest
   failure preserved). 8 tests.
 
+- **A1 follow-up (fixed) — graph root.** `/v1/graph` was 200 but returned 0 nodes: the gateway
+  passed `--root .` (CWD = `native/atlas-core-rs`). Added `AppState.repo_root` via
+  `default_repo_root()` (ATLAS_REPO_ROOT → exe-derived → "."); `/v1/graph?scope=atlas` now returns
+  108 nodes / 209 links.
+
 Verification: 195 Python + 68 Rust tests green; gateway endpoints reprobed 200.
-Known follow-up (out of A1 scope): `/v1/graph` returns 0 nodes because the gateway passes
-`--root .` with CWD = `native/atlas-core-rs`; graph-root should resolve to the project root.
 Deferred from Phase A: A5 (failed-mission retry/recovery), A6 (config import/export).
 
 ## Current Position
