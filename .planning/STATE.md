@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0.5
 milestone_name: Mass-Adoption Launch Wedge
 status: in_progress
-last_updated: "2026-06-21T18:30:00.000Z"
-last_activity: 2026-06-21 -- Phase A (Foundation Polish A1-A4) on branch feat/phase-a-foundation-polish: fixed atlas-cli installer to target a dedicated venv + rebuilt the stale gateway (operations/graph/config endpoints now 200, were 500/404); built the TUI dist + install-time build; added `atlas tui` entry point; wired native-agent provider/model routing (config default + Focus override). 195 Python + 68 Rust tests green
+last_updated: "2026-06-21T20:30:00.000Z"
+last_activity: 2026-06-21 -- Phase A COMPLETE (A1-A6) on branch feat/phase-a-foundation-polish: A5 failed/cancelled mission retry (reopen-in-place service + `atlas mission retry` + POST /v1/missions/{id}/retry + cockpit Retry button); A6 config YAML export/import round-trip (replace semantics, env:VAR-safe, inline-secret rejected). 244 Python (207 agent-runtime + 37 atlas-core) + 69 Rust tests green; cockpit tsc+vite build clean
 prior_activity: 2026-06-21 -- L2-BOT vendored as ATLAS-controlled Discord sidecar (read-only browser), setup wizard + config service, channel management cockpit, model registry panel, BSP auto-tiling console, full session documentation (FINAL-STATE-AND-NEXT.md), 44 gateway endpoints, 182+68 tests green
 progress:
   total_phases: 13
@@ -41,8 +41,19 @@ Closed the four foundation gaps that blocked the just-shipped cockpit (see
   `default_repo_root()` (ATLAS_REPO_ROOT → exe-derived → "."); `/v1/graph?scope=atlas` now returns
   108 nodes / 209 links.
 
-Verification: 195 Python + 68 Rust tests green; gateway endpoints reprobed 200.
-Deferred from Phase A: A5 (failed-mission retry/recovery), A6 (config import/export).
+- **A5 — failed/cancelled mission retry.** `mission_service.retry_mission` reopens a terminal
+  mission in place (`failed|cancelled → pending`) so `start_run`'s precondition applies again;
+  prior runs stay attached as attempt history (no migration, no audit emit). Full vertical slice:
+  `atlas mission retry <id>` (mirrors `mission run`, optional --execute), gateway
+  `POST /v1/missions/{id}/retry` (mirrors start_run: dispatch retry, optional detached `run exec`),
+  cockpit Retry button on MissionDetail for FAILED/CANCELLED missions. 6 service + 2 CLI + 1 gateway tests.
+- **A6 — config export/import.** `atlas config export` (-o file or stdout) / `atlas config import`
+  (replace semantics, atomic save). The file is already secret-safe (env:VAR refs only); import
+  re-validates so an inline secret is rejected before any write. CLI-only (gateway /v1/config stays
+  read-only). 4 tests.
+
+Verification: 244 Python (207 agent-runtime + 37 atlas-core) + 69 Rust tests green; cockpit
+tsc+vite build clean. Phase A (Foundation Polish, A1–A6) fully complete.
 
 ## Current Position
 
