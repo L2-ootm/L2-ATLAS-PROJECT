@@ -27,6 +27,14 @@ def test_parse_port_raises_on_invalid_port():
         cockpit_control._parse_port("http://127.0.0.1:abc")
 
 
+def test_parse_host_returns_explicit_host():
+    assert cockpit_control._parse_host("http://127.0.0.1:5173") == "127.0.0.1"
+
+
+def test_parse_host_defaults_when_hostless():
+    assert cockpit_control._parse_host("") == "127.0.0.1"
+
+
 def test_health_ok_returns_false_when_nothing_listening():
     with patch("urllib.request.urlopen", side_effect=OSError("connection refused")):
         assert cockpit_control.health_ok() is False
@@ -85,6 +93,11 @@ def test_start_resolves_npm_cmd_on_windows(tmp_path, monkeypatch):
 
     args, _ = mock_popen.call_args
     assert args[0][0] == "npm.cmd"
+    # The bind host must be passed so Vite binds the interface health_ok probes
+    # (Windows IPv4/IPv6 localhost split — see _parse_host).
+    spawn_cmd = args[0]
+    assert "--host" in spawn_cmd
+    assert spawn_cmd[spawn_cmd.index("--host") + 1] == "127.0.0.1"
 
 
 def test_start_resolves_npm_on_posix(tmp_path, monkeypatch):

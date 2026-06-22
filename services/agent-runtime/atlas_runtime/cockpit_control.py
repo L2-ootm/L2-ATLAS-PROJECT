@@ -48,6 +48,19 @@ def _parse_port(url: str) -> int:
         raise ValueError(f"ATLAS_COCKPIT_URL has an invalid port: {url!r}") from exc
 
 
+def _parse_host(url: str) -> str:
+    """Extract the host from COCKPIT_URL so Vite binds the interface we probe.
+
+    The port-authority rule extends to the host: COCKPIT_URL is authoritative
+    for BOTH. Without an explicit ``--host`` Vite preview binds its own default,
+    which on Windows resolves ``localhost`` to IPv6 ``::1`` only — so a probe of
+    ``127.0.0.1`` (IPv4) is refused and ``atlas up``/``atlas doctor`` report the
+    cockpit "down" while it is in fact serving. Forcing ``--host 127.0.0.1``
+    makes the bind match the probe (loopback-only, no LAN exposure)."""
+    parsed = urllib.parse.urlparse(url)
+    return parsed.hostname or "127.0.0.1"
+
+
 def health_ok(timeout: float = 1.0) -> bool:
     """Probe the cockpit root URL. Vite has no /health route — per RESEARCH.md
     Pitfall 3, any non-exception response (even a 404) means something is
@@ -65,7 +78,8 @@ def start(poll_seconds: float = 15.0) -> tuple[bool, str]:
         return True, "cockpit already running"
     npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
     port = _parse_port(COCKPIT_URL)
-    cmd = [npm_cmd, "run", "preview", "--", "--port", str(port)]
+    host = _parse_host(COCKPIT_URL)
+    cmd = [npm_cmd, "run", "preview", "--", "--port", str(port), "--host", host]
     kwargs: dict = {}
     if os.name == "nt":
         # CREATE_NO_WINDOW is the extra flag beyond gateway_control's two-flag set:
