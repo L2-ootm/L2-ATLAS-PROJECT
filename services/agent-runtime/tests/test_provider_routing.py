@@ -108,8 +108,21 @@ def test_resolve_provider_blank_when_env_unset(monkeypatch):
 # --- native execute resolution ---------------------------------------------
 
 
+def _configure_fake_api_key(monkeypatch, tmp_path) -> None:
+    """These tests exercise model/provider resolution and must route through
+    _default_factory (the real-provider path), not the mock-mode branch
+    (10.0.2-02) — so a non-empty api_key must be configured via env:VAR
+    indirection, mirroring how an operator would configure a real key."""
+    monkeypatch.setenv("FAKE_PROVIDER_KEY", "sk-test-key-not-real")
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "provider:\n  api_key: env:FAKE_PROVIDER_KEY\n", encoding="utf-8",
+    )
+
+
 def test_native_execute_uses_config_model(db, lock, monkeypatch, tmp_path):
     monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    _configure_fake_api_key(monkeypatch, tmp_path)
     cap = _Capture()
     monkeypatch.setattr(native, "_default_factory", cap)
     mid, rid = _insert_mission_run(db)
@@ -121,6 +134,7 @@ def test_native_execute_uses_config_model(db, lock, monkeypatch, tmp_path):
 
 def test_native_execute_focus_overrides_model(db, lock, monkeypatch, tmp_path):
     monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    _configure_fake_api_key(monkeypatch, tmp_path)
     _insert_focus(db, framework="anthropic/claude-opus-4")
     cap = _Capture()
     monkeypatch.setattr(native, "_default_factory", cap)
@@ -132,6 +146,7 @@ def test_native_execute_focus_overrides_model(db, lock, monkeypatch, tmp_path):
 
 def test_native_explicit_model_beats_config(db, lock, monkeypatch, tmp_path):
     monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    _configure_fake_api_key(monkeypatch, tmp_path)
     _insert_focus(db, framework="anthropic/claude-opus-4")
     cap = _Capture()
     monkeypatch.setattr(native, "_default_factory", cap)
