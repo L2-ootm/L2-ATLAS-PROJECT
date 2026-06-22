@@ -765,6 +765,121 @@ async fn discord_reject(
     Ok(Json(value))
 }
 
+// ---------------------------------------------------------------------------
+// Developer tool integrations (Phase 10.0.4) — dispatch-only (D-022).
+// Every handler validates + shells to the `atlas tools` CLI + parses JSON.
+// No DB reads/writes, no policy, no approval state in Rust — that all lives in
+// Python/SQLite. User-controlled values are passed AFTER `--` (injection guard).
+// ---------------------------------------------------------------------------
+
+/// GET /v1/tools/manifests — the tool manifest list (name/risk_level/permissions/…).
+async fn tool_manifests(State(state): State<AppState>) -> ApiResult {
+    let out = dispatch_atlas(&state.atlas_cmd, &["tools", "manifests", "--json"]).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("tools manifests parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+#[derive(Deserialize)]
+struct ToolCallBody {
+    tool: String,
+    args: Option<Value>,
+    mode: Option<String>,
+    reason: Option<String>,
+}
+
+/// POST /v1/tools/calls — invoke a tool through the Python policy chokepoint.
+/// Read-class runs now; write/shell returns a pending approval. The tool name is
+/// passed AFTER `--`; option VALUES are separate argv entries, never shell-parsed.
+async fn tool_call(State(state): State<AppState>, Json(body): Json<ToolCallBody>) -> ApiResult {
+    require_arg(&body.tool, "tool must be non-empty")?;
+    let args_json = body.args.as_ref().map(|a| a.to_string());
+
+    let mut args: Vec<String> = vec!["tools".into(), "call".into(), "--json".into()];
+    if let Some(m) = &body.mode {
+        args.push("--mode".into());
+        args.push(m.clone());
+    }
+    if let Some(a) = &args_json {
+        args.push("--args".into());
+        args.push(a.clone());
+    }
+    if let Some(r) = &body.reason {
+        args.push("--reason".into());
+        args.push(r.clone());
+    }
+    args.push("--".into());
+    args.push(body.tool.clone());
+
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let out = dispatch_atlas(&state.atlas_cmd, &arg_refs).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("tools call parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+#[derive(Deserialize)]
+struct ToolApprovalsQuery {
+    status: Option<String>,
+}
+
+/// GET /v1/tools/approvals?status= — tool approvals awaiting/with a decision.
+async fn tool_approvals(
+    State(state): State<AppState>,
+    Query(q): Query<ToolApprovalsQuery>,
+) -> ApiResult {
+    let mut args: Vec<String> = vec!["tools".into(), "approvals".into(), "--json".into()];
+    if let Some(s) = &q.status {
+        args.push("--status".into());
+        args.push(s.clone());
+    }
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let out = dispatch_atlas(&state.atlas_cmd, &arg_refs).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("tools approvals parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+/// POST /v1/tools/approvals/{id}/approve — execute a pending write/shell tool.
+/// A failed-but-processed run returns 200 with status="failed" (CLI exits 0);
+/// only an unknown/non-pending id errors.
+async fn tool_approve(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
+    require_arg(&id, "approval id must be non-empty")?;
+    let out =
+        dispatch_atlas(&state.atlas_cmd, &["tools", "approve", "--json", "--", &id]).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("tools approve parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+#[derive(Deserialize)]
+struct ToolRejectBody {
+    reason: Option<String>,
+}
+
+/// POST /v1/tools/approvals/{id}/reject — reject a pending tool call (never runs).
+async fn tool_reject(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    body: Option<Json<ToolRejectBody>>,
+) -> ApiResult {
+    require_arg(&id, "approval id must be non-empty")?;
+    let mut args: Vec<String> = vec!["tools".into(), "reject".into(), "--json".into()];
+    if let Some(Json(b)) = &body {
+        if let Some(r) = &b.reason {
+            args.push("--reason".into());
+            args.push(r.clone());
+        }
+    }
+    args.push("--".into());
+    args.push(id.clone());
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let out = dispatch_atlas(&state.atlas_cmd, &arg_refs).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("tools reject parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
 #[derive(Deserialize)]
 struct SelectFolderBody {
     title: Option<String>,
@@ -1770,6 +1885,11 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/discord/approvals", get(discord_approvals))
         .route("/v1/discord/approvals/{id}/approve", post(discord_approve))
         .route("/v1/discord/approvals/{id}/reject", post(discord_reject))
+        .route("/v1/tools/manifests", get(tool_manifests))
+        .route("/v1/tools/calls", post(tool_call))
+        .route("/v1/tools/approvals", get(tool_approvals))
+        .route("/v1/tools/approvals/{id}/approve", post(tool_approve))
+        .route("/v1/tools/approvals/{id}/reject", post(tool_reject))
         .route("/v1/console/chat", post(console_chat))
         .route("/v1/console/stream", post(console_stream))
         .route("/v1/graph", get(graph_view))
