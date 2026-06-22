@@ -3,6 +3,8 @@ import { Outlet } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import TopoField from '../components/TopoField';
 import { GlassFilter } from '../components/GlassFx';
+import MockModeBanner from '../components/MockModeBanner';
+import { getConfig } from '../lib/api';
 import {
 	SIDEBAR_WIDTH_COLLAPSED,
 	SIDEBAR_WIDTH_EXPANDED,
@@ -12,10 +14,19 @@ import {
 // ── Shell layout — living terrain behind, fixed sidebar, offset content ──────
 export default function Layout() {
 	const [expanded, setExpanded] = useState(false);
+	const [mockMode, setMockMode] = useState(false);
 
 	useEffect(() => {
 		const saved = localStorage.getItem(SIDEBAR_STORAGE_KEY);
 		if (saved !== null) setExpanded(saved === 'true');
+	}, []);
+
+	useEffect(() => {
+		// Gateway-offline / pre-mock_mode gateway both degrade to no banner —
+		// the absence of a live signal must never read as "mock mode on".
+		getConfig()
+			.then((cfg) => setMockMode(cfg.mock_mode ?? false))
+			.catch(() => setMockMode(false));
 	}, []);
 
 	const toggle = useCallback(() => {
@@ -45,6 +56,7 @@ export default function Layout() {
 						transition: 'margin-left 150ms var(--l2-ease)'
 					}}
 				>
+					<MockModeBanner mockMode={mockMode} />
 					<Outlet />
 				</main>
 			</div>
