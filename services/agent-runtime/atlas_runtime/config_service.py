@@ -146,8 +146,18 @@ def save_config(cfg: AtlasConfig, path: pathlib.Path | None = None) -> pathlib.P
 def masked_dict(cfg: AtlasConfig) -> dict:
     """Config as a plain dict safe for the gateway/cockpit. Secrets are already
     ``env:`` refs (no values), so this is a straight dump kept behind one function
-    in case future fields need masking."""
-    return cfg.model_dump()
+    in case future fields need masking.
+
+    Adds a derived ``mock_mode`` field: True when no effective credential
+    resolves for the configured provider (drives the cockpit's "MOCK MODE"
+    banner). Computed via ``resolve_provider`` so the same env-deref logic the
+    agent runtime uses for routing decides the UX signal — never a second,
+    possibly-divergent check. No secret value is added to the dict; only the
+    boolean presence/absence of a resolved api_key.
+    """
+    data = cfg.model_dump()
+    data["mock_mode"] = not bool(resolve_provider(cfg).get("api_key"))
+    return data
 
 
 def get_value(cfg: AtlasConfig, dotted_key: str):
