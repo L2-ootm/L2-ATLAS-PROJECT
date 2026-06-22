@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0.5
 milestone_name: Mass-Adoption Launch Wedge
-status: in_progress
-last_updated: "2026-06-22T02:10:00.000Z"
-last_activity: 2026-06-22 -- Phase 10.0.2 COMPLETE + VERIFIED (One-Command Install Path, 4 plans/3 waves): cockpit_control.py + `atlas up` (boots gateway+cockpit, Windows console-flash guard); deterministic mock provider auto-engaging on empty creds (honest-failure path preserved — wrong-but-present key still hits real provider) + `atlas db init --demo` seed (mission/run/audit/wiki, ATLAS_HOME-aware idempotent sentinel); `atlas doctor` health aggregator (secret-safe, wraps /health); install/docs layer (.env.example, docker-compose.yml optional, docs/INSTALL.md, README quickstart, extended install-atlas-cli.ps1 + setup.sh, fresh_install_smoke.py); cockpit MOCK MODE banner wired (Layout.tsx ← masked_dict.mock_mode). Code review: 1 critical (dead MockModeBanner) + 5 warnings fixed. Tests: agent-runtime 301, atlas-core 44, cockpit tsc clean. Verification 4/4 SC (automated); 2 manual items deferred by operator (live-browser banner, Docker compose — no engine here). GROUNDING CORRECTION: the 10.0.3 setup-wizard (scope #2) was already shipped (76df72d), so this phase added only net-new pieces.
+status: executing
+last_updated: "2026-06-22T17:58:22.077Z"
+last_activity: 2026-06-22 -- Phase 10.0.4 execution started
 progress:
   total_phases: 14
-  completed_phases: 1
-  total_plans: 6
-  completed_plans: 4
-  percent: 7
+  completed_phases: 2
+  total_plans: 13
+  completed_plans: 5
+  percent: 14
 ---
 
 # STATE — L2 ATLAS
@@ -155,7 +155,7 @@ backfilled embeddings cleared). Phase B (Context Intelligence, B1–B6) fully co
 
 ## Current Position
 
-Phase: 10.0.2 (One-Command Install Path) — DONE (4/4 plans executed, 2026-06-22)
+Phase: 10.0.4 (Developer Integrations & Tool Manifest) — EXECUTING
   Plan 04 (install/docs layer) shipped: `.env.example`, `docker-compose.yml`,
   `docs/INSTALL.md`, README quickstart, extended install-atlas-cli.ps1 + new
   scripts/setup.sh, `scripts/fresh_install_smoke.py` (clean-env e2e smoke,
@@ -166,8 +166,8 @@ Phase: 10.0.2 (One-Command Install Path) — DONE (4/4 plans executed, 2026-06-2
   fully complete. Next unstarted phase: 10.0.3 (ATLAS Identity & Cockpit
   Redesign) — already in-flight ahead of spine per operator direction (see
   "In-flight" note below); otherwise continue the v1.0.5 spine at 10.0.4.
-Plan: 4 of 4 (complete)
-Status: Phase 10.0.2 complete
+Plan: 1 of 6
+Status: Executing Phase 10.0.4
 In-flight (ahead of spine, operator-directed): 10.0.3 ATLAS Identity & Cockpit Redesign — brand
   direction approved at gate; ATLAS palette tokens, logo system (3 variants), favicon, topographic
   shell + sidebar redesign landed. UI-SPEC + per-page redesign wave outstanding.
@@ -179,7 +179,7 @@ In-flight (ahead of spine, operator-directed): 10.0.3 ATLAS Identity & Cockpit R
   primitives); soft-aurora OGL effect integrated; first React surface = Dashboard operator HUD
   (live telemetry + graceful loading/empty/offline states), proven via Playwright
   (output/react-pivot/). Svelte cockpit stays live until React reaches route parity.
-Last activity: 2026-06-22
+Last activity: 2026-06-22 -- Phase 10.0.4 execution started
 Loop note: pre-existing dirty state on branch `feat/cockpit-p3-glass-p4` (`.planning/prep/next-steps-db-runner-async-supabase.md`)
   blocked safe code-changing automation. Report-only continuation state written to
   `.planning/reports/atlas-living-context-loop-2026-06-18-dirty-worktree-guard.md`.
@@ -416,7 +416,7 @@ tsc/lint/build green.
 See: `.planning/PROJECT.md` (updated 2026-06-15) · `.planning/MILESTONES.md`
 
 **Core value:** A serious, auditable AI operating system for technical founders/operators.
-**Current focus:** Phase 10.0.2 — One-Command Install Path
+**Current focus:** Phase 10.0.4 — Developer Integrations & Tool Manifest
 
 ## Deferred Items
 
