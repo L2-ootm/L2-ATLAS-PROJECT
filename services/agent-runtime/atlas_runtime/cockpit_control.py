@@ -32,9 +32,20 @@ PID_FILE = pathlib.Path.home() / ".atlas" / "cockpit.pid"
 
 
 def _parse_port(url: str) -> int:
-    """Extract the port from COCKPIT_URL so the npm --port flag always matches."""
+    """Extract the port from COCKPIT_URL so the npm --port flag always matches.
+
+    A portless URL (e.g. no ``:port`` segment) is a legitimate default and
+    still falls back to 5173. An UNPARSABLE port (e.g. a typo like
+    ``http://127.0.0.1:abc``) raises instead of silently defaulting — masking
+    that misconfiguration would route npm to spawn on 5173 while health_ok()
+    polls the broken original URL, producing a confusing timeout with no hint
+    of the real cause.
+    """
     parsed = urllib.parse.urlparse(url)
-    return parsed.port or 5173
+    try:
+        return parsed.port or 5173
+    except ValueError as exc:
+        raise ValueError(f"ATLAS_COCKPIT_URL has an invalid port: {url!r}") from exc
 
 
 def health_ok(timeout: float = 1.0) -> bool:

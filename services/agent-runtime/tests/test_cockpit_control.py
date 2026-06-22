@@ -9,7 +9,22 @@ from __future__ import annotations
 import subprocess
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from atlas_runtime import cockpit_control
+
+
+def test_parse_port_returns_default_for_portless_url():
+    assert cockpit_control._parse_port("http://127.0.0.1") == 5173
+
+
+def test_parse_port_returns_explicit_port():
+    assert cockpit_control._parse_port("http://127.0.0.1:6173") == 6173
+
+
+def test_parse_port_raises_on_invalid_port():
+    with pytest.raises(ValueError, match="invalid port"):
+        cockpit_control._parse_port("http://127.0.0.1:abc")
 
 
 def test_health_ok_returns_false_when_nothing_listening():
