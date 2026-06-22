@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0.5
 milestone_name: Mass-Adoption Launch Wedge
-status: in_progress
-last_updated: "2026-06-22T01:00:00.000Z"
-last_activity: 2026-06-22 -- Phase 10.0.1 COMPLETE (Repo Hygiene & Trust Package): root LICENSE (MIT), SECURITY.md, CONTRIBUTING.md, CODE_OF_CONDUCT.md, LIMITATIONS.md, ARCHITECTURE.md, ATTRIBUTION.md, .github/ISSUE_TEMPLATE/ (bug report + feature request). Secret scan clean. All 4 wedge success criteria met.
-prior_activity: 2026-06-21 -- Phase B COMPLETE (Context Intelligence, B1-B6): budget-aware MemoryRouter unifying recent-runs/prior-failures/observations/wiki-knowledge/skills under a token budget with boundary redaction + provenance; semantic embeddings real (sqlite-vec+fastembed, 384-dim, embed-on-write + `atlas wiki reindex`, FTS5 fallback preserved); ContextConfig + `atlas mission run --show-context`
+status: executing
+last_updated: "2026-06-22T01:00:45.092Z"
+last_activity: 2026-06-22
 progress:
-  total_phases: 13
-  completed_phases: 4
-  total_plans: 3
-  completed_plans: 3
-  percent: 31
+  total_phases: 14
+  completed_phases: 1
+  total_plans: 6
+  completed_plans: 2
+  percent: 7
 ---
 
 # STATE — L2 ATLAS
@@ -30,23 +29,30 @@ and the lifecycle is **audit-first** (D-002) — the schema already anticipated 
   `DiscordApproval` (action/status Literals, JSON-string `params`, operator `run_id`); migration
   `0012_discord_approvals.sql` (additive queue table, `run_id` not FK-enforced — the emitted audit
   event carries the `runs(id)` FK).
+
 - **C-WP2 — write client.** `discord_api._request` + typed wrappers for every sidecar mutation
   (create/edit/delete channel & role, send embed, set permissions); HTTP `{error}` bodies surfaced.
+
 - **C-WP3 — sidecar attribution.** `bot/api.py` write handlers thread a body `reason` into Discord's
   audit log (default `Dashboard`, backward-compatible); tolerant `_reason_from` for DELETE bodies.
+
 - **C-WP4 — state machine.** `discord_service.propose/approve/reject/list`. propose → pending row +
   `approval` audit; approve → sidecar write + flip `executed`/`failed` + `discord_action`/`failure`
   audit; reject → `rejected` + audit. `params` is secret-**redacted once** and is the single source
   of truth for both audit and execution (a smuggled secret never persists or reaches Discord).
   Factored `mission_service.ensure_operator_run` (shared with the wiki precedent) for the FK.
+
 - **C-WP5 — CLI.** `atlas discord propose <action> --guild [--target] [--params|flags] --reason`,
   `approvals [--status]`, `approve <id>`, `reject <id>` (each `--json`). approve exits 0 on a
   processed outcome (executed OR failed) so the status reaches the gateway.
+
 - **C-WP6 — gateway.** `POST /v1/discord/writes`, `GET /v1/discord/approvals`,
   `POST /v1/discord/approvals/{id}/{approve,reject}` — dispatch-only, user values after `--`.
+
 - **C-WP7 — cockpit.** `/discord` write/approve UI: create/edit/delete channel & role, send embed,
   permission-overwrite modals (clean glass) that PROPOSE (never execute inline) + a Pending Approvals
   panel (Approve/Reject). `api.ts` client + types; graceful offline.
+
 - **C-WP8 — coexistence guard.** Best-effort, non-fatal warning when the sidecar and the foundation
   messaging gateway share a bot token (sha256 fingerprint compare; raw token never logged).
 
@@ -56,7 +62,9 @@ tsc/lint/build clean. Atomic commit per WP (C-WP1..C-WP8).
 
 **Live verification (manual, real creds):** `atlas discord start` → `atlas discord propose
 create_channel --guild <id> --name zzz-atlas-test` → `approvals` → `approve <id>` creates the channel
+
 + emits a `discord_action` event → propose/approve `delete_channel` to clean up. Use a throwaway
+
 channel.
 
 ## Phase A — Foundation Polish (2026-06-21, branch `feat/phase-a-foundation-polish`)
@@ -70,10 +78,13 @@ Closed the four foundation gaps that blocked the just-shipped cockpit (see
   injects a working `ATLAS_CLI`; `/v1/operations`, `/v1/graph`, `/v1/config` now 200. Hardened
   `scripts/install-atlas-cli.ps1` to target a dedicated repo `.venv` (the ambient PATH python is
   the pip-less Hermes venv) and regenerate the machine-local `atlas.cmd` shim.
+
 - **A2 — TUI dist built.** `foundation/atlas-hermes/ui-tui` → `dist/entry.js` (2.9mb esbuild
   bundle); installer now builds it (guarded by npm). dist/ + node_modules/ stay gitignored.
+
 - **A3 — `atlas tui`.** New `atlas_runtime/cli/tui.py`: thin D-001-safe wrapper over the
   foundation Ink TUI (`_launch_tui`), forwarding only explicit --model/--provider/--dev. 4 tests.
+
 - **A4 — native provider/model routing.** `config_service.resolve_provider` (config baseline +
   Focus.framework model override + env:VAR api_key deref); resolved inside `NativeAtlasAgent.execute`,
   the single path all run surfaces flow through. Empty creds fall back to the foundation (honest
@@ -90,6 +101,7 @@ Closed the four foundation gaps that blocked the just-shipped cockpit (see
   `atlas mission retry <id>` (mirrors `mission run`, optional --execute), gateway
   `POST /v1/missions/{id}/retry` (mirrors start_run: dispatch retry, optional detached `run exec`),
   cockpit Retry button on MissionDetail for FAILED/CANCELLED missions. 6 service + 2 CLI + 1 gateway tests.
+
 - **A6 — config export/import.** `atlas config export` (-o file or stdout) / `atlas config import`
   (replace semantics, atomic save). The file is already secret-safe (env:VAR refs only); import
   re-validates so an inline secret is rejected before any write. CLI-only (gateway /v1/config stays
@@ -111,19 +123,24 @@ in Python.
   sections through pluggable `Retriever`s. Ported the three existing inline retrievals (recent runs,
   observations, wiki FTS5) onto it; `context_service.assemble_context` refactored to drive it,
   byte-stable for existing sections. Redaction now happens once at the router boundary.
+
 - **B-WP2 — Prior-failures retriever.** Mines this mission's failed runs + `failure` audit events,
   dedupes by normalized message, surfaces recurring failures first (×N). Mission-scoped — pairs with
   the Phase A retry loop so a retried mission inherits what went wrong.
+
 - **B-WP3 — Skill matching.** Parses the in-repo `docs/imports/SKILL_INVENTORY.md` (class-tagged
   rows), matches curated skills to Focus terms; absent file → no-op (no sibling-repo coupling).
+
 - **B-WP4 — Semantic storage.** De-risk PASSED on this Windows box: sqlite-vec + fastembed
   (BAAI/bge-small-en-v1.5, 384-dim) load and round-trip (symlink warning, falls back, succeeds).
   `0011_wiki_embeddings_meta.sql` (plain bookkeeping table); `wiki_service` lazily creates the `vec0`
   `wiki_vec` table and embeds on write — strictly best-effort (a missing dep / embed failure is a
   logged no-op; the page write never fails). `atlas wiki reindex` backfills stale pages. KNN read uses
   the required `k = ?` constraint. Deps are the existing `wiki-runtime[semantic]` extra.
+
 - **B-WP5 — Hybrid knowledge.** `HybridKnowledgeRetriever` blends semantic vector hits ahead of FTS5
   hits (deduped) when embeddings exist; pure FTS5 (no regression) when they don't.
+
 - **B-WP6 — Config + inspector.** `ContextConfig` (token_budget=8000, enable_semantic, enable_skills)
   read by `assemble_context`; `default_router` toggles. `atlas mission run --show-context` prints the
   assembled brief (sources/token header) without starting a run.
@@ -133,17 +150,18 @@ end-to-end smoke confirmed the full brief (all sections), semantic embedding, an
 smoke transiently mutated the real `~/.atlas/atlas.db` (the CLI DB path ignores `ATLAS_HOME` — see
 memory `cli-db-path-not-atlas-home`); state was hand-restored (prior Focus reactivated, artifacts +
 backfilled embeddings cleared). Phase B (Context Intelligence, B1–B6) fully complete. Six WP commits
+
 + STATE on `feat/phase-b-context-intelligence`.
 
 ## Current Position
 
-Phase: 10.0.1 — ✅ COMPLETE + VERIFIED (2026-06-21). Trust package landed (LICENSE/MIT,
+Phase: 10.0.2 (One-Command Install Path) — EXECUTING
   SECURITY/CONTRIBUTING/CODE_OF_CONDUCT/LIMITATIONS/ARCHITECTURE/ATTRIBUTION, issue templates);
   verification pass re-ran the secret scan clean and closed the criterion-4 gap by adding
   `.github/labels.yml` (good first issue scheme). Next unstarted phase: 10.0.2 — One-Command
   Install Path (0 plans; start with `/gsd-discuss-phase 10.0.2`).
-Plan: 10.0 closed; 10.1 not yet planned
-Status: in_progress
+Plan: 2 of 4
+Status: Ready to execute
 In-flight (ahead of spine, operator-directed): 10.0.3 ATLAS Identity & Cockpit Redesign — brand
   direction approved at gate; ATLAS palette tokens, logo system (3 variants), favicon, topographic
   shell + sidebar redesign landed. UI-SPEC + per-page redesign wave outstanding.
@@ -155,12 +173,13 @@ In-flight (ahead of spine, operator-directed): 10.0.3 ATLAS Identity & Cockpit R
   primitives); soft-aurora OGL effect integrated; first React surface = Dashboard operator HUD
   (live telemetry + graceful loading/empty/offline states), proven via Playwright
   (output/react-pivot/). Svelte cockpit stays live until React reaches route parity.
-Last activity: 2026-06-19 -- Operator console window manager: draggable/tiled chat workbench, project/folder binding, native chat bridge, Claude Code SDK path wired
+Last activity: 2026-06-22
 Loop note: pre-existing dirty state on branch `feat/cockpit-p3-glass-p4` (`.planning/prep/next-steps-db-runner-async-supabase.md`)
   blocked safe code-changing automation. Report-only continuation state written to
   `.planning/reports/atlas-living-context-loop-2026-06-18-dirty-worktree-guard.md`.
 
 ### Operator big-plan progress (2026-06-18, web-ui-react)
+
 - **P1 GlassTopo (DONE+verified):** signature frosted-glass-over-glowing-topo surface
   (`src/components/GlassTopo.tsx`). RETUNED to match the L2 reference: resting field is now the
   star (dense cellSize 9, freq 0.015, restingOpacity 0.82, 8 levels), thin frost (blur 3px),
@@ -168,97 +187,126 @@ Loop note: pre-existing dirty state on branch `feat/cockpit-p3-glass-p4` (`.plan
   Applied to New-Mission modal (ai/violet), Mission hero (info), Run hero (good when live),
   Projects modal (good/green ≈ reference). Shots: output/playwright/glasstopo-v2-modal-final.png,
   projects-create-modal-green.png.
+
 - **P2 Private repo (DONE):** github.com/L2-ootm/L2-ATLAS-PROJECT private; secrets gate clean.
 - **P3 Folder-backed Projects (DONE, full stack, verified):**
   - DB: `infra/migrations/0005_projects.sql` — projects table (IF NOT EXISTS) + `missions.project_id`
     (bare ADD COLUMN, mirrors the 0002 additive pattern; fresh-apply convention — NO tracked runner
     built, that remains the slated `atlas db init` gap).
+
   - Schema: `Project` model + `Mission.project_id` in `packages/atlas-core/.../core.py`.
   - Service/CLI: `atlas_runtime/project_service.py` (create-in-folder / register-existing / get /
     list, path validation, dup-path reject) + `mission_service.create_mission(project_id=…)` +
     CLI `atlas project create|register|list` + `mission create --project`.
+
   - Gateway (Rust): `GET /v1/projects`, `POST /v1/projects` (create), `POST /v1/projects/register`,
     `GET /v1/projects/{id}` (+ its missions); graceful pre-0005 fallback; MISSION_COLS untouched.
+
   - React: `/projects` route + STRUCTURE nav (FolderGit2) + api client + create/register modal +
     optional project picker on New-Mission. Shots: output/playwright/projects-page.png.
+
   - Verified: agent-runtime 26 + atlas-core 33 pytest green (conftest now applies ALL migrations;
     drift guards updated for project_id); fresh-DB P3 smoke 10/10; cargo test 34+3 green; web
     check/lint/build green. **LANDED 2026-06-18:** gateway rebuilt, `/v1/projects` live (HTTP 200);
     committed on branch `feat/cockpit-p3-glass-p4` (0dc0bd3).
+
 - **P4 Modular agents (DONE — 2026-06-18, branch `feat/cockpit-p3-glass-p4`):**
   - DE-RISK SPIKE PASSED: `claude-agent-sdk` 0.2.104 runs on the LOCAL `claude` CLI (v2.1.179)
     session with NO `ANTHROPIC_API_KEY` (subscription auth); structured stream maps to AuditEvents.
     See memory `p4-agent-sdk-derisk.md`.
+
   - Backend (commit 0dc...→ b-slice): `atlas_runtime/agents/` — AgentRuntime ABC + RunOutcome,
     registry ("native"|"claude_code"), NativeAtlasAgent (audit-parity), ClaudeCodeAgent (SDK,
     optional dep `atlas-runtime[claude]`, lazy import, stream→emit). Migration 0006
     `runs.agent_runtime` (NOT NULL DEFAULT 'native') + Run schema field + 0001-scoped drift guards.
     `start_run(agent_runtime=…)` persists it. CLI `atlas mission run --agent X [--execute]`
     (--execute runs synchronously via the runtime, then completes the run).
+
   - Gateway (Rust) + Console (commit 921eb2e): `POST /v1/missions/{id}/run` accepts
     `{agent:"native"|"claude_code"}` (default native; 400 invalid; record-only, no --execute),
     forwards `--agent`; runs expose `agent_runtime`. React NATIVE|CLAUDE CODE selector on
     MissionDetail → startRun(agent); AgentBadge across Runs/RunDetail/MissionDetail; console nav
     planned→active; live logs via existing useRunStream+SSE.
+
   - Verified: cargo 37+3, agent-runtime 64, atlas-core 33, React tsc/lint/build green; native
     `--execute` smoke end-to-end (run succeeded, agent_runtime recorded, audit trail emitted).
+
   - DEFERRED (next slice): gateway-triggered LONG claude_code runs need async/background execution
     — the 30s dispatch timeout makes the gateway record-only today; the CLI `--execute` path is the
     live executor. Console live-stream works for runs an executor drives.
+
   - ⚠️ RUNTIME-DB MIGRATION GAP (antifragility finding): there is NO migration runner; existing
     `~/.atlas/atlas.db` had only 0001-era schema (missing 0005 AND 0006), so committed P3 + P4 were
     broken at runtime until 0005+0006 were hand-applied this session. The slated `atlas db init`
     runner is now a real prerequisite — fresh installs get all migrations via bootstrap, but
     existing DBs silently drift. Build the runner before further schema work.
+
 - **Operator UX slice (DONE — 2026-06-19, live-verified):**
   - Succeeded/completed missions can now be archived with retention (`mission_archive.archived_at/delete_after`);
     purge deletes expired archived missions and their runs/audit/tool/artifact rows. CLI + gateway routes landed.
+
   - Mission detail/archive panel, archived mission filtering, softer glass modal treatment, glassier run rows, and
     Claude Code orange selector state landed in React. Run detail topo now releases with an expanding radial mask
     before settling into clean audit logs.
+
   - Cashflow is now a native `/cashflow` ATLAS route backed by the Rust gateway reading `services/cashflow/dev.db`;
     the old System-page server start/iframe control path was removed. Cashflow module activated live.
+
   - Projects page live readback verified with `L2 ATLAS PROJECT` and `L2 Cashflow` registered. Proof shots:
     `output/playwright/ux-projects-page.png`, `ux-cashflow-page.png`, `ux-mission-archive-panel.png`,
     `ux-claude-selector-orange.png`, `ux-run-detail-clean-logs.png`.
+
   - Console direction set for next slice: VS Code/Claude-style conversation surface in ATLAS visual language,
     then modular panes (chat, audit stream, tools/files, memory/context) with draggable tiling and topo-aware motion.
+
 - **Operator UX cleanup (DONE — 2026-06-19, live-verified):**
   - Removed the `Missions.refresh()` automatic archive purge call. Root cause: page navigation was invoking
     `POST /v1/missions/purge-archived`, which shells through the CLI contract and can surface Windows terminals.
     Purge remains available as an explicit backend/API operation only.
+
   - Restored the New Mission modal material to the pre-cleanup glow/blur treatment; kept only the requested
     project selector behavior. Live run audit topo was strengthened and pings are no longer gated by the release phase.
+
   - Cashflow summary page now includes a `Complete Cashflow` handoff to the future gateway endpoint
     `http://127.0.0.1:8484/cashflow/full`. Proof shots: `output/playwright/ux-new-mission-modal-restored.png`,
     `ux-cashflow-complete-button.png`, `ux-run-live-topo-restored.png`.
+
 - **Operator UX console/projects foundation (DONE — 2026-06-19, live-verified):**
   - New Mission project selection now uses a custom ATLAS popover (`ProjectSelector`) instead of the native Windows
     dropdown; project name/path are scannable and the "No project" state remains explicit.
+
   - Projects create/register modals now prioritize folder picking. In the Tauri desktop shell, `select_folder`
     opens the OS folder picker via `rfd`; browser mode degrades to manual paste because browsers cannot expose
     arbitrary absolute local paths.
+
   - Projects rows now include an `Open` console action routing to `/console?project=<id>`. The `/console` route is
     now a first-pass VS Code-like ATLAS workbench: tabs (`atlas.chat`, `audit.stream`, `context.graph`), project rail,
     chat/composer, context/tool dock, local draft message stream, and responsive mobile collapse.
+
   - Shared page header and Projects table now respond at narrow widths; console long paths wrap instead of clipping.
     Proof shots: `output/playwright/ux-project-selector-polished.png`,
     `ux-project-folder-picker.png`, `ux-projects-console-buttons-final.png`,
     `ux-console-project-tabs-final.png`, `ux-projects-mobile-header-fixed.png`,
     `ux-console-mobile-header-fixed.png`.
+
   - Verified: `npm run check`, `npm run lint`, `npm run build` green in `services/web-ui-react`; `cargo check`
     green in `services/web-ui-react/src-tauri`; Playwright project handoff and console composer smoke passed.
+
 - **Operator console window manager (DONE/PARTIAL — 2026-06-19, live-verified):**
   - `/console` is now a modular workbench: VS Code-like tabs, new chat/audit/tools/context window creation,
     tile layout reordering, free-layout pointer dragging, active-window focus, and topo-aware semantic window zones.
+
   - Project integration is live. Projects route to `/console?project=<id>`; the console resolves project root, binds
     chat/tool/context panes to that folder, and can switch to manual folder binding through the desktop folder picker.
+
   - Added the chat execution bridge: `atlas console chat`, gateway `POST /v1/console/chat`, React `consoleChat`, and
     Native/Claude Code mode selection. Native mode returns a receipt through the real gateway and populates audit rows.
+
   - Claude Code mode is code-wired through `claude-agent-sdk` with `cwd`, `permission_mode="dontAsk"`, read/search tool
     allowance, and preset `claude_code` prompt context. The local `claude.exe` exists, but the active `python` runtime is
     the Hermes venv without `pip`; `claude_agent_sdk` is not importable there, so the UI now reports the missing optional
     SDK cleanly instead of breaking. Install `atlas-runtime[claude]` in the gateway dispatch Python to make it execute.
+
   - Verification: `npm run check`, `npm run lint`, `npm run build` green; gateway `/v1/console/chat` native probe green;
     Playwright verified bound boot receipt, new chat window creation, free-layout drag, native chat response, Claude-mode
     fallback, and zero browser warnings. Proof shots: `output/playwright/ux-console-window-manager-tile.png`,
@@ -268,33 +316,44 @@ Loop note: pre-existing dirty state on branch `feat/cockpit-p3-glass-p4` (`.plan
 - **Operator console UX continuation (DONE — 2026-06-19, browser-verified):**
   - Claude Code is now per-window: `+ Claude Code` spawns a separate `claude.code` chat window while existing native
     chats remain native. The global agent toggle behavior was removed from the console workbench.
+
   - Free mode now has live drag + live resize through pointer and mouse fallbacks, a scrollable free canvas, and initial
     window geometry that keeps resize handles visible at 1280x720. Exclusive tabs mode remains available for one-window-per-tab use.
+
   - Browser-mode folder selection is wired through the Rust gateway at `POST /v1/host/select-folder`; Projects and Console use
     the shared `selectFolder()` host helper instead of the desktop-only Tauri path. Project modals keep manual path entry as a fallback.
+
   - The Context window now contains the first Hermes Brain / Graphify surface: a topo-lit 3D-ish neuron field with memory,
     skills, runs, audit, and Graphify nodes. Graphify remains disabled in `.planning/config.json`, so this is a UI contract
     and activation point rather than a graph build.
+
   - Added global ATLAS custom scrollbars and kept project-to-console binding live from `/projects`.
   - Verification: `npm run check`, `npm run lint`, and elevated `npm run build` green in `services/web-ui-react`;
     `cargo check -p atlas-gateway` green in `native/atlas-core-rs`; in-app browser verified `/console` no `agent is not defined`, Claude spawns separately,
     tile/free/tabs cycle, free resize and drag both mutate geometry live, `/projects` Open binds `/console?project=<id>`,
     New Project modal has browser-friendly folder-picker copy, and browser console errors stayed empty.
+
 ### Six-item operator scope (added 2026-06-20, in-flight under 10.0.3)
 
 Operator added six items, sequenced for execution (index:
 `.planning/phases/10.0.3-SCOPE-SEQUENCE.md`; each has a PHASE.md). Status as of 2026-06-20:
+
 1. **DONE** Memory router — FTS5 wiki retrieval into `context_service.assemble_context` (`18bbfb4`).
    6 tests; 157 agent-runtime pass (1 pre-existing claude_agent_sdk env fail).
+
 2. **DONE** Setup wizard + config-service — `atlas setup`, `~/.atlas/config.yaml`, `atlas config
    show/get/set/json`, gateway `GET /v1/config`, System RUNTIME CONFIG panel (`76df72d`). 14 tests.
+
 3. **DONE (management floor)** Channel cockpit — `atlas channels enable/disable/json`, gateway
    `GET /v1/channels` + `POST /v1/channels/{name}/toggle`, System CHANNELS panel (`ad48554`). 6 tests.
    Deferred: messaging-gateway process lifecycle, Discord browser (see PHASE.md).
+
 4. **DONE (core)** Console BSP auto-tiling — pure `bspLayout.computeDwindle` + `bsp` LayoutMode wired
    into Console (`39f61aa`). Deferred: manual split-boundary resize; no JS test runner → tsc/build-gated.
+
 5. **DONE** Harness cherry-pick — `docs/research/HARNESS_CHERRYPICK_PI_OPENCODE.md`, 9 patterns
    classified adopt/adapt/skip (`0c4600a`). PI = pi-mono harness.
+
 6. **DEFERRED** Foundation de-brand hermes→atlas (`10.0.7-foundation-debrand`) — operator-directed to a
    dedicated session (~12.9k refs, foundation-locked tree, test-gated). PHASE.md is the ready plan.
 
@@ -311,11 +370,13 @@ tsc/lint/build green.
   panel footer control. +10 Python / +3 Rust tests. agent-runtime 170 pass (1 known
   `claude_agent_sdk` env fail), `cargo test -p atlas-gateway` 64 pass, web tsc/lint/build green.
   See `10.0.3-channel-cockpit/PHASE.md` "Delivered part 2". Still deferred: Discord browser, Providers tab.
+
 - **DRIFT CORRECTION — two long-flagged gaps are already DONE (this STATE was stale):**
   1. The `atlas db init` migration runner EXISTS: `atlas_runtime/db.py` has a `schema_migrations`
      tracker + drift-tolerant `apply_migrations`/`migration_status`, wired as `atlas db init`/`status`
      and called by the setup wizard; 5-test suite (`tests/test_db_migrations.py`). The "build the
      runner before further schema work" prerequisite below is satisfied.
+
   2. The async/background run executor EXISTS: `run_executor.start_and_execute_async` (daemon-thread
      workers) + `runtime_daemon.py` (HTTP enqueue host), delivered under Command Center WP-1.
   Treat the "NEXT SESSION (1)(2)" and antifragility "build the runner" notes in the big-plan log below
@@ -327,26 +388,29 @@ tsc/lint/build green.
   enumeration-less foundation adapter. Vendored `C:\...\L2-BOT` into `services/discord-bot` (cashflow
   sidecar pattern; secrets/state gitignored, secret gate clean) and shipped a read-only `/discord`
   cockpit route: sidecar lifecycle + guild → channels(by category) + roles.
+
 - Stack: `discord_control.py` (detached spawn + `~/.atlas/discord-bot.json` pid + `/health` probe),
   `discord_api.py` (stdlib HTTP read client), `atlas discord start|status|stop|guilds|structure`,
   gateway `GET /v1/discord/status|guilds|guilds/{id}/structure` + `POST start|stop`, React `/discord`.
   No foundation edits (D-001); gateway dispatches the CLI, Python owns the HTTP call (D-022). Added
   `GET /health` to the vendored bot. See `.planning/phases/10.0.3-discord-surface/PHASE.md`.
+
 - Tests: +12 Python, +4 Rust. agent-runtime 182 pass (1 known env fail); `cargo test -p atlas-gateway`
   68 pass; web tsc/lint/build green. **E2E verified with the operator's real bot token**: connected to
   guild "L2", live guilds + structure (20 categories, 18 roles), clean stop.
+
 - Deferred (gated slice 2): write/management (create/edit/delete channels & roles, send embeds,
   permission overwrites) — needs approval-gating + audit per the L2-BOT operating-model non-negotiables.
+
 - Coexistence: do not run the vendored L2-BOT and the foundation messaging gateway's Discord adapter on
   the same bot token simultaneously.
 
 ## Project Reference
 
-
 See: `.planning/PROJECT.md` (updated 2026-06-15) · `.planning/MILESTONES.md`
 
 **Core value:** A serious, auditable AI operating system for technical founders/operators.
-**Current focus:** Phase 10.0.1 — Repo Hygiene & Trust Package (v1.0.5 wedge active; v1.1 paused at 10.0)
+**Current focus:** Phase 10.0.2 — One-Command Install Path
 
 ## Deferred Items
 
@@ -477,6 +541,7 @@ Acknowledged at milestone close on 2026-06-15:
   ~/.claude/plans/session-wrap-the-atlas-vivid-river.md). P1 glass-topo ✅ + P2 private repo ✅ DONE.
   REMAINING (each multi-session, backend-heavy):
   P3 — Folder-backed Projects (full vision): projects table maps to a working dir; create-in-folder
+
   + register existing folder; missions run in project cwd. Stack: migration 0005 (projects +
   missions.project_id FK — NOTE: ALTER ADD COLUMN is non-idempotent in SQLite; VERIFY the migration
   runner tracks applied files before adding, or boot breaks), Project schema in packages/atlas-core,
@@ -505,6 +570,7 @@ Acknowledged at milestone close on 2026-06-15:
   sets aren't copyrightable; we reimplement natively). Direct code/CSS/asset reuse is GATED: repo
   shows AGPL-3.0 (copyleft) vs MIT in D-016 — confirm before copying any source. "Borrow the
   direction, write our own code."
+
 - D-024 (2026-06-17): ATLAS brand identity locked to the celestial-heraldic reference. Primary =
   vivid-blue "celestial" Operator-Atlas emblem (titan bearing a constellation globe over a circuit
   temple); titan bronze #B08A57 = precious filigree/wordmark only; ivory #EDEAE0 text; Cinzel
@@ -582,6 +648,7 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 | Phase 10.0 P01 | 7m | 3 tasks | 4 files |
 | Phase 10.0 P02 | 8min | 2 tasks | 3 files |
 | Phase 10.0 P03 | 12min | 2 tasks | 2 files |
+| Phase 10.0.2 P01 | 18min | 2 tasks | 4 files |
 
 ## Operator Next Steps
 
@@ -608,12 +675,14 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 - [10.0-03]: IPC: gateway 127.0.0.1:8484 is loopback HTTP, NOT an IPC surface; no capability grant needed
 
 ---
+- [Phase 10.0.2-01]: ATLAS_COCKPIT_URL env var authoritative for cockpit spawn/health-check URL (mirrors gateway_control.py precedent); config.yaml CockpitConfig.port stays informational-only
 
 ## Session Analysis Documentation (2026-06-19/20)
 
 Full codebase analysis, loop engineering synthesis, foundation mapping, and gateway audit produced:
 
 **Command Center (`.planning/phases/10.0.3-command-center/`):**
+
 - `PLAN.md` — all WPs marked DONE (WP-0 through WP-6, LE-0 through LE-5)
 - `SESSION-SUMMARY.md` — complete session arc, files created/modified, architecture delivered
 - `GATEWAY-BRIEF.md` — gateway 39 routes, CLI/TUI status, rebranding scope
@@ -622,6 +691,7 @@ Full codebase analysis, loop engineering synthesis, foundation mapping, and gate
 - `FOUNDATION-AND-CHANNELS-ANALYSIS.md` — foundation integration status, channel management suite design
 
 **Graphify (`.planning/phases/10.0.3-graphify-living-graph/`):**
+
 - `GAP-ANALYSIS.md` — 15 gaps identified, priority matrix
 - `SPEC.md` — entity model, storage, visuals, API design
 - `PHASE.md` — 8 work packages, 19-24 days
@@ -634,10 +704,12 @@ Full codebase analysis, loop engineering synthesis, foundation mapping, and gate
 Full codebase analysis of the Graphify knowledge graph system completed. Documentation produced:
 
 **Gap Analysis:** `.planning/phases/10.0.3-graphify-living-graph/GAP-ANALYSIS.md`
+
 - 15 gaps identified across runtime integration, incremental updates, semantic edges, activity tracking, living visuals, wiki/memory integration, and more
 - Priority matrix: P0 (runtime entities, wiki integration, Agent Context tab), P1 (persistence, incremental updates, activity, living visuals), P2-P3 (semantic edges, mutations, export)
 
 **Design Spec:** `.planning/phases/10.0.3-graphify-living-graph/SPEC.md`
+
 - Entity model: 11 node types, 13 edge types with Pydantic schema
 - Storage: SQLite graph tables with recursive CTE traversal
 - Graph engine: entity extractors, incremental builder, activity scoring
@@ -646,6 +718,7 @@ Full codebase analysis of the Graphify knowledge graph system completed. Documen
 - Integration points: wiki, audit, memory provenance, console, RAG
 
 **Phase Plan:** `.planning/phases/10.0.3-graphify-living-graph/PHASE.md`
+
 - 8 work packages, 19-24 days estimated
 - WP-1: Graph schema & storage foundation
 - WP-2: Entity extractors (missions, runs, wiki, decisions, phases, audit, files, activity)
@@ -657,6 +730,7 @@ Full codebase analysis of the Graphify knowledge graph system completed. Documen
 - WP-8: Tests
 
 **Context Document:** `.planning/phases/10.0.3-graphify-living-graph/CONTEXT.md`
+
 - Operator vision translation (neuron connections, nebula storms, wiki/RAG integration)
 - Current system inventory (backend, gateway, UI, visual language)
 - Related systems mapping (wiki, audit, memory provenance, 6-layer framework)
