@@ -140,15 +140,15 @@ Index: `.planning/phases/10.0.3-SCOPE-SEQUENCE.md`. Pattern = same as `10.0.3-co
 3. Policy/permissions are visible in the WebUI: read-only mode by default, explicit approval gate for writes, no-sensitive-data posture stated.
 4. All tool calls emit `tool.requested`/`tool.completed`/`tool.failed` audit events per the existing audit bus.
 
-**Plans:** 6 plans
+**Plans:** 6/6 plans complete
 
 Plans:
-- [ ] 10.0.4-00-PLAN.md — Wave 0 test stubs + temp-DB conftest + confirm no CHECK on audit event_type
-- [ ] 10.0.4-01-PLAN.md — atlas-core ToolManifest/ToolResult/ToolApproval + AuditEvent verbs + policy.decide + pyyaml
-- [ ] 10.0.4-02-PLAN.md — four adapters (workspace/github/web_fetch/webhook_notify) + SSRF/boundary guards + manifests
-- [ ] 10.0.4-03-PLAN.md — tool_registry + tool_service chokepoint/approval state machine + 0013 migration
-- [ ] 10.0.4-04-PLAN.md — atlas tools CLI group + dispatch-only gateway /v1/tools/* routes
-- [ ] 10.0.4-05-PLAN.md — cockpit System POLICY/TOOLS/APPROVALS panels + api.ts + docs (SC3 human-verify)
+- [x] 10.0.4-00-PLAN.md — Wave 0 test stubs + temp-DB conftest + confirm no CHECK on audit event_type
+- [x] 10.0.4-01-PLAN.md — atlas-core ToolManifest/ToolResult/ToolApproval + AuditEvent verbs + policy.decide + pyyaml
+- [x] 10.0.4-02-PLAN.md — four adapters (workspace/github/web_fetch/webhook_notify) + SSRF/boundary guards + manifests
+- [x] 10.0.4-03-PLAN.md — tool_registry + tool_service chokepoint/approval state machine + 0013 migration
+- [x] 10.0.4-04-PLAN.md — atlas tools CLI group + dispatch-only gateway /v1/tools/* routes
+- [x] 10.0.4-05-PLAN.md — cockpit System POLICY/TOOLS/APPROVALS panels + api.ts + docs (SC3 human-verify)
 
 #### Phase 10.0.5: Golden Workflows & Quality Gate
 
@@ -278,7 +278,7 @@ Post-v1.0 inspection showed the archived CLI is a thin operational surface, not 
 | 10.0.1 Repo Hygiene & Trust Package | v1.0.5 | 0/? | Complete | 2026-06-22 |
 | 10.0.2 One-Command Install Path | v1.0.5 | 4/4 | Done |  |
 | 10.0.3 WebUI Cockpit Completion | v1.0.5 | 0/? | Not started | — |
-| 10.0.4 Developer Integrations & Tool Manifest | v1.0.5 | 0/6 | Planned | — |
+| 10.0.4 Developer Integrations & Tool Manifest | v1.0.5 | 6/6 | Complete   | 2026-06-22 |
 | 10.0.5 Golden Workflows & Quality Gate | v1.0.5 | 0/? | Not started | — |
 | 10.0.6 Public Release Prep & Distribution | v1.0.5 | 0/? | Not started | — |
 | 10.1 ATLAS-Owned Auth Store & Codex Detection | v1.1 | 0/? | Paused | — |

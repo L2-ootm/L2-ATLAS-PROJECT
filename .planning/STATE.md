@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.0.5
 milestone_name: Mass-Adoption Launch Wedge
-status: executing
-last_updated: "2026-06-22T17:58:22.077Z"
-last_activity: 2026-06-22 -- Phase 10.0.4 execution started
+status: in_progress
+last_updated: "2026-06-22T22:35:00.000Z"
+last_activity: 2026-06-22 -- Phase 10.0.4 COMPLETE + VERIFIED (Developer Integrations & Tool Manifest, 6 plans/6 waves, executed INLINE after subagent session limits). Tool layer generalizes the Phase C Discord approval pipeline to all tools. SHIPPED -- atlas-core ToolManifest/ToolResult/ToolApproval (frozen) + AuditEvent verbs tool_requested/tool_completed/tool_failed (TEXT col, no migration); policy.decide() (read=allow, write/shell=needs-approval) + PolicyDecision.requires_approval; four adapters (workspace boundary-bounded, github via gh argv honest-failure, web_fetch SSRF+size-cap GET, webhook_notify POST) + YAML manifests + tool_registry (fail-fast load, name->adapter); tool_service single chokepoint + propose/approve/reject (atomic TOCTOU claim, redact-once, operator-run FK) + 0013_tool_approvals migration; atlas tools CLI group; dispatch-only gateway /v1/tools/* routes (require_arg + `--` separator, D-022); cockpit System TOOL POLICY (read-only badge + risk legend + no-sensitive-data posture) + TOOLS + TOOL APPROVALS panels + docs/tools.md. Tests: agent-runtime 337 (+36), atlas-core 52 (+8), gateway cargo 72+3 (+2), cockpit tsc+build green. Live-verified end-to-end (release gateway rebuilt + atlas up): read auto-runs, write gates to pending, approve executes adapter, reject no-exec, SC4 verbs emit, GET /v1/tools/manifests=4, POST /v1/tools/calls{tool:''}=400. 4/4 SC verified; only the SC3 panel visual eyeball deferred to operator (stack live on :5173). 0013 applied to live ~/.atlas/atlas.db.
 progress:
   total_phases: 14
   completed_phases: 2
