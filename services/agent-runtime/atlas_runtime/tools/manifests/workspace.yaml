@@ -1,0 +1,16 @@
+name: workspace
+description: Read files, list directories, and grep within the workspace boundary.
+risk_level: read
+permissions: [fs:read]
+inputs:
+  - name: op
+    required: true
+    description: "read | list | grep"
+  - name: path
+    required: true
+    description: workspace-relative path
+  - name: pattern
+    required: false
+    description: literal substring for grep
+outputs: [content]
+audit_events: [tool_requested, tool_completed, tool_failed]

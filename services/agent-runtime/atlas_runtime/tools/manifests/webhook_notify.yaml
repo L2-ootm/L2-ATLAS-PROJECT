@@ -1,0 +1,16 @@
+name: webhook_notify
+description: POST a JSON payload to an outbound webhook (write-class, approval-gated).
+risk_level: write
+permissions: [net:post]
+inputs:
+  - name: url
+    required: true
+    description: http(s) webhook URL (loopback/private targets blocked)
+  - name: payload
+    required: true
+    description: JSON body
+  - name: headers
+    required: false
+    description: optional request headers
+outputs: [status]
+audit_events: [tool_requested, tool_completed, tool_failed]
