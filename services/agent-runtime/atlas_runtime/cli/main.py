@@ -881,6 +881,12 @@ def _up_cmd() -> None:
 
 app.command("up", help="Boot gateway + cockpit together (idempotent).")(_up_cmd)
 
+from atlas_runtime.cli.doctor import _doctor_cmd
+
+app.command(
+    "doctor", help="Aggregate health check: db, config, gateway, cockpit, provider."
+)(_doctor_cmd)
+
 
 # ---------------------------------------------------------------------------
 # module subcommands — optional activatable modules (atlas module list/activate)
