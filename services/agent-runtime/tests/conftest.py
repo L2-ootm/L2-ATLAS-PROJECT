@@ -83,6 +83,70 @@ def lock_fixture() -> threading.Lock:
     return threading.Lock()
 
 
+@pytest.fixture(name="mock_gh")
+def mock_gh_fixture(monkeypatch):
+    """Patch subprocess.run so the github adapter never shells out to real `gh`.
+
+    Returns an installer: `mock_gh(stdout=..., returncode=..., stderr=...)`.
+    Phase 10.0.4 tool-adapter tests use this to exercise the gh argv path and the
+    honest-failure case (returncode != 0 -> ToolResult(ok=False)) without network.
+    """
+    import subprocess
+
+    def _install(stdout: str = "{}", returncode: int = 0, stderr: str = ""):
+        calls: list[list[str]] = []
+
+        def fake_run(cmd, *a, **kw):  # noqa: ANN001
+            calls.append(list(cmd))
+            return subprocess.CompletedProcess(cmd, returncode, stdout, stderr)
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        return calls
+
+    return _install
+
+
+@pytest.fixture(name="mock_urlopen")
+def mock_urlopen_fixture(monkeypatch):
+    """Patch urllib.request.urlopen for the web_fetch / webhook_notify adapters.
+
+    Returns an installer: `mock_urlopen(body=b"...", status=200)`. The fake
+    response supports context-manager use and chunked `.read(n)` so the size-cap
+    path in web_fetch is exercisable.
+    """
+    import urllib.request
+
+    def _install(body: bytes = b"{}", status: int = 200, headers=None):  # noqa: ANN001
+        class _Resp:
+            def __init__(self) -> None:
+                self._buf = body
+                self._pos = 0
+                self.status = status
+                self.headers = headers or {"Content-Type": "application/json"}
+
+            def read(self, n: int = -1) -> bytes:
+                if n is None or n < 0:
+                    chunk = self._buf[self._pos:]
+                    self._pos = len(self._buf)
+                    return chunk
+                chunk = self._buf[self._pos:self._pos + n]
+                self._pos += len(chunk)
+                return chunk
+
+            def getcode(self) -> int:
+                return self.status
+
+            def __enter__(self):  # noqa: ANN001
+                return self
+
+            def __exit__(self, *exc):  # noqa: ANN001
+                return False
+
+        monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: _Resp())
+
+    return _install
+
+
 class _OfflineHarness:
     """Deterministic stand-in for the foundation AIAgent — no network. Returns a
     completed result so executor/daemon lifecycle tests resolve 'native' to a
