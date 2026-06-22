@@ -81,13 +81,13 @@ Source: `l2_atlas_30_day_mass_adoption_wedge_plan.md`. v1.0 already shipped the 
 3. A health check command/endpoint exists with install troubleshooting docs.
 4. Verified on a clean environment (not Davi's machine state).
 
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans executed
 
 Plans:
 - [x] 10.0.2-01-PLAN.md — cockpit_control.py + `atlas up` CLI wiring (wave 1, SC1)
 - [x] 10.0.2-02-PLAN.md — deterministic mock provider + demo seed (wave 2, SC2)
 - [x] 10.0.2-03-PLAN.md — `atlas doctor` health aggregator (wave 3, SC3)
-- [ ] 10.0.2-04-PLAN.md — install/docs layer + clean-env smoke (wave 3, SC2+SC4)
+- [x] 10.0.2-04-PLAN.md — install/docs layer + clean-env smoke (wave 3, SC2+SC4)
 
 #### Phase 10.0.3: ATLAS Identity & Cockpit Redesign
 
@@ -268,7 +268,7 @@ Post-v1.0 inspection showed the archived CLI is a thin operational surface, not 
 | 9.5 Public Hardening & Manual Acceptance | v1.0 | — | Complete | 2026-06-15 |
 | 10.0 Harness Architecture & Threat-Model Design | v1.1 | 3/3 | Complete   | 2026-06-16 |
 | 10.0.1 Repo Hygiene & Trust Package | v1.0.5 | 0/? | Complete | 2026-06-22 |
-| 10.0.2 One-Command Install Path | v1.0.5 | 3/4 | In Progress|  |
+| 10.0.2 One-Command Install Path | v1.0.5 | 4/4 | Done |  |
 | 10.0.3 WebUI Cockpit Completion | v1.0.5 | 0/? | Not started | — |
 | 10.0.4 Developer Integrations & Tool Manifest | v1.0.5 | 0/? | Not started | — |
 | 10.0.5 Golden Workflows & Quality Gate | v1.0.5 | 0/? | Not started | — |

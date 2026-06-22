@@ -155,13 +155,19 @@ backfilled embeddings cleared). Phase B (Context Intelligence, B1–B6) fully co
 
 ## Current Position
 
-Phase: 10.0.2 (One-Command Install Path) — EXECUTING
-  SECURITY/CONTRIBUTING/CODE_OF_CONDUCT/LIMITATIONS/ARCHITECTURE/ATTRIBUTION, issue templates);
-  verification pass re-ran the secret scan clean and closed the criterion-4 gap by adding
-  `.github/labels.yml` (good first issue scheme). Next unstarted phase: 10.0.2 — One-Command
-  Install Path (0 plans; start with `/gsd-discuss-phase 10.0.2`).
-Plan: 4 of 4
-Status: Ready to execute
+Phase: 10.0.2 (One-Command Install Path) — DONE (4/4 plans executed, 2026-06-22)
+  Plan 04 (install/docs layer) shipped: `.env.example`, `docker-compose.yml`,
+  `docs/INSTALL.md`, README quickstart, extended install-atlas-cli.ps1 + new
+  scripts/setup.sh, `scripts/fresh_install_smoke.py` (clean-env e2e smoke,
+  service-layer calls only — db.connect()/gateway_control/cockpit_control all
+  ignore ATLAS_HOME, confirmed by direct read), MockModeBanner.tsx. Found+fixed
+  a real bug in demo_seed.py (sentinel was a frozen module constant ignoring
+  ATLAS_HOME). All four success criteria (SC1-SC4) satisfied. Phase 10.0.2
+  fully complete. Next unstarted phase: 10.0.3 (ATLAS Identity & Cockpit
+  Redesign) — already in-flight ahead of spine per operator direction (see
+  "In-flight" note below); otherwise continue the v1.0.5 spine at 10.0.4.
+Plan: 4 of 4 (complete)
+Status: Phase 10.0.2 complete
 In-flight (ahead of spine, operator-directed): 10.0.3 ATLAS Identity & Cockpit Redesign — brand
   direction approved at gate; ATLAS palette tokens, logo system (3 variants), favicon, topographic
   shell + sidebar redesign landed. UI-SPEC + per-page redesign wave outstanding.
@@ -636,6 +642,7 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 | 9 | Skill Inventory & Classification | Done | 2026-06-15 |
 | 9.5 | v1.0 Public Hardening & Manual Acceptance | Executed (UAT pending) | 2026-06-15 |
 | 10.0 | Harness Architecture & Threat-Model Design (v1.1) | Done | 2026-06-16 |
+| 10.0.2 | One-Command Install Path (v1.0.5) | Done | 2026-06-22 |
 
 ## Performance Metrics
 
@@ -651,6 +658,7 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 | Phase 10.0.2 P01 | 18min | 2 tasks | 4 files |
 | Phase 10.0.2 P02 | 35min | 2 tasks | 6 files |
 | Phase 10.0.2 P03 | 12min | 1 task | 3 files |
+| Phase 10.0.2 P04 | 35min | 2 tasks | 11 files |
 
 ## Operator Next Steps
 
@@ -678,6 +686,8 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 
 ---
 - [Phase 10.0.2-01]: ATLAS_COCKPIT_URL env var authoritative for cockpit spawn/health-check URL (mirrors gateway_control.py precedent); config.yaml CockpitConfig.port stays informational-only
+- [Phase 10.0.2-04]: fresh_install_smoke.py calls service-layer functions directly (never subprocess `atlas`) — confirmed by direct read that db.connect()/gateway_control.PID_FILE/cockpit_control.PID_FILE all hardcode pathlib.Path.home()/".atlas" and ignore ATLAS_HOME; a real CLI subprocess in the smoke would silently mutate the operator's actual ~/.atlas state
+- [Phase 10.0.2-04]: Rule 1 bug fix — demo_seed.py's SENTINEL_FILE was a module-level constant frozen at import time (real home dir), ignoring ATLAS_HOME entirely; replaced with lazily-resolved _sentinel_file() mirroring the existing _wiki_dir() pattern
 
 ## Session Analysis Documentation (2026-06-19/20)
 
