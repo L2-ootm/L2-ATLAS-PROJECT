@@ -66,7 +66,7 @@ chmod +x "$atlas_shim"
 tui="$root/foundation/atlas-hermes/ui-tui"
 if command -v npm >/dev/null 2>&1 && [ -d "$tui" ]; then
   echo "Building the terminal UI ($tui)"
-  (cd "$tui" && npm install --silent && npm run build)
+  (cd "$tui" && npm install && npm run build)
 else
   echo "Skipping TUI build (npm not found); 'atlas tui' will build on first run."
 fi
@@ -86,7 +86,7 @@ fi
 cockpit="$root/services/web-ui-react"
 if command -v npm >/dev/null 2>&1 && [ -d "$cockpit" ]; then
   echo "Building the cockpit ($cockpit)"
-  (cd "$cockpit" && npm install --silent && npm run build)
+  (cd "$cockpit" && npm install && npm run build)
 else
   echo "Skipping cockpit build (npm not found)."
 fi

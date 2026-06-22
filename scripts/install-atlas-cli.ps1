@@ -49,7 +49,12 @@ $tui = Join-Path $root 'foundation/atlas-hermes/ui-tui'
 if ((Get-Command npm -ErrorAction SilentlyContinue) -and (Test-Path $tui)) {
     Write-Host "Building the terminal UI ($tui)"
     Push-Location $tui
-    try { npm install --silent; npm run build } finally { Pop-Location }
+    try {
+        npm install --silent
+        if ($LASTEXITCODE -ne 0) { throw "npm install (TUI) failed (exit $LASTEXITCODE)" }
+        npm run build
+        if ($LASTEXITCODE -ne 0) { throw "npm run build (TUI) failed (exit $LASTEXITCODE)" }
+    } finally { Pop-Location }
 } else {
     Write-Host "Skipping TUI build (npm not found); 'atlas tui' will build on first run."
 }
@@ -60,7 +65,10 @@ if ((Get-Command npm -ErrorAction SilentlyContinue) -and (Test-Path $tui)) {
 if (Get-Command cargo -ErrorAction SilentlyContinue) {
     Write-Host "Building atlas-gateway (cargo build --release)"
     Push-Location (Join-Path $root 'native/atlas-core-rs')
-    try { cargo build --release -p atlas-gateway } finally { Pop-Location }
+    try {
+        cargo build --release -p atlas-gateway
+        if ($LASTEXITCODE -ne 0) { throw "cargo build failed (exit $LASTEXITCODE)" }
+    } finally { Pop-Location }
 } else {
     Write-Host "Skipping gateway build (cargo not found); install Rust or set up the gateway manually."
 }
@@ -71,7 +79,12 @@ $cockpit = Join-Path $root 'services/web-ui-react'
 if ((Get-Command npm -ErrorAction SilentlyContinue) -and (Test-Path $cockpit)) {
     Write-Host "Building the cockpit ($cockpit)"
     Push-Location $cockpit
-    try { npm install --silent; npm run build } finally { Pop-Location }
+    try {
+        npm install --silent
+        if ($LASTEXITCODE -ne 0) { throw "npm install (cockpit) failed (exit $LASTEXITCODE)" }
+        npm run build
+        if ($LASTEXITCODE -ne 0) { throw "npm run build (cockpit) failed (exit $LASTEXITCODE)" }
+    } finally { Pop-Location }
 } else {
     Write-Host "Skipping cockpit build (npm not found)."
 }
