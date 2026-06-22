@@ -76,6 +76,7 @@ def _doctor_cmd() -> None:
     # 5. Provider — configured vs. mock. Never echo the resolved api_key value.
     # Provider/mock is informational only — never itself fails the overall run.
     if cfg is None:
+        # all_ok already False from the config check above; this branch is purely informational.
         typer.echo("provider: skipped (config invalid)")
     else:
         try:
