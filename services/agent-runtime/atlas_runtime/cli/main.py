@@ -856,6 +856,22 @@ def gateway_stop() -> None:
         raise typer.Exit(1)
 
 
+def _up_cmd() -> None:
+    """Boot gateway + cockpit together (idempotent). Thin wrapper only — no
+    SQL/no emit() here; logic lives in gateway_control/cockpit_control."""
+    from atlas_runtime import cockpit_control, gateway_control
+
+    gateway_ok, gateway_message = gateway_control.start()
+    typer.echo(gateway_message)
+    cockpit_ok, cockpit_message = cockpit_control.start()
+    typer.echo(cockpit_message)
+    if not (gateway_ok and cockpit_ok):
+        raise typer.Exit(1)
+
+
+app.command("up", help="Boot gateway + cockpit together (idempotent).")(_up_cmd)
+
+
 # ---------------------------------------------------------------------------
 # module subcommands — optional activatable modules (atlas module list/activate)
 # ---------------------------------------------------------------------------
