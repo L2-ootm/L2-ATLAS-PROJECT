@@ -1,0 +1,19 @@
+name: github
+description: Read GitHub repo/issue/PR data via the operator's authenticated gh CLI.
+risk_level: read
+permissions: [net:gh]
+inputs:
+  - name: op
+    required: true
+    description: "repo_view | issue_list | pr_view"
+  - name: repo
+    required: true
+    description: "owner/name"
+  - name: number
+    required: false
+    description: issue or PR number (pr_view)
+  - name: limit
+    required: false
+    description: max rows for issue_list
+outputs: [json]
+audit_events: [tool_requested, tool_completed, tool_failed]

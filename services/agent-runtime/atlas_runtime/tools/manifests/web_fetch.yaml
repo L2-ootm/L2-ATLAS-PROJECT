@@ -1,0 +1,13 @@
+name: web_fetch
+description: HTTP GET a public URL with an SSRF guard, size cap, and timeout.
+risk_level: read
+permissions: [net:get]
+inputs:
+  - name: url
+    required: true
+    description: http(s) URL (loopback/private targets blocked)
+  - name: max_bytes
+    required: false
+    description: response size cap in bytes
+outputs: [content]
+audit_events: [tool_requested, tool_completed, tool_failed]
