@@ -883,6 +883,9 @@ export interface AtlasConfigView {
 	gateway: { rust_port: number; messaging_enabled: boolean; messaging_port: number };
 	cockpit: { port: number; branding: string };
 	modules: Record<string, boolean>;
+	/** True when no effective provider credential resolves (drives the cockpit's
+	 * "MOCK MODE" banner). Older gateways/CLIs predating this field omit it. */
+	mock_mode?: boolean;
 }
 
 /** Masked ATLAS config from the gateway. Secrets are env: refs only. */
