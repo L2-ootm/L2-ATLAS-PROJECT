@@ -14,9 +14,10 @@ set -euo pipefail
 
 CLAUDE=0
 for arg in "$@"; do
-  if [ "$arg" = "--claude" ]; then
-    CLAUDE=1
-  fi
+  case "$arg" in
+    --claude) CLAUDE=1 ;;
+    *) echo "Unknown argument: $arg" >&2; exit 1 ;;
+  esac
 done
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
