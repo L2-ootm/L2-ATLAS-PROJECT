@@ -51,6 +51,22 @@ def test_model_instantiation_audit_event() -> None:
     assert isinstance(ae.timestamp, datetime.datetime)
 
 
+@pytest.mark.parametrize(
+    "verb", ["tool_requested", "tool_completed", "tool_failed"]
+)
+def test_audit_event_accepts_tool_verbs(verb):
+    """Phase 10.0.4 SC4: the audit bus accepts the three tool lifecycle verbs.
+
+    RED until Plan 01 extends the AuditEvent.event_type Literal. The SC's dotted
+    names (tool.requested/.completed/.failed) are honored as snake_case enum
+    values to match the existing `tool_call`/`discord_action` convention.
+    """
+    from atlas_core.schemas.core import AuditEvent
+
+    ae = AuditEvent(run_id="operator", event_type=verb)
+    assert ae.event_type == verb
+
+
 # --- Serialization tests ---
 
 
