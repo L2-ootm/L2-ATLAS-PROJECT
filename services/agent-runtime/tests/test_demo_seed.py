@@ -14,11 +14,14 @@ from atlas_runtime import demo_seed
 
 @pytest.fixture(autouse=True)
 def _isolated_sentinel(tmp_path, monkeypatch):
-    """Redirect SENTINEL_FILE to a throwaway path so tests never touch the
-    real ~/.atlas/.demo_seeded sentinel."""
-    sentinel = tmp_path / "atlas-home" / ".demo_seeded"
-    monkeypatch.setattr(demo_seed, "SENTINEL_FILE", sentinel)
-    return sentinel
+    """Redirect the sentinel (ATLAS_HOME/.demo_seeded) to a throwaway path so
+    tests never touch the real ~/.atlas/.demo_seeded sentinel. The sentinel
+    path is resolved lazily from ATLAS_HOME (demo_seed._sentinel_file), so
+    setting the env var here is sufficient — individual tests may still
+    override ATLAS_HOME themselves (same effective directory)."""
+    atlas_home = tmp_path / "atlas-home"
+    monkeypatch.setenv("ATLAS_HOME", str(atlas_home))
+    return atlas_home / ".demo_seeded"
 
 
 def _counts(conn: sqlite3.Connection) -> tuple[int, int, int]:

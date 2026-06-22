@@ -28,8 +28,6 @@ from atlas_wiki import wiki_service
 
 logger = logging.getLogger(__name__)
 
-SENTINEL_FILE = pathlib.Path.home() / ".atlas" / ".demo_seeded"
-
 DEMO_MISSION_TITLE = "Demo Mission — ATLAS Quickstart"
 DEMO_MISSION_INTENT = "Deterministic demo seed for the one-command install path"
 DEMO_RUN_SUMMARY = "Demo mission completed via deterministic mock provider."
@@ -57,6 +55,19 @@ def _wiki_dir() -> pathlib.Path:
     return wiki_dir
 
 
+def _sentinel_file() -> pathlib.Path:
+    """ATLAS_HOME-aware sentinel path (mirrors _wiki_dir's resolution).
+
+    Computed lazily, not as a module-level constant: a constant evaluated at
+    import time would freeze in whatever ATLAS_HOME (or lack of it) was set
+    when this module first loaded, so a later os.environ["ATLAS_HOME"]
+    override (e.g. scripts/fresh_install_smoke.py's isolated temp home) would
+    be silently ignored and this would fall through to the real
+    ~/.atlas/.demo_seeded sentinel instead.
+    """
+    return _atlas_home() / ".demo_seeded"
+
+
 def _safe_emit(conn: sqlite3.Connection, lock: threading.Lock, *, run_id: str, **kwargs) -> None:
     """Fail-open audit emission (mirrors NativeAtlasAgent._safe_emit) — a
     logging hiccup during seeding must never corrupt the sentinel state."""
@@ -74,7 +85,7 @@ def seed_demo_data(conn: sqlite3.Connection, lock: threading.Lock) -> dict:
     rows in the same call sequence proven by scripts/fresh_db_smoke.py, then
     writes the sentinel only after every insert succeeds.
     """
-    sentinel = SENTINEL_FILE
+    sentinel = _sentinel_file()
     if sentinel.exists():
         return {"created": False, "reason": "already seeded"}
 
