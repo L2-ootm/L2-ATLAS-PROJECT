@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.0.5
 milestone_name: Mass-Adoption Launch Wedge
-status: executing
-last_updated: "2026-06-22T01:15:19.300Z"
-last_activity: 2026-06-22
+status: in_progress
+last_updated: "2026-06-22T02:10:00.000Z"
+last_activity: 2026-06-22 -- Phase 10.0.2 COMPLETE + VERIFIED (One-Command Install Path, 4 plans/3 waves): cockpit_control.py + `atlas up` (boots gateway+cockpit, Windows console-flash guard); deterministic mock provider auto-engaging on empty creds (honest-failure path preserved — wrong-but-present key still hits real provider) + `atlas db init --demo` seed (mission/run/audit/wiki, ATLAS_HOME-aware idempotent sentinel); `atlas doctor` health aggregator (secret-safe, wraps /health); install/docs layer (.env.example, docker-compose.yml optional, docs/INSTALL.md, README quickstart, extended install-atlas-cli.ps1 + setup.sh, fresh_install_smoke.py); cockpit MOCK MODE banner wired (Layout.tsx ← masked_dict.mock_mode). Code review: 1 critical (dead MockModeBanner) + 5 warnings fixed. Tests: agent-runtime 301, atlas-core 44, cockpit tsc clean. Verification 4/4 SC (automated); 2 manual items deferred by operator (live-browser banner, Docker compose — no engine here). GROUNDING CORRECTION: the 10.0.3 setup-wizard (scope #2) was already shipped (76df72d), so this phase added only net-new pieces.
 progress:
   total_phases: 14
   completed_phases: 1
