@@ -72,6 +72,10 @@ def _default_factory(
         import sys
 
         path = str(foundation)
+        # Intentional process-global, one-time mutation: sys.path is never
+        # restored. Safe for the current single-process-per-run CLI model;
+        # a future long-lived daemon sharing this code path with a
+        # configurable foundation location would need to revisit this.
         if path not in sys.path:
             sys.path.insert(0, path)
     from run_agent import AIAgent  # noqa: PLC0415 — lazy, optional dependency
