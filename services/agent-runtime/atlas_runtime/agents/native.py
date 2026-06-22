@@ -167,14 +167,31 @@ class NativeAtlasAgent(AgentRuntime):
         factory = self._agent_factory
         if factory is None:
             model, provider, base_url, api_key = self._resolve_provider(conn)
-            factory = lambda session_id: _default_factory(  # noqa: E731
-                session_id,
-                self._max_iterations,
-                model=model,
-                provider=provider,
-                base_url=base_url,
-                api_key=api_key,
-            )
+            if not api_key:
+                # Zero-credential path: route to the deterministic mock so a
+                # mission run still completes with a clearly-labeled MOCK MODE
+                # response. A non-empty-but-wrong api_key (configured but
+                # invalid) intentionally falls through to the else branch below
+                # so the real provider's own honest failure surfaces — never
+                # silently masked (Phase A4 honest-failure contract).
+                from atlas_runtime.agents.mock import mock_factory  # noqa: PLC0415
+
+                factory = lambda session_id: mock_factory(  # noqa: E731
+                    session_id, model=model, provider=provider,
+                )
+                self._safe_emit(
+                    conn, lock, run_id, event_type="tool_call", tool_name="mock",
+                    data={"runtime": "native", "mock_mode": True},
+                )
+            else:
+                factory = lambda session_id: _default_factory(  # noqa: E731
+                    session_id,
+                    self._max_iterations,
+                    model=model,
+                    provider=provider,
+                    base_url=base_url,
+                    api_key=api_key,
+                )
         try:
             agent = factory(session_id=run_id)
         except Exception as exc:  # foundation missing / construction error
