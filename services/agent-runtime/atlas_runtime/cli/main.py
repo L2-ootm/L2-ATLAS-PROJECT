@@ -794,7 +794,11 @@ def runtime_serve(
 
 
 @db_app.command("init")
-def db_init() -> None:
+def db_init(
+    demo: bool = typer.Option(
+        False, "--demo", help="Also seed a demo mission/run/wiki entry.",
+    ),
+) -> None:
     """Apply all pending migrations to ~/.atlas/atlas.db (idempotent, non-destructive)."""
     conn = db.connect()
     applied = db.apply_migrations(conn)
@@ -811,6 +815,12 @@ def db_init() -> None:
     seeded = model_registry.seed_default_models(conn, threading.Lock())
     if seeded:
         typer.echo(f"seeded default models: {', '.join(seeded)}")
+
+    if demo:
+        from atlas_runtime import demo_seed
+
+        result = demo_seed.seed_demo_data(conn, threading.Lock())
+        typer.echo(f"demo seed: {result}")
 
 
 @db_app.command("status")
