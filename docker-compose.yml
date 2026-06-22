@@ -1,0 +1,60 @@
+# Optional, secondary install path for ATLAS. The primary, documented path is
+# the native one-command install (scripts/install-atlas-cli.ps1 / setup.sh) —
+# see docs/INSTALL.md "Quickstart". This compose file builds the same three
+# components from source inside official base images, for operators who would
+# rather run everything in containers than install Rust/Python/Node locally.
+#
+# Usage:
+#   cp .env.example .env   # fill in real values in .env, never commit it
+#   docker compose up --build
+#
+# All three services read the same gitignored `.env` file via `env_file`;
+# `.env.example` (tracked) never contains a real secret.
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM rust:1-slim-bookworm
+        WORKDIR /repo
+        COPY native/atlas-core-rs /repo/native/atlas-core-rs
+        WORKDIR /repo/native/atlas-core-rs
+        RUN cargo build --release -p atlas-gateway
+        EXPOSE 8484
+        CMD ["./target/release/atlas-gateway"]
+    env_file: .env
+    ports:
+      - "8484:8484"
+
+  agent-runtime:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM python:3.12-slim
+        WORKDIR /repo
+        COPY packages/atlas-core /repo/packages/atlas-core
+        COPY services/agent-runtime /repo/services/agent-runtime
+        COPY services/wiki-runtime /repo/services/wiki-runtime
+        RUN pip install --no-cache-dir -e ./packages/atlas-core \
+            -e ./services/agent-runtime \
+            -e ./services/wiki-runtime
+        CMD ["atlas", "db", "init"]
+    env_file: .env
+    depends_on:
+      - gateway
+
+  cockpit:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM node:20-slim
+        WORKDIR /repo/services/web-ui-react
+        COPY services/web-ui-react /repo/services/web-ui-react
+        RUN npm install --silent && npm run build
+        EXPOSE 5173
+        CMD ["npm", "run", "preview", "--", "--host", "0.0.0.0", "--port", "5173"]
+    env_file: .env
+    ports:
+      - "5173:5173"
+    depends_on:
+      - gateway

@@ -54,6 +54,28 @@ if ((Get-Command npm -ErrorAction SilentlyContinue) -and (Test-Path $tui)) {
     Write-Host "Skipping TUI build (npm not found); 'atlas tui' will build on first run."
 }
 
+# Build the Rust gateway binary (release). Skipped gracefully when cargo is
+# absent — `atlas up` will report "gateway: down" via `atlas doctor` until a
+# binary is built, but the rest of the install still completes.
+if (Get-Command cargo -ErrorAction SilentlyContinue) {
+    Write-Host "Building atlas-gateway (cargo build --release)"
+    Push-Location (Join-Path $root 'native/atlas-core-rs')
+    try { cargo build --release -p atlas-gateway } finally { Pop-Location }
+} else {
+    Write-Host "Skipping gateway build (cargo not found); install Rust or set up the gateway manually."
+}
+
+# Build the React cockpit (production bundle consumed by `npm run preview` /
+# cockpit_control.start()). Skipped gracefully when npm is absent.
+$cockpit = Join-Path $root 'services/web-ui-react'
+if ((Get-Command npm -ErrorAction SilentlyContinue) -and (Test-Path $cockpit)) {
+    Write-Host "Building the cockpit ($cockpit)"
+    Push-Location $cockpit
+    try { npm install --silent; npm run build } finally { Pop-Location }
+} else {
+    Write-Host "Skipping cockpit build (npm not found)."
+}
+
 # Bootstrap / migrate the DB (idempotent, non-destructive).
 & $atlasExe db init
 
