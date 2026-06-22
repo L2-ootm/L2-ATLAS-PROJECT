@@ -69,3 +69,45 @@ def test_boundary_violation_emits_failure_event(db, lock, run_id):
         (run_id,),
     ).fetchone()[0]
     assert count >= 1
+
+
+# --- Phase 10.0.4: tool risk-level decision (policy.decide) ---
+
+
+def _manifest(risk_level):
+    from atlas_core.schemas.tool import ToolManifest
+
+    return ToolManifest(name="t", description="", risk_level=risk_level)
+
+
+def test_decide_read_is_allowed_without_approval():
+    from atlas_runtime.policy import decide
+
+    d = decide(_manifest("read"))
+    assert d.allowed is True
+    assert d.requires_approval is False
+    assert d.reason == "read_class_allowed"
+
+
+def test_decide_write_requires_approval():
+    from atlas_runtime.policy import decide
+
+    d = decide(_manifest("write"))
+    assert d.allowed is False
+    assert d.requires_approval is True
+    assert d.reason == "write_requires_approval"
+
+
+def test_decide_shell_requires_approval():
+    from atlas_runtime.policy import decide
+
+    d = decide(_manifest("shell"))
+    assert d.allowed is False
+    assert d.requires_approval is True
+    assert d.reason == "shell_requires_approval"
+
+
+def test_policy_decision_back_compat_default():
+    # Existing (allowed, reason) construction still works; requires_approval defaults False.
+    d = PolicyDecision(allowed=True, reason="within_workspace")
+    assert d.requires_approval is False

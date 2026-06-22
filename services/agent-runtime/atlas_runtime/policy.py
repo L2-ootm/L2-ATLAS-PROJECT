@@ -27,12 +27,38 @@ class PolicyDecision:
     """Result of a policy check.
 
     Attributes:
-        allowed: True if the action is permitted; False if rejected.
-        reason: Human-readable explanation for the decision.
+        allowed: True if the action may execute immediately; False if it is
+            rejected OR must first be approved (see requires_approval).
+        reason: Human-readable, snake_case explanation for the decision.
+        requires_approval: True when the action is not rejected but must pass
+            through the operator approval gate before it can run (write/shell
+            tools, Phase 10.0.4). ToolCall.requires_approval derives from this.
     """
 
     allowed: bool
     reason: str
+    requires_approval: bool = False
+
+
+def decide(manifest, mode: str = "read_only") -> "PolicyDecision":
+    """Three-way tool authorization from a ToolManifest's risk_level (Phase 10.0.4).
+
+    - risk_level "read"  -> allowed, no approval (the global read-only default).
+    - risk_level "write" -> not auto-allowed, requires_approval=True.
+    - risk_level "shell" -> not auto-allowed, requires_approval=True.
+
+    `mode` is accepted for forward-compatibility but v0 is always the read-only
+    posture: write/shell NEVER auto-run regardless of mode (a live config toggle
+    is deferred — RESEARCH Open Question 1). This is the single decision function;
+    adapters must not perform their own policy checks (the chokepoint owns policy).
+    """
+    if manifest.risk_level == "read":
+        return PolicyDecision(allowed=True, reason="read_class_allowed", requires_approval=False)
+    return PolicyDecision(
+        allowed=False,
+        reason=f"{manifest.risk_level}_requires_approval",
+        requires_approval=True,
+    )
 
 
 def check_workspace_boundary(

@@ -10,6 +10,10 @@ requires-python = ">=3.11"
 dependencies = [
     "atlas-core",
     "typer>=0.25.0",
+    # Manifest loader (Phase 10.0.4). Already resolved transitively (6.0.3) — this
+    # declaration makes the `import yaml` in tools/registry.py explicit and
+    # supply-chain-honest. No new package is installed.
+    "pyyaml>=6,<7",
 ]
 
 [project.scripts]
