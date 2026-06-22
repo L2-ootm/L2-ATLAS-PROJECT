@@ -81,7 +81,13 @@ Source: `l2_atlas_30_day_mass_adoption_wedge_plan.md`. v1.0 already shipped the 
 3. A health check command/endpoint exists with install troubleshooting docs.
 4. Verified on a clean environment (not Davi's machine state).
 
-**Plans:** 0 plans (not yet planned — run `/gsd-plan-phase 10.0.2`)
+**Plans:** 4 plans (3 waves)
+
+Plans:
+- [ ] 10.0.2-01-PLAN.md — cockpit_control.py + `atlas up` CLI wiring (wave 1, SC1)
+- [ ] 10.0.2-02-PLAN.md — deterministic mock provider + demo seed (wave 2, SC2)
+- [ ] 10.0.2-03-PLAN.md — `atlas doctor` health aggregator (wave 3, SC3)
+- [ ] 10.0.2-04-PLAN.md — install/docs layer + clean-env smoke (wave 3, SC2+SC4)
 
 #### Phase 10.0.3: ATLAS Identity & Cockpit Redesign
 
