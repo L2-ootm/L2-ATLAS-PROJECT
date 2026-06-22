@@ -85,6 +85,37 @@ def start(poll_seconds: float = 15.0) -> tuple[bool, str]:
     return False, "cockpit did not become healthy in time"
 
 
+def _pid_alive(pid: int) -> bool:
+    """Liveness check with no new dependency (psutil is not a project dep).
+
+    POSIX: ``os.kill(pid, 0)`` raises ``ProcessLookupError`` for a dead PID
+    without sending a real signal. Windows: shell out to ``tasklist`` filtered
+    on the PID and check whether it reports the PID back — this does not
+    verify process *identity* (a recycled PID reporting a different program
+    would still read as "alive"), only that something currently holds that
+    PID. That is the best stdlib-only signal available; full identity
+    verification would require psutil or a stored process fingerprint.
+    """
+    if os.name == "nt":
+        try:
+            out = subprocess.run(
+                ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except OSError:
+            return True  # can't determine; don't risk a false "already gone"
+        return str(pid) in out.stdout
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True  # e.g. PermissionError — process exists, just not ours
+    return True
+
+
 def stop() -> tuple[bool, str]:
     """Stop a cockpit started by this primitive (via its PID file)."""
     if not PID_FILE.exists():
@@ -94,6 +125,9 @@ def stop() -> tuple[bool, str]:
     except (ValueError, OSError):
         PID_FILE.unlink(missing_ok=True)
         return False, "invalid pid file (removed)"
+    if not _pid_alive(pid):
+        PID_FILE.unlink(missing_ok=True)
+        return False, f"cockpit process already gone (pid {pid}, removed)"
     try:
         if os.name == "nt":
             subprocess.run(["taskkill", "/PID", str(pid), "/F"], check=False)

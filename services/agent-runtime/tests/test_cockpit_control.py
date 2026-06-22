@@ -92,3 +92,63 @@ def test_stop_with_no_pid_file_returns_message(tmp_path, monkeypatch):
     ok, message = cockpit_control.stop()
     assert ok is False
     assert message == "no pid file; cockpit not managed here"
+
+
+def test_stop_skips_signal_and_unlinks_when_pid_already_gone(tmp_path, monkeypatch):
+    pid_file = tmp_path / "cockpit.pid"
+    pid_file.write_text("99999")
+    monkeypatch.setattr(cockpit_control, "PID_FILE", pid_file)
+    monkeypatch.setattr(cockpit_control, "_pid_alive", lambda pid: False)
+    with patch("subprocess.run") as mock_run, patch("os.kill") as mock_kill:
+        ok, message = cockpit_control.stop()
+    assert ok is False
+    assert "already gone" in message
+    assert "99999" in message
+    assert not pid_file.exists()
+    mock_run.assert_not_called()
+    mock_kill.assert_not_called()
+
+
+def test_stop_signals_when_pid_is_alive(tmp_path, monkeypatch):
+    pid_file = tmp_path / "cockpit.pid"
+    pid_file.write_text("4242")
+    monkeypatch.setattr(cockpit_control, "PID_FILE", pid_file)
+    monkeypatch.setattr(cockpit_control, "_pid_alive", lambda pid: True)
+    monkeypatch.setattr(cockpit_control.os, "name", "posix")
+    with patch("os.kill") as mock_kill:
+        ok, message = cockpit_control.stop()
+    assert ok is True
+    assert "4242" in message
+    mock_kill.assert_called_once_with(4242, 15)
+    assert not pid_file.exists()
+
+
+def test_pid_alive_posix_returns_false_for_dead_pid(monkeypatch):
+    monkeypatch.setattr(cockpit_control.os, "name", "posix")
+    with patch("os.kill", side_effect=ProcessLookupError):
+        assert cockpit_control._pid_alive(123) is False
+
+
+def test_pid_alive_posix_returns_true_for_live_pid(monkeypatch):
+    monkeypatch.setattr(cockpit_control.os, "name", "posix")
+    with patch("os.kill", return_value=None):
+        assert cockpit_control._pid_alive(123) is True
+
+
+def test_pid_alive_windows_checks_tasklist_output(monkeypatch):
+    monkeypatch.setattr(cockpit_control.os, "name", "nt")
+    mock_result = MagicMock()
+    mock_result.stdout = "node.exe                      4242 Console"
+    with patch("subprocess.run", return_value=mock_result) as mock_run:
+        assert cockpit_control._pid_alive(4242) is True
+        args = mock_run.call_args[0][0]
+        assert args[0] == "tasklist"
+        assert "PID eq 4242" in args
+
+
+def test_pid_alive_windows_returns_false_when_pid_absent(monkeypatch):
+    monkeypatch.setattr(cockpit_control.os, "name", "nt")
+    mock_result = MagicMock()
+    mock_result.stdout = "INFO: No tasks are running which match the specified criteria."
+    with patch("subprocess.run", return_value=mock_result):
+        assert cockpit_control._pid_alive(4242) is False
