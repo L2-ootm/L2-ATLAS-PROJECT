@@ -808,18 +808,17 @@ def db_init(
     else:
         typer.echo("already up to date")
 
-    import threading
-
     from atlas_runtime import model_registry
 
-    seeded = model_registry.seed_default_models(conn, threading.Lock())
+    lock = _get_lock()
+    seeded = model_registry.seed_default_models(conn, lock)
     if seeded:
         typer.echo(f"seeded default models: {', '.join(seeded)}")
 
     if demo:
         from atlas_runtime import demo_seed
 
-        result = demo_seed.seed_demo_data(conn, threading.Lock())
+        result = demo_seed.seed_demo_data(conn, lock)
         typer.echo(f"demo seed: {result}")
 
 
