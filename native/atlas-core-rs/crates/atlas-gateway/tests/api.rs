@@ -1383,3 +1383,28 @@ async fn operation_run_rejects_bad_agent() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(body["error"]["code"], "bad_request");
 }
+
+// --- Phase 10.0.4: developer tool integrations (dispatch-only) ---
+
+#[tokio::test]
+async fn tool_call_empty_tool_is_rejected() {
+    // require_arg must reject an empty tool name with 400 before any dispatch.
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_app(seeded_db(&dir));
+    let (status, _body) = post_json(&router, "/v1/tools/calls", json!({ "tool": "" })).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn tool_manifests_returns_cli_json() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"manifests": [{"name": "workspace", "risk_level": "read"}]}"#,
+        &stub_dir,
+    );
+    let (status, body) = get_json(&router, "/v1/tools/manifests").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["manifests"][0]["name"], "workspace");
+}
