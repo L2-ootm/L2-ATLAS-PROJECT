@@ -262,6 +262,12 @@ class AuditEvent(BaseModel):
         "memory_change",
         "failure",
         "discord_action",
+        # Phase 10.0.4 tool layer (SC4). Snake_case to match the existing
+        # convention; the success-criterion's dotted form
+        # (tool.requested/.completed/.failed) is the external label only.
+        "tool_requested",
+        "tool_completed",
+        "tool_failed",
     ]
     tool_name: Optional[str] = None
     timestamp: datetime.datetime = Field(
