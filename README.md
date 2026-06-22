@@ -38,6 +38,7 @@ ATLAS Operator Cockpit MVP:
 - `docs/README.md` — documentation authority order
 - `docs/architecture/OVERVIEW.md` — one-page architecture
 - `docs/decisions/INDEX.md` — ADR index (D-001…D-022)
+- [`docs/tools.md`](docs/tools.md) — developer integrations + Tool Manifest v0 (adding a tool = manifest + adapter)
 - `foundation/README.md` — vendored Hermes-derived foundation, attribution, divergences
 
 Optional retrieval research now tracked:

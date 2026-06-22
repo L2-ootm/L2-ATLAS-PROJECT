@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Server, Database, Copy, Check, Power, Cpu, Radio } from 'lucide-react';
+import { Server, Database, Copy, Check, Power, Cpu, Radio, ShieldCheck, Wrench, Clock, X } from 'lucide-react';
 import { Page } from '../components/Page';
 import { glassPanel } from '../lib/glass';
 import {
@@ -13,11 +13,17 @@ import {
 	startMessagingGateway,
 	stopMessagingGateway,
 	toggleChannel,
+	getToolManifests,
+	listToolApprovals,
+	approveToolCall,
+	rejectToolCall,
 	type AtlasConfigView,
 	type ChannelSummary,
 	type MessagingGatewayStatus,
 	type ModelEntry,
-	type Module
+	type Module,
+	type ToolManifest,
+	type ToolApproval
 } from '../lib/api';
 import { isTauri, startGatewayViaShell } from '../lib/host';
 import { useGatewayHealth } from '../lib/useGatewayHealth';
@@ -39,6 +45,9 @@ export default function System() {
 	const [config, setConfig] = useState<AtlasConfigView | null>(null);
 	const [channels, setChannels] = useState<ChannelSummary[]>([]);
 	const [models, setModels] = useState<ModelEntry[]>([]);
+	const [tools, setTools] = useState<ToolManifest[]>([]);
+	const [toolApprovals, setToolApprovals] = useState<ToolApproval[]>([]);
+	const [toolBusy, setToolBusy] = useState<string | null>(null);
 	const [msgGw, setMsgGw] = useState<MessagingGatewayStatus>({ running: false, pid: null });
 	const [msgGwBusy, setMsgGwBusy] = useState(false);
 	const [load, setLoad] = useState<Load>({ s: 'loading' });
@@ -48,13 +57,15 @@ export default function System() {
 	const { epoch } = useGatewayHealth();
 
 	const refresh = useCallback(async () => {
-		const [h, m, c, ch, gw, md] = await Promise.allSettled([
+		const [h, m, c, ch, gw, md, tl, ta] = await Promise.allSettled([
 			checkHealth(),
 			listModules(),
 			getConfig(),
 			listChannels(),
 			messagingGatewayStatus(),
-			listModels()
+			listModels(),
+			getToolManifests(),
+			listToolApprovals()
 		]);
 		if (h.status === 'fulfilled') {
 			setHealth(h.value);
@@ -68,8 +79,36 @@ export default function System() {
 		setChannels(ch.status === 'fulfilled' ? ch.value.channels : []);
 		setMsgGw(gw.status === 'fulfilled' ? gw.value : { running: false, pid: null });
 		setModels(md.status === 'fulfilled' ? md.value.models : []);
+		setTools(tl.status === 'fulfilled' ? tl.value : []);
+		setToolApprovals(ta.status === 'fulfilled' ? ta.value : []);
 		setLoad({ s: h.status === 'rejected' && m.status === 'rejected' ? 'error' : 'ready' });
 	}, []);
+
+	async function approveTool(id: string) {
+		setToolBusy(id);
+		setErr(null);
+		try {
+			await approveToolCall(id);
+			await refresh();
+		} catch {
+			setErr('Could not approve the tool call — is the gateway running?');
+		} finally {
+			setToolBusy(null);
+		}
+	}
+
+	async function rejectTool(id: string) {
+		setToolBusy(id);
+		setErr(null);
+		try {
+			await rejectToolCall(id);
+			await refresh();
+		} catch {
+			setErr('Could not reject the tool call — is the gateway running?');
+		} finally {
+			setToolBusy(null);
+		}
+	}
 
 	async function toggleMsgGw() {
 		setMsgGwBusy(true);
@@ -139,6 +178,18 @@ export default function System() {
 			{config && <RuntimeConfigPanel config={config} />}
 
 			<ModelRegistryPanel models={models} provider={config?.provider.name ?? null} />
+
+			<PolicyPanel />
+
+			<ToolsPanel tools={tools} />
+
+			<ToolApprovalsPanel
+				approvals={toolApprovals}
+				offline={online === false}
+				busyId={toolBusy}
+				onApprove={approveTool}
+				onReject={rejectTool}
+			/>
 
 			<ChannelsPanel
 				channels={channels}
@@ -695,6 +746,260 @@ function ModulesPanel({
 				))
 			)}
 		</section>
+	);
+}
+
+// ── tool policy panel (SC3 — the posture must be VISIBLE, not just enforced) ──
+function PolicyPanel() {
+	return (
+		<section style={glassPanel({ overflow: 'hidden', marginBottom: 16 })}>
+			<header
+				style={{
+					display: 'flex',
+					alignItems: 'center',
+					gap: 8,
+					padding: '14px 18px',
+					borderBottom: '1px solid var(--l2-hairline)'
+				}}
+			>
+				<ShieldCheck size={14} strokeWidth={1.6} color="var(--atlas-bronze)" />
+				<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 11, letterSpacing: '0.22em', color: 'var(--atlas-bronze)' }}>
+					TOOL POLICY
+				</span>
+				<span
+					style={{
+						marginLeft: 'auto',
+						fontFamily: 'var(--l2-font-mono)',
+						fontSize: 9,
+						letterSpacing: '0.16em',
+						color: 'var(--atlas-cyan)',
+						border: '1px solid rgba(0,229,255,0.4)',
+						borderRadius: 2,
+						padding: '2px 8px'
+					}}
+				>
+					READ-ONLY BY DEFAULT
+				</span>
+			</header>
+			<div style={{ padding: '16px 18px', display: 'grid', gap: 12 }}>
+				<div style={{ display: 'grid', gap: 8 }}>
+					<RiskLegendRow tone="var(--atlas-cyan)" level="read" text="auto-allowed — runs immediately" />
+					<RiskLegendRow tone="var(--atlas-celestial)" level="write" text="requires explicit operator approval" />
+					<RiskLegendRow tone="var(--l2-error)" level="shell" text="requires explicit operator approval" />
+				</div>
+				<p style={{ color: 'var(--l2-fg-3)', fontSize: 12.5, lineHeight: 1.6, margin: 0, maxWidth: 640 }}>
+					No sensitive data is stored: credentials are <code style={{ fontFamily: 'var(--l2-font-mono)', color: 'var(--atlas-celestial)' }}>env:VAR</code> references only,
+					and tool arguments/results are redacted before any audit or approval row is persisted.
+					Web requests are SSRF-guarded (loopback/private targets blocked) and file access is bounded to the workspace.
+				</p>
+			</div>
+		</section>
+	);
+}
+
+function RiskLegendRow({ tone, level, text }: { tone: string; level: string; text: string }) {
+	return (
+		<div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+			<span
+				style={{
+					fontFamily: 'var(--l2-font-mono)',
+					fontSize: 9,
+					letterSpacing: '0.16em',
+					color: tone,
+					border: `1px solid ${tone}`,
+					borderRadius: 2,
+					padding: '1px 7px',
+					textTransform: 'uppercase',
+					minWidth: 54,
+					textAlign: 'center'
+				}}
+			>
+				{level}
+			</span>
+			<span style={{ color: 'var(--l2-fg-2)', fontSize: 12.5 }}>{text}</span>
+		</div>
+	);
+}
+
+// ── tools panel — manifest-driven (SC2/SC3) ───────────────────────────────────
+function ToolsPanel({ tools }: { tools: ToolManifest[] }) {
+	const toneFor = (r: string) => (r === 'read' ? 'var(--atlas-cyan)' : r === 'write' ? 'var(--atlas-celestial)' : 'var(--l2-error)');
+	return (
+		<section style={glassPanel({ overflow: 'hidden', marginBottom: 16 })}>
+			<header
+				style={{
+					display: 'flex',
+					alignItems: 'center',
+					gap: 8,
+					padding: '14px 18px',
+					borderBottom: '1px solid var(--l2-hairline)'
+				}}
+			>
+				<Wrench size={14} strokeWidth={1.6} color="var(--atlas-bronze)" />
+				<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 11, letterSpacing: '0.22em', color: 'var(--atlas-bronze)' }}>
+					TOOLS
+				</span>
+				<span style={{ marginLeft: 'auto', fontFamily: 'var(--l2-font-mono)', fontSize: 10, letterSpacing: '0.14em', color: 'var(--l2-fg-3)' }}>
+					{tools.length} REGISTERED
+				</span>
+			</header>
+			{tools.length === 0 ? (
+				<div style={{ padding: '24px 18px', color: 'var(--l2-fg-3)', fontSize: 13, lineHeight: 1.6 }}>
+					No tools registered. See{' '}
+					<code style={{ fontFamily: 'var(--l2-font-mono)', color: 'var(--atlas-celestial)' }}>docs/tools.md</code> to add one (manifest + adapter).
+				</div>
+			) : (
+				tools.map((t, i) => (
+					<div
+						key={t.name}
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							justifyContent: 'space-between',
+							gap: 16,
+							padding: '13px 18px',
+							borderTop: i === 0 ? 'none' : '1px solid var(--l2-hairline)'
+						}}
+					>
+						<div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+							<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 13, color: 'var(--l2-fg-1)' }}>{t.name}</span>
+							<span
+								style={{
+									fontFamily: 'var(--l2-font-mono)',
+									fontSize: 8.5,
+									letterSpacing: '0.16em',
+									color: toneFor(t.risk_level),
+									border: `1px solid ${toneFor(t.risk_level)}`,
+									borderRadius: 2,
+									padding: '1px 6px',
+									textTransform: 'uppercase'
+								}}
+							>
+								{t.risk_level}
+							</span>
+						</div>
+						<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 10.5, letterSpacing: '0.08em', color: 'var(--l2-fg-3)', textAlign: 'right', wordBreak: 'break-all' }}>
+							{t.permissions.join(' · ') || '—'}
+						</span>
+					</div>
+				))
+			)}
+		</section>
+	);
+}
+
+// ── tool approvals panel — clones the Discord ApprovalsPanel pattern ──────────
+function ToolApprovalsPanel({
+	approvals,
+	offline,
+	busyId,
+	onApprove,
+	onReject
+}: {
+	approvals: ToolApproval[];
+	offline: boolean;
+	busyId: string | null;
+	onApprove: (id: string) => void;
+	onReject: (id: string) => void;
+}) {
+	const statusTone = (s: string) =>
+		s === 'executed' ? 'var(--atlas-cyan)' : s === 'pending' ? 'var(--atlas-celestial)' : s === 'failed' || s === 'rejected' ? 'var(--l2-error)' : 'var(--l2-fg-3)';
+	const pending = approvals.filter((a) => a.status === 'pending');
+	return (
+		<section style={glassPanel({ overflow: 'hidden', marginBottom: 16 })}>
+			<header
+				style={{
+					display: 'flex',
+					alignItems: 'center',
+					gap: 8,
+					padding: '14px 18px',
+					borderBottom: '1px solid var(--l2-hairline)'
+				}}
+			>
+				<Clock size={14} strokeWidth={1.6} color="var(--atlas-bronze)" />
+				<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 11, letterSpacing: '0.22em', color: 'var(--atlas-bronze)' }}>
+					TOOL APPROVALS
+				</span>
+				<span style={{ marginLeft: 'auto', fontFamily: 'var(--l2-font-mono)', fontSize: 10, letterSpacing: '0.14em', color: 'var(--l2-fg-3)' }}>
+					{pending.length} PENDING
+				</span>
+			</header>
+			{approvals.length === 0 ? (
+				<div style={{ padding: '24px 18px', color: 'var(--l2-fg-3)', fontSize: 13, lineHeight: 1.6 }}>
+					No tool approvals. Write/shell tool calls land here as PENDING and never execute until approved.
+				</div>
+			) : (
+				approvals.map((a, i) => (
+					<div
+						key={a.id}
+						style={{
+							display: 'flex',
+							alignItems: 'center',
+							justifyContent: 'space-between',
+							gap: 16,
+							padding: '13px 18px',
+							borderTop: i === 0 ? 'none' : '1px solid var(--l2-hairline)'
+						}}
+					>
+						<div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+							<span style={{ width: 7, height: 7, borderRadius: '50%', background: statusTone(a.status), boxShadow: `0 0 7px ${statusTone(a.status)}`, flexShrink: 0 }} />
+							<span style={{ color: 'var(--l2-fg-1)', fontSize: 13, wordBreak: 'break-all' }}>{a.summary || a.tool_name}</span>
+							<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 9.5, letterSpacing: '0.12em', color: statusTone(a.status), textTransform: 'uppercase', flexShrink: 0 }}>
+								{a.tool_name} · {a.status}
+							</span>
+						</div>
+						{a.status === 'pending' && (
+							<div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+								<IconBtn tone="var(--atlas-cyan)" disabled={offline || busyId === a.id} onClick={() => onApprove(a.id)} label="Approve">
+									<Check size={14} strokeWidth={2} />
+								</IconBtn>
+								<IconBtn tone="var(--l2-error)" disabled={offline || busyId === a.id} onClick={() => onReject(a.id)} label="Reject">
+									<X size={14} strokeWidth={2} />
+								</IconBtn>
+							</div>
+						)}
+					</div>
+				))
+			)}
+		</section>
+	);
+}
+
+function IconBtn({
+	tone,
+	disabled,
+	onClick,
+	label,
+	children
+}: {
+	tone: string;
+	disabled: boolean;
+	onClick: () => void;
+	label: string;
+	children: React.ReactNode;
+}) {
+	return (
+		<button
+			onClick={onClick}
+			disabled={disabled}
+			aria-label={label}
+			title={label}
+			style={{
+				display: 'inline-flex',
+				alignItems: 'center',
+				justifyContent: 'center',
+				width: 30,
+				height: 30,
+				borderRadius: 2,
+				border: `1px solid ${tone}`,
+				background: 'transparent',
+				color: tone,
+				cursor: disabled ? 'not-allowed' : 'pointer',
+				opacity: disabled ? 0.45 : 1
+			}}
+		>
+			{children}
+		</button>
 	);
 }
 

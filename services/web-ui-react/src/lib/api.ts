@@ -1108,3 +1108,104 @@ export async function rejectDiscordWrite(id: string, reason?: string): Promise<D
 		body: JSON.stringify({ reason: reason ?? null })
 	});
 }
+
+// ── Developer tool integrations (Phase 10.0.4) ─────────────────────────────
+
+export type ToolRiskLevel = 'read' | 'write' | 'shell';
+export type ToolApprovalStatus = 'pending' | 'executing' | 'executed' | 'rejected' | 'failed';
+
+export interface ToolManifestInput {
+	name: string;
+	required: boolean;
+	description: string;
+}
+
+export interface ToolManifest {
+	name: string;
+	description: string;
+	risk_level: ToolRiskLevel;
+	permissions: string[];
+	inputs: ToolManifestInput[];
+	outputs: string[];
+	audit_events: string[];
+}
+
+export interface ToolApproval {
+	id: string;
+	tool_name: string;
+	risk_level: ToolRiskLevel;
+	args: string;
+	summary: string;
+	status: ToolApprovalStatus;
+	reason: string | null;
+	result: string | null;
+	run_id: string;
+	requested_at: string;
+	decided_at: string | null;
+}
+
+export interface ToolResult {
+	tool_name: string;
+	ok: boolean;
+	output: string;
+	error: string | null;
+	exit_code: number | null;
+}
+
+/** All tool manifests (name/risk_level/permissions/…). Empty when offline. */
+export async function getToolManifests(): Promise<ToolManifest[]> {
+	try {
+		const data = await apiFetch<{ manifests: ToolManifest[] }>('/v1/tools/manifests');
+		return data.manifests ?? [];
+	} catch (err) {
+		if (err instanceof ApiError && (err.status === 404 || err.status === 500 || err.status === 503)) {
+			return [];
+		}
+		throw err;
+	}
+}
+
+/** Tool approvals (all statuses, newest first). Empty when offline. */
+export async function listToolApprovals(): Promise<ToolApproval[]> {
+	try {
+		const data = await apiFetch<{ approvals: ToolApproval[] }>('/v1/tools/approvals?status=all');
+		return data.approvals ?? [];
+	} catch (err) {
+		if (err instanceof ApiError && (err.status === 404 || err.status === 500 || err.status === 503)) {
+			return [];
+		}
+		throw err;
+	}
+}
+
+/** Invoke a tool through the policy chokepoint. Read-class runs now; write/shell
+ *  returns a pending approval (nothing executes inline). */
+export async function proposeToolCall(args: {
+	tool: string;
+	args?: Record<string, unknown>;
+	mode?: string;
+	reason?: string;
+}): Promise<ToolResult | ToolApproval> {
+	return apiFetch('/v1/tools/calls', {
+		method: 'POST',
+		body: JSON.stringify({
+			tool: args.tool,
+			args: args.args ?? {},
+			mode: args.mode ?? 'read_only',
+			reason: args.reason ?? null
+		})
+	});
+}
+
+/** Approve + execute a pending write/shell tool call. Returns the terminal row. */
+export async function approveToolCall(id: string): Promise<ToolApproval> {
+	return apiFetch(`/v1/tools/approvals/${encodeURIComponent(id)}/approve`, { method: 'POST' });
+}
+
+/** Reject a pending tool call (it will never execute). */
+export async function rejectToolCall(id: string, reason?: string): Promise<ToolApproval> {
+	return apiFetch(`/v1/tools/approvals/${encodeURIComponent(id)}/reject`, {
+		method: 'POST',
+		body: JSON.stringify({ reason: reason ?? null })
+	});
+}
