@@ -1,8 +1,18 @@
 # L2 ATLAS PROJECT
 
-AI Company Operating Cockpit: mission control, agent runtime, persistent knowledge, integrations, pulse monitoring, and operator-grade autonomy.
+> **ATLAS v0.1 — Open Research Preview**
+
+ATLAS v0.1 is an open research preview of an **auditable AI agent cockpit** for
+developers and power users. It demonstrates mission control, runtime execution, live
+audit streams, artifact persistence, LLM Wiki filing, integrations, and an extensible
+harness built from an evolved Hermes foundation.
 
 ATLAS is an L2-owned operator cockpit/runtime built by evolving the Hermes Agent foundation into an ATLAS-branded harness, then adding mission, audit, policy, wiki, memory, router, gateway, and cockpit layers around that evolved foundation.
+
+**What it is not** (yet): production-ready, enterprise-ready, fully autonomous,
+self-improving, secure for sensitive data, or a replacement for developers. It is an
+early, honest research preview — see [`docs/known-failures.md`](docs/known-failures.md)
+for documented limitations.
 
 ## Quickstart
 
@@ -19,19 +29,32 @@ No provider API key required to try it — ATLAS runs in Mock Mode end-to-end
 with zero credentials configured. Full walkthrough, troubleshooting, and the
 optional Docker Compose path: see [`docs/INSTALL.md`](docs/INSTALL.md).
 
-## Current phase
+## What v0.1 ships
 
-Phases 1–6 complete and verified (foundation audit, schemas, research closure, audit bus, mission/run lifecycle, LLM Wiki). Phase 7 — Rust API Gateway + SSE (D-022) — is next. See `.planning/STATE.md` for live state and `docs/plans/PHASE_7_8_READINESS.md` for readiness.
+The full v1.0 cockpit + runtime, hardened into the v1.0.5 mass-adoption wedge:
 
-## First ship target
+- **Mission control & runtime** — create missions, run them through the ATLAS runtime
+  (native or the operator's local Claude Code session), live SSE audit streams.
+- **Audit-first** — every action is an `audit_event`; the cockpit Ledger is a cross-run
+  forensic explorer.
+- **Persistent knowledge** — artifacts + an LLM Wiki (Codex) with provenance and FTS5 search.
+- **Extensible harness** — developer **Tool Manifest v0**: adding an integration is a YAML
+  manifest + a Python adapter, gated through one policy chokepoint
+  ([`docs/tools.md`](docs/tools.md)). Read-only by default; writes are approval-gated.
+- **Golden workflows** — Repo Triage, Research Brief, and an approval-gated Self-Review
+  ([`docs/golden-workflows.md`](docs/golden-workflows.md)), demo-stable and reproducible.
+- **Cockpit** — Observatory, Missions, Runs, Ledger, Codex, Models, Integrations, System,
+  built in the celestial-heraldic ATLAS design language.
 
-ATLAS Operator Cockpit MVP:
+Live project state: [`.planning/STATE.md`](.planning/STATE.md). Release artifacts:
+[`docs/release/`](docs/release/).
 
-1. Create mission.
-2. Run through the ATLAS runtime built from the evolved Hermes foundation.
-3. Persist run/audit/artifacts.
-4. File valuable output into LLM Wiki.
-5. Display state in cockpit.
+## Try it (no credentials)
+
+1. Create a mission.
+2. Run it through the ATLAS runtime (Mock Mode needs zero credentials).
+3. Persist run/audit/artifacts; file valuable output into the LLM Wiki.
+4. Watch it stream live in the cockpit.
 
 ## Orientation
 
