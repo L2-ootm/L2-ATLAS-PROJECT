@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.0.5
 milestone_name: Mass-Adoption Launch Wedge
-status: executing
-last_updated: "2026-06-23T17:45:00.000Z"
-last_activity: "2026-06-23 -- Phase 10.0.5 COMPLETE + VERIFIED (3/3 SC). Golden workflows as deterministic orchestrators (repo_triage/research_brief internal-auto; self_review approval-gated via tool_service -> exactly-3-pending proven). golden_workflow_service core + golden_workflows/ pkg + golden_workflow_registry + `atlas golden list|run|reset` CLI + golden_review_write write-tool. Quality gate: test_golden_workflows_smoke.py (3x3 structural assert) + scoped dry-run-default demo-reset (differential test). Docs: golden-workflows.md + known-failures.md + 3 real sample-data artifacts. Tests: 34 golden + agent-runtime 369 pass (1 known claude_agent_sdk env fail, 1 skip). Waves 1-3 via subagents, 4-5 inline after subagent session limit. Deferred: live cockpit screenshots -> operator UAT. Next: 10.0.6 drafts-only (public-flip/beta/launch operator-gated)."
+status: operator_gated
+last_updated: "2026-06-23T18:10:00.000Z"
+last_activity: "2026-06-23 -- Phase 10.0.6 DRAFTS COMPLETE / OPERATOR-GATED. v1.0.5 wedge code+docs fully shipped; the public launch is now a human handoff. SC1 done: README final pass ('ATLAS v0.1 — Open Research Preview' label, accurate scope, explicit non-claims) + docs/release/{TECHNICAL_REPORT,PUBLIC_ROADMAP,DEMO_SCRIPT,LAUNCH_MESSAGE,ATLAS_30_DAY_SHIP_REPORT,RELEASE_CHECKLIST}.md. SC2/SC3/SC4 are operator-gated (make repo public, tag v0.1.0-open-research-preview, open Discussions, run 20-50 dev private beta, send launch messages) — NOT done autonomously by design; full handoff in docs/release/RELEASE_CHECKLIST.md. PRIOR: 10.0.5 COMPLETE+VERIFIED (3/3 SC) golden workflows + quality gate + demo-reset; 10.0.3 COMPLETE cockpit per-page redesign (Ledger/Codex/Models/Integrations + System About). Milestone v1.0.5 stays OPEN pending the operator-gated public-release actions."
 progress:
   total_phases: 14
   completed_phases: 4

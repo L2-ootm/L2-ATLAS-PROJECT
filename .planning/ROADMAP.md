@@ -192,7 +192,19 @@ Plans:
 3. Private beta (20–50 targeted developer contacts) run before public flip; feedback logged.
 4. Launch message sent across the channels list in the wedge plan; `ATLAS_30_DAY_SHIP_REPORT.md` drafted with build + adoption metrics.
 
-**Plans:** 0 plans (not yet planned — run `/gsd-plan-phase 10.0.6`)
+**Status:** ⏸ DRAFTS COMPLETE / OPERATOR-GATED (2026-06-23). Per operator decision, executed
+drafts-only — the outward-facing, irreversible actions are NOT performed autonomously.
+- SC1 ✅ DONE: README final pass ("ATLAS v0.1 — Open Research Preview" label, accurate v0.1
+  scope, explicit non-claims) + `docs/release/{TECHNICAL_REPORT,PUBLIC_ROADMAP,DEMO_SCRIPT}.md`.
+  (Live demo screenshots/video deferred to the operator UAT step in the checklist.)
+- SC2 ⛔ OPERATOR: make repo public, tag `v0.1.0-open-research-preview`, open Discussions + issues.
+- SC3 ⛔ OPERATOR: private beta (20–50 devs) + feedback log; live demo screenshots.
+- SC4 ⏸ DRAFT/OPERATOR: `docs/release/LAUNCH_MESSAGE.md` + `ATLAS_30_DAY_SHIP_REPORT.md` drafted
+  (real build metrics; adoption metrics are operator-filled post-launch); sending is operator-gated.
+- Handoff: `docs/release/RELEASE_CHECKLIST.md` enumerates every operator-gated action.
+
+**Plans:** none (executed as a direct drafts-only pass, not via plan machinery — the remaining
+SCs are human/operator actions, not codeable plans).
 
 ### ⏸ v1.1 ATLAS Agent Harness & Native Operator Shell (Phases 10.1–10.6) — PAUSED
 
@@ -299,7 +311,7 @@ Post-v1.0 inspection showed the archived CLI is a thin operational surface, not 
 | 10.0.3 ATLAS Identity & Cockpit Redesign | v1.0.5 | n/a | Complete   | 2026-06-23 |
 | 10.0.4 Developer Integrations & Tool Manifest | v1.0.5 | 6/6 | Complete   | 2026-06-22 |
 | 10.0.5 Golden Workflows & Quality Gate | v1.0.5 | 5/5 | Complete   | 2026-06-23 |
-| 10.0.6 Public Release Prep & Distribution | v1.0.5 | 0/? | Not started | — |
+| 10.0.6 Public Release Prep & Distribution | v1.0.5 | n/a | Drafts done / operator-gated | 2026-06-23 |
 | 10.1 ATLAS-Owned Auth Store & Codex Detection | v1.1 | 0/? | Paused | — |
 | 10.2 Agentic Chat CLI & Runtime Adapter | v1.1 | 0/? | Paused | — |
 | 10.3 Provider/Model Discovery & Cockpit Truth | v1.1 | 0/? | Paused | — |
