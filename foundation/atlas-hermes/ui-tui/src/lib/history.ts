@@ -3,8 +3,8 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 
 const MAX = 1000
-const dir = process.env.ATLAS_HOME ?? join(homedir(), '.hermes')
-const file = join(dir, '.hermes_history')
+const dir = process.env.ATLAS_HOME ?? join(homedir(), '.atlas')
+const file = join(dir, '.atlas_history')
 
 let cache: string[] | null = null
 
