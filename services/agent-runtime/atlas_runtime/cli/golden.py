@@ -84,3 +84,66 @@ def run_workflow(
         return
     for key, value in result.items():
         typer.echo(f"{key}\t{value}")
+
+
+# Scoped demo-reset predicates — every DELETE is tied to the golden-workflow
+# naming convention so the command can NEVER touch real operator data. This is
+# the T-1005-10 mitigation: there is no code path here that issues a bare
+# `DELETE FROM` without one of these prefix predicates.
+_ARTIFACT_PRED = "path LIKE 'golden/%'"
+_WIKI_PRED = (
+    "slug LIKE 'repo-triage-%' OR slug LIKE 'research-brief-%' "
+    "OR slug LIKE 'self-review-%'"
+)
+_APPROVAL_PRED = "reason LIKE 'golden_workflow:%'"
+
+
+@golden_app.command("reset")
+def golden_reset(
+    confirm: bool = typer.Option(
+        False, "--confirm", help="Actually delete. Without this flag the command is a dry-run and deletes NOTHING."
+    ),
+    json_out: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """Reset demo state — delete ONLY golden-workflow-tagged rows.
+
+    Scoped, dry-run-by-default destructive command. Deletes exactly:
+      - artifacts WHERE path LIKE 'golden/%'
+      - wiki_pages WHERE slug LIKE 'repo-triage-%'/'research-brief-%'/'self-review-%'
+      - tool_approvals WHERE reason LIKE 'golden_workflow:%'
+
+    It NEVER touches audit_events, missions, or runs — the operator's run/audit
+    history (which IS the consistent audit trail SC1 requires) stays intact. The
+    dry-run default is the safety rail (T-1005-11): without --confirm it only
+    reports what WOULD be deleted. The LIKE-prefix predicates guard against
+    accidental deletion of real operator data (T-1005-10) — there is no bare
+    DELETE here.
+    """
+    conn = _get_connection()
+    lock = _get_lock()
+
+    if not confirm:
+        a = conn.execute(f"SELECT COUNT(*) FROM artifacts WHERE {_ARTIFACT_PRED}").fetchone()[0]
+        w = conn.execute(f"SELECT COUNT(*) FROM wiki_pages WHERE {_WIKI_PRED}").fetchone()[0]
+        t = conn.execute(f"SELECT COUNT(*) FROM tool_approvals WHERE {_APPROVAL_PRED}").fetchone()[0]
+        summary = {"dry_run": True, "artifacts_deleted": a, "wiki_pages_deleted": w, "tool_approvals_deleted": t}
+    else:
+        with lock:
+            with conn:
+                ac = conn.execute(f"DELETE FROM artifacts WHERE {_ARTIFACT_PRED}").rowcount
+                wc = conn.execute(f"DELETE FROM wiki_pages WHERE {_WIKI_PRED}").rowcount
+                tc = conn.execute(f"DELETE FROM tool_approvals WHERE {_APPROVAL_PRED}").rowcount
+        summary = {"dry_run": False, "artifacts_deleted": ac, "wiki_pages_deleted": wc, "tool_approvals_deleted": tc}
+
+    if json_out:
+        typer.echo(json.dumps(summary))
+        return
+    verb = "would delete" if summary["dry_run"] else "deleted"
+    typer.echo(
+        f"[{'dry-run' if summary['dry_run'] else 'reset'}] {verb}: "
+        f"{summary['artifacts_deleted']} artifacts, "
+        f"{summary['wiki_pages_deleted']} wiki pages, "
+        f"{summary['tool_approvals_deleted']} tool approvals"
+    )
+    if summary["dry_run"]:
+        typer.echo("Re-run with --confirm to actually delete.")
