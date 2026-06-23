@@ -1,0 +1,13 @@
+name: golden_review_write
+description: Write a Self-Review note to the workspace (write-class, approval-gated).
+risk_level: write
+permissions: [fs:write]
+inputs:
+  - name: path
+    required: true
+    description: workspace-relative path of the review note to write
+  - name: content
+    required: true
+    description: markdown content of the review note
+outputs: [path]
+audit_events: [tool_requested, tool_completed, tool_failed]

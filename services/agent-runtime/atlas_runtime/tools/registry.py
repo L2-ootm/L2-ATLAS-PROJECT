@@ -15,7 +15,13 @@ import yaml
 
 from atlas_core.schemas.tool import ToolManifest
 
-from atlas_runtime.tools.adapters import github, web_fetch, webhook_notify, workspace
+from atlas_runtime.tools.adapters import (
+    github,
+    golden_review_write,
+    web_fetch,
+    webhook_notify,
+    workspace,
+)
 
 _MANIFESTS_DIR = pathlib.Path(__file__).resolve().parent / "manifests"
 
@@ -25,6 +31,7 @@ _ADAPTERS = {
     "github": github.run,
     "web_fetch": web_fetch.run,
     "webhook_notify": webhook_notify.run,
+    "golden_review_write": golden_review_write.run,
 }
 
 
