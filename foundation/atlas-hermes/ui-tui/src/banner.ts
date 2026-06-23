@@ -43,31 +43,61 @@ export function parseRichMarkup(markup: string): Line[] {
   return lines
 }
 
+// ── ATLAS Wordmark ────────────────────────────────────────────────────
+// Thin-stroke engraved letterforms — small slab serifs, open counters,
+// echoing the Cinzel display typeface. Architectural, not blocky.
+// Each letter is built from thin strokes (═, ─, │) and small serifs
+// (╔, ╗, ╚, ╝, ╦, ╩, ╠, ╣) to evoke metal engraving.
+
 const LOGO_ART = [
-  ' █████╗ ██████╗ ████████╗    ███████╗ █████╗ ███████╗██╗  ██╗',
-  '██╔══██╗██╔══██╗╚══██╔══╝    ██╔════╝██╔══██╗██╔════╝██║  ██║',
-  '███████║██████╔╝   ██║       █████╗  ███████║███████╗███████║',
-  '██╔══██║██╔══██╗   ██║       ██╔══╝  ██╔══██║╚════██║██╔══██║',
-  '██║  ██║██║  ██║   ██║       ██║     ██║  ██║███████║██║  ██║',
-  '╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝       ╚═╝     ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝'
+  '  ╔═╗ ╔═╗ ╔╦╗ ╔═╗ ╔═╗ ╔═╗ ╔═╗  ',
+  '  ║╣  ╚═╗  ║║ ║ ║ ║ ║ ║╣  ╚═╗  ',
+  ' ╚═╝ ╚═╝ ═╩╝ ╚═╝ ╚═╝ ╚═╝ ╚═╝  ',
 ]
+
+// ── ATLAS Celestial Mark ──────────────────────────────────────────────
+// Astrolabe globe with constellation linework, compass star apex,
+// and bronze bearer cradle. Draws from the Operator-Atlas emblem:
+// titan bearing a constellation globe over a circuit temple.
+//
+// Characters: ╭╮╰╯ globe rim, ─│ graticule, · constellation nodes,
+// ╱╲ cradle arcs, ◆ compass star / cradle terminals.
 
 const CADUCEUS_ART = [
-  '        ◆',
-  '       ╱ ╲',
-  '      ╱   ╲',
-  '     ╱  ◆  ╲',
-  '    ╱   │   ╲',
-  '   ◆────┼────◆',
-  '    ╲   │   ╱',
-  '     ╲  ◆  ╱',
-  '      ╲   ╱',
-  '       ╲ ╱',
-  '        ◆'
+  '           ◆           ',
+  '          ╱│╲          ',
+  '         ╱ │ ╲         ',
+  '        ╱  │  ╲        ',
+  '       ╱ ·─┼─· ╲       ',
+  '      ╱    │    ╲      ',
+  '     ╱  ·──┼──·  ╲     ',
+  '    │      │      │    ',
+  '     ╲  ·──┼──·  ╱     ',
+  '      ╲    │    ╱      ',
+  '       ╲ ·─┼─· ╱       ',
+  '        ╲  │  ╱        ',
+  '         ╲ │ ╱         ',
+  '          ╲│╱          ',
+  '       ◆───┴───◆       ',
 ]
 
-const LOGO_GRADIENT = [0, 0, 1, 1, 2, 2] as const
-const CADUC_GRADIENT = [2, 2, 1, 1, 0, 0, 1, 1, 2, 2, 3, 3, 3, 3, 3] as const
+// Gradient maps line index → palette slot [primary, accent, border, muted].
+const LOGO_GRADIENT = [1, 0, 1] as const
+const CADUC_GRADIENT = [
+  1, // compass star
+  0, 0, 0, // upper globe
+  1, // crosshairs + nodes
+  0, // equator
+  1, // crosshairs + nodes
+  2, // lower globe
+  1, // crosshairs + nodes
+  0, // lower globe
+  1, // crosshairs + nodes
+  0, // lower rim
+  0, // lower rim
+  2, // cradle converge
+  2, // cradle base
+] as const
 
 const colorize = (art: string[], gradient: readonly number[], c: ThemeColors): Line[] => {
   const p = [c.primary, c.accent, c.border, c.muted]
