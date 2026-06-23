@@ -27,6 +27,7 @@ import {
 } from '../lib/api';
 import { isTauri, startGatewayViaShell } from '../lib/host';
 import { useGatewayHealth } from '../lib/useGatewayHealth';
+import emblemFull from '../brand/assets/emblem-full.webp';
 
 // ── System — operator control surface ────────────────────────────────────────
 // Gateway + database health, the offline start affordance (a browser SPA cannot
@@ -209,7 +210,69 @@ export default function System() {
 				onToggle={toggle}
 				err={err}
 			/>
+
+			<AboutPanel />
 		</Page>
+	);
+}
+
+// ── about band (PAGES-SPEC §10) ──────────────────────────────────────────────
+// Where the full Operator-Atlas emblem lives at rest: brand narrative, the three
+// thesis pillars, and the honest foundation attribution. Always renders (no
+// gateway dependency) — this page is partly an offline-diagnostic surface.
+function AboutPanel() {
+	return (
+		<section
+			style={glassPanel({
+				overflow: 'hidden',
+				marginTop: 16,
+				position: 'relative',
+				textAlign: 'center',
+				padding: '40px 28px 34px'
+			})}
+		>
+			<span
+				aria-hidden="true"
+				style={{
+					position: 'absolute',
+					top: 0,
+					left: 0,
+					right: 0,
+					height: 1,
+					background: 'linear-gradient(90deg, transparent, var(--atlas-bronze) 50%, transparent)',
+					opacity: 0.5
+				}}
+			/>
+			<img
+				src={emblemFull}
+				alt="The Operator Atlas"
+				style={{ width: 'min(280px, 70%)', height: 'auto', margin: '0 auto 22px', display: 'block', filter: 'drop-shadow(0 8px 32px rgba(79,139,255,0.18))' }}
+			/>
+			<div style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 10, letterSpacing: '0.34em', color: 'var(--atlas-bronze)', textTransform: 'uppercase', marginBottom: 12 }}>
+				The Operator Atlas
+			</div>
+			<h2 style={{ fontFamily: 'var(--l2-font-serif)', fontWeight: 600, fontSize: 24, color: 'var(--l2-fg-1)', margin: '0 0 18px', letterSpacing: '0.04em' }}>
+				Bearing Complexity Through Structure
+			</h2>
+			<div style={{ display: 'flex', justifyContent: 'center', gap: 28, flexWrap: 'wrap', marginBottom: 22 }}>
+				{[
+					['MISSION', 'Author intent; the titan does the work.'],
+					['AUDIT', 'Every action accounted for.'],
+					['STRUCTURE', 'Memory, models, and integrations, mapped.']
+				].map(([k, v]) => (
+					<div key={k} style={{ maxWidth: 200 }}>
+						<div style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 10.5, letterSpacing: '0.22em', color: 'var(--atlas-celestial)', marginBottom: 6 }}>{k}</div>
+						<div style={{ color: 'var(--l2-fg-3)', fontSize: 12.5, lineHeight: 1.5 }}>{v}</div>
+					</div>
+				))}
+			</div>
+			<div style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 10, letterSpacing: '0.26em', color: 'var(--l2-fg-2)', marginBottom: 8 }}>
+				BY L2 SYSTEMS
+			</div>
+			<div style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 10, letterSpacing: '0.06em', color: 'var(--l2-fg-3)', maxWidth: 520, margin: '0 auto', lineHeight: 1.6 }}>
+				Runtime foundation derived from Hermes (MIT). See ATTRIBUTION.md.
+			</div>
+		</section>
 	);
 }
 
