@@ -12,6 +12,10 @@ import Projects from './routes/Projects';
 import System from './routes/System';
 import Discord from './routes/Discord';
 import Cashflow from './routes/Cashflow';
+import Ledger from './routes/Ledger';
+import Codex from './routes/Codex';
+import Models from './routes/Models';
+import Integrations from './routes/Integrations';
 import Migrating from './routes/Migrating';
 
 // Lazy — pulls three.js, kept out of the main bundle.
@@ -34,10 +38,10 @@ export const routes: RouteObject[] = [
 			{ path: 'graph', element: <Suspense fallback={null}><Graph /></Suspense> },
 			{ path: 'projects', element: <Projects /> },
 			{ path: 'cashflow', element: <Cashflow /> },
-			{ path: 'audit', element: <Migrating pillar="AUDIT" name="Ledger" /> },
-			{ path: 'wiki', element: <Migrating pillar="STRUCTURE" name="Codex" /> },
-			{ path: 'models', element: <Migrating pillar="STRUCTURE" name="Models" /> },
-			{ path: 'integrations', element: <Migrating pillar="STRUCTURE" name="Integrations" /> },
+			{ path: 'audit', element: <Ledger /> },
+			{ path: 'wiki', element: <Codex /> },
+			{ path: 'models', element: <Models /> },
+			{ path: 'integrations', element: <Integrations /> },
 			{ path: 'discord', element: <Discord /> },
 			{ path: 'system', element: <System /> },
 			{ path: '*', element: <Migrating pillar="ATLAS" name="Not Found" /> }
