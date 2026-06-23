@@ -99,7 +99,7 @@ def invoke(
     mode: str = "read_only",
     ctx: Optional[dict] = None,
     reason: Optional[str] = None,
-):
+) -> ToolResult | ToolApproval:
     """The single chokepoint. Returns a ToolResult (read-class executed) or a
     pending ToolApproval (write/shell short-circuited). Raises ValueError if the
     tool is unknown — an unclassified tool never auto-runs."""
