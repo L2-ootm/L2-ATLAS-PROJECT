@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0.5
 milestone_name: Mass-Adoption Launch Wedge
 status: executing
-last_updated: "2026-06-23T17:30:00.000Z"
-last_activity: 2026-06-23
+last_updated: "2026-06-23T17:45:00.000Z"
+last_activity: "2026-06-23 -- Phase 10.0.5 COMPLETE + VERIFIED (3/3 SC). Golden workflows as deterministic orchestrators (repo_triage/research_brief internal-auto; self_review approval-gated via tool_service -> exactly-3-pending proven). golden_workflow_service core + golden_workflows/ pkg + golden_workflow_registry + `atlas golden list|run|reset` CLI + golden_review_write write-tool. Quality gate: test_golden_workflows_smoke.py (3x3 structural assert) + scoped dry-run-default demo-reset (differential test). Docs: golden-workflows.md + known-failures.md + 3 real sample-data artifacts. Tests: 34 golden + agent-runtime 369 pass (1 known claude_agent_sdk env fail, 1 skip). Waves 1-3 via subagents, 4-5 inline after subagent session limit. Deferred: live cockpit screenshots -> operator UAT. Next: 10.0.6 drafts-only (public-flip/beta/launch operator-gated)."
 progress:
   total_phases: 14
-  completed_phases: 2
+  completed_phases: 4
   total_plans: 19
-  completed_plans: 14
-  percent: 15
+  completed_plans: 19
+  percent: 36
 ---
 
 # STATE — L2 ATLAS
