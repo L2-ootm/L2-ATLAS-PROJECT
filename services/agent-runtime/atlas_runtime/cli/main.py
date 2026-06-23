@@ -62,6 +62,8 @@ observe_app = typer.Typer(name="observe", help="Command Center: observations on 
 app.add_typer(observe_app, name="observe")
 operation_app = typer.Typer(name="operation", help="Command Center: premade autonomous operations on goals.")
 app.add_typer(operation_app, name="operation")
+from atlas_runtime.cli.golden import golden_app
+app.add_typer(golden_app, name="golden")
 runtime_app = typer.Typer(name="runtime", help="In-process run executor daemon (background execution, b).")
 app.add_typer(runtime_app, name="runtime")
 
