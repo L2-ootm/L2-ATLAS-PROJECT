@@ -128,3 +128,15 @@ may not have been built (npm was missing during setup), or `npm run preview`
 has not started yet. Re-run the setup script after installing Node, or run
 the cockpit dev server manually (`cd services/web-ui-react && npm run dev`)
 to confirm it serves locally.
+
+**Dispatch endpoints return 500 when running the gateway binary directly.**
+The Rust gateway dispatches CLI commands (missions, runs, tools, channels,
+etc.) by shelling out to the `atlas` CLI. It locates the CLI through the
+`ATLAS_CLI` environment variable, which `atlas up` and `gateway_control`
+inject automatically. If you start the gateway binary without going through
+`atlas up` (e.g. `./native/atlas-core-rs/target/release/atlas-gateway`),
+every dispatch endpoint will 500 because `ATLAS_CLI` is unset. Fix: set
+`ATLAS_CLI` in your shell to the full invocation command — typically
+`<path-to-.venv>/Scripts/python.exe -m atlas_runtime.cli.main` on Windows
+or `<path-to-.venv>/bin/python -m atlas_runtime.cli.main` on macOS/Linux.
+`atlas up` handles this for you; direct binary launch requires the variable.
