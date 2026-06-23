@@ -268,6 +268,9 @@ class AuditEvent(BaseModel):
         "tool_requested",
         "tool_completed",
         "tool_failed",
+        # Phase 10.0.5 golden workflows — lifecycle bookkeeping events.
+        "golden_workflow_started",
+        "golden_workflow_completed",
     ]
     tool_name: Optional[str] = None
     timestamp: datetime.datetime = Field(
