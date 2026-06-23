@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs'
 
-import type { ScrollBoxHandle } from '@hermes/ink'
-import { evictInkCaches } from '@hermes/ink'
+import type { ScrollBoxHandle } from '@atlas/ink'
+import { evictInkCaches } from '@atlas/ink'
 import { type RefObject, useCallback } from 'react'
 
 import { buildSetupRequiredSections, SETUP_REQUIRED_TITLE } from '../content/setup.js'
