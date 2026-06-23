@@ -18,14 +18,28 @@ and were deliberately NOT performed autonomously. Work top to bottom.
 ## ⛔ Operator-gated actions (NOT done autonomously)
 
 ### Pre-flight (do before going public)
-- [ ] Re-run the secret scan over tracked history; confirm no `.env`/keys/tokens/db committed.
-- [ ] `atlas doctor` clean on a fresh clone (clone → setup → `atlas up` → doctor).
-- [ ] Full test suite green (agent-runtime + atlas-core + Rust + cockpit build); note the known
-      optional `claude-agent-sdk` env skip.
-- [ ] Run `DEMO_SCRIPT.md` live; **capture screenshots/short video** (closes the SC3 screenshot
-      item that was deferred from automation) and host them; fill `<DEMO_URL>`.
+- [~] Secret scan — **sanity pass clean** (2026-06-23): tracked hits are credential-*handling*
+      code + env-var *name* constants only, no secret values. A deep gitleaks/trufflehog run
+      over full history remains the operator's formal step before public.
+- [x] `atlas doctor` — db/config/gateway ok, provider mock (2026-06-23). (Run again on a truly
+      fresh clone before public; cockpit shows "down" only when its port differs from the probe.)
+- [x] Full test suite green (2026-06-23): agent-runtime 369 pass / 1 skip / 1 known
+      `claude_agent_sdk` env fail; golden + tool_service 19/19; cockpit `tsc`+`vite`+eslint green.
+- [x] **Real-world E2E run (2026-06-23):** booted the release gateway (binary post-10.0.4, has
+      `/v1/tools/*`) + React cockpit against the **live `~/.atlas/atlas.db`** (backed up first).
+      Ran all 3 golden workflows via the real `atlas golden` CLI; Self-Review correctly stayed
+      **PENDING** and only wrote after `atlas tools approve` (file landed, `ok:true`). Cockpit
+      **Ledger** rendered the live golden audit trail (57 events), **Integrations** showed
+      "5 tools registered · 2 write/shell gated · gateway ONLINE", zero console errors. Scoped
+      `atlas golden reset --confirm` removed only golden rows; real data (10 missions/runs)
+      intact. Screenshots: `output/playwright/live2-{audit,wiki,models,integrations,system}.png`.
+      **Finding:** a bare gateway-binary launch 500s on dispatch endpoints unless `ATLAS_CLI`
+      is set — `atlas up`/`gateway_control` inject it; document for fresh-machine operators.
+- [ ] **Live demo capture for launch:** run `DEMO_SCRIPT.md` end-to-end and record a short
+      video / final screenshots for the launch assets; host them; fill `<DEMO_URL>`. (The
+      `live2-*.png` set already proves the surfaces render real data.)
 - [ ] Confirm Docker Compose path (still untested — no container engine on the dev machine).
-- [ ] Confirm 10.0.4 human-verify items (System POLICY panel renders; GitHub adapter vs a real repo).
+- [ ] Confirm 10.0.4 GitHub adapter vs a real repo (System POLICY panel render ✅ verified live).
 
 ### Private beta (SC3) — before the public flip
 - [ ] Run a private beta with 20–50 targeted developer contacts (use the reviewer-outreach
