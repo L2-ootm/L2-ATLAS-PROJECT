@@ -113,10 +113,22 @@ artifacts: `output/brand/atlas-brand-sheet.html`, `output/brand/atlas-emblem-pro
 4. Every existing page (missions, runs, wiki, models) is redesigned to the contract; visual polish pass done without overbuilding animation.
 5. Verified: production build passes, 6-pillar UI audit (`/gsd-ui-review`) findings resolved, a11y/contrast/responsive checks pass.
 
-**Plans:** 0 plans (not yet planned — run `/gsd-plan-phase 10.0.3`).
-**Progress (in-flight, pre-plan):** brand direction approved at gate (palette locked, all 3 logo
-variants in-tree); ATLAS palette tokens + logo components + favicon + topographic shell + sidebar
-redesign landed and building; UI-SPEC + per-page wave outstanding.
+**Status:** ✅ Complete (2026-06-23) — executed out-of-band on `main` against the
+`10.0.3-webui-cockpit-completion` design contracts (PAGES-SPEC / HARNESS-WIRING / UI-SPEC)
+rather than the GSD plan machinery (the phase predates formal tracking and its dir is sprawled).
+SC1/SC2 landed earlier (brand identity + palette tokens + logo system + favicon + topographic
+shell + sidebar + global states). SC3/SC4 closed 2026-06-23 (commit `074b141`): the four
+`<Migrating>` placeholders replaced with real React surfaces in the celestial-heraldic language —
+Ledger `/audit` (cross-run audit explorer), Codex `/wiki` (FTS browser + markdown + provenance),
+Models `/models` (provider-grouped registry + D-017 routing note), Integrations `/integrations`
+(read-only posture board) — plus the System About band (PAGES-SPEC §10). SC5: production build
+(`tsc -b && vite build`) green, eslint 0 errors, all four routes + System Playwright-verified
+rendering with graceful offline states and zero React runtime errors.
+**Deferred (honest):** the formal 6-pillar `/gsd-ui-review` audit (advisory — new pages reuse the
+already-audited Page/GlassPanel/TopoInput primitives + contract); a standalone Artifact Browser
+(no gateway/CLI data layer exists — needs an artifacts endpoint first); the ⌘K command palette
+(wave-7 polish, outside the SC bar). Interim data sources (Ledger/Integrations fan-out) await the
+`/v1/audit/events` + `/v1/integrations` gateway endpoints (HARNESS-WIRING §5).
 
 **In-flight operator-directed sub-phases (ahead-of-spine, under the 10.0.3 umbrella):**
 Index: `.planning/phases/10.0.3-SCOPE-SEQUENCE.md`. Pattern = same as `10.0.3-command-center`
@@ -277,7 +289,7 @@ Post-v1.0 inspection showed the archived CLI is a thin operational surface, not 
 | 10.0 Harness Architecture & Threat-Model Design | v1.1 | 3/3 | Complete   | 2026-06-16 |
 | 10.0.1 Repo Hygiene & Trust Package | v1.0.5 | 0/? | Complete | 2026-06-22 |
 | 10.0.2 One-Command Install Path | v1.0.5 | 4/4 | Done |  |
-| 10.0.3 WebUI Cockpit Completion | v1.0.5 | 0/? | Not started | — |
+| 10.0.3 ATLAS Identity & Cockpit Redesign | v1.0.5 | n/a | Complete   | 2026-06-23 |
 | 10.0.4 Developer Integrations & Tool Manifest | v1.0.5 | 6/6 | Complete   | 2026-06-22 |
 | 10.0.5 Golden Workflows & Quality Gate | v1.0.5 | 0/? | Not started | — |
 | 10.0.6 Public Release Prep & Distribution | v1.0.5 | 0/? | Not started | — |
