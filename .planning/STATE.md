@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0.5
 milestone_name: Mass-Adoption Launch Wedge
-status: in_progress
-last_updated: "2026-06-23T14:10:00.000Z"
-last_activity: 2026-06-23 -- Phase 10.0.3 CLOSED (ATLAS Identity & Cockpit Redesign, per-page wave). Four <Migrating> placeholders replaced with real React surfaces in the celestial-heraldic language: Ledger /audit (cross-run audit explorer, interim listRuns->getRunEvents fan-out), Codex /wiki (FTS browser + dependency-free markdown renderer + provenance sidecar), Models /models (provider-grouped registry table + D-017 task-class routing note), Integrations /integrations (read-only posture board over gateway/tools/channels/discord/cashflow/modules). Plus System About band (emblem-full at hero fidelity + 3 pillars + Hermes MIT attribution, PAGES-SPEC §10). All reuse Page/GlassPanel/TopoInput + offline/empty/loading states. VERIFIED: tsc -b + vite build green, eslint 0 errors, all four routes + System Playwright-rendered with graceful offline states and zero React runtime errors (only expected gateway-offline network fetches). Commit 074b141 on main. DEFERRED (honest): formal 6-pillar /gsd-ui-review (advisory -- new pages reuse already-audited primitives), standalone Artifact Browser (no gateway/CLI data layer -- needs artifacts endpoint), ⌘K palette (wave-7 polish), real /v1/audit/events + /v1/integrations endpoints (interim fan-out for now, HARNESS-WIRING §5). Phase 10.0.1 (Repo Hygiene) already complete in roadmap. Next: 10.0.5 Golden Workflows. PRIOR (2026-06-22): Phase 10.0.4 COMPLETE + VERIFIED (Developer Integrations & Tool Manifest, 6 plans/6 waves, executed INLINE after subagent session limits). Tool layer generalizes the Phase C Discord approval pipeline to all tools. SHIPPED -- atlas-core ToolManifest/ToolResult/ToolApproval (frozen) + AuditEvent verbs tool_requested/tool_completed/tool_failed (TEXT col, no migration); policy.decide() (read=allow, write/shell=needs-approval) + PolicyDecision.requires_approval; four adapters (workspace boundary-bounded, github via gh argv honest-failure, web_fetch SSRF+size-cap GET, webhook_notify POST) + YAML manifests + tool_registry (fail-fast load, name->adapter); tool_service single chokepoint + propose/approve/reject (atomic TOCTOU claim, redact-once, operator-run FK) + 0013_tool_approvals migration; atlas tools CLI group; dispatch-only gateway /v1/tools/* routes (require_arg + `--` separator, D-022); cockpit System TOOL POLICY (read-only badge + risk legend + no-sensitive-data posture) + TOOLS + TOOL APPROVALS panels + docs/tools.md. Tests: agent-runtime 337 (+36), atlas-core 52 (+8), gateway cargo 72+3 (+2), cockpit tsc+build green. Live-verified end-to-end (release gateway rebuilt + atlas up): read auto-runs, write gates to pending, approve executes adapter, reject no-exec, SC4 verbs emit, GET /v1/tools/manifests=4, POST /v1/tools/calls{tool:''}=400. 4/4 SC verified; only the SC3 panel visual eyeball deferred to operator (stack live on :5173). 0013 applied to live ~/.atlas/atlas.db.
+status: executing
+last_updated: "2026-06-23T16:32:02.406Z"
+last_activity: 2026-06-23 -- Phase 10.0.5 plan 01 (golden-workflow orchestrator core) complete
 progress:
   total_phases: 14
-  completed_phases: 3
-  total_plans: 13
-  completed_plans: 5
-  percent: 21
+  completed_phases: 2
+  total_plans: 19
+  completed_plans: 11
+  percent: 14
 ---
 
 # STATE — L2 ATLAS
@@ -155,19 +155,17 @@ backfilled embeddings cleared). Phase B (Context Intelligence, B1–B6) fully co
 
 ## Current Position
 
-Phase: 10.0.4 (Developer Integrations & Tool Manifest) — EXECUTING
-  Plan 04 (install/docs layer) shipped: `.env.example`, `docker-compose.yml`,
-  `docs/INSTALL.md`, README quickstart, extended install-atlas-cli.ps1 + new
-  scripts/setup.sh, `scripts/fresh_install_smoke.py` (clean-env e2e smoke,
-  service-layer calls only — db.connect()/gateway_control/cockpit_control all
-  ignore ATLAS_HOME, confirmed by direct read), MockModeBanner.tsx. Found+fixed
-  a real bug in demo_seed.py (sentinel was a frozen module constant ignoring
-  ATLAS_HOME). All four success criteria (SC1-SC4) satisfied. Phase 10.0.2
-  fully complete. Next unstarted phase: 10.0.3 (ATLAS Identity & Cockpit
-  Redesign) — already in-flight ahead of spine per operator direction (see
-  "In-flight" note below); otherwise continue the v1.0.5 spine at 10.0.4.
-Plan: 1 of 6
-Status: Executing Phase 10.0.4
+Phase: 10.0.5 (Golden Workflows & Quality Gate) — EXECUTING
+  Plan 01 (golden-workflow orchestrator core) shipped: `golden_workflow_service.py`
+  (ensure_golden_run/record_artifact/emit_workflow_event — first writer to the
+  `artifacts` table in this codebase) via RED-then-GREEN TDD; AuditEvent.event_type
+  Literal widened additively with golden_workflow_started/completed. 5/5 tests
+  green; full agent-runtime (340 pass, 1 known pre-existing claude_agent_sdk env
+  fail) and atlas-core (52 pass) suites unaffected. Wave 2/3 plans (Repo Triage,
+  Research Brief, Self-Review) now import this core directly. Next: plan 02
+  (wave 2 workflow implementations).
+Plan: 2 of 5
+Status: Executing Phase 10.0.5
 In-flight (ahead of spine, operator-directed): 10.0.3 ATLAS Identity & Cockpit Redesign — brand
   direction approved at gate; ATLAS palette tokens, logo system (3 variants), favicon, topographic
   shell + sidebar redesign landed. UI-SPEC + per-page redesign wave outstanding.
@@ -179,7 +177,7 @@ In-flight (ahead of spine, operator-directed): 10.0.3 ATLAS Identity & Cockpit R
   primitives); soft-aurora OGL effect integrated; first React surface = Dashboard operator HUD
   (live telemetry + graceful loading/empty/offline states), proven via Playwright
   (output/react-pivot/). Svelte cockpit stays live until React reaches route parity.
-Last activity: 2026-06-22 -- Phase 10.0.4 execution started
+Last activity: 2026-06-23 -- Phase 10.0.5 execution started
 Loop note: pre-existing dirty state on branch `feat/cockpit-p3-glass-p4` (`.planning/prep/next-steps-db-runner-async-supabase.md`)
   blocked safe code-changing automation. Report-only continuation state written to
   `.planning/reports/atlas-living-context-loop-2026-06-18-dirty-worktree-guard.md`.
@@ -416,7 +414,7 @@ tsc/lint/build green.
 See: `.planning/PROJECT.md` (updated 2026-06-15) · `.planning/MILESTONES.md`
 
 **Core value:** A serious, auditable AI operating system for technical founders/operators.
-**Current focus:** Phase 10.0.4 — Developer Integrations & Tool Manifest
+**Current focus:** Phase 10.0.5 — Golden Workflows & Quality Gate
 
 ## Deferred Items
 
@@ -688,6 +686,8 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 - [Phase 10.0.2-01]: ATLAS_COCKPIT_URL env var authoritative for cockpit spawn/health-check URL (mirrors gateway_control.py precedent); config.yaml CockpitConfig.port stays informational-only
 - [Phase 10.0.2-04]: fresh_install_smoke.py calls service-layer functions directly (never subprocess `atlas`) — confirmed by direct read that db.connect()/gateway_control.PID_FILE/cockpit_control.PID_FILE all hardcode pathlib.Path.home()/".atlas" and ignore ATLAS_HOME; a real CLI subprocess in the smoke would silently mutate the operator's actual ~/.atlas state
 - [Phase 10.0.2-04]: Rule 1 bug fix — demo_seed.py's SENTINEL_FILE was a module-level constant frozen at import time (real home dir), ignoring ATLAS_HOME entirely; replaced with lazily-resolved _sentinel_file() mirroring the existing _wiki_dir() pattern
+- [Phase 10.0.5-01]: golden_workflow_service reuses existing artifact/wiki_update event_type values for structural events (per CONTEXT.md discretion option (a)); only adds golden_workflow_started/completed as new literals for lifecycle bookkeeping (additive Literal widening, no migration — audit_events.event_type has no CHECK constraint)
+- [Phase 10.0.5-01]: no write_wiki_entry wrapper — wave 2/3 golden workflows call atlas_wiki.wiki_service.update_wiki_page directly with the run_id from ensure_golden_run
 
 ## Session Analysis Documentation (2026-06-19/20)
 
