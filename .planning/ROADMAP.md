@@ -172,12 +172,12 @@ Plans:
 2. Repeated failures fixed; a smoke test and demo-reset path exist.
 3. Sample data, screenshots, and a documented known-failures list exist.
 
-**Plans:** 2/5 plans executed
+**Plans:** 3/5 plans executed
 
 Plans:
 - [x] 10.0.5-01-PLAN.md — golden_workflow_service core (run bootstrap, Artifact writer, audit lifecycle events) — wave 1
 - [x] 10.0.5-02-PLAN.md — Repo Triage + Research Brief orchestrators (internal/auto) — wave 2
-- [ ] 10.0.5-03-PLAN.md — Self-Review (approval-gated write) + golden_workflow_registry + `atlas golden` CLI — wave 3
+- [x] 10.0.5-03-PLAN.md — Self-Review (approval-gated write) + golden_workflow_registry + `atlas golden` CLI — wave 3
 - [ ] 10.0.5-04-PLAN.md — 3x3 mock-mode structural-assert smoke test + scoped demo-reset — wave 4
 - [ ] 10.0.5-05-PLAN.md — docs/golden-workflows.md runbook + sample data + docs/known-failures.md — wave 5
 
@@ -298,7 +298,7 @@ Post-v1.0 inspection showed the archived CLI is a thin operational surface, not 
 | 10.0.2 One-Command Install Path | v1.0.5 | 4/4 | Done |  |
 | 10.0.3 ATLAS Identity & Cockpit Redesign | v1.0.5 | n/a | Complete   | 2026-06-23 |
 | 10.0.4 Developer Integrations & Tool Manifest | v1.0.5 | 6/6 | Complete   | 2026-06-22 |
-| 10.0.5 Golden Workflows & Quality Gate | v1.0.5 | 2/5 | In Progress|  |
+| 10.0.5 Golden Workflows & Quality Gate | v1.0.5 | 3/5 | In Progress|  |
 | 10.0.6 Public Release Prep & Distribution | v1.0.5 | 0/? | Not started | — |
 | 10.1 ATLAS-Owned Auth Store & Codex Detection | v1.1 | 0/? | Paused | — |
 | 10.2 Agentic Chat CLI & Runtime Adapter | v1.1 | 0/? | Paused | — |

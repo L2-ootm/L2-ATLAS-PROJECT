@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0.5
 milestone_name: Mass-Adoption Launch Wedge
 status: executing
-last_updated: "2026-06-23T16:42:28.908Z"
+last_updated: "2026-06-23T17:30:00.000Z"
 last_activity: 2026-06-23
 progress:
   total_phases: 14
   completed_phases: 2
   total_plans: 19
-  completed_plans: 13
-  percent: 14
+  completed_plans: 14
+  percent: 15
 ---
 
 # STATE — L2 ATLAS
@@ -169,8 +169,19 @@ Phase: 10.0.5 (Golden Workflows & Quality Gate) — EXECUTING
   monkeypatch test). Both route through the wave-1 core; both verified 3x-stable
   and graceful on empty input (no README / no search hits). 10/10 tests green;
   full agent-runtime (350 pass, 1 known pre-existing claude_agent_sdk env fail)
-  unaffected. Next: plan 03 (Self-Review, approval-gated).
-Plan: 3 of 5
+  unaffected.
+  Plan 03 (Self-Review, approval-gated) shipped: new write-class tool
+  `golden_review_write` (manifest+adapter+registry binding) + `golden_workflows/
+  self_review.py` proves the approval gate end-to-end against the real 10.0.4
+  tool_service chokepoint -- propose -> always-pending ToolApproval (3 calls =
+  3 distinct pending rows, no de-dup) -> approve executes exactly the proposed
+  write + emits tool_completed, reject leaves zero side effects. New
+  `golden_workflow_registry.py` (GoldenWorkflow dataclass + dispatch(), pure
+  pass-through over all 3 workflows) + `atlas golden list|run` CLI wired into
+  cli/main.py as its own top-level group. 14/14 tests green; full agent-runtime
+  (364 pass, 1 known pre-existing claude_agent_sdk env fail) unaffected. Next:
+  plan 04/05 (quality gate smoke + demo-reset, docs).
+Plan: 4 of 5
 Status: Executing Phase 10.0.5
 In-flight (ahead of spine, operator-directed): 10.0.3 ATLAS Identity & Cockpit Redesign — brand
   direction approved at gate; ATLAS palette tokens, logo system (3 variants), favicon, topographic
