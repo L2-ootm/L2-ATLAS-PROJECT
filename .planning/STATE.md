@@ -2,22 +2,22 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
-status: executing
-last_updated: "2026-06-24T11:01:29-03:00"
-last_activity: "2026-06-24 -- PHASE 10.1 PLAN 02 COMPLETE. Added a product-neutral fail-closed boundary scanner, deterministic 180-file inventory reproducer, and clean presentation-only @atlas/tui package with exactly three approved runtime dependencies. RED/GREEN contract tests cover forbidden binary content, allowed content, missing/empty rules, reviewed inventory reproduction, unseen-file classification, and package boundaries. Next: execute Plan 03 minimal offline shell and measured baseline."
+status: planning
+last_updated: "2026-06-24T16:08:00-03:00"
+last_activity: "2026-06-24 -- PHASE 10.1 COMPLETE WITH DOCUMENTED MEMORY EXCEPTION. Shipped deterministic offline OpenTUI/Solid shell, exactly-once cleanup, standalone artifact, source/binary snapshot parity, reproducible performance evidence, and source/artifact boundary gates. Verified 8 Bun tests, clean TypeScript, 114.54 MiB binary, 225.98 ms cold, 282.47 ms warm p95, and zero network connections. Idle working set is 230.24 MiB versus the initial 150 MiB target; <=240 MiB is accepted only for intake and Phase 10.6 must optimize or make an explicit architecture decision. Next: plan Phase 10.2 agent/tool/context contract."
 progress:
   total_phases: 8
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 2
-  percent: 67
+  completed_plans: 3
+  percent: 100
 ---
 
 # STATE — L2 ATLAS
 
 ## Current Position — v1.1 Multi-Surface Workbench
 
-Phase 10.1 is executing as a selective ATLAS-owned reconstruction around
+Phase 10.1 is complete as a selective ATLAS-owned reconstruction around
 OpenTUI/Solid, not a wholesale merge:
 
 - **10.1-01 complete:** inventoried all 180 pinned source files, classified each as
@@ -25,12 +25,12 @@ OpenTUI/Solid, not a wholesale merge:
   public-distribution legal gate.
 - **10.1-02 complete:** created the clean `apps/atlas-tui` package boundary plus generic
   reproducible inventory and forbidden-identity/dependency/artifact scanners.
-- **10.1-03:** test-drive a compact offline ATLAS shell and record dependency,
+- **10.1-03 complete:** test-drove a compact offline ATLAS shell and recorded dependency,
   source, binary, startup, idle-memory, offline, and boundary baselines.
 
-Progress: 2/3 plans complete. The package has exactly three approved runtime
-dependencies and two development dependencies; boundary and inventory contract
-tests pass. Next: execute Phase 10.1 Plan 03.
+Progress: 3/3 plans complete. Verification passed with one explicit exception:
+idle working set is 230.24 MiB versus the original 150 MiB target. The intake
+ceiling is conditionally 240 MiB; Phase 10.6 must revisit it. Next: plan Phase 10.2.
 
 ## Phase C — Discord Write Surface (2026-06-21, branch `feat/phase-c-discord-write`)
 
