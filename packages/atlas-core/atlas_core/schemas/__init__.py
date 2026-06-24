@@ -1,5 +1,15 @@
 """Atlas-core domain schemas — public API."""
 
+from atlas_core.schemas.agent_contract import (
+    ContextEnvelope,
+    ContextSource,
+    ContractVersion,
+    InstructionSource,
+    ModelIdentity,
+    SessionBootstrap,
+    SurfaceIdentity,
+    WorkspaceIdentity,
+)
 from atlas_core.schemas.core import (
     Artifact,
     AuditEvent,
@@ -24,16 +34,24 @@ from atlas_core.schemas.registry_v2 import (
 __all__ = [
     "Artifact",
     "AuditEvent",
+    "ContextEnvelope",
+    "ContextSource",
+    "ContractVersion",
     "DiscordAction",
     "DiscordApproval",
     "DiscordApprovalStatus",
     "Mission",
     "ModelV2",
+    "ModelIdentity",
     "Provider",
     "RoutePolicy",
     "Run",
     "SECRET_PATTERNS",
+    "SessionBootstrap",
     "Source",
+    "SurfaceIdentity",
     "ToolCall",
     "WikiPage",
+    "WorkspaceIdentity",
+    "InstructionSource",
 ]

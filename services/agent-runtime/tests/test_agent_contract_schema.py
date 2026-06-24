@@ -58,7 +58,7 @@ def test_bootstrap_is_frozen_and_json_stable():
         bootstrap.permission_mode = "allow"  # type: ignore[misc]
 
     payload = bootstrap.model_dump()
-    assert json.loads(json.dumps(payload)) == payload
+    assert SessionBootstrap.model_validate(json.loads(json.dumps(payload))) == bootstrap
     assert isinstance(payload["capabilities"], tuple)
     assert payload["prompt"]["version"] == "1.0.0"
     assert "api_key" not in json.dumps(payload).lower()
@@ -121,7 +121,7 @@ def test_context_envelope_round_trips_structured_provenance():
 
     payload = envelope.model_dump()
     assert ContextEnvelope.model_validate_json(envelope.model_dump_json()) == envelope
-    assert json.loads(json.dumps(payload)) == payload
+    assert ContextEnvelope.model_validate(json.loads(json.dumps(payload))) == envelope
     assert payload["sources"][0]["trust"] == "evidence"
 
 
