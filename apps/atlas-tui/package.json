@@ -1,0 +1,22 @@
+{
+  "name": "@atlas/tui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "bunx tsc --noEmit",
+    "test": "bun test",
+    "build": "bun build src/main.tsx --compile --outfile dist/atlas-tui.exe",
+    "snapshot": "bun run src/main.tsx --snapshot",
+    "boundary": "pwsh -NoProfile -File ../../scripts/tui-boundary-check.ps1 -Root . -ForbiddenTermsFile ../../docs/third-party/atlas-tui-forbidden-terms.txt"
+  },
+  "dependencies": {
+    "@opentui/core": "0.1.101",
+    "@opentui/solid": "0.1.101",
+    "solid-js": "1.9.10"
+  },
+  "devDependencies": {
+    "@types/bun": "1.2.18",
+    "typescript": "5.8.3"
+  }
+}
