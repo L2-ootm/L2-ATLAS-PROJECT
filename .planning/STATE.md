@@ -1,19 +1,36 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0.5
-milestone_name: Mass-Adoption Launch Wedge
-status: operator_gated
-last_updated: "2026-06-23T18:45:00.000Z"
-last_activity: "2026-06-23 -- REAL-WORLD E2E VALIDATION (pre-public). Booted the release gateway (post-10.0.4 binary, /v1/tools/* present) + React cockpit against the LIVE ~/.atlas/atlas.db (backed up to atlas.db.bak-20260623-171521 first). Ran all 3 golden workflows via the real `atlas golden` CLI: repo_triage + research_brief wrote artifacts+wiki; self_review stayed PENDING and only wrote after `atlas tools approve` (file landed, ok:true) -- approval gate proven on live infra. Cockpit Ledger rendered the live golden audit trail (57 events, dynamic filter chips), Integrations showed '5 tools registered / 2 write-shell gated / gateway ONLINE', zero console errors (live2-*.png). Scoped `atlas golden reset --confirm` removed only golden rows (artifacts 2->0, wiki 5->3, approvals 3->2); real data intact (10 missions/runs). atlas doctor: db/config/gateway ok, provider mock. Tests: agent-runtime 369 pass (1 known env fail). FINDING: bare gateway-binary launch 500s on dispatch endpoints unless ATLAS_CLI is set (gateway_control injects it) -- documented in RELEASE_CHECKLIST. Also closed the 10.0.4 review MEDIUM (tool_service.invoke return now typed ToolResult|ToolApproval). Public flip still NOT done (operator decision). PRIOR: Phase 10.0.6 DRAFTS COMPLETE / OPERATOR-GATED. v1.0.5 wedge code+docs fully shipped; the public launch is now a human handoff. SC1 done: README final pass ('ATLAS v0.1 — Open Research Preview' label, accurate scope, explicit non-claims) + docs/release/{TECHNICAL_REPORT,PUBLIC_ROADMAP,DEMO_SCRIPT,LAUNCH_MESSAGE,ATLAS_30_DAY_SHIP_REPORT,RELEASE_CHECKLIST}.md. SC2/SC3/SC4 are operator-gated (make repo public, tag v0.1.0-open-research-preview, open Discussions, run 20-50 dev private beta, send launch messages) — NOT done autonomously by design; full handoff in docs/release/RELEASE_CHECKLIST.md. PRIOR: 10.0.5 COMPLETE+VERIFIED (3/3 SC) golden workflows + quality gate + demo-reset; 10.0.3 COMPLETE cockpit per-page redesign (Ledger/Codex/Models/Integrations + System About). Milestone v1.0.5 stays OPEN pending the operator-gated public-release actions."
+milestone: v1.1
+milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
+status: specifying
+last_updated: "2026-06-24T00:00:00-03:00"
+last_activity: "2026-06-24 -- PHASE 10.1 PLANNED. Locked deny-by-default terminal harness intake: complete 180-file pinned-source inventory and provenance first; clean ATLAS-only package and generic boundary scanner second; minimal offline OpenTUI/Solid shell plus dependency/file/binary/startup/memory baselines third. No donor agent/runtime/provider/config/memory/auth/share/update/voice/plugin path enters shipped code. Public derivative distribution is explicitly gated on retained MIT notices plus review of the separately published use-restrictions document. Three executable GSD plans cover INTAKE-01..05 and SEC-01; structural and requirement validation passed. Next: execute 10.1-01."
 progress:
-  total_phases: 14
-  completed_phases: 4
-  total_plans: 19
-  completed_plans: 19
-  percent: 36
+  total_phases: 8
+  completed_phases: 0
+  total_plans: 3
+  completed_plans: 0
+  percent: 0
 ---
 
 # STATE — L2 ATLAS
+
+## Current Position — v1.1 Multi-Surface Workbench
+
+Phase 10.1 is fully discussed, researched, and planned. The accepted path is a
+selective ATLAS-owned reconstruction around OpenTUI/Solid, not a wholesale merge:
+
+- **10.1-01:** inventory all 180 pinned source files, classify each as
+  adopt-pattern/rewrite/reject, preserve attribution/notices, and record the
+  public-distribution legal gate.
+- **10.1-02:** create the clean `apps/atlas-tui` package boundary plus generic
+  reproducible inventory and forbidden-identity/dependency/artifact scanners.
+- **10.1-03:** test-drive a compact offline ATLAS shell and record dependency,
+  source, binary, startup, idle-memory, offline, and boundary baselines.
+
+Plan validation: 3 plans, 7 tasks, all required frontmatter/XML contracts present,
+no file conflicts, dependencies valid, and INTAKE-01..05 + SEC-01 fully covered.
+No plans were committed. Next command: execute Phase 10.1 Plan 01.
 
 ## Phase C — Discord Write Surface (2026-06-21, branch `feat/phase-c-discord-write`)
 
@@ -447,6 +464,19 @@ Acknowledged at milestone close on 2026-06-15:
 
 ### Roadmap Evolution
 
+- v1.2 designed 2026-06-24 (Phases 10.9–10.15, `📐` Designed/not-started, sequenced AFTER v1.1
+  — does NOT block 10.1–10.8): ATLAS Provider Mesh & Self-Evolution. Dual-mode cockpit
+  (ATLAS-gateway | BYO-runtime), two adapter shapes (agentic-CLI `RuntimeAdapter` + model-gateway
+  router), role-keyed model rulebook + capability/cost/health scored dispatch, foundation boundary
+  manifest + autonomous gated self-evolution loop, bidirectional WebUI gap audit. Route-through an
+  installed framework is the DEFAULT; migrate-to-ATLAS-native is opt-in/reversible. Binding
+  extra-mile/extra-marathon delivery doctrine. Decisions to log: D-025–D-029. Design source of
+  truth: `docs/plans/2026-06-24-atlas-provider-mesh-self-evolution-design.md`. Requirements traced
+  during `/gsd-plan-phase`. Brainstorm + roadmap fold landed on `main` (design doc + ROADMAP/STATE only).
+- v1.1 resumed and rewritten on 2026-06-23 as Phases 10.1–10.8: one ATLAS agent,
+  ATLAS-native donor-derived TUI, shared surface/workspace/config/event contracts,
+  surface-scoped permissions, Brain/wiki context intelligence, and cross-surface UAT.
+- D-023 accepted: donor code is a terminal-surface source only; no second agent/runtime.
 - Phase 10.0.1 inserted after Phase 10.0: Mass-Adoption Launch Wedge (v1.0.5): Repo Hygiene & Trust Package — first of 6 phases (10.0.1-10.0.6) inserted ahead of v1.1 Phase 10.1+ per l2_atlas_30_day_mass_adoption_wedge_plan.md; v1.1 native-shell/auth/TUI work paused until wedge ships (URGENT)
 
 ### Decisions logged

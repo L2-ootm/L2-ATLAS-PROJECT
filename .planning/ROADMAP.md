@@ -3,8 +3,9 @@
 ## Milestones
 
 - ✅ **v1.0 Operator Cockpit MVP** — Phases 1–9.5 (shipped 2026-06-15)
-- 🔨 **v1.0.5 Mass-Adoption Launch Wedge** — Phases 10.0.1–10.0.6 (inserted 2026-06-16, active)
-- ⏸ **v1.1 ATLAS Agent Harness & Native Operator Shell** — Phases 10.0 (done), 10.1–10.6 (paused until v1.0.5 ships)
+- ⏸ **v1.0.5 Mass-Adoption Launch Wedge** — Phases 10.0.1–10.0.6 (code/docs complete; outward release actions operator-gated)
+- 🔨 **v1.1 ATLAS Agent Harness & Multi-Surface Workbench** — Phases 10.0 (done), 10.1–10.8 (resumed 2026-06-23)
+- 📐 **v1.2 ATLAS Provider Mesh & Self-Evolution** — Phases 10.9–10.15 (designed 2026-06-24; starts after v1.1)
 - 📋 **v2.0 CRM, Pulse & Voice** — Phases 11–14 (planned)
 
 ## Phases
@@ -51,7 +52,7 @@ Requirements: `.planning/milestones/v1.0-REQUIREMENTS.md`
 - [x] 10.0-02-PLAN.md — 0004_registry_v2.sql additive migration + mirrored Pydantic schema (LANDMINE 4; no-DROP, VIEW note, no-FK) ✓ 2026-06-16
 - [x] 10.0-03-PLAN.md — OAuth-callback + native-IPC threat-model drafts (LANDMINE 5; constant-time state, PTY-byte-channel) ✓ 2026-06-16
 
-### 🔨 v1.0.5 Mass-Adoption Launch Wedge (Phases 10.0.1–10.0.6)
+### ⏸ v1.0.5 Mass-Adoption Launch Wedge (Phases 10.0.1–10.0.6) — OPERATOR-GATED
 
 Source: `l2_atlas_30_day_mass_adoption_wedge_plan.md`. v1.0 already shipped the wedge plan's P0 architecture (mission system, runtime, audit bus, artifact store, LLM Wiki, gateway/SSE, WebUI cockpit) — this milestone closes the remaining gaps between what shipped and what a public launch needs: repo trust signals, a one-command install, the missing cockpit pages, developer-facing integrations + extensibility, demo-grade reliability, and a public release. v1.1 (auth store/TUI/native shell) is paused until this ships.
 
@@ -206,81 +207,283 @@ drafts-only — the outward-facing, irreversible actions are NOT performed auton
 **Plans:** none (executed as a direct drafts-only pass, not via plan machinery — the remaining
 SCs are human/operator actions, not codeable plans).
 
-### ⏸ v1.1 ATLAS Agent Harness & Native Operator Shell (Phases 10.1–10.6) — PAUSED
+### 🔨 v1.1 ATLAS Agent Harness & Multi-Surface Workbench (Phases 10.1–10.8) — ACTIVE
 
-Post-v1.0 inspection showed the archived CLI is a thin operational surface, not a complete ATLAS/Hermes-derived agent harness. v1.1 builds the owned harness — TUI, auth, provider/model registry, agentic chat — and then a native shell that wraps a *real* harness, not an empty one. **Paused 2026-06-16 pending v1.0.5 Mass-Adoption Launch Wedge** — the 30-day public-launch plan doesn't call for native-shell/TUI depth and the wedge plan's no-list explicitly excludes unscoped feature sprawl during the launch sprint. Resume at 10.1 once v1.0.5 ships.
+v1.1 turns the existing ATLAS agent/runtime into one coherent operator workbench across
+terminal and web surfaces. A third-party terminal project is used only as an implementation
+and UX reference/donor; runtime code, packages, commands, configuration, storage paths,
+environment variables, generated artifacts, and UI identity are ATLAS-native. Ethical
+provenance and required notices remain in documentation.
 
-**Research:** `.planning/research/SUMMARY.md` (STACK/FEATURES/ARCHITECTURE/PITFALLS). **Prep:** `.planning/prep/README.md`. **Requirements:** `.planning/REQUIREMENTS.md` (55 REQ-IDs).
+There is **no donor-specific agent runtime**. The terminal and web clients use the same
+ATLAS agent, Projects/Current Focus/mission/run model, context assembly, audit bus, policy,
+configuration, and approval state.
 
-**Locked decisions:** Codex read-only detection only; OpenAI/Codex-compatible lane first then health-aware fallback; file-store-first auth (keychain deferred). Adapt the Hermes Ink TUI (no Rust rewrite); agent adapter is Python over Hermes AIAgent via the stdio JSON-RPC `tui_gateway`; Rust owns the provider-probe layer + Tauri shell.
+**Research:** `.planning/research/SUMMARY.md`; `.kilo/ULTRAPLAN_ATLAS_TUI_HARNESS.md`.
+**Requirements:** `.planning/REQUIREMENTS.md`.
+**AI contract:** `.planning/phases/10.2-agent-contract-tool-context-intelligence/10.2-AI-SPEC.md`.
 
-**Dependency spine:** 10.0 design → 10.1 auth (critical path) → 10.2 chat + 10.3 discovery → 10.4 TUI → 10.5 native shell (**hard-gated on 10.2 + 10.4**) → 10.6 integration/UAT.
+**Locked decisions (2026-06-23):**
 
-#### Phase 10.1: ATLAS-Owned Auth Store & Codex Detection
+- one ATLAS agent/runtime, many surfaces;
+- donor TUI code is transformed into an ATLAS-owned surface, not wrapped as a branded binary;
+- donor identity may appear only in attribution/license/design-history documentation;
+- `~/.atlas/config.yaml` is the authoritative non-secret configuration store for every surface;
+- every execution is bound to a surface session and a global or registered-project workspace;
+- permission requests are actionable only from the surface session that initiated execution;
+- system-prompt invariants are versioned and cache-stable; dynamic ATLAS context is separately
+  budgeted, provenance-tagged, redacted, and replayable;
+- the Brain knowledge graph becomes the retrieval spine for wiki/memory/relationship discovery,
+  but weak retrieval must abstain rather than inject noise;
+- native/Tauri shell work is deferred until the TUI/WebUI surface protocol is stable.
 
-**Goal:** A secure, ATLAS-owned credential store with read-only Codex detection and proven no-leak/no-mutation guarantees.
-**Requirements:** AUTH-01, AUTH-02, AUTH-03, AUTH-04, AUTH-05, AUTH-06, AUTH-07, AUTH-08, CLI-06, SEC-01, SEC-02, SEC-03, SEC-05
+**Dependency spine:** 10.1 donor intake → 10.2 agent/tool/context contract → 10.3 shared
+surface/workspace protocol → 10.4 global config control plane → 10.5 permission broker →
+10.6 TUI → 10.7 WebUI agent/queue UX → 10.8 cross-surface UAT and cutover.
+
+#### Phase 10.1: ATLAS TUI Harness Intake & Provenance
+
+**Goal:** Extract and transform the useful terminal rendering, interaction, session, and
+component patterns into an ATLAS-native codebase without importing a second agent/runtime,
+provider system, config store, memory system, telemetry path, or product identity.
+**Requirements:** INTAKE-01, INTAKE-02, INTAKE-03, INTAKE-04, INTAKE-05, SEC-01
 **Success criteria:**
 
-1. `atlas auth add/list/status/remove/doctor` work against `~/.atlas/auth.json` for at least one real provider.
-2. Concurrent-writer test produces valid JSON with no lost write; auth file is current-user-only.
-3. `atlas auth status` and all logs/audit pass the redaction grep (no `sk-`/`Bearer `/`eyJ`).
-4. `~/.codex/auth.json` is byte-identical (mtime + hash) after every auth/discovery command.
+1. A source/license/component inventory classifies every donor module as adopt, rewrite, or
+   reject; prohibited runtime/provider/storage/telemetry modules are absent from shipped code.
+2. Runtime grep and package inspection find no donor product names, commands, env vars, config
+   keys, state paths, URLs, analytics, update, or share endpoints outside approved documentation.
+3. ATLAS attribution and third-party notices identify provenance and retained licenses without
+   implying original authorship.
+4. Dependency, binary/bundle size, cold/warm startup, idle memory, and file-count baselines are
+   recorded with explicit v1.1 budgets.
 
-#### Phase 10.2: Agentic Chat CLI & Runtime Adapter
+**Plans:** 0/3 complete
 
-**Goal:** A credible one-shot and interactive agent chat over Hermes AIAgent with audit-safe calls and an honest fallback cascade.
-**Requirements:** CLI-01, CLI-02, CLI-03, AGNT-01, AGNT-02, AGNT-03, AGNT-04, AGNT-05, AGNT-06, AUD-01, AUD-02
+- [ ] 10.1-01-PLAN.md — pinned-source inventory, adopt/rewrite/reject matrix, attribution, notices, and legal release gate
+- [ ] 10.1-02-PLAN.md — clean ATLAS package boundary, reproducible inventory generator, and fail-closed identity/dependency/artifact scanner
+- [ ] 10.1-03-PLAN.md — test-first minimal OpenTUI/Solid ATLAS shell with build, offline, startup, memory, size, and boundary baselines
+
+#### Phase 10.2: Agent Contract, Tool Semantics & Context Intelligence
+
+**Goal:** Freeze one versioned ATLAS agent contract before building surfaces: system prompt,
+identity/bootstrap, tool-call semantics, workflow behavior, context hierarchy, Brain/wiki RAG,
+skills, compaction/resume, provenance, and evaluation.
+**Requirements:** PROMPT-01, PROMPT-02, PROMPT-03, PROMPT-04, PROMPT-05, TOOL-01, TOOL-02,
+TOOL-03, TOOL-04, TOOL-05, CTX-01, CTX-02, CTX-03, CTX-04, CTX-05, EVAL-01, EVAL-02
 **Success criteria:**
 
-1. `atlas chat -q "ping"` returns a real response or precise auth remediation; `atlas chat` runs interactively and exits cleanly.
-2. Injecting a 401 on the primary provider halts with an AUTH_ERROR (no silent cascade); a transient failure cascades and emits a `provider_fallback` audit event; the provider actually used is surfaced.
-3. The audit JSONL for a chat contains `model_call_start` + `model_call_end` with a non-null run_id; tool calls require approval (deny-by-default in `-q`).
-4. `foundation/` diff is extension-points only (DIVERGENCE_LOG reviewed); transcripts are redaction-filtered before persistence.
+1. Every runtime tool has a machine-readable capability contract covering schema, purpose,
+   risk, permissions, workspace scope, network behavior, side effects, timeout, cancellation,
+   idempotency, result limits, redaction, audit events, and surface rendering.
+2. The prompt compiler emits a versioned, deterministic, provider-aware prompt with an immutable
+   ATLAS identity/core, explicit instruction precedence, tool/workflow discipline, evidence and
+   verification rules, and a session bootstrap envelope; donor/Hermes product identity never
+   reaches the operator-facing agent.
+3. Dynamic context uses a separate redacted/provenance-tagged budget: Current Focus, project,
+   goals/tasks, recent runs/failures, observations, relevant skills, wiki evidence, and Brain
+   graph neighborhoods/paths. Retrieval thresholds support explicit abstention.
+4. Prompt/context snapshots are stored by version and source IDs so a run can be replayed and
+   explained without persisting secrets or unrestricted chain-of-thought.
+5. Deterministic, adversarial, RAG, tool-choice, permission, compaction/resume, and multi-model
+   eval suites meet the thresholds in `10.2-AI-SPEC.md`.
 
-#### Phase 10.3: Provider/Model Discovery & Cockpit Truth
+#### Phase 10.3: Shared Surface Session & Workspace Protocol
 
-**Goal:** A real provider/model registry with honest status that the CLI and cockpit both reflect.
-**Requirements:** CLI-04, CLI-05, PROV-01, PROV-02, PROV-03, PROV-04, MOD-01, MOD-02, MOD-03, MOD-04, MOD-05, MOD-06, UX-02
+**Goal:** Give TUI, WebUI, CLI, API, and future native clients one ATLAS session contract over the
+existing agent, bound to either the ATLAS global workspace or a registered Project root.
+**Requirements:** SURF-01, SURF-02, SURF-03, SURF-04, SURF-05, SURF-06, AGNT-01, AUD-01
 **Success criteria:**
 
-1. `atlas models discover` merges seeded + auth-store + local-sidecar + read-only-external sources; `atlas models list --all` shows source/status/auth_status/last_seen.
-2. Two consecutive discover runs leave row count stable and `first_seen` unchanged; stopping a sidecar flips its models to `offline` (source-scoped).
-3. `atlas providers list/status/doctor` and `atlas doctor` report honest health with actionable remediation; exit codes are correct.
-4. The cockpit Models page renders the live registry (source/status/auth), not only seeded rows.
+1. A surface session records surface type, surface instance, workspace kind, project/root,
+   mission/run/session IDs, agent/model, permission mode, prompt/context versions, and lifecycle.
+2. Global and project sessions resolve canonical working directories through the existing
+   Project registry; traversal, symlink escape, stale roots, and unregistered path behavior are
+   test-covered.
+3. Both TUI and WebUI stream the same normalized agent events for text, reasoning state,
+   tool calls/results, tasks/subagents, retries, context use, approvals, errors, and completion.
+4. Cancel, disconnect, reconnect, resume, compaction, and process restart have explicit,
+   tested state transitions with no orphaned running session.
 
-#### Phase 10.4: ATLAS TUI
+#### Phase 10.4: Global Configuration, Auth & Model Control Plane
 
-**Goal:** An ATLAS-branded terminal UI over the `tui_gateway` that can hold an auditable agent session.
-**Requirements:** TUI-01, TUI-02, TUI-03, TUI-04, TUI-05, TUI-06, TUI-07, TUI-08, TUI-09, UX-01
+**Goal:** Make ATLAS configuration, provider/model selection, and secret-safe auth status
+consistent and writable from every authorized surface without independent config implementations.
+**Requirements:** CFG-01, CFG-02, CFG-03, CFG-04, CFG-05, CFG-06, AUTH-01, AUTH-02, MOD-01,
+MOD-02, UX-01
 **Success criteria:**
 
-1. `atlas` / `atlas tui` opens an ATLAS-branded TUI with a model/auth status bar and no Hermes/Codex branding leaks.
-2. A prompt streams a response with inline tool-call activity and a `/help` command surface.
-3. Missing auth/model is surfaced before the first send; dangerous tool calls show a blocking approval prompt.
-4. Ctrl-C exits cleanly and the session can be resumed.
+1. `~/.atlas/config.yaml` has a versioned frozen schema, atomic cross-process updates, optimistic
+   conflict detection, current-user permissions, masked reads, and audit/change events.
+2. CLI, gateway, TUI, and WebUI use the same GET/PATCH contract; a change from one surface becomes
+   visible to the others without restart or silent last-writer-wins loss.
+3. Secrets remain references/ATLAS-owned auth records and never cross masked config APIs; external
+   credential stores are detected read-only unless separately authorized.
+4. Provider/model/runtime/permission/context settings expose source, effective value, validation,
+   restart requirement, health, and actionable remediation.
 
-#### Phase 10.5: Native Operator Shell (Tauri 2 + PTY)
+#### Phase 10.5: Surface-Scoped Permission Broker
 
-**Goal:** A Tauri 2 native shell that hosts the cockpit and a PTY running the real `atlas tui`, with a capability-scoped IPC boundary. **Hard-gated on 10.2 + 10.4.**
-**Requirements:** NAT-01, NAT-02, NAT-03, NAT-04, NAT-05, SEC-04
+**Goal:** Route every approval request to the surface session that caused it while keeping ATLAS
+policy, persistence, audit, and exactly-once execution authoritative.
+**Requirements:** PERM-01, PERM-02, PERM-03, PERM-04, PERM-05, PERM-06, PERM-07, SEC-02,
+AUD-02
 **Success criteria:**
 
-1. The Tauri 2 shell (no Electron) launches, embeds the cockpit from a local bundle, and makes no external calls except explicit integrations.
-2. The PTY pane runs `atlas tui` (not bash/cmd) and can complete an agentic chat from inside the shell.
-3. IPC is an explicit allowlist; the PTY accepts keystrokes, not command strings; a native-IPC threat-model document enumerates every command.
-4. The shell surfaces auth/model readiness and routes remediation to the CLI/TUI.
+1. Approval records include requesting surface/session, run/tool call, risk, normalized args,
+   workspace, expiry, decision, reason, and audit provenance.
+2. TUI-owned execution uses the ATLAS TUI native blocking prompt; WebUI-owned execution appears
+   only in the matching WebUI queue/sidebar; another surface cannot approve or reject it.
+3. Headless/API execution denies `ask` decisions unless an explicit approval channel was
+   registered; disconnect/timeout follows a configured fail-closed policy.
+4. Concurrent replies execute a deferred action at most once; cancellation, expiry, rejection,
+   malformed/stale requests, and process restart are test-covered.
+5. Session-scoped “allow once/always” rules cannot silently widen global policy or cross
+   workspace/surface boundaries.
 
-#### Phase 10.6: Integration & Manual UAT
+#### Phase 10.6: ATLAS Terminal Workbench
 
-**Goal:** Everything wired end-to-end, documented, and accepted with no secret leakage.
-**Requirements:** DOC-01, DOC-02
+**Goal:** Ship `atlas` / `atlas tui` as an ATLAS-native terminal client for the existing agent,
+Projects, Focus, missions/runs, configuration, tools, subagents/tasks, context, and permissions.
+**Requirements:** TUI-01, TUI-02, TUI-03, TUI-04, TUI-05, TUI-06, TUI-07, TUI-08, TUI-09,
+TUI-10, TUI-11
 **Success criteria:**
 
-1. Operator runbooks exist for auth, TUI, models, and the native shell.
-2. A v1.1 manual UAT guide covers TUI, one-shot chat, auth, model discovery, cockpit, and native shell, and is executed.
-3. UAT screenshots/terminal captures pass a credential-pattern review before commit.
-4. v1.1 archive verdict recorded.
+1. Startup offers global workspace or registered Project selection and shows a compact ATLAS text
+   identity, workspace, model/auth, permission mode, context budget, and session state.
+2. Transcript/composer streaming renders normalized agent/tool/task/subagent/retry/context events
+   and exposes mission/focus/wiki/Brain/config/session commands without a second backend.
+3. Dangerous actions block on the native ATLAS permission prompt; cancellation and Ctrl-C unwind
+   agent, tools, and child work cleanly.
+4. Session resume/replay preserves prompt/context version and workspace identity; narrow/wide,
+   no-color, Unicode/ASCII-safe, Windows Terminal, cmd, PowerShell, VS Code, and WSL tests pass.
+5. Source, snapshots, packages, paths, runtime output, and binaries contain no imported product
+   identity beyond approved documentation/notices.
+
+#### Phase 10.7: Web Agent Surface & Permission Queue UX
+
+**Goal:** Make the cockpit a first-class client of the same agent/session/config/permission
+contracts, with unobtrusive controls that appear only when operationally relevant.
+**Requirements:** WEB-01, WEB-02, WEB-03, WEB-04, WEB-05, WEB-06
+**Success criteria:**
+
+1. The WebUI starts global/project sessions through the shared protocol and renders event parity
+   with the TUI, including tools, tasks/subagents, retrieval provenance, retries, and cancellation.
+2. A minimal conditional header appears for active agent/session state; a right sidebar appears
+   only for matching WebUI-owned pending approvals/queues or when explicitly pinned.
+3. Permission decisions, config writes, project selection, reconnect/resume, and queue state are
+   accessible, responsive, keyboard-usable, and screen-reader announced.
+4. TUI-owned approvals never appear as actionable WebUI items; global read-only audit history may
+   show their terminal outcome and provenance.
+
+#### Phase 10.8: Cross-Surface Conformance, UAT & Cutover
+
+**Goal:** Prove one agent behaves consistently and safely across TUI and WebUI, then cut over
+without retaining an indefinite duplicate terminal stack.
+**Requirements:** TEST-01, TEST-02, TEST-03, TEST-04, TEST-05, DOC-01, DOC-02
+**Success criteria:**
+
+1. A shared conformance suite runs the same reference missions across TUI and WebUI and verifies
+   event, tool, retrieval, config, permission, audit, cancellation, and final-outcome equivalence.
+2. At least 20 representative runs meet reliability, prompt/RAG quality, no-secret, no-unapproved
+   write, exactly-once approval, startup, memory, and latency budgets.
+3. Prompt-injection, poisoned knowledge, malicious tool output, path escape, stale config,
+   concurrent writers/approvers, disconnect/restart, and compaction/resume adversarial tests pass.
+4. Operator UAT and runbooks cover global/project work, configuration, Brain/wiki retrieval,
+   permissions, recovery, attribution, and rollback.
+5. The new TUI becomes default only after the legacy terminal path has a tested rollback and a
+   dated retirement decision; Tauri/native-shell planning resumes afterward.
+
+### 📐 v1.2 ATLAS Provider Mesh & Self-Evolution (Phases 10.9–10.15) — DESIGNED, STARTS AFTER v1.1
+
+Turns ATLAS into a **dual-mode, provider-agnostic operator cockpit**: run in
+ATLAS-gateway mode (native, opinionated) or BYO-runtime mode (attach an external
+agentic runtime/gateway and let ATLAS provide cockpit, audit, permissions, routing).
+Adds a role-keyed model rulebook + capability/cost/health-scored subagent dispatch,
+an autonomous gated self-evolution loop over the vendored foundation, and a
+bidirectional WebUI gap audit. **Route-through an installed framework as-is is the
+default; migrating a workload to ATLAS-native is opt-in and reversible.**
+
+This milestone **does not block v1.1** — it is sequenced after Phases 10.1–10.8 and
+consumes their surface/session/config/permission contracts.
+
+**Design source of truth:** `docs/plans/2026-06-24-atlas-provider-mesh-self-evolution-design.md`
+(full per-phase success criteria, architecture, risks, and decisions D-025–D-029).
+**Delivery doctrine (binding):** extra-mile/extra-marathon (§4 of the design) — detect-don't-ask,
+pre-stage the next action keeping the easy path default, first-class branded surfaces,
+designed failure states; `l2-extra-marathon` review is the per-phase completion gate.
+
+**Dependency spine:** 10.13 (boundary manifest) + 10.15 (WebUI audit) early/parallel →
+10.9 (mesh contract + dual-mode) → 10.10 (role rulebook) → 10.11 (scoring/dispatch) →
+10.12 (provider backends) → 10.14 (autonomous self-evolution loop, last/highest-risk).
+
+**Requirements:** none mapped yet (trace during `/gsd-plan-phase`, precedent: v1.0.5 phases).
+
+#### Phase 10.9: Provider Mesh Contract & Dual-Mode Control Plane
+
+**Goal:** Establish the ATLAS-native `RuntimeAdapter` contract (agentic-CLI runtimes) + extended
+model-gateway router (API providers), and make dual-mode (ATLAS-gateway | BYO-runtime) a real,
+switchable operator setting before any per-provider backend or rulebook UX is built.
+**Success criteria (condensed — full set in design doc §6):** versioned `RuntimeAdapter` that
+`native`/`claude_code` implement without regression; mode persisted/surfaced/switchable from CLI+WebUI
+and audited; router accepts ≥1 external gateway via `registry_v2`; all attach/detach/mode/route audited;
+**doctrine:** setup/CLI/WebUI autodetect installed CLIs and reachable gateways before asking.
+**Depends on:** 10.13; v1.1 10.3/10.4. **Status:** 📐 Designed — not started.
+
+#### Phase 10.10: Role-Keyed Model Rulebook
+
+**Goal:** Per-provider role→model+effort profiles (curator/main/subagent…) in `~/.atlas/config.yaml`,
+bound to runs, surfaced in CLI + WebUI.
+**Success criteria (condensed):** distinct-per-role profile validates/persists atomically/masked-safe;
+run records exact role→model bindings (replayable/auditable); CLI+WebUI edit one contract without
+last-writer-wins loss; absent profiles degrade to an explicit default; **doctrine:** branded,
+pre-populated editor with designed states. **Depends on:** 10.9. **Status:** 📐 Designed — not started.
+
+#### Phase 10.11: Capability/Cost/Health Scoring & Dynamic Subagent Dispatch
+
+**Goal:** Main agent chooses subagent models by fit; scored fallback cascade on the 10.0 error table.
+**Success criteria (condensed):** scorer picks for open roles and records inputs+rationale; classified
+error demotes+re-picks (tested/audited); manual rulebook always overrides; health probing degrades
+safely and leaks no credentials. **Depends on:** 10.10, 10.0 fallback spec. **Status:** 📐 Designed — not started.
+
+#### Phase 10.12: Provider Backends
+
+**Goal:** Ship the concrete backends — agentic-CLI adapters (codex, opencode, mimocode; claude code
+exists; native Hermes via foundation delegation) and model gateways (openclaw, OpenAI-compatible,
+another ATLAS).
+**Success criteria (condensed):** each adapter runs a reference mission with normalized events +
+honored permissions; each gateway serves completions with route/cost/health recorded; native-Hermes
+delegation needs no foundation edits beyond extension points; adding a backend = adapter+capabilities
+(+optional manifest); **doctrine (reference standard):** per detected service offer route-through
+(default) vs migrate-native (opt-in), pre-build the ready-to-apply artifact, branded state-aware controls.
+**Depends on:** 10.9, 10.10, 10.11 (backends land incrementally). **Status:** 📐 Designed — not started.
+
+#### Phase 10.13: Foundation Boundary Manifest & Upstream-Delta Tooling
+
+**Goal:** Classify every foundation module (`tracked` | `owned` | `diverged-frozen`) and compute the
+upstream delta — the primitive that lets gradual rebuild and easy upstream sync coexist.
+**Success criteria (condensed):** full manifest coverage (no unclassified files); deterministic
+delta partition into the three buckets; reproducible machine-readable report (consumed by 10.14);
+`tracked → owned` flip drops the module from the tracked surface. Integrates with 10.0.7 debrand as
+known transforms. **Depends on:** none hard — can start early. **Status:** 📐 Designed — not started.
+
+#### Phase 10.14: Autonomous Gated Self-Evolution Loop
+
+**Goal:** Scheduled, GSD-governed agent loop that proposes/tests/commits upstream syncs — progressively
+unsupervised — generalizing toward ATLAS self-modification under the same gates.
+**Success criteria (condensed):** applies a `tracked`-only delta on a branch behind a green test gate +
+atomic-commit PR (nothing lands on main beyond the configured autonomy); `owned`/`diverged` deltas halt
++ flag; kill switch + rollback + full audit; autonomy is an explicit audited setting raised only on a
+green track record. **Depends on:** 10.13 + stable mesh tree (10.9–10.12). **Status:** 📐 Designed — last/highest-risk.
+
+#### Phase 10.15: Bidirectional WebUI Gap Audit
+
+**Goal:** Differential audit of the ATLAS WebUI vs the foundation WebUI — protect what ATLAS does better,
+adopt what it's missing.
+**Success criteria (condensed):** two-column inventory (ATLAS-better vs Hermes-has/ATLAS-missing) with
+evidence; ranked adopt/adapt/skip backlog with rationale; research-only, hands off to 10.7 / 10.10;
+**doctrine:** branded state-aware provider controls captured as a named adopt deliverable.
+**Depends on:** none — runs early/parallel (harness-cherrypick precedent). **Status:** 📐 Designed — not started.
 
 ### 📋 v2.0 CRM, Pulse & Voice (planned)
 
@@ -312,12 +515,21 @@ Post-v1.0 inspection showed the archived CLI is a thin operational surface, not 
 | 10.0.4 Developer Integrations & Tool Manifest | v1.0.5 | 6/6 | Complete   | 2026-06-22 |
 | 10.0.5 Golden Workflows & Quality Gate | v1.0.5 | 5/5 | Complete   | 2026-06-23 |
 | 10.0.6 Public Release Prep & Distribution | v1.0.5 | n/a | Drafts done / operator-gated | 2026-06-23 |
-| 10.1 ATLAS-Owned Auth Store & Codex Detection | v1.1 | 0/? | Paused | — |
-| 10.2 Agentic Chat CLI & Runtime Adapter | v1.1 | 0/? | Paused | — |
-| 10.3 Provider/Model Discovery & Cockpit Truth | v1.1 | 0/? | Paused | — |
-| 10.4 ATLAS TUI | v1.1 | 0/? | Paused | — |
-| 10.5 Native Operator Shell (Tauri 2 + PTY) | v1.1 | 0/? | Paused | — |
-| 10.6 Integration & Manual UAT | v1.1 | 0/? | Paused | — |
+| 10.1 ATLAS TUI Harness Intake & Provenance | v1.1 | 0/3 | Planned | — |
+| 10.2 Agent Contract, Tool Semantics & Context Intelligence | v1.1 | 0/? | Specifying | — |
+| 10.3 Shared Surface Session & Workspace Protocol | v1.1 | 0/? | Not planned | — |
+| 10.4 Global Configuration, Auth & Model Control Plane | v1.1 | 0/? | Not planned | — |
+| 10.5 Surface-Scoped Permission Broker | v1.1 | 0/? | Not planned | — |
+| 10.6 ATLAS Terminal Workbench | v1.1 | 0/? | Not planned | — |
+| 10.7 Web Agent Surface & Permission Queue UX | v1.1 | 0/? | Not planned | — |
+| 10.8 Cross-Surface Conformance, UAT & Cutover | v1.1 | 0/? | Not planned | — |
+| 10.9 Provider Mesh Contract & Dual-Mode Control Plane | v1.2 | 0/? | Designed | — |
+| 10.10 Role-Keyed Model Rulebook | v1.2 | 0/? | Designed | — |
+| 10.11 Capability/Cost/Health Scoring & Dynamic Dispatch | v1.2 | 0/? | Designed | — |
+| 10.12 Provider Backends | v1.2 | 0/? | Designed | — |
+| 10.13 Foundation Boundary Manifest & Upstream-Delta Tooling | v1.2 | 0/? | Designed | — |
+| 10.14 Autonomous Gated Self-Evolution Loop | v1.2 | 0/? | Designed | — |
+| 10.15 Bidirectional WebUI Gap Audit | v1.2 | 0/? | Designed | — |
 | 11. CRM via Twenty | v2.0 | 0/? | Not started | — |
 | 12. Basic Pulse Monitor | v2.0 | 0/? | Not started | — |
 | 13. STT/TTS Voice Integration | v2.0 | 0/? | Not started | — |
