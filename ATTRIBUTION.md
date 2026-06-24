@@ -26,6 +26,29 @@ The vendored Discord bot at `services/discord-bot/` is derived from L2-BOT:
 - **Vendored into ATLAS** as an ATLAS-controlled sidecar for Discord read/write
   operations. Secrets and state are gitignored.
 
+## MiMo-Code Terminal UI Reference
+
+ATLAS terminal-interface research and selected independently reimplemented
+patterns reference XiaomiMiMo/MiMo-Code:
+
+- **Upstream:** https://github.com/XiaomiMiMo/MiMo-Code
+- **Release:** v0.1.2
+- **Audited commit:** `86d95a79bf0879bcb442ffe6b12914f6d8e68a4e`
+- **Audit date:** 2026-06-24
+- **License:** MIT
+- **Copyright:** © 2026 MiMo Code, Xiaomi Corporation; © 2025 opencode
+- **Notice:** `docs/third-party/ATLAS_TUI_UPSTREAM_NOTICE.md`
+- **Inventory:** `docs/imports/ATLAS_TUI_SOURCE_INVENTORY.csv`
+
+ATLAS does not import MiMo-Code's agent/runtime, SDK, provider layer, auth,
+configuration, storage, memory, telemetry, updater, sharing, plugin runtime, or
+hosted-service authority. The raw checkout remains external and gitignored.
+
+The upstream repository separately publishes a use-restrictions document.
+ATLAS records that fact without presenting a legal conclusion. The public
+distribution of derivative code is gated on explicit review or upstream
+clarification; required MIT notices and copyrights are retained.
+
 ## Other Dependencies
 
 ATLAS references these external projects (not vendored, used as architectural
