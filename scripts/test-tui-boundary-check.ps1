@@ -34,4 +34,20 @@ finally {
     Remove-Item -LiteralPath $emptyTerms -Force -ErrorAction SilentlyContinue
 }
 
+$dependencyRoot = Join-Path ([System.IO.Path]::GetTempPath()) "atlas-dependency-root-$([guid]::NewGuid())"
+try {
+    $nestedModules = Join-Path $dependencyRoot "node_modules/example"
+    $null = New-Item -ItemType Directory -Path $nestedModules
+    $firstTerm = Get-Content -LiteralPath $terms | Where-Object { $_.Trim() } | Select-Object -First 1
+    [System.IO.File]::WriteAllText((Join-Path $nestedModules "metadata.txt"), $firstTerm)
+    [System.IO.File]::WriteAllText((Join-Path $dependencyRoot "allowed.txt"), "ATLAS")
+    & pwsh -NoProfile -File $scanner -Root $dependencyRoot -ForbiddenTermsFile $terms *> $null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Boundary scanner did not exclude nested dependency directories"
+    }
+}
+finally {
+    Remove-Item -LiteralPath $dependencyRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 Write-Host "Boundary scanner contract tests passed."

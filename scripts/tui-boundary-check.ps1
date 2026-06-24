@@ -98,8 +98,8 @@ function Get-ContentFindings {
             --column `
             --no-heading `
             --color never `
-            --glob "!node_modules/**" `
-            --glob "!.git/**" `
+            --glob "!**/node_modules/**" `
+            --glob "!**/.git/**" `
             -- `
             $term `
             $ScanRoot 2>$null
