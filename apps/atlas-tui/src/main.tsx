@@ -23,6 +23,11 @@ async function runInteractive(options: {
       renderer = await createCliRenderer({
         exitOnCtrlC: false,
         useMouse: false,
+        useThread: false,
+        gatherStats: false,
+        consoleMode: "disabled",
+        targetFps: 15,
+        maxFps: 30,
       });
       await render(
         () => <App model={model} onExit={() => resolveExit?.()} />,
