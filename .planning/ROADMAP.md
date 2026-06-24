@@ -259,10 +259,10 @@ provider system, config store, memory system, telemetry path, or product identit
 4. Dependency, binary/bundle size, cold/warm startup, idle memory, and file-count baselines are
    recorded with explicit v1.1 budgets.
 
-**Plans:** 1/3 complete
+**Plans:** 2/3 complete
 
 - [x] 10.1-01-PLAN.md — pinned-source inventory, adopt/rewrite/reject matrix, attribution, notices, and legal release gate
-- [ ] 10.1-02-PLAN.md — clean ATLAS package boundary, reproducible inventory generator, and fail-closed identity/dependency/artifact scanner
+- [x] 10.1-02-PLAN.md — clean ATLAS package boundary, reproducible inventory generator, and fail-closed identity/dependency/artifact scanner
 - [ ] 10.1-03-PLAN.md — test-first minimal OpenTUI/Solid ATLAS shell with build, offline, startup, memory, size, and boundary baselines
 
 #### Phase 10.2: Agent Contract, Tool Semantics & Context Intelligence
@@ -444,7 +444,7 @@ milestone is activated through the normal milestone workflow.
 | 10.0.4 Developer Integrations & Tool Manifest | v1.0.5 | 6/6 | Complete   | 2026-06-22 |
 | 10.0.5 Golden Workflows & Quality Gate | v1.0.5 | 5/5 | Complete   | 2026-06-23 |
 | 10.0.6 Public Release Prep & Distribution | v1.0.5 | n/a | Drafts done / operator-gated | 2026-06-23 |
-| 10.1 ATLAS TUI Harness Intake & Provenance | v1.1 | 1/3 | Executing | — |
+| 10.1 ATLAS TUI Harness Intake & Provenance | v1.1 | 2/3 | Executing | — |
 | 10.2 Agent Contract, Tool Semantics & Context Intelligence | v1.1 | 0/? | Specifying | — |
 | 10.3 Shared Surface Session & Workspace Protocol | v1.1 | 0/? | Not planned | — |
 | 10.4 Global Configuration, Auth & Model Control Plane | v1.1 | 0/? | Not planned | — |

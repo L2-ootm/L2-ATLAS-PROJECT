@@ -10,9 +10,9 @@ surfaces over the same projects, context, configuration, permissions, tools, and
 
 - [x] **INTAKE-01**: Produce a file/component/license inventory classifying donor material as
   adopt, rewrite, or reject.
-- [ ] **INTAKE-02**: Import no donor agent runtime, provider layer, config store, memory store,
+- [x] **INTAKE-02**: Import no donor agent runtime, provider layer, config store, memory store,
   telemetry, updater, share service, hosted-service coupling, or product account flow.
-- [ ] **INTAKE-03**: Shipped code and artifacts use only ATLAS package names, symbols, commands,
+- [x] **INTAKE-03**: Shipped code and artifacts use only ATLAS package names, symbols, commands,
   config keys, environment variables, state paths, URLs/referers, and UI strings.
 - [x] **INTAKE-04**: Preserve required license/copyright notices and document donor provenance in
   attribution/design-history documentation.
@@ -162,7 +162,7 @@ surfaces over the same projects, context, configuration, permissions, tools, and
   config change, subagent, cancellation, and completion has structured audit identity.
 - [ ] **AUD-02**: Audit can show cross-surface terminal outcomes but never grants another surface
   decision authority.
-- [ ] **SEC-01**: Automated scans prove no donor telemetry/update/share/network behavior or
+- [x] **SEC-01**: Automated scans prove no donor telemetry/update/share/network behavior or
   unapproved imported identity ships.
 - [ ] **SEC-02**: Prompt injection, poisoned wiki/graph entries, malicious tool output, path escape,
   secret leakage, approval spoofing, and replay attacks fail closed.
