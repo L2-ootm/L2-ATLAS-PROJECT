@@ -109,4 +109,3 @@ The upstream tree contains an MIT license and a separately published
 the restrictions document without asserting a legal conclusion. Internal
 technical evaluation may continue; public distribution of derivative code is
 gated on explicit review or upstream clarification.
-
