@@ -1,4 +1,4 @@
-# ADR Index — D-001 … D-022
+# ADR Index — D-001 … D-023
 
 Authority: ADRs are canonical (see `docs/README.md`). Later ADRs amend
 earlier ones where noted.
@@ -27,6 +27,7 @@ earlier ones where noted.
 | D-020 | Twenty CRM = external sidecar pillar (AGPL, never embedded) | accepted | `D-020-twenty-crm-foundation-layer.md` |
 | D-021 | v1.0 sequencing + branding consolidation (web-first Phase 8; two-layer branding; canonical numbering) | accepted | `D-021-v1-sequencing-branding-and-contradiction-resolution.md` |
 | D-022 | Rust-first cementation (Rust gateway Phase 7; Python exception buckets; L0–L5 ladder; budgets) | accepted | `D-022-rust-first-cementation-policy.md` |
+| D-023 | One ATLAS agent, multi-surface workbench; ATLAS-native donor-derived TUI; shared session/config/events; surface-scoped approvals; versioned prompt/Brain context | accepted | `D-023-atlas-multi-surface-agent-contract.md` |
 
 ## Runtime divergence decisions (Hermes integration surface)
 
