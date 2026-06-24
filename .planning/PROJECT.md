@@ -23,23 +23,47 @@ operator cockpit · classified skill packs + public hardening (fonts self-hosted
 default skills quarantined). Pre-public-publish follow-ups tracked in
 `docs/operations/PUBLIC_RELEASE_HARDENING.md §4`.
 
-## Current Milestone: v1.1 — ATLAS Agent Harness & Native Operator Shell
+## Current Milestone: v1.1 — ATLAS Agent Harness & Multi-Surface Workbench
 
-**Goal:** Make ATLAS credible as a local AI operator runtime — a Hermes-class ATLAS TUI, ATLAS-owned authentication, real provider/model discovery, agentic chat over the vendored Hermes foundation, and a Tauri 2 native shell hosting cockpit + PTY — not merely a native wrapper around the v1.0 cockpit.
+**Goal:** Make ATLAS credible as a local AI operator runtime by exposing one owned
+agent/tool/context/policy contract through an ATLAS-native terminal workbench and the existing
+web cockpit. Both surfaces share Projects, Current Focus, missions/runs, Brain/wiki retrieval,
+configuration, audit, and surface-scoped permission queues.
 
 **Target features:**
-- **TUI** — ATLAS-branded terminal UI (transcript, composer, streaming, tool/subagent activity, model/auth status bar, mission context, session resume, clean exit).
+- **TUI** — ATLAS-native terminal workbench derived from audited third-party UI patterns/code:
+  transcript, composer, streaming, tool/subagent activity, project/global workspace, Brain/wiki
+  context, config, native permission prompts, resume, and clean cancellation.
 - **CLI** — `atlas` entrypoint with branded command tree; `atlas chat -q` one-shot + interactive; `atlas doctor` readiness; secret-safe output.
 - **AUTH** — ATLAS-owned auth store under `~/.atlas` (atomic write + cross-process lock + redacted status); Codex detected **read-only**, `~/.codex` never mutated; OS keychain deferred to Future.
 - **PROVIDERS / MODELS** — provider ≠ credential ≠ runtime ≠ model ≠ route registry; merged discovery; `atlas models list --all` with source/status/auth; cockpit Models page reflects real status.
-- **AGENT** — thin ATLAS runtime adapter over Hermes AIAgent; audit metadata on model calls; tool-approval gates preserved. Live chat tries the OpenAI/Codex-compatible lane **first**, then auto-falls back through any other configured provider that actually responds (health-aware cascade, not fixed priority).
-- **NATIVE** — Tauri 2 shell (no Electron), embeds SvelteKit cockpit, PTY terminal pane runs `atlas`, capability-scoped IPC + threat model, local-first.
+- **AGENT CONTRACT** — one versioned ATLAS system-prompt/tool/context contract over the existing
+  agent: deterministic prompt compiler, identity/bootstrap, tool semantics, workflow discipline,
+  Brain/wiki RAG, skills, provenance, compaction/resume, and product evals.
+- **SURFACES** — TUI and WebUI are clients of the same session/workspace/event/config/permission
+  protocols; there is no donor-specific agent or second backend.
+- **PERMISSIONS** — ATLAS persists and audits approvals, but only the initiating surface session
+  may render and resolve its actionable permission request.
+- **NATIVE** — Tauri 2 remains the later native-shell direction, deferred until the shared
+  surface protocol is stable.
 - **SECURITY / AUDIT / UX / DOCS** — redaction tests, OAuth-callback + native-IPC threat models, ATLAS skin/banner/error-remediation copy, operator runbooks.
 
 **Locked scope decisions (2026-06-15, this milestone):**
 - Codex/OpenAI OAuth: **read-only detection only**; ATLAS stores its own credentials in `~/.atlas`. OAuth-protocol reuse is out of scope unless a later spike proves it feasible.
 - Canonical live-response lane: **OpenAI/Codex-compatible first**, then automatic fallback through other working providers (order = whatever responds, not a fixed priority).
 - Auth storage maturity: **file-store first** (atomic + lock + redaction); OS keychain integration deferred.
+
+**Revised decisions (2026-06-23):**
+
+- Transform the donor terminal harness into ATLAS-owned code; donor identity appears only in
+  attribution/license/design-history docs.
+- Do not implement a donor-specific `AgentRuntime`; TUI and WebUI use the existing ATLAS agent.
+- `~/.atlas/config.yaml` is the global non-secret configuration authority for all surfaces.
+- System-prompt invariants stay stable per session; dynamic context is injected as a separately
+  versioned, redacted, provenance-tagged envelope.
+- Brain graph traversal is the retrieval spine; wiki/observations/runs/skills are evidence sources.
+- Retrieval may abstain. Irrelevant context is a correctness failure, not harmless decoration.
+- Native shell work is deferred until cross-surface conformance is complete.
 
 **Reason for scope:** post-v1.0 CLI/TUI/auth inspection showed the archived CLI is an operational service CLI, not a complete ATLAS/Hermes-derived harness. See `.planning/reports/v1-cli-agentic-gap-2026-06-15.md` and the prep set under `.planning/prep/` (index in `prep/README.md`).
 
@@ -80,6 +104,7 @@ wiki/                persistent markdown KB
 | D-012 | Pydantic v2 is schema source of truth; emit JSON Schema for TS/Rust | locked |
 | D-021 | Web-first Phase 8; native shell = Phase 10 (v1.1); canonical phase numbering; 6-layer memory canon; two-layer branding (L2 brand = experience layer + vendored Hermes foundation, sidecars stay upstream); FreeLLMAPI fork triggers | accepted |
 | D-022 | Rust-first cementation: all new components Rust; Phase 7 gateway is Rust (axum/rusqlite); Python confined to Hermes foundation surface, LLM adapters, scripts; L0–L5 port ladder; budgets (CLI <100ms/<50MB, daemon <80MB idle) | accepted |
+| D-023 | One ATLAS agent, many surfaces; donor TUI transformed into ATLAS-native code; shared config/session/events; surface-scoped approvals; versioned prompt/context/Brain retrieval contract | accepted |
 
 ## Requirements
 
@@ -125,8 +150,7 @@ This document evolves at phase transitions and milestone boundaries.
 2. Archive milestone artifacts
 3. Update Context with current state
 
-_Last updated: 2026-06-15 — v1.1 milestone started (ATLAS Agent Harness & Native
-Operator Shell). Scope locked from the `.planning/prep/` set with three operator
-decisions (Codex read-only, OpenAI-first fallback cascade, file-store-first auth).
-Phase numbering continues from v1.0 — v1.1 begins at Phase 10. Next: requirements →
-roadmap → `/gsd-discuss-phase 10`._
+_Last updated: 2026-06-23 — v1.1 resumed as the ATLAS Agent Harness & Multi-Surface
+Workbench. D-023 replaces the Hermes-Ink/Tauri-first sequence with one existing ATLAS
+agent contract, an ATLAS-native donor-derived TUI, shared WebUI/TUI session/config/event
+protocols, surface-scoped approvals, and a versioned Brain/wiki context contract._

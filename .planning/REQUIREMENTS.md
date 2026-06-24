@@ -1,212 +1,218 @@
-# Requirements: L2 ATLAS — v1.1 (ATLAS Agent Harness & Native Operator Shell)
+# Requirements: L2 ATLAS — v1.1 Multi-Surface Workbench
 
-**Defined:** 2026-06-15
-**Core Value:** A serious, auditable AI operating system for technical founders, AI operators, and small high-context teams.
-**Milestone goal:** Make ATLAS credible as a local AI operator runtime — owned TUI, owned auth, real provider/model discovery, agentic chat over the vendored Hermes foundation, and a Tauri 2 native shell hosting cockpit + PTY.
+**Defined:** 2026-06-23
+**Core value:** One serious, auditable ATLAS agent that works consistently from terminal and web
+surfaces over the same projects, context, configuration, permissions, tools, and memory.
 
-Scope derived from `.planning/research/` (STACK/FEATURES/ARCHITECTURE/PITFALLS/SUMMARY) and the `.planning/prep/` set. Locked operator decisions: Codex **read-only** detection only; OpenAI/Codex-compatible lane **first** then health-aware fallback; **file-store-first** auth (keychain deferred).
+## v1.1 Requirements
 
-## v1 Requirements
+### INTAKE — Terminal Harness Transformation
 
-Requirements for the v1.1 release. Each maps to exactly one phase (10.0–10.6).
+- [x] **INTAKE-01**: Produce a file/component/license inventory classifying donor material as
+  adopt, rewrite, or reject.
+- [ ] **INTAKE-02**: Import no donor agent runtime, provider layer, config store, memory store,
+  telemetry, updater, share service, hosted-service coupling, or product account flow.
+- [ ] **INTAKE-03**: Shipped code and artifacts use only ATLAS package names, symbols, commands,
+  config keys, environment variables, state paths, URLs/referers, and UI strings.
+- [x] **INTAKE-04**: Preserve required license/copyright notices and document donor provenance in
+  attribution/design-history documentation.
+- [x] **INTAKE-05**: Establish dependency, bundle/binary size, startup, idle-memory, and file-count
+  budgets before adoption.
 
-### TUI — Terminal User Interface
+### PROMPT — Agent Identity and Prompt Compiler
 
-- [ ] **TUI-01**: Running `atlas` (and `atlas tui`) opens an ATLAS-branded TUI with a header/status bar showing active model and auth state.
-- [ ] **TUI-02**: TUI renders a scrollable transcript of user and assistant turns.
-- [ ] **TUI-03**: TUI streams assistant responses incrementally with a visible activity indicator during model calls.
-- [ ] **TUI-04**: TUI provides a multi-line composer with submit and cancel.
-- [ ] **TUI-05**: TUI shows tool-call activity inline in the transcript during agent execution.
-- [ ] **TUI-06**: TUI surfaces an auth/model warning before the first prompt when auth or model is unavailable.
-- [ ] **TUI-07**: TUI exposes `/help` and an ATLAS slash-command surface.
-- [ ] **TUI-08**: TUI exits cleanly on Ctrl-C without corrupting session state; the session persists and can be resumed.
-- [ ] **TUI-09**: TUI presents a blocking approval prompt before any dangerous tool call executes.
+- [ ] **PROMPT-01**: Compile prompts from versioned layers with explicit precedence:
+  platform safety → ATLAS core identity → model adapter → workspace instructions → session
+  bootstrap → retrieved context → current request.
+- [ ] **PROMPT-02**: The immutable ATLAS core defines operator identity, audit/evidence contract,
+  tool discipline, verification, uncertainty, scope control, permission behavior, and concise
+  surface-appropriate communication without imported product identity.
+- [ ] **PROMPT-03**: Session bootstrap states surface, workspace/project, Current Focus,
+  mission/run/session, available capabilities, permission mode, loaded instruction sources,
+  context budget, and prompt/context versions. The agent may form a working plan but cannot
+  rewrite its core identity or policy.
+- [ ] **PROMPT-04**: Stable system-prompt bytes are frozen per session for provider prompt caching;
+  dynamic context and recall are injected separately and cannot silently mutate invariants.
+- [ ] **PROMPT-05**: Prompt versions, source hashes, tool-catalog version, and context source IDs
+  are audit-recorded and replayable without persisting secrets or hidden chain-of-thought.
 
-### CLI — Command Surface
+### TOOL — Tool-Call Contract
 
-- [ ] **CLI-01**: `atlas --help` shows an ATLAS-branded command tree (chat/auth/models/providers/doctor/tui) and runs without `python -m`.
-- [ ] **CLI-02**: `atlas chat -q "<prompt>"` returns a model response or precise auth remediation.
-- [ ] **CLI-03**: `atlas chat` starts an interactive session (or routes to the TUI) and exits cleanly.
-- [ ] **CLI-04**: `atlas doctor` reports environment readiness (Python/Rust/Node, DB, gateway, auth, models, foundation).
-- [ ] **CLI-05**: All CLI commands return clear exit codes (0 success, non-zero failure).
-- [ ] **CLI-06**: No CLI command prints secret values (enforced by redaction tests).
+- [ ] **TOOL-01**: Every available tool has one machine-readable capability record: schema,
+  description, category, risk, permissions, workspace/network scope, side effects, timeout,
+  cancellation, idempotency, result limit, redaction, audit events, and UI renderer.
+- [ ] **TOOL-02**: Tool catalog generation derives from runtime registries/manifests and rejects
+  duplicate names, incompatible schemas, unclassified risk, or undocumented side effects.
+- [ ] **TOOL-03**: Unknown, malformed, unavailable, disallowed, wrong-workspace, and stale tool
+  calls fail closed with normalized error events that both surfaces render consistently.
+- [ ] **TOOL-04**: Tool execution supports cancellation, bounded output, timeout, retry policy,
+  secret redaction, path/network guards, and exactly-once semantics where side effects matter.
+- [ ] **TOOL-05**: Parent/child agent capability inheritance can only narrow permissions;
+  subagent events preserve ancestry, workspace, run, tool call, and surface session identity.
 
-### AUTH — ATLAS-Owned Auth Store
+### CTX — Brain, Wiki, RAG and Context
 
-- [ ] **AUTH-01**: ATLAS stores credentials in an ATLAS-owned store at `~/.atlas/auth.json` (never in `~/.codex` or `~/.hermes`).
-- [ ] **AUTH-02**: Auth writes are atomic (temp + replace) and guarded by a cross-process lock; concurrent writers never corrupt or silently lose data.
-- [ ] **AUTH-03**: `atlas auth add <provider>` stores an API key for at least one real provider.
-- [ ] **AUTH-04**: `atlas auth list` / `atlas auth status` shows configured providers and auth state without exposing credential values.
-- [ ] **AUTH-05**: `atlas auth remove <provider>` revokes a stored credential.
-- [ ] **AUTH-06**: `atlas auth doctor` checks file permissions, parse validity, and provider reachability with actionable output.
-- [ ] **AUTH-07**: ATLAS detects a local Codex installation/auth presence read-only and never mutates `~/.codex` (test-proven byte-identity).
-- [ ] **AUTH-08**: Auth status output, logs, and audit records never contain raw secret values (redaction-tested).
+- [ ] **CTX-01**: The Brain graph is the retrieval spine: project/focus/goal/task/entity
+  neighborhoods and paths select candidate wiki pages, observations, runs, artifacts, sources,
+  and skills.
+- [ ] **CTX-02**: Retrieval supports graph, FTS5, semantic, recency, failure-pattern, and skill
+  signals with deterministic budgets, deduplication, freshness, provenance, and explicit
+  confidence/abstention.
+- [ ] **CTX-03**: Automatic context injection runs only for context-dependent requests and records
+  query, retrievers used, selected/rejected sources, scores, truncation, and token cost.
+- [ ] **CTX-04**: Retrieved/project/tool content is treated as evidence, not authority. Trust
+  labels, delimiters, injection scanning, secret redaction, and instruction-hierarchy rules
+  prevent untrusted text from overriding system/user policy.
+- [ ] **CTX-05**: The agent has explicit Brain/wiki query tools for search, page/source fetch,
+  neighbors, relationship paths, provenance, and freshness; it searches before asking the user
+  to repeat likely-known context.
 
-### PROVIDERS — Provider Registry
+### SURF — Shared Session and Workspace Protocol
 
-- [ ] **PROV-01**: Providers are modeled separately from credentials, models, and runtime/api-mode.
-- [ ] **PROV-02**: `atlas providers list` / `status` shows each provider's source, health, and auth state honestly (offline shown as offline).
-- [ ] **PROV-03**: `atlas providers doctor` explains each unhealthy provider with an actionable remediation command.
-- [ ] **PROV-04**: Codex appears as an advisory read-only provider entry (source = external), never as a credential source.
+- [ ] **SURF-01**: A surface session records surface kind/instance, workspace kind, project/root,
+  mission/run/session, agent/model, permission mode, prompt/context versions, and lifecycle.
+- [ ] **SURF-02**: Sessions run in either the ATLAS global workspace or a registered Project
+  root resolved through the existing project model.
+- [ ] **SURF-03**: Canonical path validation blocks traversal, symlink escape, stale roots, and
+  undeclared cross-project writes.
+- [ ] **SURF-04**: TUI and WebUI consume one normalized event stream for text, activity, tools,
+  results, tasks/subagents, retries, retrieval, approvals, errors, and completion.
+- [ ] **SURF-05**: Disconnect/reconnect/resume/process restart preserves session/workspace identity
+  and cannot leave an unowned running execution.
+- [ ] **SURF-06**: Cancellation propagates to model stream, active tools, subprocesses, and
+  child agents and emits a terminal audited outcome.
 
-### MODELS — Model Registry
+### AGNT — Existing ATLAS Agent
 
-- [ ] **MOD-01**: `atlas models discover` merges sources (seeded + auth-store providers + local sidecars + read-only external) into the registry.
-- [ ] **MOD-02**: `atlas models list --all` shows model_id, provider, source, status, auth_status, and last_seen.
-- [ ] **MOD-03**: Discovery is idempotent — repeated runs do not duplicate rows or overwrite `first_seen` (composite key model_id+provider+source).
-- [ ] **MOD-04**: Deactivation is source-scoped — one provider going offline never deactivates models from other sources.
-- [ ] **MOD-05**: `status` and `auth_status` are distinct; a model is never shown available when its auth is missing or its sidecar is down.
-- [ ] **MOD-06**: The cockpit Models page reflects the real registry (source/status/auth), not only seeded rows.
+- [ ] **AGNT-01**: TUI and WebUI use the existing ATLAS agent/runtime; no donor-specific
+  `AgentRuntime`, provider layer, tool executor, or memory backend is introduced.
 
-### AGENT — Runtime Adapter & Chat Loop
+### CFG — Global Configuration Control Plane
 
-- [ ] **AGNT-01**: An ATLAS runtime adapter wraps Hermes AIAgent in `services/agent-runtime/`; `foundation/` changes are extension-points only (DIVERGENCE_LOG-tracked), not a Hermes rewrite.
-- [ ] **AGNT-02**: Live chat tries the OpenAI/Codex-compatible lane first, then automatically falls back through other configured providers ordered by liveness (health-aware cascade, not fixed priority).
-- [ ] **AGNT-03**: Auth failures (401/403) halt with remediation and never silently cascade; the provider actually used is surfaced on the response.
-- [ ] **AGNT-04**: Every model call emits ATLAS audit metadata (model_call_start/end with provider, model, run_id, token usage) on the ATLAS event bus.
-- [ ] **AGNT-05**: Dangerous tool calls require explicit approval (deny-by-default in non-interactive `-q` mode); Hermes approval gates are preserved through the adapter.
-- [ ] **AGNT-06**: Chat transcripts pass a redaction filter before persistence (no secrets in audit JSONL or wiki).
+- [ ] **CFG-01**: `~/.atlas/config.yaml` is the authoritative non-secret configuration file with
+  a versioned frozen schema and migration path.
+- [ ] **CFG-02**: Config updates are atomic, cross-process locked, optimistic-concurrency checked,
+  validated, permission-hardened, and audited.
+- [ ] **CFG-03**: CLI, gateway, TUI, WebUI, and future surfaces use one masked GET/PATCH contract.
+- [ ] **CFG-04**: Config changes publish change events and become visible across surfaces without
+  restart when hot-reloadable; restart-required fields say so explicitly.
+- [ ] **CFG-05**: Every setting reports configured/effective value, source, validation status,
+  restart requirement, and remediation without exposing secret values.
+- [ ] **CFG-06**: Conflicting concurrent writes return a version conflict instead of silently
+  overwriting another surface.
 
-### NATIVE — Tauri 2 Operator Shell
+### AUTH / MODEL
 
-- [ ] **NAT-01**: A Tauri 2 shell (no Electron) launches and embeds the SvelteKit cockpit from a local bundle (no remote origin in production).
-- [ ] **NAT-02**: The shell hosts a PTY terminal pane that runs `atlas tui` (not a bare bash/cmd shell).
-- [ ] **NAT-03**: IPC is capability-scoped via an explicit allowlist; the PTY accepts keystrokes, not command strings (no arbitrary-exec bridge).
-- [ ] **NAT-04**: The shell surfaces auth/model readiness and routes remediation to the CLI/TUI.
-- [ ] **NAT-05**: The shell remains local-first — no external network calls except explicit model/provider integrations.
+- [ ] **AUTH-01**: Secrets stay in ATLAS-owned auth storage or `env:` references and never cross
+  masked config/session/event APIs.
+- [ ] **AUTH-02**: External auth stores are detected read-only unless an explicit later decision
+  authorizes mutation.
+- [ ] **MOD-01**: All surfaces show the same effective provider/model, source, auth state, health,
+  and fallback status.
+- [ ] **MOD-02**: Provider/model changes use the shared config/runtime contract and preserve
+  current-session prompt/version semantics.
 
-### SECURITY
+### PERM — Surface-Scoped Permission Broker
 
-- [ ] **SEC-01**: A redaction test suite scans CLI output, logs, and audit JSONL for known secret patterns (`sk-`, `Bearer `, `eyJ`) and passes.
-- [ ] **SEC-02**: A test proves `~/.codex` is byte-identical (mtime + hash) after all ATLAS auth and discovery commands.
-- [ ] **SEC-03**: `~/.atlas/auth.json` is created with current-user-only permissions (icacls on Windows).
-- [ ] **SEC-04**: A native-IPC threat-model document enumerates every IPC command, its parameters, caller, and privilege.
-- [ ] **SEC-05**: Any shipped OAuth callback flow uses PKCE + state validation + an ephemeral loopback port that closes after one callback; otherwise OAuth is explicitly deferred with a documented decision.
+- [ ] **PERM-01**: Approval records include requesting surface/session, run/tool call, risk,
+  normalized args, workspace, expiry, decision, reason, and provenance.
+- [ ] **PERM-02**: Only the initiating live surface session can resolve its actionable request.
+- [ ] **PERM-03**: TUI-owned requests use the ATLAS TUI native blocking prompt.
+- [ ] **PERM-04**: WebUI-owned requests appear in the matching conditional header/sidebar queue.
+- [ ] **PERM-05**: Headless/API `ask` decisions deny by default unless an explicit approval
+  channel is registered.
+- [ ] **PERM-06**: Atomic claim/decision logic guarantees at-most-once deferred execution under
+  concurrent replies, reconnects, and process restart.
+- [ ] **PERM-07**: Allow-once/session/always decisions cannot widen scope across surface sessions,
+  workspaces, projects, tools, argument patterns, or global policy.
 
-### AUDIT
+### TUI — ATLAS Terminal Workbench
 
-- [ ] **AUD-01**: Provider fallback emits a structured audit event (from / to / reason).
-- [ ] **AUD-02**: Free (non-mission) chat sessions still emit audit events; mission-bound chats update mission/run state.
+- [ ] **TUI-01**: `atlas` and `atlas tui` open the ATLAS terminal workbench.
+- [ ] **TUI-02**: Startup selects global workspace or a registered Project and shows canonical cwd.
+- [ ] **TUI-03**: Compact ATLAS text identity, model/auth, permission mode, context budget, Focus,
+  and session state render without imported product branding.
+- [ ] **TUI-04**: Transcript and multiline composer stream normalized agent events.
+- [ ] **TUI-05**: Tool calls/results, diffs, tasks/subagents, retries, retrieval provenance, and
+  verification evidence have readable terminal renderers.
+- [ ] **TUI-06**: Native permission prompts support approve once, scoped allow, reject, and cancel.
+- [ ] **TUI-07**: Commands expose project/workspace, mission/focus, wiki/Brain, config/model,
+  permission mode, help, session/resume, and diagnostics.
+- [ ] **TUI-08**: Ctrl-C and cancel unwind model/tools/subagents without corrupting session state.
+- [ ] **TUI-09**: Resume/replay preserves workspace plus prompt/context/tool-catalog versions.
+- [ ] **TUI-10**: Layout passes narrow/wide, no-color, ASCII-safe, Unicode, Windows Terminal,
+  PowerShell, cmd, VS Code, and WSL tests.
+- [ ] **TUI-11**: Runtime source/bundles/snapshots contain no imported product identity outside
+  approved documentation/notices.
 
-### UX
+### WEB — Web Agent and Queue UX
 
-- [ ] **UX-01**: ATLAS TUI and native shell present ATLAS branding (banner, skin, status bar) with no imported-source (Hermes/Codex) branding leaks.
-- [ ] **UX-02**: Error and remediation copy is actionable and standardized — every failure states the next command to run.
+- [ ] **WEB-01**: WebUI starts global/project agent sessions through the shared session protocol.
+- [ ] **WEB-02**: WebUI renders event parity with TUI, including retrieval and subagents.
+- [ ] **WEB-03**: A minimal conditional header appears only for active/relevant agent state.
+- [ ] **WEB-04**: A right permission/queue sidebar appears only for matching WebUI-owned pending
+  work or when explicitly pinned.
+- [ ] **WEB-05**: Config, project, model, permission, cancel, reconnect, and resume controls use the
+  shared contracts.
+- [ ] **WEB-06**: Queue UX is responsive, keyboard-operable, focus-safe, and screen-reader announced.
 
-### DOCS
+### AUDIT / SECURITY
 
-- [ ] **DOC-01**: Operator runbooks exist for auth, TUI, models, and the native shell (`docs/operations/ATLAS_AUTH.md`, `ATLAS_TUI.md`, `ATLAS_MODELS.md`, `NATIVE_SHELL.md`).
-- [ ] **DOC-02**: A v1.1 manual UAT guide exists covering TUI, one-shot chat, auth, model discovery, cockpit, and native shell.
+- [ ] **AUD-01**: Every surface session, model call, retrieval, tool call, permission transition,
+  config change, subagent, cancellation, and completion has structured audit identity.
+- [ ] **AUD-02**: Audit can show cross-surface terminal outcomes but never grants another surface
+  decision authority.
+- [ ] **SEC-01**: Automated scans prove no donor telemetry/update/share/network behavior or
+  unapproved imported identity ships.
+- [ ] **SEC-02**: Prompt injection, poisoned wiki/graph entries, malicious tool output, path escape,
+  secret leakage, approval spoofing, and replay attacks fail closed.
 
-## Future Requirements
+### EVAL / TEST
 
-Deferred to v1.2+. Tracked, not in this roadmap.
+- [ ] **EVAL-01**: Phase 10.2 ships a versioned reference dataset covering prompt hierarchy,
+  identity, tool choice/arguments, retrieval, abstention, permissions, subagents, compaction,
+  resume, uncertainty, and verification.
+- [ ] **EVAL-02**: Product evals combine deterministic checks, calibrated LLM judging where needed,
+  and operator review; failures block prompt/tool/context promotion.
+- [ ] **TEST-01**: Prompt golden tests cover provider families, surfaces, workspaces, permission
+  modes, context presence/absence, and cache-prefix stability.
+- [ ] **TEST-02**: Every registered tool passes capability-schema, policy, audit, timeout,
+  cancellation, malformed input, output-bound, and surface-rendering conformance tests.
+- [ ] **TEST-03**: RAG tests measure context precision/recall, faithfulness, provenance,
+  freshness, token budget, abstention, and poisoned-source resistance.
+- [ ] **TEST-04**: Cross-surface tests run identical reference missions through TUI and WebUI and
+  compare normalized events and terminal outcomes.
+- [ ] **TEST-05**: At least 20 representative end-to-end runs meet reliability, no-secret,
+  no-unapproved-write, exactly-once approval, startup, memory, latency, and recovery budgets.
 
-### Routing
-- **ROUTE-01**: `atlas route show` displays task-class → provider/model policy.
-- **ROUTE-02**: `atlas route set <task-class> <provider>/<model>` configures routing with a fallback policy.
+### UX / DOCS
 
-### TUI (advanced)
-- **TUIX-01**: Mission context panel in TUI (`/mission bind`, run/audit references).
-- **TUIX-02**: Token/context-window progress bar in the status bar.
-- **TUIX-03**: Subagent/task activity accordion.
-- **TUIX-04**: Full session branching/resume (`/resume`) beyond basic persistence.
+- [ ] **UX-01**: Errors state what failed, which contract/source decided it, and the next safe
+  remediation action.
+- [ ] **DOC-01**: Runbooks cover TUI, Web agent sessions, projects, config/auth/models, Brain/wiki
+  retrieval, permissions, recovery, attribution, and rollback.
+- [ ] **DOC-02**: Manual UAT records operator acceptance and a legacy-TUI retirement/rollback
+  decision.
 
-### Auth (advanced)
-- **AUTHX-01**: OS keychain integration (Windows DPAPI/Credential Manager, macOS Keychain, Linux Secret Service).
-- **AUTHX-02**: OAuth device-code flow for providers that support it (Anthropic, Google).
-- **AUTHX-03**: Credential pools (multiple keys per provider for rotation/failover).
+## Deferred
 
-### Native (advanced)
-- **NATX-01**: Native approval-prompt overlay for dangerous tool calls.
-- **NATX-02**: Tray icon and global hotkey.
-
-### Models (advanced)
-- **MODX-01**: Model latency/quota benchmarking and display.
-
-## Out of Scope
-
-Explicitly excluded for v1.1. Documented to prevent scope creep.
-
-| Feature | Reason |
-|---------|--------|
-| Rust TUI rewrite (ratatui) | Duplicates the working, tested Hermes Ink TUI; delays all other workstreams. Reassess post-v1.1 only if Ink limits emerge. |
-| Importing or mutating Codex credentials | Locked decision: read-only detection only; `~/.codex` never written. |
-| Reusing OpenAI/Codex OAuth protocol for ATLAS auth | Not licensed/documented for third-party reuse; ATLAS uses its own API-key store. Revisit only if a spike proves feasibility. |
-| Electron (any fallback) | D-005 hard no. If Tauri PTY blocks, defer native shell rather than switch. |
-| OS keychain in v1.1 | File-store-first decision; platform-specific native code deferred to v1.2+. |
-| Auto-probing paid remote providers on startup | Risks billing/quota and slow startup; discovery is opt-in/cache-first. |
-| Inline secret display for debugging | Secrets in TUI/logs/screenshots are an unacceptable risk; redacted/opt-in hints only. |
-| Rewriting the Hermes agent loop | High risk, no operator benefit; thin adapter only. |
-| CRM/Twenty, Pulse, WhatsApp, voice/overlay | Deferred to v2.0 (D-007, D-009, D-020). No CRM/Pulse REQ-IDs in v1.1. |
-| Multi-user / SaaS auth, mobile app, public installer | Out of v1.1 scope; single-operator local-first. |
+- Tauri/native shell and PTY embedding resume after Phase 10.8.
+- OS keychain, multi-user/SaaS auth, mobile, voice, and global overlay remain later work.
+- No new LangChain/LangGraph/LlamaIndex/CrewAI-style framework is introduced unless measured
+  evidence proves the existing ATLAS contracts insufficient.
 
 ## Traceability
 
-| Requirement | Phase | Status |
-|-------------|-------|--------|
-| AUTH-01 | 10.1 | Pending |
-| AUTH-02 | 10.1 | Pending |
-| AUTH-03 | 10.1 | Pending |
-| AUTH-04 | 10.1 | Pending |
-| AUTH-05 | 10.1 | Pending |
-| AUTH-06 | 10.1 | Pending |
-| AUTH-07 | 10.1 | Pending |
-| AUTH-08 | 10.1 | Pending |
-| CLI-06 | 10.1 | Pending |
-| SEC-01 | 10.1 | Pending |
-| SEC-02 | 10.1 | Pending |
-| SEC-03 | 10.1 | Pending |
-| SEC-05 | 10.1 | Pending |
-| CLI-01 | 10.2 | Pending |
-| CLI-02 | 10.2 | Pending |
-| CLI-03 | 10.2 | Pending |
-| AGNT-01 | 10.2 | Pending |
-| AGNT-02 | 10.2 | Pending |
-| AGNT-03 | 10.2 | Pending |
-| AGNT-04 | 10.2 | Pending |
-| AGNT-05 | 10.2 | Pending |
-| AGNT-06 | 10.2 | Pending |
-| AUD-01 | 10.2 | Pending |
-| AUD-02 | 10.2 | Pending |
-| CLI-04 | 10.3 | Pending |
-| CLI-05 | 10.3 | Pending |
-| PROV-01 | 10.3 | Pending |
-| PROV-02 | 10.3 | Pending |
-| PROV-03 | 10.3 | Pending |
-| PROV-04 | 10.3 | Pending |
-| MOD-01 | 10.3 | Pending |
-| MOD-02 | 10.3 | Pending |
-| MOD-03 | 10.3 | Pending |
-| MOD-04 | 10.3 | Pending |
-| MOD-05 | 10.3 | Pending |
-| MOD-06 | 10.3 | Pending |
-| UX-02 | 10.3 | Pending |
-| TUI-01 | 10.4 | Pending |
-| TUI-02 | 10.4 | Pending |
-| TUI-03 | 10.4 | Pending |
-| TUI-04 | 10.4 | Pending |
-| TUI-05 | 10.4 | Pending |
-| TUI-06 | 10.4 | Pending |
-| TUI-07 | 10.4 | Pending |
-| TUI-08 | 10.4 | Pending |
-| TUI-09 | 10.4 | Pending |
-| UX-01 | 10.4 | Pending |
-| NAT-01 | 10.5 | Pending |
-| NAT-02 | 10.5 | Pending |
-| NAT-03 | 10.5 | Pending |
-| NAT-04 | 10.5 | Pending |
-| NAT-05 | 10.5 | Pending |
-| SEC-04 | 10.5 | Pending |
-| DOC-01 | 10.6 | Pending |
-| DOC-02 | 10.6 | Pending |
-
-**Coverage:**
-- v1 requirements: 55 total
-- Mapped to phases: 55
-- Unmapped: 0 ✓
-- Phase 10.0 is a design/enabling phase and owns no v1 REQ-IDs (precedent: v1.0 Phase 7).
+| Phase | Requirement groups |
+|---|---|
+| 10.1 | INTAKE, SEC-01 |
+| 10.2 | PROMPT, TOOL, CTX, EVAL |
+| 10.3 | SURF, AGNT-01, AUD-01 |
+| 10.4 | CFG, AUTH, MOD, UX-01 |
+| 10.5 | PERM, SEC-02, AUD-02 |
+| 10.6 | TUI |
+| 10.7 | WEB |
+| 10.8 | TEST, DOC |
 
 ---
-*Requirements defined: 2026-06-15*
-*Last updated: 2026-06-15 after milestone v1.1 scoping (research-informed, inline roadmap)*
+*Last updated: 2026-06-23 — v1.1 resumed and re-scoped by D-023.*

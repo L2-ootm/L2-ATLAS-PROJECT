@@ -5,7 +5,8 @@
 - ✅ **v1.0 Operator Cockpit MVP** — Phases 1–9.5 (shipped 2026-06-15)
 - ⏸ **v1.0.5 Mass-Adoption Launch Wedge** — Phases 10.0.1–10.0.6 (code/docs complete; outward release actions operator-gated)
 - 🔨 **v1.1 ATLAS Agent Harness & Multi-Surface Workbench** — Phases 10.0 (done), 10.1–10.8 (resumed 2026-06-23)
-- 📐 **v1.2 ATLAS Provider Mesh & Self-Evolution** — Phases 10.9–10.15 (designed 2026-06-24; starts after v1.1)
+- 📐 **v1.2 Provider Mesh & Runtime Interoperability** — milestone-local draft PM-01–PM-06; activates only after v1.1 is archived
+- 🧪 **v1.3 Gated Self-Evolution Candidate** — milestone-local draft EV-01; preserved separately because its risk and promotion gates exceed v1.2
 - 📋 **v2.0 CRM, Pulse & Voice** — Phases 11–14 (planned)
 
 ## Phases
@@ -258,9 +259,9 @@ provider system, config store, memory system, telemetry path, or product identit
 4. Dependency, binary/bundle size, cold/warm startup, idle memory, and file-count baselines are
    recorded with explicit v1.1 budgets.
 
-**Plans:** 0/3 complete
+**Plans:** 1/3 complete
 
-- [ ] 10.1-01-PLAN.md — pinned-source inventory, adopt/rewrite/reject matrix, attribution, notices, and legal release gate
+- [x] 10.1-01-PLAN.md — pinned-source inventory, adopt/rewrite/reject matrix, attribution, notices, and legal release gate
 - [ ] 10.1-02-PLAN.md — clean ATLAS package boundary, reproducible inventory generator, and fail-closed identity/dependency/artifact scanner
 - [ ] 10.1-03-PLAN.md — test-first minimal OpenTUI/Solid ATLAS shell with build, offline, startup, memory, size, and boundary baselines
 
@@ -394,96 +395,24 @@ without retaining an indefinite duplicate terminal stack.
 5. The new TUI becomes default only after the legacy terminal path has a tested rollback and a
    dated retirement decision; Tauri/native-shell planning resumes afterward.
 
-### 📐 v1.2 ATLAS Provider Mesh & Self-Evolution (Phases 10.9–10.15) — DESIGNED, STARTS AFTER v1.1
+## Future Milestone Queue
 
-Turns ATLAS into a **dual-mode, provider-agnostic operator cockpit**: run in
-ATLAS-gateway mode (native, opinionated) or BYO-runtime mode (attach an external
-agentic runtime/gateway and let ATLAS provide cockpit, audit, permissions, routing).
-Adds a role-keyed model rulebook + capability/cost/health-scored subagent dispatch,
-an autonomous gated self-evolution loop over the vendored foundation, and a
-bidirectional WebUI gap audit. **Route-through an installed framework as-is is the
-default; migrating a workload to ATLAS-native is opt-in and reversible.**
+Future work is intentionally kept out of the active phase list so GSD progress,
+dependency, and completion queries describe only v1.1. Milestone-local identifiers
+avoid reserving global phase and ADR numbers before activation.
 
-This milestone **does not block v1.1** — it is sequenced after Phases 10.1–10.8 and
-consumes their surface/session/config/permission contracts.
+- **v1.2 Provider Mesh & Runtime Interoperability:** draft phases `PM-01`–`PM-06`.
+  Scope, dependencies, requirements, and activation gates:
+  `.planning/milestones/v1.2-ROADMAP-DRAFT.md` and
+  `.planning/milestones/v1.2-REQUIREMENTS-DRAFT.md`.
+- **v1.3 Gated Self-Evolution Candidate:** draft phase `EV-01`, preserved as a
+  separate risk-gated milestone candidate in
+  `.planning/milestones/v1.3-SELF-EVOLUTION-DRAFT.md`.
+- Corrected portfolio design:
+  `docs/plans/2026-06-24-atlas-provider-mesh-self-evolution-design.md`.
 
-**Design source of truth:** `docs/plans/2026-06-24-atlas-provider-mesh-self-evolution-design.md`
-(full per-phase success criteria, architecture, risks, and decisions D-025–D-029).
-**Delivery doctrine (binding):** extra-mile/extra-marathon (§4 of the design) — detect-don't-ask,
-pre-stage the next action keeping the easy path default, first-class branded surfaces,
-designed failure states; `l2-extra-marathon` review is the per-phase completion gate.
-
-**Dependency spine:** 10.13 (boundary manifest) + 10.15 (WebUI audit) early/parallel →
-10.9 (mesh contract + dual-mode) → 10.10 (role rulebook) → 10.11 (scoring/dispatch) →
-10.12 (provider backends) → 10.14 (autonomous self-evolution loop, last/highest-risk).
-
-**Requirements:** none mapped yet (trace during `/gsd-plan-phase`, precedent: v1.0.5 phases).
-
-#### Phase 10.9: Provider Mesh Contract & Dual-Mode Control Plane
-
-**Goal:** Establish the ATLAS-native `RuntimeAdapter` contract (agentic-CLI runtimes) + extended
-model-gateway router (API providers), and make dual-mode (ATLAS-gateway | BYO-runtime) a real,
-switchable operator setting before any per-provider backend or rulebook UX is built.
-**Success criteria (condensed — full set in design doc §6):** versioned `RuntimeAdapter` that
-`native`/`claude_code` implement without regression; mode persisted/surfaced/switchable from CLI+WebUI
-and audited; router accepts ≥1 external gateway via `registry_v2`; all attach/detach/mode/route audited;
-**doctrine:** setup/CLI/WebUI autodetect installed CLIs and reachable gateways before asking.
-**Depends on:** 10.13; v1.1 10.3/10.4. **Status:** 📐 Designed — not started.
-
-#### Phase 10.10: Role-Keyed Model Rulebook
-
-**Goal:** Per-provider role→model+effort profiles (curator/main/subagent…) in `~/.atlas/config.yaml`,
-bound to runs, surfaced in CLI + WebUI.
-**Success criteria (condensed):** distinct-per-role profile validates/persists atomically/masked-safe;
-run records exact role→model bindings (replayable/auditable); CLI+WebUI edit one contract without
-last-writer-wins loss; absent profiles degrade to an explicit default; **doctrine:** branded,
-pre-populated editor with designed states. **Depends on:** 10.9. **Status:** 📐 Designed — not started.
-
-#### Phase 10.11: Capability/Cost/Health Scoring & Dynamic Subagent Dispatch
-
-**Goal:** Main agent chooses subagent models by fit; scored fallback cascade on the 10.0 error table.
-**Success criteria (condensed):** scorer picks for open roles and records inputs+rationale; classified
-error demotes+re-picks (tested/audited); manual rulebook always overrides; health probing degrades
-safely and leaks no credentials. **Depends on:** 10.10, 10.0 fallback spec. **Status:** 📐 Designed — not started.
-
-#### Phase 10.12: Provider Backends
-
-**Goal:** Ship the concrete backends — agentic-CLI adapters (codex, opencode, mimocode; claude code
-exists; native Hermes via foundation delegation) and model gateways (openclaw, OpenAI-compatible,
-another ATLAS).
-**Success criteria (condensed):** each adapter runs a reference mission with normalized events +
-honored permissions; each gateway serves completions with route/cost/health recorded; native-Hermes
-delegation needs no foundation edits beyond extension points; adding a backend = adapter+capabilities
-(+optional manifest); **doctrine (reference standard):** per detected service offer route-through
-(default) vs migrate-native (opt-in), pre-build the ready-to-apply artifact, branded state-aware controls.
-**Depends on:** 10.9, 10.10, 10.11 (backends land incrementally). **Status:** 📐 Designed — not started.
-
-#### Phase 10.13: Foundation Boundary Manifest & Upstream-Delta Tooling
-
-**Goal:** Classify every foundation module (`tracked` | `owned` | `diverged-frozen`) and compute the
-upstream delta — the primitive that lets gradual rebuild and easy upstream sync coexist.
-**Success criteria (condensed):** full manifest coverage (no unclassified files); deterministic
-delta partition into the three buckets; reproducible machine-readable report (consumed by 10.14);
-`tracked → owned` flip drops the module from the tracked surface. Integrates with 10.0.7 debrand as
-known transforms. **Depends on:** none hard — can start early. **Status:** 📐 Designed — not started.
-
-#### Phase 10.14: Autonomous Gated Self-Evolution Loop
-
-**Goal:** Scheduled, GSD-governed agent loop that proposes/tests/commits upstream syncs — progressively
-unsupervised — generalizing toward ATLAS self-modification under the same gates.
-**Success criteria (condensed):** applies a `tracked`-only delta on a branch behind a green test gate +
-atomic-commit PR (nothing lands on main beyond the configured autonomy); `owned`/`diverged` deltas halt
-+ flag; kill switch + rollback + full audit; autonomy is an explicit audited setting raised only on a
-green track record. **Depends on:** 10.13 + stable mesh tree (10.9–10.12). **Status:** 📐 Designed — last/highest-risk.
-
-#### Phase 10.15: Bidirectional WebUI Gap Audit
-
-**Goal:** Differential audit of the ATLAS WebUI vs the foundation WebUI — protect what ATLAS does better,
-adopt what it's missing.
-**Success criteria (condensed):** two-column inventory (ATLAS-better vs Hermes-has/ATLAS-missing) with
-evidence; ranked adopt/adapt/skip backlog with rationale; research-only, hands off to 10.7 / 10.10;
-**doctrine:** branded state-aware provider controls captured as a named adopt deliverable.
-**Depends on:** none — runs early/parallel (harness-cherrypick precedent). **Status:** 📐 Designed — not started.
+Canonical global phase numbers and ADR IDs will be allocated only when each
+milestone is activated through the normal milestone workflow.
 
 ### 📋 v2.0 CRM, Pulse & Voice (planned)
 
@@ -515,7 +444,7 @@ evidence; ranked adopt/adapt/skip backlog with rationale; research-only, hands o
 | 10.0.4 Developer Integrations & Tool Manifest | v1.0.5 | 6/6 | Complete   | 2026-06-22 |
 | 10.0.5 Golden Workflows & Quality Gate | v1.0.5 | 5/5 | Complete   | 2026-06-23 |
 | 10.0.6 Public Release Prep & Distribution | v1.0.5 | n/a | Drafts done / operator-gated | 2026-06-23 |
-| 10.1 ATLAS TUI Harness Intake & Provenance | v1.1 | 0/3 | Planned | — |
+| 10.1 ATLAS TUI Harness Intake & Provenance | v1.1 | 1/3 | Executing | — |
 | 10.2 Agent Contract, Tool Semantics & Context Intelligence | v1.1 | 0/? | Specifying | — |
 | 10.3 Shared Surface Session & Workspace Protocol | v1.1 | 0/? | Not planned | — |
 | 10.4 Global Configuration, Auth & Model Control Plane | v1.1 | 0/? | Not planned | — |
@@ -523,13 +452,6 @@ evidence; ranked adopt/adapt/skip backlog with rationale; research-only, hands o
 | 10.6 ATLAS Terminal Workbench | v1.1 | 0/? | Not planned | — |
 | 10.7 Web Agent Surface & Permission Queue UX | v1.1 | 0/? | Not planned | — |
 | 10.8 Cross-Surface Conformance, UAT & Cutover | v1.1 | 0/? | Not planned | — |
-| 10.9 Provider Mesh Contract & Dual-Mode Control Plane | v1.2 | 0/? | Designed | — |
-| 10.10 Role-Keyed Model Rulebook | v1.2 | 0/? | Designed | — |
-| 10.11 Capability/Cost/Health Scoring & Dynamic Dispatch | v1.2 | 0/? | Designed | — |
-| 10.12 Provider Backends | v1.2 | 0/? | Designed | — |
-| 10.13 Foundation Boundary Manifest & Upstream-Delta Tooling | v1.2 | 0/? | Designed | — |
-| 10.14 Autonomous Gated Self-Evolution Loop | v1.2 | 0/? | Designed | — |
-| 10.15 Bidirectional WebUI Gap Audit | v1.2 | 0/? | Designed | — |
 | 11. CRM via Twenty | v2.0 | 0/? | Not started | — |
 | 12. Basic Pulse Monitor | v2.0 | 0/? | Not started | — |
 | 13. STT/TTS Voice Integration | v2.0 | 0/? | Not started | — |

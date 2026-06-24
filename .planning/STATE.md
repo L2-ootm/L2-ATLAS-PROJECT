@@ -2,25 +2,25 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
-status: specifying
-last_updated: "2026-06-24T00:00:00-03:00"
-last_activity: "2026-06-24 -- PHASE 10.1 PLANNED. Locked deny-by-default terminal harness intake: complete 180-file pinned-source inventory and provenance first; clean ATLAS-only package and generic boundary scanner second; minimal offline OpenTUI/Solid shell plus dependency/file/binary/startup/memory baselines third. No donor agent/runtime/provider/config/memory/auth/share/update/voice/plugin path enters shipped code. Public derivative distribution is explicitly gated on retained MIT notices plus review of the separately published use-restrictions document. Three executable GSD plans cover INTAKE-01..05 and SEC-01; structural and requirement validation passed. Next: execute 10.1-01."
+status: executing
+last_updated: "2026-06-24T10:45:52-03:00"
+last_activity: "2026-06-24 -- FUTURE MILESTONE SCOPE CLEANUP COMPLETE. Active ROADMAP now contains only v1.1 executable phases. Preserved provider-mesh work as v1.2 draft PM-01–PM-06 with corrected dependency order, capability tiers, existing AgentRuntime evolution, immutable run bindings, route-cycle guards, probe budgets, requirements, and installed quality gates. Preserved self-evolution separately as v1.3 candidate EV-01 with evidence-based promotion. Original combined design retained as superseded history. Canonical global phase and ADR IDs are deferred until milestone activation. Current execution remains Phase 10.1 Plan 02 next."
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 3
-  completed_plans: 0
-  percent: 0
+  completed_plans: 1
+  percent: 33
 ---
 
 # STATE — L2 ATLAS
 
 ## Current Position — v1.1 Multi-Surface Workbench
 
-Phase 10.1 is fully discussed, researched, and planned. The accepted path is a
-selective ATLAS-owned reconstruction around OpenTUI/Solid, not a wholesale merge:
+Phase 10.1 is executing as a selective ATLAS-owned reconstruction around
+OpenTUI/Solid, not a wholesale merge:
 
-- **10.1-01:** inventory all 180 pinned source files, classify each as
+- **10.1-01 complete:** inventoried all 180 pinned source files, classified each as
   adopt-pattern/rewrite/reject, preserve attribution/notices, and record the
   public-distribution legal gate.
 - **10.1-02:** create the clean `apps/atlas-tui` package boundary plus generic
@@ -28,9 +28,9 @@ selective ATLAS-owned reconstruction around OpenTUI/Solid, not a wholesale merge
 - **10.1-03:** test-drive a compact offline ATLAS shell and record dependency,
   source, binary, startup, idle-memory, offline, and boundary baselines.
 
-Plan validation: 3 plans, 7 tasks, all required frontmatter/XML contracts present,
-no file conflicts, dependencies valid, and INTAKE-01..05 + SEC-01 fully covered.
-No plans were committed. Next command: execute Phase 10.1 Plan 01.
+Progress: 1/3 plans complete. Inventory verification passed with 180 unique
+paths, 2,630,082 bytes, and zero hash/size mismatches. Next: execute Phase
+10.1 Plan 02.
 
 ## Phase C — Discord Write Surface (2026-06-21, branch `feat/phase-c-discord-write`)
 
@@ -464,15 +464,21 @@ Acknowledged at milestone close on 2026-06-15:
 
 ### Roadmap Evolution
 
-- v1.2 designed 2026-06-24 (Phases 10.9–10.15, `📐` Designed/not-started, sequenced AFTER v1.1
-  — does NOT block 10.1–10.8): ATLAS Provider Mesh & Self-Evolution. Dual-mode cockpit
-  (ATLAS-gateway | BYO-runtime), two adapter shapes (agentic-CLI `RuntimeAdapter` + model-gateway
-  router), role-keyed model rulebook + capability/cost/health scored dispatch, foundation boundary
-  manifest + autonomous gated self-evolution loop, bidirectional WebUI gap audit. Route-through an
-  installed framework is the DEFAULT; migrate-to-ATLAS-native is opt-in/reversible. Binding
-  extra-mile/extra-marathon delivery doctrine. Decisions to log: D-025–D-029. Design source of
-  truth: `docs/plans/2026-06-24-atlas-provider-mesh-self-evolution-design.md`. Requirements traced
-  during `/gsd-plan-phase`. Brainstorm + roadmap fold landed on `main` (design doc + ROADMAP/STATE only).
+- Future scope corrected 2026-06-24 without deleting work. The active GSD roadmap now stops at
+  v1.1 Phase 10.8. Provider interoperability is preserved as the non-active v1.2 draft
+  `PM-01`–`PM-06` in `.planning/milestones/v1.2-ROADMAP-DRAFT.md`, with requirements in
+  `.planning/milestones/v1.2-REQUIREMENTS-DRAFT.md`. The corrected order is boundary manifest and
+  WebUI evidence audit early, then existing `AgentRuntime` capability evolution, role rulebook,
+  bounded scoring, and provider conformance. Capability tiers prevent ATLAS from claiming policy
+  enforcement over opaque runtimes; exact runtime/mode/profile values bind immutably to each run;
+  ATLAS-to-ATLAS routing has cycle guards; paid/network probes are opt-in and budgeted.
+- Autonomous foundation sync/self-evolution is preserved separately as the non-active v1.3
+  candidate `EV-01` in `.planning/milestones/v1.3-SELF-EVOLUTION-DRAFT.md`. It begins at
+  observe/propose and can advance only through evidence-based promotion gates. It no longer blocks
+  v1.2. Draft decision keys replace the colliding proposed D-025–D-029 range; canonical global phase
+  and ADR IDs are assigned only at milestone activation. The original combined design remains in
+  `docs/plans/2026-06-24-atlas-provider-mesh-self-evolution-design-superseded.md`; corrected source
+  of truth: `docs/plans/2026-06-24-atlas-provider-mesh-self-evolution-design.md`.
 - v1.1 resumed and rewritten on 2026-06-23 as Phases 10.1–10.8: one ATLAS agent,
   ATLAS-native donor-derived TUI, shared surface/workspace/config/event contracts,
   surface-scoped permissions, Brain/wiki context intelligence, and cross-surface UAT.
