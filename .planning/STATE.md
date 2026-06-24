@@ -2,35 +2,33 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
-status: planning
-last_updated: "2026-06-24T16:08:00-03:00"
-last_activity: "2026-06-24 -- PHASE 10.1 COMPLETE WITH DOCUMENTED MEMORY EXCEPTION. Shipped deterministic offline OpenTUI/Solid shell, exactly-once cleanup, standalone artifact, source/binary snapshot parity, reproducible performance evidence, and source/artifact boundary gates. Verified 8 Bun tests, clean TypeScript, 114.54 MiB binary, 225.98 ms cold, 282.47 ms warm p95, and zero network connections. Idle working set is 230.24 MiB versus the initial 150 MiB target; <=240 MiB is accepted only for intake and Phase 10.6 must optimize or make an explicit architecture decision. Next: plan Phase 10.2 agent/tool/context contract."
+status: ready_to_execute
+last_updated: "2026-06-24T16:15:00-03:00"
+last_activity: "2026-06-24 -- PHASE 10.2 PLANNED. Five dependency-ordered plans freeze prompt/bootstrap/context schemas and compiler; generate the unified tool capability catalog; build the durable Brain query/retrieval spine; persist replayable run contracts and compaction/resume invariants; and ship a 30-scenario deterministic promotion gate. No new framework or runtime dependency is planned. Next: execute Phase 10.2 Plan 01."
 progress:
   total_phases: 8
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
-  percent: 100
+  total_plans: 5
+  completed_plans: 0
+  percent: 0
 ---
 
 # STATE — L2 ATLAS
 
-## Current Position — v1.1 Multi-Surface Workbench
+## Current Position — Phase 10.2 Ready to Execute
 
-Phase 10.1 is complete as a selective ATLAS-owned reconstruction around
-OpenTUI/Solid, not a wholesale merge:
+Phase 10.1 is closed with 3/3 plans complete and a documented OpenTUI/Bun
+idle-memory exception carried to Phase 10.6.
 
-- **10.1-01 complete:** inventoried all 180 pinned source files, classified each as
-  adopt-pattern/rewrite/reject, preserve attribution/notices, and record the
-  public-distribution legal gate.
-- **10.1-02 complete:** created the clean `apps/atlas-tui` package boundary plus generic
-  reproducible inventory and forbidden-identity/dependency/artifact scanners.
-- **10.1-03 complete:** test-drove a compact offline ATLAS shell and recorded dependency,
-  source, binary, startup, idle-memory, offline, and boundary baselines.
+Phase 10.2 has 5 executable plans across 4 waves:
 
-Progress: 3/3 plans complete. Verification passed with one explicit exception:
-idle working set is 230.24 MiB versus the original 150 MiB target. The intake
-ceiling is conditionally 240 MiB; Phase 10.6 must revisit it. Next: plan Phase 10.2.
+- **10.2-01:** frozen prompt/bootstrap/context schemas and deterministic compiler.
+- **10.2-02:** generated tool capability catalog and conformance.
+- **10.2-03:** durable Brain graph, bounded retrieval, provenance, and abstention.
+- **10.2-04:** immutable run-contract snapshots, replay, and resume invariants.
+- **10.2-05:** 30-scenario evaluation dataset and deterministic promotion gate.
+
+Progress: 0/5 plans complete. Requirements coverage: 17/17. Next: execute 10.2-01.
 
 ## Phase C — Discord Write Surface (2026-06-21, branch `feat/phase-c-discord-write`)
 

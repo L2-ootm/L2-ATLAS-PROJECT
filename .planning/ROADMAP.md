@@ -289,6 +289,32 @@ TOOL-03, TOOL-04, TOOL-05, CTX-01, CTX-02, CTX-03, CTX-04, CTX-05, EVAL-01, EVAL
 5. Deterministic, adversarial, RAG, tool-choice, permission, compaction/resume, and multi-model
    eval suites meet the thresholds in `10.2-AI-SPEC.md`.
 
+**Plans:** 0/5 complete
+
+**Wave 1**
+
+- [ ] 10.2-01-PLAN.md — frozen prompt/bootstrap/context schemas and deterministic layered compiler
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 10.2-02-PLAN.md — generated tool capability catalog, narrowing, errors, and conformance
+- [ ] 10.2-03-PLAN.md — durable Brain graph, bounded query API, structured retrieval, and abstention
+
+**Wave 3** *(blocked on Waves 1–2 completion)*
+
+- [ ] 10.2-04-PLAN.md — immutable run-contract snapshots, replay, native preparation, and resume invariants
+
+**Wave 4** *(blocked on Waves 2–3 completion)*
+
+- [ ] 10.2-05-PLAN.md — 30-scenario evaluation dataset and deterministic promotion gate
+
+**Cross-cutting constraints:**
+
+- No second agent/runtime, general agent/RAG framework, or external tracing runtime.
+- Frozen Pydantic v2 and JSON-stable contracts; network-free prompt/context/catalog assembly.
+- Deterministic safety gates override optional LLM judging.
+- Tool/context capabilities may narrow but never silently widen authority.
+
 #### Phase 10.3: Shared Surface Session & Workspace Protocol
 
 **Goal:** Give TUI, WebUI, CLI, API, and future native clients one ATLAS session contract over the
@@ -445,7 +471,7 @@ milestone is activated through the normal milestone workflow.
 | 10.0.5 Golden Workflows & Quality Gate | v1.0.5 | 5/5 | Complete   | 2026-06-23 |
 | 10.0.6 Public Release Prep & Distribution | v1.0.5 | n/a | Drafts done / operator-gated | 2026-06-23 |
 | 10.1 ATLAS TUI Harness Intake & Provenance | v1.1 | 3/3 | Complete with memory exception | 2026-06-24 |
-| 10.2 Agent Contract, Tool Semantics & Context Intelligence | v1.1 | 0/? | Specifying | — |
+| 10.2 Agent Contract, Tool Semantics & Context Intelligence | v1.1 | 0/5 | Planned | — |
 | 10.3 Shared Surface Session & Workspace Protocol | v1.1 | 0/? | Not planned | — |
 | 10.4 Global Configuration, Auth & Model Control Plane | v1.1 | 0/? | Not planned | — |
 | 10.5 Surface-Scoped Permission Broker | v1.1 | 0/? | Not planned | — |
