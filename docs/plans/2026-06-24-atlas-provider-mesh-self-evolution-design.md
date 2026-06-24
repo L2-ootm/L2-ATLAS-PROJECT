@@ -54,6 +54,7 @@ These are the decisions that shape the phases. Each should be promoted to a numb
 6. **Self-evolution is an autonomous, gated agent loop.** The end state is ATLAS updating and committing its own code (and the foundation) autonomously under the project's GSD/loop-engineering discipline. Near-term it runs gated (test-green required, atomic commits, branch/PR, boundary-manifest scoping, rollback, kill switch) and becomes progressively unsupervised. The framework is the guardrail.
 7. **Boundary manifest is the enabling primitive.** Every foundation module is classified `foundation-tracked` (mirrors upstream, auto-syncable), `atlas-owned` (rebuilt native, no longer tracks upstream), or `diverged-frozen` (modified, manual reconciliation). Rebuilding a module flips `tracked → owned` and drops it from the upstream-sync surface.
 8. **WebUI work is a differential audit, not a rebuild.** Identify what the ATLAS WebUI does better (protect) and what the Hermes WebUI has that ATLAS is missing and could benefit from (adopt/adapt/skip backlog).
+9. **Extra-mile / extra-marathon delivery doctrine is binding (§4).** Every task ships the version that detects rather than asks, pre-stages the operator's next action, and renders a designed, branded surface with designed empty/error states — gated by the `l2-extra-marathon` review. Functional-but-placeholder is not done.
 
 ### Constraints carried from prior decisions
 
@@ -64,7 +65,31 @@ These are the decisions that shape the phases. Each should be promoted to a numb
 
 ---
 
-## 4. Architecture concepts
+## 4. Delivery doctrine — extra mile, extra marathon
+
+**This doctrine is binding for every task in this milestone, and for ATLAS work generally.** It is not a phase; it is the bar every phase is held to. It operationalizes the L2 `l2-extra-marathon-review` standard.
+
+**The bar.** The default for any task is the *extra mile*: don't ship the mechanically-correct minimum — ship the version that anticipates the operator's next action and removes the friction before they hit it. For designated high-leverage aspects (operator first-impression, onboarding, anything the operator touches repeatedly), the bar is the *extra marathon*: the surface should feel pre-thought, autonomous, and finished.
+
+**What "extra mile / extra marathon" concretely means here:**
+
+1. **Detect, don't ask.** Inspect the environment and tell the operator what is true before asking them to configure it. Never make the operator hand-enter what ATLAS can discover.
+2. **Pre-stage the next action.** When ATLAS knows what the operator will likely want, prepare it as a ready-to-apply artifact (config/migration/setup) — one action to apply, or autonomous apply under the Phase 10.14 self-evolution gates.
+3. **First-class, branded UX — no placeholder surfaces.** Every operator-facing control is designed and branded to the ATLAS celestial-heraldic language (D-024), not a raw form or stub. A feature is not "done" while its surface is a `<Migrating>`-class placeholder.
+4. **Fail beautifully.** Empty/loading/offline/error states are designed, explain themselves, and offer the next step — never a blank or a raw trace.
+5. **Audited and reversible.** The extra-mile automation still respects D-002 (audit) and stays rollback-safe; "autonomous" never means "unaccountable."
+
+**Worked example — provider/gateway onboarding (the operator's example, now the reference standard):**
+
+- **Autodetect** across `atlas setup`, the CLI, and the WebUI: probe the environment for installed agentic CLIs and reachable gateways (claude code, codex, opencode, mimocode, openclaw, OpenAI-compatible endpoints, another ATLAS). ATLAS *already knows* what is installed before the operator opens the providers surface.
+- **Prepared migration/setup:** for each detected service, ATLAS pre-builds the exact config/profile/route entry needed to attach it, presented as a ready-to-apply plan. The operator applies with one action; or, under the self-evolution autonomy dial, ATLAS applies it autonomously and audits the change.
+- **Branded provider controls:** each provider/gateway renders as a designed, branded button/card (state-aware: detected / attached / unhealthy / not-installed), not a checkbox in a list.
+
+**How the doctrine is enforced.** Every phase's success criteria below carry the doctrine where it applies (autodetect, prepared setup, branded surface, designed states). The `l2-extra-marathon` review is the gate before a phase is called done — a phase that meets its functional criteria but ships a placeholder surface, makes the operator hand-enter discoverable state, or leaves raw error states is **not** complete.
+
+---
+
+## 5. Architecture concepts
 
 ### 4.1 Mode and the mesh
 
@@ -113,7 +138,7 @@ Autonomy is a dial, not a binary: the loop ships gated (proposes; human merges),
 
 ---
 
-## 5. Phase breakdown
+## 6. Phase breakdown
 
 > Requirement IDs are seeds to be traced/confirmed during `/gsd-plan-phase`. Success criteria are the verification bar.
 
@@ -132,6 +157,7 @@ Autonomy is a dial, not a binary: the loop ships gated (proposes; human merges),
 2. Mode is persisted, surfaced, and switchable from CLI and WebUI; switching is audited and takes effect without a stale-state restart hazard.
 3. The model-gateway router accepts at least one external gateway as a configured backend behind the `registry_v2` route tables.
 4. Every attach/detach/mode-change/route emits audit events (D-002).
+5. **Doctrine (§4):** `atlas setup`, the CLI, and the WebUI autodetect installed agentic CLIs and reachable gateways and present detected state before asking the operator to configure anything.
 
 **Depends on:** 10.13 (manifest, for the foundation-as-backend boundary), v1.1 10.3/10.4 (surface session + config control plane).
 
@@ -151,6 +177,7 @@ Autonomy is a dial, not a binary: the loop ships gated (proposes; human merges),
 2. A run resolves and records the exact role→model bindings it used; the binding is replayable and auditable.
 3. CLI and WebUI edit the same profile through one contract; a change from one surface is visible to the other without restart or last-writer-wins loss.
 4. Absent/partial profiles degrade to an explicit documented default, never to silent provider choice.
+5. **Doctrine (§4):** the WebUI profile editor is a designed, branded surface (not a raw form) with designed empty/validation/error states; detected providers are pre-populated so the operator edits rather than enters from scratch.
 
 **Depends on:** 10.9.
 
@@ -189,6 +216,7 @@ Autonomy is a dial, not a binary: the loop ships gated (proposes; human merges),
 2. Each shipped gateway backend serves completions through the router with route + cost + health recorded.
 3. Native-Hermes-via-foundation delegation works without foundation edits beyond declared extension points (D-001/D-018).
 4. Adding a backend = implementing the adapter contract + declaring capabilities + (optional) a manifest entry — documented as the extension recipe.
+5. **Doctrine (§4) — the reference standard for this milestone:** for each detected service, ATLAS pre-builds a ready-to-apply config/profile/route entry (one-action apply, or autonomous apply under the Phase 10.14 self-evolution gates), and renders each provider/gateway as a designed, branded, state-aware control (detected / attached / unhealthy / not-installed) — never a bare list item or placeholder.
 
 **Depends on:** 10.9, 10.10, 10.11. (Backends can land incrementally; claude code is the proven reference.)
 
@@ -247,12 +275,13 @@ Autonomy is a dial, not a binary: the loop ships gated (proposes; human merges),
 1. A complete two-column inventory (ATLAS-better vs Hermes-has / ATLAS-missing) exists with evidence (file/route references).
 2. A ranked adopt/adapt/skip backlog exists with rationale; "skip" items state why (e.g., wedge-plan scope guard).
 3. The audit is research-only (no UI rebuild) and explicitly hands off to 10.7 / 10.10.
+4. **Doctrine (§4):** designed, branded, state-aware provider controls are captured as a named adopt deliverable in the backlog (handed to 10.12 / 10.10), not left implicit.
 
 **Depends on:** none. Independent — runs early/in parallel; mirrors the harness-cherrypick precedent (`docs/research/HARNESS_CHERRYPICK_PI_OPENCODE.md`).
 
 ---
 
-## 6. Dependency spine and sequencing
+## 7. Dependency spine and sequencing
 
 ```
 10.15 (WebUI audit) ─── independent, run early/parallel ──┐
@@ -277,7 +306,7 @@ Rationale: the manifest (10.13) is cheap and de-risks both the hybrid foundation
 
 ---
 
-## 7. Risks and open questions
+## 8. Risks and open questions
 
 - **Autonomous commit blast radius (10.14).** Mitigations: manifest scoping, test gate, atomic commits, branch/PR, rollback, kill switch, audited autonomy dial with promotion criteria. Open: where the autonomy ceiling sits for self-modification (vs foundation-sync) and what human-in-the-loop checkpoint, if any, is permanent.
 - **Hybrid coupling vs ATLAS ownership.** Leaning on foundation transports early speeds 10.12 but deepens coupling the rebuild must later unwind. The manifest keeps this explicit; open question is the rebuild order (which transports go ATLAS-native first).
@@ -288,16 +317,17 @@ Rationale: the manifest (10.13) is cheap and de-risks both the hybrid foundation
 
 ---
 
-## 8. Decisions to log during planning
+## 9. Decisions to log during planning
 
 - **D-025** — Dual-mode Provider Mesh (ATLAS-gateway | BYO-runtime); two adapter shapes (agentic-CLI `RuntimeAdapter` + model-gateway router); generalizes P4 `AgentRuntime` ABC + D-017.
 - **D-026** — Role-keyed model rulebook + capability/cost/health scorer + scored fallback cascade.
 - **D-027** — Hybrid build basis with stated end state (foundation rebuilt to ATLAS-native over time); foundation boundary manifest as the enabling primitive.
 - **D-028** — Autonomous gated self-evolution loop under GSD discipline; autonomy dial with promotion criteria.
+- **D-029** — Extra-mile / extra-marathon delivery doctrine (§4): detect-don't-ask, pre-stage the next action, first-class branded surfaces, designed failure states; `l2-extra-marathon` review is the per-phase completion gate. Binding for the milestone.
 
 ---
 
-## 9. Roadmap integration
+## 10. Roadmap integration
 
 Add to `.planning/ROADMAP.md` a new milestone block after v1.1 and before v2.0:
 
@@ -307,7 +337,7 @@ Renumber nothing in v2.0 (Phases 11–14 unaffected). Trace requirements into `.
 
 ---
 
-## 10. Out of scope
+## 11. Out of scope
 
 - v1.1 work (10.1–10.8) — this milestone sequences after it and consumes its surface/session/config/permission contracts.
 - Native/Tauri shell — remains deferred per v1.1 until the surface protocol is stable.
