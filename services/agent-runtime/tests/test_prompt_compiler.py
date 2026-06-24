@@ -84,13 +84,19 @@ def _context(content: str = "Current focus is prompt determinism.") -> ContextEn
 
 
 def _snapshot(compilation) -> dict[str, object]:  # noqa: ANN001
+    bootstrap = json.loads(compilation.bootstrap_message)
     return {
-        "stable_prompt": compilation.stable_prompt.decode("utf-8"),
         "stable_prompt_sha256": compilation.stable_prompt_sha256,
+        "bootstrap_message_sha256": hashlib.sha256(
+            compilation.bootstrap_message.encode("utf-8")
+        ).hexdigest(),
+        "context_message_sha256": hashlib.sha256(
+            compilation.context_message.encode("utf-8")
+        ).hexdigest(),
         "prompt_version": compilation.prompt_version,
-        "bootstrap_message": json.loads(compilation.bootstrap_message),
-        "context_message": json.loads(compilation.context_message),
         "estimated_stable_tokens": compilation.estimated_stable_tokens,
+        "surface": bootstrap["payload"]["surface"]["kind"],
+        "provider": bootstrap["payload"]["model"]["provider"],
     }
 
 
