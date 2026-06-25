@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
-last_updated: "2026-06-25T23:05:05.000Z"
+last_updated: "2026-06-25T23:10:49.000Z"
 last_activity: 2026-06-25
 progress:
   total_phases: 8
   completed_phases: 3
   total_plans: 20
-  completed_plans: 14
-  percent: 70
-stopped_at: Completed 10.4-01-PLAN.md — Wave 2 auth and config services next
+  completed_plans: 15
+  percent: 75
+stopped_at: Completed 10.4-02-PLAN.md — Wave 2 config facade next
 ---
 
 # STATE — L2 ATLAS
@@ -27,11 +27,11 @@ owner-only durable config/auth files; typed optimistic conflicts; audit-backed c
 read-only external auth detection; one provider/model effective-status projection; no watcher
 daemon, OAuth flow, keychain, new dependency, or active-session model mutation.
 
-Plan 10.4-01 is complete. ATLAS now has frozen versioned control-plane schemas, a shared
-zero-dependency secure store, and fail-closed revisioned configuration transactions. Verification:
-15 contract tests, 27 secure-store/config tests, 90 atlas-core tests, and a 40-test compatibility
-slice passed; locked config reads average 2.149 ms across 1,000 reads. Next: execute Wave 2 plans
-10.4-02 (auth plane) and 10.4-03 (masked config GET/PATCH + audit).
+Plans 10.4-01 and 10.4-02 are complete. ATLAS now has frozen versioned config contracts, a shared
+secure store, revisioned config transactions, an owner-only auth store, stat-only external
+Codex/Claude auth detection, and a hidden-input audited auth CLI. Auth verification: 13 service/CLI
+tests plus 23 config compatibility tests passed; external credential bytes/hash/size/mtime remain
+identical. Next: execute Plan 10.4-03, the masked config GET/PATCH facade and audit contract.
 
 ## Prior Position — Phase 10.3 Complete
 
