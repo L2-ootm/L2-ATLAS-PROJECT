@@ -38,16 +38,16 @@ surfaces over the same projects, context, configuration, permissions, tools, and
 
 ### TOOL — Tool-Call Contract
 
-- [ ] **TOOL-01**: Every available tool has one machine-readable capability record: schema,
+- [x] **TOOL-01**: Every available tool has one machine-readable capability record: schema,
   description, category, risk, permissions, workspace/network scope, side effects, timeout,
   cancellation, idempotency, result limit, redaction, audit events, and UI renderer.
-- [ ] **TOOL-02**: Tool catalog generation derives from runtime registries/manifests and rejects
+- [x] **TOOL-02**: Tool catalog generation derives from runtime registries/manifests and rejects
   duplicate names, incompatible schemas, unclassified risk, or undocumented side effects.
-- [ ] **TOOL-03**: Unknown, malformed, unavailable, disallowed, wrong-workspace, and stale tool
+- [x] **TOOL-03**: Unknown, malformed, unavailable, disallowed, wrong-workspace, and stale tool
   calls fail closed with normalized error events that both surfaces render consistently.
-- [ ] **TOOL-04**: Tool execution supports cancellation, bounded output, timeout, retry policy,
+- [x] **TOOL-04**: Tool execution supports cancellation, bounded output, timeout, retry policy,
   secret redaction, path/network guards, and exactly-once semantics where side effects matter.
-- [ ] **TOOL-05**: Parent/child agent capability inheritance can only narrow permissions;
+- [x] **TOOL-05**: Parent/child agent capability inheritance can only narrow permissions;
   subagent events preserve ancestry, workspace, run, tool call, and surface session identity.
 
 ### CTX — Brain, Wiki, RAG and Context
