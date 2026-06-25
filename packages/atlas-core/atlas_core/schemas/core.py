@@ -281,6 +281,12 @@ class AuditEvent(BaseModel):
         "surface_session_failed",
         "run_cancelled",
         "permission_transition",
+        # Phase 10.4 — configuration, auth, and model control plane.
+        "config_change",
+        "auth_change",
+        "model_call_start",
+        "model_call_end",
+        "provider_fallback",
     ]
     tool_name: Optional[str] = None
     timestamp: datetime.datetime = Field(
