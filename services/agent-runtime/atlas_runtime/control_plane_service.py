@@ -2,14 +2,19 @@
 from __future__ import annotations
 
 import json
+import pathlib
+import sqlite3
+import threading
+from collections.abc import Mapping
 
 from atlas_core.schemas.control_plane import (
     AtlasConfig,
+    ControlPlaneError,
     ControlPlaneSnapshot,
     SettingStatus,
 )
 
-from atlas_runtime import config_service
+from atlas_runtime import audit_service, config_service, mission_service
 
 _SETTING_METADATA: tuple[tuple[str, bool], ...] = (
     ("provider.name", False),
@@ -114,4 +119,80 @@ def get_config_snapshot(
     return ControlPlaneSnapshot.model_validate(data)
 
 
-__all__ = ["get_config_snapshot"]
+def _restart_required(path: str) -> bool:
+    return dict(_SETTING_METADATA).get(path, False)
+
+
+def patch(
+    conn: sqlite3.Connection,
+    audit_lock: threading.Lock,
+    *,
+    expected_revision: int,
+    changes: Mapping[str, object],
+    source_surface: str | None = None,
+    source_session_id: str | None = None,
+    path: pathlib.Path | None = None,
+    focus_framework: str | None = None,
+) -> ControlPlaneSnapshot:
+    """Commit one optimistic config patch, then emit its masked audit event."""
+    before = config_service.load_config(path)
+    updated = config_service.patch_config(
+        expected_revision=expected_revision,
+        changes=changes,
+        path=path,
+    )
+    changed_paths = sorted(changes)
+    before_values = {
+        changed_path: config_service.get_value(before, changed_path)
+        for changed_path in changed_paths
+    }
+    after_values = {
+        changed_path: config_service.get_value(updated, changed_path)
+        for changed_path in changed_paths
+    }
+    reload_metadata = {
+        changed_path: {
+            "restart_required": _restart_required(changed_path),
+            "visibility": (
+                "restart"
+                if _restart_required(changed_path)
+                else "next_read_or_new_execution"
+            ),
+        }
+        for changed_path in changed_paths
+    }
+    try:
+        run_id = mission_service.ensure_operator_run(conn, audit_lock)
+        audit_service.emit(
+            conn,
+            audit_lock,
+            run_id=run_id,
+            event_type="config_change",
+            session_id=source_session_id,
+            data={
+                "revision": updated.revision,
+                "changed_paths": changed_paths,
+                "before": before_values,
+                "after": after_values,
+                "reload": reload_metadata,
+                "source_surface": source_surface or "service",
+                "source_session_id": source_session_id,
+            },
+        )
+    except Exception as exc:
+        raise ControlPlaneError(
+            "config_audit_failed",
+            (
+                f"config revision {updated.revision} committed but its "
+                "audit event failed"
+            ),
+            (
+                f"revision {updated.revision} is committed; inspect the audit "
+                "database and reconcile this change before retrying"
+            ),
+            current_revision=updated.revision,
+        ) from exc
+    return get_config_snapshot(updated, focus_framework=focus_framework)
+
+
+__all__ = ["get_config_snapshot", "patch"]
