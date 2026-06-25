@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -93,3 +94,87 @@ def test_doctor_reports_missing_auth_with_actionable_remediation(
 
     assert report.status == "missing_auth"
     assert "atlas auth add openrouter" in (report.remediation or "")
+
+
+def test_external_detection_reports_install_and_auth_presence_without_reads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "external-home"
+    codex_auth = home / ".codex" / "auth.json"
+    codex_auth.parent.mkdir(parents=True)
+    codex_auth.write_bytes(b'{"tokens":"never parse me"}')
+    opened: list[Path] = []
+
+    monkeypatch.setattr(auth_service, "_home_directory", lambda: home)
+    monkeypatch.setattr(
+        auth_service.shutil,
+        "which",
+        lambda command: f"C:/bin/{command}.exe" if command == "claude" else None,
+    )
+    original_open = Path.open
+
+    def reject_external_open(path: Path, *args, **kwargs):
+        if home in path.parents:
+            opened.append(path)
+            raise AssertionError("external credential payload was opened")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", reject_external_open)
+    statuses = {status.provider: status for status in auth_service.detect_external_auth()}
+
+    assert statuses["codex"].status == "auth_present"
+    assert statuses["claude"].status == "installed_no_auth"
+    assert all(status.source == "external_read_only" for status in statuses.values())
+    assert opened == []
+
+
+def test_external_detection_preserves_bytes_hash_size_and_mtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "external-home"
+    path = home / ".claude" / ".credentials.json"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"opaque external credential bytes")
+    before = (
+        path.read_bytes(),
+        hashlib.sha256(path.read_bytes()).hexdigest(),
+        path.stat().st_size,
+        path.stat().st_mtime_ns,
+    )
+    monkeypatch.setattr(auth_service, "_home_directory", lambda: home)
+    monkeypatch.setattr(auth_service.shutil, "which", lambda command: None)
+
+    auth_service.detect_external_auth()
+
+    after = (
+        path.read_bytes(),
+        hashlib.sha256(path.read_bytes()).hexdigest(),
+        path.stat().st_size,
+        path.stat().st_mtime_ns,
+    )
+    assert after == before
+
+
+def test_external_detection_reports_unknown_error_safely(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "external-home"
+    monkeypatch.setattr(auth_service, "_home_directory", lambda: home)
+    monkeypatch.setattr(auth_service.shutil, "which", lambda command: None)
+    real_stat = Path.stat
+
+    def denied(path: Path, *args, **kwargs):
+        if ".codex" in path.parts:
+            raise PermissionError("sensitive operating-system detail")
+        return real_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", denied)
+    statuses = {status.provider: status for status in auth_service.detect_external_auth()}
+
+    assert statuses["codex"].status == "unknown_error"
+    rendered = json.dumps(statuses["codex"].model_dump())
+    assert "sensitive operating-system detail" not in rendered
+    assert "credential file" in (statuses["codex"].remediation or "")
