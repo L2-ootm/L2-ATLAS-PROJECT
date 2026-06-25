@@ -7,6 +7,8 @@ import os
 import pathlib
 import re
 import shutil
+import sqlite3
+import threading
 from collections.abc import Mapping
 
 from atlas_core.schemas.control_plane import AuthStatus
@@ -120,6 +122,45 @@ def _record_status(provider: str, record: Mapping[str, object]) -> AuthStatus:
     )
 
 
+def _emit_auth_change(
+    conn: sqlite3.Connection | None,
+    audit_lock: threading.Lock | None,
+    *,
+    provider: str,
+    action: str,
+    source: str,
+    status: AuthStatus | None = None,
+) -> None:
+    if conn is None or audit_lock is None:
+        return
+    from atlas_runtime import audit_service, mission_service
+
+    data = {
+        "provider": provider,
+        "action": action,
+        "source": source,
+        "auth_type": "api_key",
+    }
+    if status is not None:
+        data["redacted_hint"] = status.redacted_hint
+    safe_data = json.loads(_redact(json.dumps(data)))
+    try:
+        run_id = mission_service.ensure_operator_run(conn, audit_lock)
+        audit_service.emit(
+            conn,
+            audit_lock,
+            run_id=run_id,
+            event_type="auth_change",
+            data=safe_data,
+        )
+    except Exception as exc:
+        raise AuthServiceError(
+            "auth_audit_failed",
+            f"credential {action} committed but its audit event failed",
+            "inspect the audit database and reconcile the auth change before retrying",
+        ) from exc
+
+
 def _env_status(config: config_service.AtlasConfig) -> AuthStatus | None:
     reference = config.provider.api_key
     if not reference.startswith("env:"):
@@ -147,6 +188,9 @@ def set_api_key(
     *,
     base_url: str | None = None,
     path: pathlib.Path | None = None,
+    conn: sqlite3.Connection | None = None,
+    audit_lock: threading.Lock | None = None,
+    source: str = "service",
 ) -> AuthStatus:
     """Store one provider API key and return only masked metadata."""
     provider = _validate_provider(provider)
@@ -188,13 +232,25 @@ def set_api_key(
             )
     except SecureStoreError as exc:
         raise _translate_store_error(exc) from exc
-    return _record_status(provider, record)
+    status = _record_status(provider, record)
+    _emit_auth_change(
+        conn,
+        audit_lock,
+        provider=provider,
+        action="add",
+        source=source,
+        status=status,
+    )
+    return status
 
 
 def remove_provider(
     provider: str,
     *,
     path: pathlib.Path | None = None,
+    conn: sqlite3.Connection | None = None,
+    audit_lock: threading.Lock | None = None,
+    source: str = "service",
 ) -> bool:
     """Remove a provider record; return whether one existed."""
     provider = _validate_provider(provider)
@@ -217,6 +273,13 @@ def remove_provider(
             )
     except SecureStoreError as exc:
         raise _translate_store_error(exc) from exc
+    _emit_auth_change(
+        conn,
+        audit_lock,
+        provider=provider,
+        action="remove",
+        source=source,
+    )
     return True
 
 
