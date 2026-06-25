@@ -80,6 +80,9 @@ from atlas_runtime.cli.config import config_app, setup as _setup_cmd
 app.add_typer(config_app, name="config")
 app.command("setup", help="First-run wizard: configure ATLAS and write ~/.atlas/config.yaml.")(_setup_cmd)
 
+from atlas_runtime.cli.auth import auth_app
+app.add_typer(auth_app, name="auth")
+
 from atlas_runtime.cli.models import models_app
 app.add_typer(models_app, name="models")
 
