@@ -206,6 +206,34 @@ def get_events_for_run(
     return [AuditEvent(**dict(zip(cols, row))) for row in cursor]
 
 
+def get_events_for_session(
+    conn: sqlite3.Connection,
+    session_id: str,
+) -> list[AuditEvent]:
+    """Return all AuditEvents across EVERY run of a session, as one ordered sequence.
+
+    A surface session owns 0..N runs (SURF-01), so the surface event stream must order
+    across all of them — the per-run `get_events_for_run` cannot support cross-run
+    reconnect gap-detection. Orders by timestamp ASC with a `rowid` tiebreak so the
+    sequence is deterministic when timestamps collide across runs. Re-validates each row
+    through AuditEvent() on read, mirroring `get_events_for_run`.
+
+    Args:
+        conn: SQLite connection.
+        session_id: The runs.session_id linking all of a session's runs.
+
+    Returns:
+        AuditEvents for every run whose runs.session_id matches, ordered globally.
+    """
+    cursor = conn.execute(
+        "SELECT ae.* FROM audit_events ae JOIN runs r ON ae.run_id = r.id "
+        "WHERE r.session_id = ? ORDER BY ae.timestamp ASC, ae.rowid ASC",
+        (session_id,),
+    )
+    cols = [d[0] for d in cursor.description]
+    return [AuditEvent(**dict(zip(cols, row))) for row in cursor]
+
+
 def export_jsonl(
     conn: sqlite3.Connection,
     run_id: str,
