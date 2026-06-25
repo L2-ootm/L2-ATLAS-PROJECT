@@ -332,17 +332,21 @@ existing agent, bound to either the ATLAS global workspace or a registered Proje
 4. Cancel, disconnect, reconnect, resume, compaction, and process restart have explicit,
    tested state transitions with no orphaned running session.
 
-**Plans:** 4 plans
+**Plans:** 5 plans
 
 **Wave 1**
 
 - [ ] 10.3-01-PLAN.md — frozen SurfaceSession model, migration 0016, lifecycle state-machine service
-- [ ] 10.3-02-PLAN.md — workspace_service fail-closed path containment with typed errors
+- [ ] 10.3-02-PLAN.md — workspace_service fail-closed path containment with typed errors (incl. cross_project)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 10.3-03-PLAN.md — SurfaceEvent normalized projection + one normalizer + conformance tests
-- [ ] 10.3-04-PLAN.md — cooperative cancel token + heartbeat liveness + startup reconciliation sweep
+- [ ] 10.3-03-PLAN.md — SurfaceEvent normalized projection + one normalizer (per-session seq) + conformance tests
+- [ ] 10.3-04-PLAN.md — cooperative cancel token (watchdog + tool-gate + subprocess) + heartbeat liveness + reconciliation sweep
+
+**Wave 3** *(blocked on Waves 1-2 completion)*
+
+- [ ] 10.3-05-PLAN.md — session resume via the 10.2 RunContractSnapshot replay invariant (identity preservation)
 
 #### Phase 10.4: Global Configuration, Auth & Model Control Plane
 
@@ -484,7 +488,7 @@ milestone is activated through the normal milestone workflow.
 | 10.0.6 Public Release Prep & Distribution | v1.0.5 | n/a | Drafts done / operator-gated | 2026-06-23 |
 | 10.1 ATLAS TUI Harness Intake & Provenance | v1.1 | 3/3 | Complete with memory exception | 2026-06-24 |
 | 10.2 Agent Contract, Tool Semantics & Context Intelligence | v1.1 | 5/5 | Complete    | 2026-06-25 |
-| 10.3 Shared Surface Session & Workspace Protocol | v1.1 | 0/4 | Planned     | — |
+| 10.3 Shared Surface Session & Workspace Protocol | v1.1 | 0/5 | Planned     | — |
 | 10.4 Global Configuration, Auth & Model Control Plane | v1.1 | 0/? | Not planned | — |
 | 10.5 Surface-Scoped Permission Broker | v1.1 | 0/? | Not planned | — |
 | 10.6 ATLAS Terminal Workbench | v1.1 | 0/? | Not planned | — |
