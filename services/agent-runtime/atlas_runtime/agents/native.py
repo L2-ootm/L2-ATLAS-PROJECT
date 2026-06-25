@@ -147,6 +147,31 @@ class NativeAtlasAgent(AgentRuntime):
         run_id: str,
         prompt: str,
     ) -> RunOutcome:
+        # Persist the generated prompt/tool/context contract before foundation
+        # execution. Failure is fail-safe for auditability: no untracked run.
+        try:
+            from atlas_runtime.agent_contract_service import (  # noqa: PLC0415
+                persist_contract,
+                prepare_run_contract,
+            )
+
+            persist_contract(
+                conn,
+                prepare_run_contract(
+                    conn,
+                    run_id=run_id,
+                    mission_id=mission_id,
+                    prompt=prompt,
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("NativeAtlasAgent contract preparation failed: %s", exc)
+            return RunOutcome(
+                status="failed",
+                summary=f"contract preparation failed: {exc}"[:_SUMMARY_CAP],
+                stop_reason="contract_preparation_failed",
+            )
+
         # --- Layer 2: secret stop (pre-execution, hard gate) ---------------
         if _contains_secret(prompt):
             self._safe_emit(
