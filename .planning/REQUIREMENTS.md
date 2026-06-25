@@ -169,10 +169,10 @@ surfaces over the same projects, context, configuration, permissions, tools, and
 
 ### EVAL / TEST
 
-- [ ] **EVAL-01**: Phase 10.2 ships a versioned reference dataset covering prompt hierarchy,
+- [x] **EVAL-01**: Phase 10.2 ships a versioned reference dataset covering prompt hierarchy,
   identity, tool choice/arguments, retrieval, abstention, permissions, subagents, compaction,
   resume, uncertainty, and verification.
-- [ ] **EVAL-02**: Product evals combine deterministic checks, calibrated LLM judging where needed,
+- [x] **EVAL-02**: Product evals combine deterministic checks, calibrated LLM judging where needed,
   and operator review; failures block prompt/tool/context promotion.
 - [ ] **TEST-01**: Prompt golden tests cover provider families, surfaces, workspaces, permission
   modes, context presence/absence, and cache-prefix stability.
