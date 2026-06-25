@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
-last_updated: "2026-06-25T23:16:54.000Z"
+last_updated: "2026-06-25T23:23:03.000Z"
 last_activity: 2026-06-25
 progress:
   total_phases: 8
   completed_phases: 3
   total_plans: 20
-  completed_plans: 16
-  percent: 80
-stopped_at: Completed Wave 2 / 10.4-03-PLAN.md — model status plane next
+  completed_plans: 17
+  percent: 85
+stopped_at: Completed 10.4-04-PLAN.md — Rust gateway delivery next
 ---
 
 # STATE — L2 ATLAS
@@ -27,11 +27,11 @@ owner-only durable config/auth files; typed optimistic conflicts; audit-backed c
 read-only external auth detection; one provider/model effective-status projection; no watcher
 daemon, OAuth flow, keychain, new dependency, or active-session model mutation.
 
-Wave 2 is complete (Plans 10.4-02 and 10.4-03). ATLAS now has owner-only auth storage,
-presence-only external auth detection, one backward-compatible masked config snapshot, per-setting
-source/effective/restart metadata, audited optimistic PATCH, and converged config CLI writes.
-Verification: 62 integrated config/auth/provider tests and 90 atlas-core tests passed. Next:
-execute Plan 10.4-04, joining v2 registry availability, auth, and configured/effective model state.
+Plan 10.4-04 is complete. Discovery now dual-writes idempotent v2 provider/model rows while legacy
+readers remain available; one ProviderModelStatus joins configured/effective selection, masked
+auth, registry health, and recorded fallback state. `config` and `models status --json` share the
+same object. Verification: 19 registry/model tests and 42 integrated config/auth tests passed;
+registry secret scan clean. Next: Plan 10.4-05 Rust gateway GET/PATCH delivery and error mapping.
 
 ## Prior Position — Phase 10.3 Complete
 
