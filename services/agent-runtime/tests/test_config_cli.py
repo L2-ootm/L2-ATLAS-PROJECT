@@ -22,8 +22,8 @@ def _home(monkeypatch, tmp_path, db=None, lock: threading.Lock | None = None):
     return tmp_path / "config.yaml"
 
 
-def test_config_show_defaults(monkeypatch, tmp_path):
-    _home(monkeypatch, tmp_path)
+def test_config_show_defaults(monkeypatch, tmp_path, db, lock):
+    _home(monkeypatch, tmp_path, db, lock)
     result = runner.invoke(app, ["config", "show"])
     assert result.exit_code == 0
     assert "provider:" in result.output
@@ -121,8 +121,8 @@ def test_setup_writes_config_accepting_defaults(monkeypatch, tmp_path, db, lock)
     assert (tmp_path / "config.yaml").is_file()
 
 
-def test_config_json_emits_shared_masked_snapshot(monkeypatch, tmp_path):
-    _home(monkeypatch, tmp_path)
+def test_config_json_emits_shared_masked_snapshot(monkeypatch, tmp_path, db, lock):
+    _home(monkeypatch, tmp_path, db, lock)
 
     result = runner.invoke(app, ["config", "json"])
 

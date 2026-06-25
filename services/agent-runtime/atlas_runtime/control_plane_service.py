@@ -14,7 +14,13 @@ from atlas_core.schemas.control_plane import (
     SettingStatus,
 )
 
-from atlas_runtime import audit_service, config_service, mission_service
+from atlas_runtime import (
+    audit_service,
+    auth_service,
+    config_service,
+    mission_service,
+    model_control_service,
+)
 
 _SETTING_METADATA: tuple[tuple[str, bool], ...] = (
     ("provider.name", False),
@@ -90,6 +96,7 @@ def get_config_snapshot(
     config: AtlasConfig | None = None,
     *,
     focus_framework: str | None = None,
+    conn: sqlite3.Connection | None = None,
 ) -> ControlPlaneSnapshot:
     """Return one backward-compatible, self-explaining masked config snapshot."""
     config = config or config_service.load_config()
@@ -102,12 +109,24 @@ def get_config_snapshot(
         )
         for path, restart_required in _SETTING_METADATA
     )
+    auth = auth_service.list_auth_status(config=config)
+    ephemeral = conn is None
+    status_conn = conn or sqlite3.connect(":memory:")
+    try:
+        effective = model_control_service.get_provider_model_status(
+            status_conn,
+            config,
+            focus_framework=focus_framework,
+        )
+    finally:
+        if ephemeral:
+            status_conn.close()
     data = config.model_dump()
     data.update(
         {
             "settings": settings,
-            "auth": (),
-            "effective": None,
+            "auth": auth,
+            "effective": effective,
             "mock_mode": not bool(
                 config_service.resolve_provider(
                     config,
@@ -192,7 +211,11 @@ def patch(
             ),
             current_revision=updated.revision,
         ) from exc
-    return get_config_snapshot(updated, focus_framework=focus_framework)
+    return get_config_snapshot(
+        updated,
+        focus_framework=focus_framework,
+        conn=conn,
+    )
 
 
 __all__ = ["get_config_snapshot", "patch"]

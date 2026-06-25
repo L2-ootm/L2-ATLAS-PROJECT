@@ -73,7 +73,7 @@ def _flatten_config(config: cfgsvc.AtlasConfig) -> dict[str, object]:
 @config_app.command("show")
 def show() -> None:
     """Print the current masked config and setting metadata as YAML."""
-    snapshot = control_plane_service.get_config_snapshot()
+    snapshot = control_plane_service.get_config_snapshot(conn=_get_connection())
     typer.echo(
         yaml.safe_dump(
             snapshot.model_dump(),
@@ -85,7 +85,7 @@ def show() -> None:
 @config_app.command("json")
 def emit_json() -> None:
     """Emit the canonical masked snapshot consumed by gateway and surfaces."""
-    snapshot = control_plane_service.get_config_snapshot()
+    snapshot = control_plane_service.get_config_snapshot(conn=_get_connection())
     typer.echo(json.dumps(snapshot.model_dump(), ensure_ascii=False))
 
 
