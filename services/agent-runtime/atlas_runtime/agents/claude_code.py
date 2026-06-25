@@ -62,7 +62,19 @@ class ClaudeCodeAgent(AgentRuntime):
         mission_id: str,
         run_id: str,
         prompt: str,
+        cancel_token: Optional[threading.Event] = None,
     ) -> RunOutcome:
+        # cancel_token is accepted for ABC conformance. The SDK driver streams
+        # asynchronously; a pre-set token short-circuits before the SDK call so a
+        # cancelled run never starts a new session.
+        if cancel_token is not None and cancel_token.is_set():
+            self._safe_emit(
+                conn, lock, run_id, event_type="run_cancelled",
+                data={"runtime": "claude_code", "stop_reason": "cancelled"},
+            )
+            return RunOutcome(
+                status="failed", summary="cancelled before SDK start", stop_reason="cancelled"
+            )
         query_fn, options_factory = self._resolve()
         summary: list[str] = []
         state = {"status": "succeeded"}

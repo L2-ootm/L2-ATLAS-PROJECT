@@ -38,11 +38,14 @@ from atlas_runtime import audit_service
 # outgoing set, so any attempt to leave them raises ValueError before a DB write is
 # even attempted (the DB trigger is the belt-and-suspenders backstop, T-10.3-01-IMMUT).
 _ALLOWED_FROM: dict[SessionState, frozenset] = {
-    "starting": frozenset({"active", "failed"}),
-    "active": frozenset({"suspended", "cancelling", "completed", "failed"}),
+    # `reclaimed` is reachable from EVERY non-terminal live state: the startup
+    # reconciliation sweep (plan 04) must be able to reclaim an orphaned session
+    # regardless of whether it died active, suspended, or mid-resume.
+    "starting": frozenset({"active", "failed", "reclaimed"}),
+    "active": frozenset({"suspended", "cancelling", "completed", "failed", "reclaimed"}),
     "suspended": frozenset({"resuming", "cancelling", "reclaimed", "failed"}),
-    "resuming": frozenset({"active", "failed"}),
-    "cancelling": frozenset({"completed", "failed"}),
+    "resuming": frozenset({"active", "failed", "reclaimed"}),
+    "cancelling": frozenset({"completed", "failed", "reclaimed"}),
     "completed": frozenset(),
     "failed": frozenset(),
     "reclaimed": frozenset(),
@@ -297,9 +300,85 @@ def transition_session(
     )
 
 
+def heartbeat(conn: sqlite3.Connection, lock: threading.Lock, session_id: str) -> None:
+    """Refresh an active session's `heartbeat_at` to now (liveness, no transition, no audit).
+
+    Owner-token + heartbeat-TTL liveness (stdlib only; never the POSIX kill(pid, 0) liveness
+    probe, which is broken on Windows — RESEARCH Pitfall 2). A session whose heartbeat goes
+    stale beyond the TTL is treated as orphaned by `reconcile_orphans`.
+    """
+    with lock:
+        with conn:
+            conn.execute(
+                "UPDATE surface_sessions SET heartbeat_at=? WHERE id=? AND state='active'",
+                (_now_iso(), session_id),
+            )
+
+
+def reconcile_orphans(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    *,
+    ttl_seconds: float,
+) -> list[str]:
+    """Startup sweep: leave no unowned running session or run (SURF-05, AUD-01).
+
+    Reads DB state (NOT the in-process `_active_threads` dict, which is lost on restart —
+    RESEARCH Runtime State Inventory). Any non-terminal session whose heartbeat is null or
+    older than the TTL is reclaimed and its running runs cancelled; any run still left
+    `running` whose session is absent or already reclaimed (a crash-left orphan at startup)
+    is cancelled too. All transitions/cancellations are audited. Idempotent: a second sweep
+    over already-reclaimed sessions and cancelled runs is a no-op.
+
+    Returns the list of reclaimed session ids.
+    """
+    from atlas_runtime import run_service
+
+    cutoff = (
+        datetime.datetime.now(datetime.timezone.utc)
+        - datetime.timedelta(seconds=ttl_seconds)
+    ).isoformat()
+    reclaimed: list[str] = []
+
+    stale = conn.execute(
+        "SELECT id FROM surface_sessions "
+        "WHERE state IN ('active','suspended','resuming') "
+        "AND (heartbeat_at IS NULL OR heartbeat_at < ?)",
+        (cutoff,),
+    ).fetchall()
+    for (sid,) in stale:
+        run_rows = conn.execute(
+            "SELECT id, mission_id FROM runs WHERE session_id=? AND status='running'",
+            (sid,),
+        ).fetchall()
+        transition_session(conn, lock, sid, "reclaimed")
+        for rid, mid in run_rows:
+            try:
+                run_service.cancel_run(conn, lock, run_id=rid, mission_id=mid)
+            except ValueError:
+                pass  # already terminal — idempotent
+        reclaimed.append(sid)
+
+    # Crash-left running runs whose owning session is absent or reclaimed.
+    orphan_runs = conn.execute(
+        "SELECT r.id, r.mission_id FROM runs r "
+        "LEFT JOIN surface_sessions s ON r.session_id = s.id "
+        "WHERE r.status='running' AND (s.id IS NULL OR s.state='reclaimed')"
+    ).fetchall()
+    for rid, mid in orphan_runs:
+        try:
+            run_service.cancel_run(conn, lock, run_id=rid, mission_id=mid)
+        except ValueError:
+            pass
+
+    return reclaimed
+
+
 __all__ = [
     "create_session",
     "get_session",
+    "heartbeat",
     "list_sessions",
+    "reconcile_orphans",
     "transition_session",
 ]

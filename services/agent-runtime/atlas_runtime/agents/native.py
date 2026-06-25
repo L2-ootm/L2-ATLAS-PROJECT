@@ -23,6 +23,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 import threading
+import time
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -146,6 +147,7 @@ class NativeAtlasAgent(AgentRuntime):
         mission_id: str,
         run_id: str,
         prompt: str,
+        cancel_token: Optional[threading.Event] = None,
     ) -> RunOutcome:
         # Persist the generated prompt/tool/context contract before foundation
         # execution. Failure is fail-safe for auditability: no untracked run.
@@ -247,7 +249,27 @@ class NativeAtlasAgent(AgentRuntime):
 
         worker = threading.Thread(target=_drive, name=f"native-run-{run_id[:8]}", daemon=True)
         worker.start()
-        worker.join(self._max_runtime_s)
+        # Cancel-aware watchdog: poll-join in small intervals so a set cancel_token
+        # is observed between turns. The single opaque run_conversation() call cannot
+        # be interrupted mid-call (D-001: no foundation hook); cancellation takes effect
+        # at this checkpoint, and the max-runtime deadline remains the hard backstop.
+        _deadline = time.monotonic() + self._max_runtime_s
+        _poll = min(0.1, self._max_runtime_s) if self._max_runtime_s > 0 else 0.1
+        while worker.is_alive():
+            if cancel_token is not None and cancel_token.is_set():
+                self._safe_emit(
+                    conn, lock, run_id, event_type="run_cancelled",
+                    data={"runtime": "native", "stop_reason": "cancelled"},
+                )
+                return RunOutcome(
+                    status="failed",
+                    summary="cancelled: cooperative cancel observed at watchdog checkpoint",
+                    stop_reason="cancelled",
+                )
+            remaining = _deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            worker.join(min(_poll, remaining))
         if worker.is_alive():
             self._safe_emit(
                 conn, lock, run_id, event_type="failure",

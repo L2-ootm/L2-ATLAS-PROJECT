@@ -110,6 +110,21 @@ def invoke(
     run_id = mission_service.ensure_operator_run(conn, lock)
     args_json = _redact(json.dumps(args))  # redact ONCE at the boundary
 
+    # Cancel gate (SURF-06, Pattern 7c): if cancellation was requested, a tool/subprocess
+    # must NOT start. The token rides the internal `ctx` carrier (not a persisted public
+    # model, so D-013-safe); the public signature is unchanged. Any adapter that spawns a
+    # subprocess must additionally poll `ctx["cancel_token"]` and call proc.terminate()
+    # then proc.kill() on cancel (Pattern 7d) — subprocesses ARE killable, unlike the
+    # in-process model call.
+    cancel_token = ctx.get("cancel_token")
+    if cancel_token is not None and cancel_token.is_set():
+        emit(
+            conn, lock, run_id=run_id, event_type="tool_failed", tool_name=tool_name,
+            data={"tool_name": tool_name, "stop_reason": "cancelled"},
+            policy_result="cancelled",
+        )
+        return ToolResult(tool_name=tool_name, ok=False, error="cancelled")
+
     emit(
         conn, lock, run_id=run_id, event_type="tool_requested", tool_name=tool_name,
         data={"tool_name": tool_name, "risk_level": manifest.risk_level},
