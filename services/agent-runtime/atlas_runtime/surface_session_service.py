@@ -374,11 +374,62 @@ def reconcile_orphans(
     return reclaimed
 
 
+def resume_session(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    session_id: str,
+    *,
+    owner_token: str,
+    owner_pid: Optional[int] = None,
+) -> SurfaceSession:
+    """Re-bind a suspended session to a live owner and rebuild its context (SURF-05).
+
+    Replays the immutable Phase 10.2 RunContractSnapshot for the session's run via
+    `agent_contract_service.replay_contract`, asserting the stored prompt/tool-catalog/
+    context-policy versions still match — a mismatch raises `ContractCompatibilityError`
+    and NO resume happens (fail closed; authority cannot widen across a version change).
+    Then drives `suspended -> resuming -> active` (guarded by `_ALLOWED_FROM`), mints a
+    fresh `owner_token`, and refreshes `heartbeat_at` so the plan-04 reconciliation sweep
+    treats the session as owned-alive. The transition into `active` emits the audited
+    `surface_session_resumed` event. Reuses the existing contract replay — no new runtime,
+    no new snapshot format (AGNT-01 / locked CONTEXT decision).
+
+    Surface/workspace/mission-run-session identity is preserved (only state/ownership/
+    heartbeat change). Raises ValueError if the session is missing or not in a resumable
+    state; `ContractCompatibilityError`/`LookupError` propagate on contract drift/absence.
+    """
+    from atlas_runtime import agent_contract_service
+
+    session = get_session(conn, session_id)
+    if session is None:
+        raise ValueError(f"no surface session {session_id}")
+
+    # Fail-closed contract replay BEFORE any transition (no resume on drift/missing snapshot).
+    agent_contract_service.replay_contract(
+        conn,
+        session.run_id,
+        expected_prompt_version=session.prompt_version,
+        expected_catalog_version=session.tool_catalog_version,
+        expected_context_policy_version=session.context_policy_version,
+    )
+
+    transition_session(conn, lock, session_id, "resuming")
+    with lock:
+        with conn:
+            conn.execute(
+                "UPDATE surface_sessions SET owner_token=?, owner_pid=?, heartbeat_at=? WHERE id=?",
+                (owner_token, owner_pid, _now_iso(), session_id),
+            )
+    transition_session(conn, lock, session_id, "active")  # emits surface_session_resumed
+    return get_session(conn, session_id)
+
+
 __all__ = [
     "create_session",
     "get_session",
     "heartbeat",
     "list_sessions",
     "reconcile_orphans",
+    "resume_session",
     "transition_session",
 ]
