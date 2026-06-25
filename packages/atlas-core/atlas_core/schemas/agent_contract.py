@@ -35,6 +35,10 @@ ContextSourceType = Literal[
     "web",
     "memory",
 ]
+ToolCategory = Literal["read", "write", "shell", "network", "memory", "delegation"]
+WorkspaceScope = Literal["none", "current", "project", "global"]
+Idempotency = Literal["idempotent", "keyed", "non_idempotent"]
+ApprovalPolicy = Literal["allow", "ask", "deny"]
 
 
 def _require_text(value: str) -> str:
@@ -213,6 +217,93 @@ class ContextEnvelope(_FrozenContract):
         return self
 
 
+class ToolCapability(_FrozenContract):
+    """Provider-neutral tool metadata rendered and enforced by every surface."""
+
+    name: str
+    version: str = "1.0.0"
+    aliases: tuple[str, ...] = ()
+    description: str
+    category: ToolCategory
+    input_schema_json: str
+    output_schema_json: str | None = None
+    permissions: tuple[str, ...] = ()
+    workspace_scope: WorkspaceScope = "none"
+    network_scope: tuple[str, ...] = ()
+    side_effects: tuple[str, ...]
+    timeout_ms: int = Field(ge=1, le=3_600_000)
+    cancellable: bool
+    idempotency: Idempotency
+    max_result_bytes: int = Field(ge=1, le=100_000_000)
+    approval_policy: ApprovalPolicy
+    audit_events: tuple[str, ...]
+    renderer: str
+    source: Literal["atlas", "hermes", "mcp"]
+    available: bool = True
+
+    @field_validator("name", "description", "renderer")
+    @classmethod
+    def validate_required_text(cls, value: str) -> str:
+        return _require_text(value)
+
+    @field_validator("version")
+    @classmethod
+    def validate_version(cls, value: str) -> str:
+        return ContractVersion.validate_version(value)
+
+    @field_validator(
+        "aliases",
+        "permissions",
+        "network_scope",
+        "side_effects",
+        "audit_events",
+    )
+    @classmethod
+    def validate_text_tuples(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(_require_text(value) for value in values)
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("tuple values must be unique")
+        return normalized
+
+    @field_validator("input_schema_json", "output_schema_json")
+    @classmethod
+    def validate_schema_json(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        import json
+
+        parsed = json.loads(value)
+        if not isinstance(parsed, dict) or parsed.get("type") != "object":
+            raise ValueError("schema JSON must encode an object schema")
+        return value
+
+    @model_validator(mode="after")
+    def validate_risk_semantics(self) -> "ToolCapability":
+        if not self.side_effects:
+            raise ValueError("side_effects classification is required")
+        if not self.audit_events:
+            raise ValueError("audit_events classification is required")
+        if self.category in {"write", "shell"} and self.approval_policy == "allow":
+            raise ValueError("write and shell capabilities cannot default allow")
+        return self
+
+
+class ToolCatalog(_FrozenContract):
+    catalog_version: str
+    catalog_sha256: str
+    capabilities: tuple[ToolCapability, ...]
+
+    @field_validator("catalog_version")
+    @classmethod
+    def validate_version(cls, value: str) -> str:
+        return ContractVersion.validate_version(value)
+
+    @field_validator("catalog_sha256")
+    @classmethod
+    def validate_sha256(cls, value: str) -> str:
+        return ContractVersion.validate_sha256(value)
+
+
 __all__ = [
     "ContextEnvelope",
     "ContextSource",
@@ -227,4 +318,6 @@ __all__ = [
     "SurfaceKind",
     "WorkspaceIdentity",
     "WorkspaceKind",
+    "ToolCapability",
+    "ToolCatalog",
 ]
