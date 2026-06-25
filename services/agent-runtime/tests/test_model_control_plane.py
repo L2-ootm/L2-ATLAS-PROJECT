@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 from atlas_core.schemas.agent_contract import ModelIdentity
+from typer.testing import CliRunner
 
 from atlas_runtime import (
     audit_service,
@@ -148,3 +149,66 @@ def test_fallback_status_reflects_recorded_event_only(
 
     assert before.fallback_status == "not_used"
     assert after.fallback_status == "used"
+
+
+def test_shared_snapshot_includes_auth_and_effective_model_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    db,
+    lock: threading.Lock,
+) -> None:
+    from atlas_runtime import control_plane_service
+
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    auth_service.set_api_key("openrouter", "secret-7777")
+    _register(
+        db,
+        lock,
+        provider="openrouter",
+        model="anthropic/claude-sonnet-4",
+    )
+
+    snapshot = control_plane_service.get_config_snapshot(
+        config_service.AtlasConfig(),
+        conn=db,
+    )
+
+    assert any(
+        status.provider == "openrouter" and status.status == "auth_present"
+        for status in snapshot.auth
+    )
+    assert snapshot.effective is not None
+    assert snapshot.effective.effective_provider == "openrouter"
+    assert snapshot.effective.model_health == "available"
+    assert "secret-7777" not in json.dumps(snapshot.model_dump())
+
+
+def test_models_status_json_matches_shared_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    db,
+    lock: threading.Lock,
+) -> None:
+    from atlas_runtime import control_plane_service
+    from atlas_runtime.cli import main as cli_main
+
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    config_service.save_config(config_service.AtlasConfig())
+    _register(
+        db,
+        lock,
+        provider="openrouter",
+        model="anthropic/claude-sonnet-4",
+    )
+    monkeypatch.setattr(cli_main, "_get_connection", lambda: db)
+    monkeypatch.setattr(cli_main, "_get_lock", lambda: lock)
+    expected = control_plane_service.get_config_snapshot(
+        config_service.load_config(),
+        conn=db,
+    ).effective
+
+    result = CliRunner().invoke(cli_main.app, ["models", "status", "--json"])
+
+    assert result.exit_code == 0, result.output
+    assert expected is not None
+    assert json.loads(result.output) == expected.model_dump()
