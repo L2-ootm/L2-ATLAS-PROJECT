@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
-last_updated: 2026-06-25T23:45:00.000Z
+last_updated: "2026-06-25T23:05:05.000Z"
 last_activity: 2026-06-25
 progress:
   total_phases: 8
   completed_phases: 3
-  total_plans: 14
-  completed_plans: 32
-  percent: 38
-stopped_at: Phase 10.4 checked plan complete — Wave 1 execution next
+  total_plans: 20
+  completed_plans: 14
+  percent: 70
+stopped_at: Completed 10.4-01-PLAN.md — Wave 2 auth and config services next
 ---
 
 # STATE — L2 ATLAS
@@ -27,11 +27,11 @@ owner-only durable config/auth files; typed optimistic conflicts; audit-backed c
 read-only external auth detection; one provider/model effective-status projection; no watcher
 daemon, OAuth flow, keychain, new dependency, or active-session model mutation.
 
-Research, pattern mapping, and the Nyquist validation contract are complete. Five TDD plans were
-checked across four dependency waves with 11/11 requirements covered and no same-wave ownership
-conflicts. The initial shared ownership of `schemas/core.py` was resolved by making Plan 10.4-01
-the single writer for all Phase 10.4 audit literals. Next: execute Wave 1, then continue through
-the auth/config, model, and gateway waves before phase verification.
+Plan 10.4-01 is complete. ATLAS now has frozen versioned control-plane schemas, a shared
+zero-dependency secure store, and fail-closed revisioned configuration transactions. Verification:
+15 contract tests, 27 secure-store/config tests, 90 atlas-core tests, and a 40-test compatibility
+slice passed; locked config reads average 2.149 ms across 1,000 reads. Next: execute Wave 2 plans
+10.4-02 (auth plane) and 10.4-03 (masked config GET/PATCH + audit).
 
 ## Prior Position — Phase 10.3 Complete
 
@@ -40,12 +40,16 @@ Phase 10.3 (Shared Surface Session & Workspace Protocol) completed all 5 plans a
 
 - **10.3-01:** frozen `SurfaceSession`/`SurfaceEvent` models, migration 0016, lifecycle
   state-machine service (emit-after-lock, terminal-immutable, lazy operator sentinel).
+
 - **10.3-02:** fail-closed `workspace_service` — global/project resolution + typed path errors
   (traversal/symlink_escape/stale_root/unregistered/cross_project, mixed-drive safe).
+
 - **10.3-03:** per-session `SurfaceEvent` normalizer (`get_events_for_session`, monotonic seq,
   full discriminated kind set, `replay_since`) — pure read-projection, no new bus.
+
 - **10.3-04:** cooperative `cancel_token` (executor + native watchdog + tool gate) + heartbeat
   liveness + `reconcile_orphans` startup sweep (stdlib owner-token/TTL, no os.kill).
+
 - **10.3-05:** `resume_session` re-binding ownership + replaying the 10.2 `RunContractSnapshot`
   (fail closed on version drift), identity-preserving.
 
@@ -68,7 +72,7 @@ Phase 10.2 completed all 5 plans across 4 dependency waves:
 - **10.2-04:** immutable run-contract snapshots, replay, and resume invariants.
 - **10.2-05:** 30-scenario evaluation dataset and deterministic promotion gate.
 
-Progress: [██████████] 100%
+Progress: [███████░░░] 72%
 
 Verification passed on 2026-06-25: agent-runtime 436 tests, atlas-core 52 tests,
 and the offline promotion gate 65 checks with 33 scenarios. Next: discuss and
