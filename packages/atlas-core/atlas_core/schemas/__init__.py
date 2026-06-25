@@ -8,6 +8,8 @@ from atlas_core.schemas.agent_contract import (
     ModelIdentity,
     SessionBootstrap,
     SurfaceIdentity,
+    ToolCapability,
+    ToolCatalog,
     WorkspaceIdentity,
 )
 from atlas_core.schemas.core import (
@@ -51,6 +53,8 @@ __all__ = [
     "Source",
     "SurfaceIdentity",
     "ToolCall",
+    "ToolCapability",
+    "ToolCatalog",
     "WikiPage",
     "WorkspaceIdentity",
     "InstructionSource",
