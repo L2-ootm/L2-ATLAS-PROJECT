@@ -2,21 +2,35 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
-status: ready_to_plan
-last_updated: 2026-06-25T18:00:00.000Z
+status: planning
+last_updated: 2026-06-25T22:43:36.884Z
 last_activity: 2026-06-25
 progress:
   total_phases: 8
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 14
   completed_plans: 32
-  percent: 25
-stopped_at: Phase 10.3 complete (5/5) — ready to discuss Phase 10.4
+  percent: 38
+stopped_at: Phase 10.4 context captured — research and planning in progress
 ---
 
 # STATE — L2 ATLAS
 
-## Current Position — Phase 10.3 Complete
+## Current Position — Phase 10.4 Planning
+
+Phase 10.4 (Global Configuration, Auth & Model Control Plane) entered autonomous execution on
+2026-06-25. Smart-discuss context is captured in
+`.planning/phases/10.4-global-config-auth-model-control-plane/10.4-CONTEXT.md`.
+
+Locked direction: one revisioned masked GET/PATCH contract; OS-handle cross-process locking;
+owner-only durable config/auth files; typed optimistic conflicts; audit-backed change events;
+read-only external auth detection; one provider/model effective-status projection; no watcher
+daemon, OAuth flow, keychain, new dependency, or active-session model mutation.
+
+Next: research existing seams, produce checked plans, execute with TDD, then verify all
+CFG-01..06, AUTH-01..02, MOD-01..02, and UX-01 requirements.
+
+## Prior Position — Phase 10.3 Complete
 
 Phase 10.3 (Shared Surface Session & Workspace Protocol) completed all 5 plans across 3 waves
 (2026-06-25), verified 8/8 (all SURF-01..06, AGNT-01, AUD-01):
