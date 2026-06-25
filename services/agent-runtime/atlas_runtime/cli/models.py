@@ -4,9 +4,11 @@ Thin wrappers over atlas_runtime.model_registry; no SQL here.
 """
 from __future__ import annotations
 
+import json
+
 import typer
 
-from atlas_runtime import model_registry
+from atlas_runtime import config_service, control_plane_service, model_registry
 
 models_app = typer.Typer(name="models", help="AI router model registry")
 
@@ -60,3 +62,34 @@ def list_cmd(
         flag = "" if row["active"] else "  [inactive]"
         provider = f" ({row['provider']})" if row["provider"] else ""
         typer.echo(f"{row['model_id']}{provider}{flag}")
+
+
+@models_app.command("status")
+def status(
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Emit the shared ProviderModelStatus object as JSON",
+    ),
+) -> None:
+    """Show configured/effective provider, model, auth, and registry health."""
+    from atlas_runtime.cli.main import _get_connection
+
+    snapshot = control_plane_service.get_config_snapshot(
+        config_service.load_config(),
+        conn=_get_connection(),
+    )
+    effective = snapshot.effective
+    if effective is None:
+        typer.echo("model status unavailable", err=True)
+        raise typer.Exit(1)
+    if json_output:
+        typer.echo(json.dumps(effective.model_dump(), ensure_ascii=False))
+        return
+    typer.echo(
+        f"{effective.effective_provider}/{effective.effective_model} "
+        f"[{effective.model_health}] source={effective.source} "
+        f"auth={effective.auth_status} fallback={effective.fallback_status}"
+    )
+    if effective.remediation:
+        typer.echo(f"remediation: {effective.remediation}")
