@@ -17,7 +17,7 @@ from atlas_core.schemas.control_plane import (
 )
 
 
-def test_atlas_config_defaults_are_versioned_and_backward_compatible():
+def test_atlas_config_defaults_are_versioned_and_backward_compatible() -> None:
     config = AtlasConfig()
 
     assert config.schema_version == 1
@@ -31,7 +31,7 @@ def test_atlas_config_defaults_are_versioned_and_backward_compatible():
     assert config.modules["wiki"] is True
 
 
-def test_config_contracts_are_frozen_and_forbid_unknown_fields():
+def test_config_contracts_are_frozen_and_forbid_unknown_fields() -> None:
     config = AtlasConfig()
 
     with pytest.raises(ValidationError):
@@ -41,18 +41,18 @@ def test_config_contracts_are_frozen_and_forbid_unknown_fields():
 
 
 @pytest.mark.parametrize("value", ["sk-live-secret", "token-value", " env:KEY"])
-def test_provider_api_key_rejects_inline_or_ambiguous_values(value):
+def test_provider_api_key_rejects_inline_or_ambiguous_values(value: str) -> None:
     with pytest.raises(ValidationError):
         AtlasConfig.model_validate({"provider": {"api_key": value}})
 
 
 @pytest.mark.parametrize("value", ["", "env:OPENROUTER_API_KEY", "env:KEY_2"])
-def test_provider_api_key_accepts_only_empty_or_env_reference(value):
+def test_provider_api_key_accepts_only_empty_or_env_reference(value: str) -> None:
     config = AtlasConfig.model_validate({"provider": {"api_key": value}})
     assert config.provider.api_key == value
 
 
-def test_patch_request_requires_nonnegative_revision_and_json_object():
+def test_patch_request_requires_nonnegative_revision_and_json_object() -> None:
     request = ConfigPatchRequest(
         expected_revision=3,
         changes_json='{"provider.model":"anthropic/claude-sonnet-4"}',
@@ -69,7 +69,7 @@ def test_patch_request_requires_nonnegative_revision_and_json_object():
         ConfigPatchRequest(expected_revision=0, changes_json="{bad json")
 
 
-def test_public_status_contracts_are_json_stable_and_secret_free():
+def test_public_status_contracts_are_json_stable_and_secret_free() -> None:
     setting = SettingStatus(
         path="provider.model",
         configured_json='"anthropic/claude-sonnet-4"',
@@ -120,6 +120,6 @@ def test_public_status_contracts_are_json_stable_and_secret_free():
         "provider_fallback",
     ],
 )
-def test_audit_event_accepts_control_plane_event_types(event_type):
+def test_audit_event_accepts_control_plane_event_types(event_type: str) -> None:
     event = AuditEvent(run_id="run-1", event_type=event_type)
     assert event.event_type == event_type
