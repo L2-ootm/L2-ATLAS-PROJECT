@@ -1,6 +1,7 @@
 """Revisioned, fail-closed configuration transaction tests."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -137,3 +138,56 @@ def test_patch_rejects_unknown_or_invalid_values_with_typed_field(
     assert caught.value.code == "config_invalid"
     assert caught.value.field == field
     assert not (tmp_path / "config.yaml").exists()
+
+
+def test_snapshot_preserves_top_level_compatibility_and_setting_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from atlas_runtime import control_plane_service
+
+    monkeypatch.setenv("SNAPSHOT_PROVIDER_KEY", "resolved-secret-never-return")
+    config = AtlasConfig.model_validate(
+        {
+            "provider": {
+                "api_key": "env:SNAPSHOT_PROVIDER_KEY",
+                "model": "configured/model",
+            }
+        }
+    )
+
+    snapshot = control_plane_service.get_config_snapshot(config)
+    settings = {setting.path: setting for setting in snapshot.settings}
+
+    assert snapshot.provider.model == "configured/model"
+    assert snapshot.runtime.default_agent == "native"
+    assert snapshot.gateway.rust_port == 8484
+    assert snapshot.cockpit.port == 3000
+    assert snapshot.context.token_budget == 8000
+    assert snapshot.permission.mode == "ask"
+    assert snapshot.modules["wiki"] is True
+    assert snapshot.mock_mode is False
+    assert settings["provider.api_key"].configured_json == '"env:SNAPSHOT_PROVIDER_KEY"'
+    assert settings["provider.api_key"].effective_json == "true"
+    assert settings["provider.api_key"].source == "env"
+    assert settings["gateway.rust_port"].restart_required is True
+    assert settings["cockpit.port"].restart_required is True
+    assert settings["context.token_budget"].restart_required is False
+    assert "resolved-secret-never-return" not in json.dumps(snapshot.model_dump())
+
+
+def test_snapshot_reports_focus_model_override_as_effective_source() -> None:
+    from atlas_runtime import control_plane_service
+
+    snapshot = control_plane_service.get_config_snapshot(
+        AtlasConfig(),
+        focus_framework="focus/override-model",
+    )
+    model = next(
+        setting
+        for setting in snapshot.settings
+        if setting.path == "provider.model"
+    )
+
+    assert model.configured_json == '"anthropic/claude-sonnet-4"'
+    assert model.effective_json == '"focus/override-model"'
+    assert model.source == "focus"
