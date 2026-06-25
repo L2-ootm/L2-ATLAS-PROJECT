@@ -22,6 +22,7 @@ from atlas_core.schemas.core import (
     ToolCall,
     WikiPage,
 )
+from atlas_core.schemas.brain import BrainEdge, BrainNode
 from atlas_core.schemas.discord import (
     DiscordAction,
     DiscordApproval,
@@ -36,6 +37,8 @@ from atlas_core.schemas.registry_v2 import (
 __all__ = [
     "Artifact",
     "AuditEvent",
+    "BrainEdge",
+    "BrainNode",
     "ContextEnvelope",
     "ContextSource",
     "ContractVersion",
