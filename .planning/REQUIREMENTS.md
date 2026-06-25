@@ -33,7 +33,7 @@ surfaces over the same projects, context, configuration, permissions, tools, and
   rewrite its core identity or policy.
 - [x] **PROMPT-04**: Stable system-prompt bytes are frozen per session for provider prompt caching;
   dynamic context and recall are injected separately and cannot silently mutate invariants.
-- [ ] **PROMPT-05**: Prompt versions, source hashes, tool-catalog version, and context source IDs
+- [x] **PROMPT-05**: Prompt versions, source hashes, tool-catalog version, and context source IDs
   are audit-recorded and replayable without persisting secrets or hidden chain-of-thought.
 
 ### TOOL — Tool-Call Contract
