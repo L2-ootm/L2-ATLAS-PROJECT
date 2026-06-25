@@ -27,7 +27,7 @@ import sqlite3
 from dataclasses import dataclass, field
 
 from atlas_runtime import config_service, focus_service, goal_service, mission_service, project_service
-from atlas_runtime.memory_router import RouterQuery, default_router, redact
+from atlas_runtime.memory_router import RetrievalEnvelope, RouterQuery, default_router, redact
 
 # `redact` is re-exported from memory_router so existing callers (and tests) keep
 # using `context_service.redact`; it is the single secret-redaction implementation.
@@ -49,6 +49,7 @@ class AgentContext:
 
     markdown: str
     sources: tuple[str, ...] = field(default_factory=tuple)
+    retrieval: RetrievalEnvelope | None = None
 
 
 def _render_goal_nodes(
@@ -177,9 +178,16 @@ def assemble_context(
     router = default_router(
         enable_semantic=ctx_cfg.enable_semantic, enable_skills=ctx_cfg.enable_skills
     )
-    dyn_lines, dyn_sources = router.assemble(conn, query, token_budget=ctx_cfg.token_budget)
-    lines.extend(dyn_lines)
-    sources.extend(dyn_sources)
+    retrieval = router.assemble_envelope(
+        conn,
+        query,
+        token_budget=ctx_cfg.token_budget,
+        relevance_threshold=-1_000_000.0,
+    )
+    if retrieval.markdown:
+        lines.extend(retrieval.markdown.rstrip().splitlines())
+        lines.append("")
+    sources.extend(item.source_id for item in retrieval.selected)
 
     # Loop-engineering operating contract (Layer 7) — turns the context above
     # into instructions, so the run is driven by the synthesized brief rather
@@ -204,4 +212,4 @@ def assemble_context(
         lines.append("")
 
     markdown = "\n".join(lines).rstrip() + "\n"
-    return AgentContext(markdown=markdown, sources=tuple(sources))
+    return AgentContext(markdown=markdown, sources=tuple(sources), retrieval=retrieval)
