@@ -69,22 +69,22 @@ surfaces over the same projects, context, configuration, permissions, tools, and
 
 ### SURF — Shared Session and Workspace Protocol
 
-- [ ] **SURF-01**: A surface session records surface kind/instance, workspace kind, project/root,
+- [x] **SURF-01**: A surface session records surface kind/instance, workspace kind, project/root,
   mission/run/session, agent/model, permission mode, prompt/context versions, and lifecycle.
-- [ ] **SURF-02**: Sessions run in either the ATLAS global workspace or a registered Project
+- [x] **SURF-02**: Sessions run in either the ATLAS global workspace or a registered Project
   root resolved through the existing project model.
-- [ ] **SURF-03**: Canonical path validation blocks traversal, symlink escape, stale roots, and
+- [x] **SURF-03**: Canonical path validation blocks traversal, symlink escape, stale roots, and
   undeclared cross-project writes.
-- [ ] **SURF-04**: TUI and WebUI consume one normalized event stream for text, activity, tools,
+- [x] **SURF-04**: TUI and WebUI consume one normalized event stream for text, activity, tools,
   results, tasks/subagents, retries, retrieval, approvals, errors, and completion.
-- [ ] **SURF-05**: Disconnect/reconnect/resume/process restart preserves session/workspace identity
+- [x] **SURF-05**: Disconnect/reconnect/resume/process restart preserves session/workspace identity
   and cannot leave an unowned running execution.
-- [ ] **SURF-06**: Cancellation propagates to model stream, active tools, subprocesses, and
+- [x] **SURF-06**: Cancellation propagates to model stream, active tools, subprocesses, and
   child agents and emits a terminal audited outcome.
 
 ### AGNT — Existing ATLAS Agent
 
-- [ ] **AGNT-01**: TUI and WebUI use the existing ATLAS agent/runtime; no donor-specific
+- [x] **AGNT-01**: TUI and WebUI use the existing ATLAS agent/runtime; no donor-specific
   `AgentRuntime`, provider layer, tool executor, or memory backend is introduced.
 
 ### CFG — Global Configuration Control Plane
@@ -158,7 +158,7 @@ surfaces over the same projects, context, configuration, permissions, tools, and
 
 ### AUDIT / SECURITY
 
-- [ ] **AUD-01**: Every surface session, model call, retrieval, tool call, permission transition,
+- [x] **AUD-01**: Every surface session, model call, retrieval, tool call, permission transition,
   config change, subagent, cancellation, and completion has structured audit identity.
 - [ ] **AUD-02**: Audit can show cross-surface terminal outcomes but never grants another surface
   decision authority.

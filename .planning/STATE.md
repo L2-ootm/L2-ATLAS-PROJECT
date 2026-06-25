@@ -3,20 +3,42 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: ready_to_plan
-last_updated: 2026-06-25T14:14:17.086Z
+last_updated: 2026-06-25T18:00:00.000Z
 last_activity: 2026-06-25
 progress:
   total_phases: 8
-  completed_phases: 1
-  total_plans: 9
-  completed_plans: 27
-  percent: 13
-stopped_at: Phase 10.2 complete (5/5) — ready to discuss Phase 10.3
+  completed_phases: 2
+  total_plans: 14
+  completed_plans: 32
+  percent: 25
+stopped_at: Phase 10.3 complete (5/5) — ready to discuss Phase 10.4
 ---
 
 # STATE — L2 ATLAS
 
-## Current Position — Phase 10.2 Complete
+## Current Position — Phase 10.3 Complete
+
+Phase 10.3 (Shared Surface Session & Workspace Protocol) completed all 5 plans across 3 waves
+(2026-06-25), verified 8/8 (all SURF-01..06, AGNT-01, AUD-01):
+
+- **10.3-01:** frozen `SurfaceSession`/`SurfaceEvent` models, migration 0016, lifecycle
+  state-machine service (emit-after-lock, terminal-immutable, lazy operator sentinel).
+- **10.3-02:** fail-closed `workspace_service` — global/project resolution + typed path errors
+  (traversal/symlink_escape/stale_root/unregistered/cross_project, mixed-drive safe).
+- **10.3-03:** per-session `SurfaceEvent` normalizer (`get_events_for_session`, monotonic seq,
+  full discriminated kind set, `replay_since`) — pure read-projection, no new bus.
+- **10.3-04:** cooperative `cancel_token` (executor + native watchdog + tool gate) + heartbeat
+  liveness + `reconcile_orphans` startup sweep (stdlib owner-token/TTL, no os.kill).
+- **10.3-05:** `resume_session` re-binding ownership + replaying the 10.2 `RunContractSnapshot`
+  (fail closed on version drift), identity-preserving.
+
+Verification 2026-06-25: agent-runtime 504 passed (1 pre-existing `claude_agent_sdk` env
+failure, 2 skipped), atlas-core 75 passed. Scope boundaries are deliberate: TUI/WebUI event
+**rendering** → 10.6/10.7; permission **routing** → 10.5; cancellation granularity bounded to
+between-turn + tool-gate + subprocess (no mid-call model interruption, D-001). Next: discuss and
+plan Phase 10.4, Global Configuration, Auth & Model Control Plane.
+
+## Prior Position — Phase 10.2 Complete
 
 Phase 10.1 is closed with 3/3 plans complete and a documented OpenTUI/Bun
 idle-memory exception carried to Phase 10.6.
