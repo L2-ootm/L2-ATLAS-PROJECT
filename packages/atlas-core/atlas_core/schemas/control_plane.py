@@ -157,7 +157,7 @@ class ControlPlaneSnapshot(AtlasConfig):
     mock_mode: bool = True
 
 
-class ControlPlaneError(RuntimeError):
+class ControlPlaneError(ValueError):
     """Expected control-plane failure with a stable, secret-safe payload."""
 
     def __init__(
