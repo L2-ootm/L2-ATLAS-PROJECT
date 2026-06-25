@@ -1,29 +1,37 @@
-"""ATLAS config service — owns ``~/.atlas/config.yaml`` (ATLAS-level settings).
-
-Distinct from the foundation messaging config (``~/.hermes/config.yaml``, which the
-Python messaging gateway reads for channel adapters). This file holds ATLAS's own
-provider / runtime / gateway / cockpit / module settings — the substrate the setup
-wizard writes and the Rust gateway reads (masked) for the cockpit System page.
-
-Trust posture: secret values are stored as ``env:VAR_NAME`` references, never inline
-plaintext. The schema rejects raw-looking secrets so a key cannot leak into the file.
-Path resolution lives behind ``default_config_path()`` (one function), consistent with
-the 10.0 auth-store decision for future profiles.
-"""
+"""Versioned, locked owner of ``~/.atlas/config.yaml``."""
 from __future__ import annotations
 
 import os
 import pathlib
-import tempfile
+from collections.abc import Mapping
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from atlas_core.schemas.control_plane import (
+    AtlasConfig,
+    CockpitConfig,
+    ContextConfig,
+    ControlPlaneError,
+    GatewayConfig,
+    ModulesConfig,
+    PermissionConfig,
+    ProviderConfig,
+    RuntimeConfig,
+)
+from pydantic import ValidationError
+
+from atlas_runtime.secure_store import (
+    SecureStoreError,
+    durable_replace_text,
+    file_lock,
+    preserve_corrupt,
+)
 
 ATLAS_HOME_ENV = "ATLAS_HOME"
+CONFIG_SCHEMA_VERSION = 1
 
 
 def atlas_home() -> pathlib.Path:
-    """ATLAS-owned config/state dir (``ATLAS_HOME`` aware, default ``~/.atlas``)."""
+    """Return the ATLAS-owned config/state directory."""
     env = os.environ.get(ATLAS_HOME_ENV, "").strip()
     return pathlib.Path(env) if env else pathlib.Path.home() / ".atlas"
 
@@ -32,137 +40,259 @@ def default_config_path() -> pathlib.Path:
     return atlas_home() / "config.yaml"
 
 
-def _is_secret_ref(value: str) -> bool:
-    """A safe credential reference: empty or an ``env:VAR`` indirection."""
-    return value == "" or value.startswith("env:")
+def config_lock_path(path: pathlib.Path | None = None) -> pathlib.Path:
+    config_path = pathlib.Path(path or default_config_path())
+    return config_path.with_name(f"{config_path.name}.lock")
 
 
-class ProviderConfig(BaseModel):
-    name: str = "openrouter"
-    model: str = "anthropic/claude-sonnet-4"
-    api_key: str = ""  # MUST be "" or "env:VAR_NAME" — never an inline secret
-    base_url: str | None = None
-
-    @field_validator("api_key")
-    @classmethod
-    def _no_inline_secret(cls, v: str) -> str:
-        if not _is_secret_ref(v):
-            raise ValueError(
-                "provider.api_key must be empty or an 'env:VAR_NAME' reference, "
-                "never an inline secret value"
-            )
-        return v
+def _translate_store_error(exc: SecureStoreError) -> ControlPlaneError:
+    return ControlPlaneError(exc.code, exc.message, exc.remediation)
 
 
-class RuntimeConfig(BaseModel):
-    default_agent: str = "native"  # native | claude_code
-    iteration_budget: int = 90
-    compression: str = "auto"
+def _field_from_validation(exc: ValidationError) -> str | None:
+    errors = exc.errors()
+    if not errors:
+        return None
+    return ".".join(str(part) for part in errors[0].get("loc", ())) or None
 
 
-class GatewayConfig(BaseModel):
-    rust_port: int = 8484
-    messaging_enabled: bool = False
-    messaging_port: int = 8585
+def _validation_error(exc: ValidationError) -> ControlPlaneError:
+    field = _field_from_validation(exc)
+    label = f" for {field}" if field else ""
+    return ControlPlaneError(
+        "config_invalid",
+        f"invalid configuration value{label}",
+        "correct the named setting and retry",
+        field=field,
+    )
 
 
-class CockpitConfig(BaseModel):
-    port: int = 3000
-    branding: str = "atlas"
+def _load_unlocked(path: pathlib.Path) -> AtlasConfig:
+    if not path.is_file():
+        return AtlasConfig()
 
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        try:
+            preserve_corrupt(path)
+        except SecureStoreError as preserve_exc:
+            raise _translate_store_error(preserve_exc) from preserve_exc
+        raise ControlPlaneError(
+            "config_corrupt",
+            f"{path.name} is malformed and was preserved as {path.name}.corrupt",
+            "repair or replace the preserved config, then retry",
+        ) from exc
 
-class ContextConfig(BaseModel):
-    """Controls the MemoryRouter brief assembled before each agent run."""
+    if raw is None:
+        raw = {}
+    if not isinstance(raw, dict):
+        try:
+            preserve_corrupt(path)
+        except SecureStoreError as preserve_exc:
+            raise _translate_store_error(preserve_exc) from preserve_exc
+        raise ControlPlaneError(
+            "config_corrupt",
+            f"{path.name} must contain a YAML object",
+            "repair the preserved config so its top level is a mapping",
+        )
 
-    token_budget: int = 8000  # global budget for the dynamic (retrieved) sections
-    enable_semantic: bool = True  # blend semantic wiki hits when embeddings exist
-    enable_skills: bool = True  # surface matching skills from the inventory
+    version = raw.get("schema_version", CONFIG_SCHEMA_VERSION)
+    if version != CONFIG_SCHEMA_VERSION:
+        raise ControlPlaneError(
+            "config_schema_unsupported",
+            f"config schema version {version!r} is not supported",
+            "upgrade ATLAS or export the config with a compatible version",
+        )
 
-
-class AtlasConfig(BaseModel):
-    provider: ProviderConfig = Field(default_factory=ProviderConfig)
-    runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
-    gateway: GatewayConfig = Field(default_factory=GatewayConfig)
-    cockpit: CockpitConfig = Field(default_factory=CockpitConfig)
-    context: ContextConfig = Field(default_factory=ContextConfig)
-    modules: dict[str, bool] = Field(default_factory=lambda: {"wiki": True, "graph": True, "cashflow": False})
+    migrated = dict(raw)
+    migrated.setdefault("schema_version", CONFIG_SCHEMA_VERSION)
+    migrated.setdefault("revision", 0)
+    try:
+        return AtlasConfig.model_validate(migrated)
+    except ValidationError as exc:
+        raise _validation_error(exc) from exc
 
 
 def load_config(path: pathlib.Path | None = None) -> AtlasConfig:
-    """Load config from ``path`` (default ``~/.atlas/config.yaml``). Missing/empty
-    file yields defaults — always safe to call on a fresh install."""
-    path = path or default_config_path()
-    if not path.is_file():
-        return AtlasConfig()
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    return AtlasConfig.model_validate(data)
+    """Load config under the same advisory lock used by writers."""
+    config_path = pathlib.Path(path or default_config_path())
+    try:
+        with file_lock(config_lock_path(config_path)):
+            return _load_unlocked(config_path)
+    except SecureStoreError as exc:
+        raise _translate_store_error(exc) from exc
+
+
+def _apply_dotted_change(
+    data: dict[str, object],
+    dotted_key: str,
+    value: object,
+) -> None:
+    parts = dotted_key.split(".")
+    if not dotted_key or any(not part for part in parts):
+        raise ControlPlaneError(
+            "config_invalid",
+            "configuration path must be a non-empty dotted key",
+            "use a path such as provider.model",
+            field=dotted_key or None,
+        )
+    node: dict[str, object] = data
+    for part in parts[:-1]:
+        child = node.get(part)
+        if not isinstance(child, dict):
+            raise ControlPlaneError(
+                "config_invalid",
+                f"unknown configuration path {dotted_key}",
+                "reload the masked config and choose a supported setting",
+                field=dotted_key,
+            )
+        node = child
+    leaf = parts[-1]
+    if leaf not in node:
+        raise ControlPlaneError(
+            "config_invalid",
+            f"unknown configuration path {dotted_key}",
+            "reload the masked config and choose a supported setting",
+            field=dotted_key,
+        )
+    node[leaf] = value
+
+
+def _validated_with_revision(
+    data: dict[str, object],
+    revision: int,
+    *,
+    field_hint: str | None = None,
+) -> AtlasConfig:
+    data["schema_version"] = CONFIG_SCHEMA_VERSION
+    data["revision"] = revision
+    try:
+        return AtlasConfig.model_validate(data)
+    except ValidationError as exc:
+        error = _validation_error(exc)
+        if field_hint is not None:
+            error.field = field_hint
+        raise error from exc
+
+
+def _dump_config(config: AtlasConfig) -> str:
+    return yaml.safe_dump(
+        config.model_dump(),
+        sort_keys=False,
+        default_flow_style=False,
+    )
+
+
+def patch_config(
+    *,
+    expected_revision: int,
+    changes: Mapping[str, object],
+    path: pathlib.Path | None = None,
+) -> AtlasConfig:
+    """Apply dotted changes atomically with optimistic revision checking."""
+    config_path = pathlib.Path(path or default_config_path())
+    try:
+        with file_lock(config_lock_path(config_path)):
+            current = _load_unlocked(config_path)
+            if current.revision != expected_revision:
+                raise ControlPlaneError(
+                    "config_revision_conflict",
+                    (
+                        f"config changed from revision {expected_revision} "
+                        f"to {current.revision}"
+                    ),
+                    "reload the masked config and retry your patch",
+                    current_revision=current.revision,
+                )
+
+            data = current.model_dump()
+            last_field: str | None = None
+            for dotted_key, value in changes.items():
+                last_field = dotted_key
+                _apply_dotted_change(data, dotted_key, value)
+            updated = _validated_with_revision(
+                data,
+                current.revision + 1,
+                field_hint=last_field,
+            )
+            durable_replace_text(config_path, _dump_config(updated))
+            return updated
+    except SecureStoreError as exc:
+        raise _translate_store_error(exc) from exc
+
+
+def replace_config(
+    config: AtlasConfig,
+    *,
+    expected_revision: int | None = None,
+    path: pathlib.Path | None = None,
+) -> AtlasConfig:
+    """Replace config content through the locked revision transaction."""
+    config_path = pathlib.Path(path or default_config_path())
+    try:
+        with file_lock(config_lock_path(config_path)):
+            current = _load_unlocked(config_path)
+            if (
+                expected_revision is not None
+                and current.revision != expected_revision
+            ):
+                raise ControlPlaneError(
+                    "config_revision_conflict",
+                    (
+                        f"config changed from revision {expected_revision} "
+                        f"to {current.revision}"
+                    ),
+                    "reload the masked config and retry your replacement",
+                    current_revision=current.revision,
+                )
+            data = config.model_dump()
+            updated = _validated_with_revision(data, current.revision + 1)
+            durable_replace_text(config_path, _dump_config(updated))
+            return updated
+    except SecureStoreError as exc:
+        raise _translate_store_error(exc) from exc
+
+
+def save_config(
+    config: AtlasConfig,
+    path: pathlib.Path | None = None,
+) -> pathlib.Path:
+    """Compatibility adapter for callers not yet migrated to revisioned replace."""
+    config_path = pathlib.Path(path or default_config_path())
+    replace_config(config, path=config_path)
+    return config_path
 
 
 def resolve_provider(
-    cfg: AtlasConfig | None = None, *, focus_framework: str | None = None
+    config: AtlasConfig | None = None,
+    *,
+    focus_framework: str | None = None,
 ) -> dict[str, str]:
-    """Resolve the provider/model an agent run should use.
-
-    The ATLAS ``provider`` config is the baseline. A non-empty ``focus_framework``
-    (the active Focus's ``framework`` field) pins the model for that Focus's work
-    — a per-mission override. The ``api_key`` is dereferenced from its stored
-    ``env:VAR`` form to the actual environment value (empty when unset, so the
-    foundation harness falls back to its own credential resolution rather than
-    authenticating with a blank key).
-
-    Returns a dict with keys ``provider``, ``model``, ``base_url``, ``api_key``.
-    """
-    cfg = cfg or load_config()
-    p = cfg.provider
-    model = (focus_framework or "").strip() or p.model
+    """Resolve effective provider/model and dereference an optional env key."""
+    config = config or load_config()
+    provider = config.provider
+    model = (focus_framework or "").strip() or provider.model
     api_key = ""
-    if p.api_key.startswith("env:"):
-        api_key = os.environ.get(p.api_key[len("env:"):], "")
+    if provider.api_key.startswith("env:"):
+        api_key = os.environ.get(provider.api_key[len("env:") :], "")
     return {
-        "provider": p.name,
+        "provider": provider.name,
         "model": model,
-        "base_url": p.base_url or "",
+        "base_url": provider.base_url or "",
         "api_key": api_key,
     }
 
 
-def save_config(cfg: AtlasConfig, path: pathlib.Path | None = None) -> pathlib.Path:
-    """Atomically write config to ``path`` (default ``~/.atlas/config.yaml``)."""
-    path = path or default_config_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    body = yaml.safe_dump(cfg.model_dump(), sort_keys=False, default_flow_style=False)
-    # Atomic write: temp in the same dir, then os.replace (atomic on Windows + POSIX).
-    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(body)
-        os.replace(tmp, str(path))
-    finally:
-        if os.path.exists(tmp):
-            os.remove(tmp)
-    return path
-
-
-def masked_dict(cfg: AtlasConfig) -> dict:
-    """Config as a plain dict safe for the gateway/cockpit. Secrets are already
-    ``env:`` refs (no values), so this is a straight dump kept behind one function
-    in case future fields need masking.
-
-    Adds a derived ``mock_mode`` field: True when no effective credential
-    resolves for the configured provider (drives the cockpit's "MOCK MODE"
-    banner). Computed via ``resolve_provider`` so the same env-deref logic the
-    agent runtime uses for routing decides the UX signal — never a second,
-    possibly-divergent check. No secret value is added to the dict; only the
-    boolean presence/absence of a resolved api_key.
-    """
-    data = cfg.model_dump()
-    data["mock_mode"] = not bool(resolve_provider(cfg).get("api_key"))
+def masked_dict(config: AtlasConfig) -> dict[str, object]:
+    """Return the backward-compatible secret-safe config projection."""
+    data = config.model_dump()
+    data["mock_mode"] = not bool(resolve_provider(config).get("api_key"))
     return data
 
 
-def get_value(cfg: AtlasConfig, dotted_key: str):
-    """Read a nested value by dotted path, e.g. ``provider.model``."""
-    node = cfg.model_dump()
+def get_value(config: AtlasConfig, dotted_key: str) -> object:
+    node: object = config.model_dump()
     for part in dotted_key.split("."):
         if not isinstance(node, dict) or part not in node:
             raise KeyError(dotted_key)
@@ -170,18 +300,46 @@ def get_value(cfg: AtlasConfig, dotted_key: str):
     return node
 
 
-def set_value(cfg: AtlasConfig, dotted_key: str, value) -> AtlasConfig:
-    """Return a new validated config with ``dotted_key`` set to ``value``.
-    Re-validation enforces the no-inline-secret rule and type coercion."""
-    data = cfg.model_dump()
-    parts = dotted_key.split(".")
-    node = data
-    for part in parts[:-1]:
-        if part not in node or not isinstance(node[part], dict):
-            raise KeyError(dotted_key)
-        node = node[part]
-    leaf = parts[-1]
-    if leaf not in node:
-        raise KeyError(dotted_key)
-    node[leaf] = value
-    return AtlasConfig.model_validate(data)
+def set_value(
+    config: AtlasConfig,
+    dotted_key: str,
+    value: object,
+) -> AtlasConfig:
+    """Return a revalidated immutable config with one changed value."""
+    data = config.model_dump()
+    try:
+        _apply_dotted_change(data, dotted_key, value)
+        return _validated_with_revision(
+            data,
+            config.revision,
+            field_hint=dotted_key,
+        )
+    except ControlPlaneError as exc:
+        if exc.code == "config_invalid" and exc.message.startswith("unknown"):
+            raise KeyError(dotted_key) from exc
+        raise
+
+
+__all__ = [
+    "ATLAS_HOME_ENV",
+    "AtlasConfig",
+    "CockpitConfig",
+    "ContextConfig",
+    "ControlPlaneError",
+    "GatewayConfig",
+    "ModulesConfig",
+    "PermissionConfig",
+    "ProviderConfig",
+    "RuntimeConfig",
+    "atlas_home",
+    "config_lock_path",
+    "default_config_path",
+    "get_value",
+    "load_config",
+    "masked_dict",
+    "patch_config",
+    "replace_config",
+    "resolve_provider",
+    "save_config",
+    "set_value",
+]
