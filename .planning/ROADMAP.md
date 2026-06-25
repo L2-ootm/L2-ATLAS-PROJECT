@@ -364,7 +364,7 @@ consistent and writable from every authorized surface without independent config
 4. Provider/model/runtime/permission/context settings expose source, effective value, validation,
    restart requirement, health, and actionable remediation.
 
-**Plans:** 2/5 plans executed
+**Plans:** 3/5 plans executed
 
 **Wave 1**
 
@@ -373,7 +373,7 @@ consistent and writable from every authorized surface without independent config
 **Wave 2** *(after Wave 1)*
 
 - [x] 10.4-02-PLAN.md — ATLAS-owned auth store, external credential detection, and auth CLI
-- [ ] 10.4-03-PLAN.md — masked config snapshot/PATCH service, audit, and config CLI
+- [x] 10.4-03-PLAN.md — masked config snapshot/PATCH service, audit, and config CLI
 
 **Wave 3** *(after Wave 2)*
 
@@ -507,7 +507,7 @@ milestone is activated through the normal milestone workflow.
 | 10.1 ATLAS TUI Harness Intake & Provenance | v1.1 | 3/3 | Complete with memory exception | 2026-06-24 |
 | 10.2 Agent Contract, Tool Semantics & Context Intelligence | v1.1 | 5/5 | Complete    | 2026-06-25 |
 | 10.3 Shared Surface Session & Workspace Protocol | v1.1 | 5/5 | Complete | 2026-06-25 |
-| 10.4 Global Configuration, Auth & Model Control Plane | v1.1 | 2/5 | In Progress | 2026-06-25 |
+| 10.4 Global Configuration, Auth & Model Control Plane | v1.1 | 3/5 | In Progress | 2026-06-25 |
 | 10.5 Surface-Scoped Permission Broker | v1.1 | 0/? | Not planned | — |
 | 10.6 ATLAS Terminal Workbench | v1.1 | 0/? | Not planned | — |
 | 10.7 Web Agent Surface & Permission Queue UX | v1.1 | 0/? | Not planned | — |
