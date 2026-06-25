@@ -27,7 +27,7 @@ class _FakeAgent(AgentRuntime):
         self._summary = summary
         self._raises = raises
 
-    def execute(self, conn, lock, *, mission_id, run_id, prompt):  # type: ignore[override]
+    def execute(self, conn, lock, *, mission_id, run_id, prompt, cancel_token=None):  # type: ignore[override]
         if self._raises:
             raise RuntimeError("boom")
         return RunOutcome(status=self._status, summary=self._summary)  # type: ignore[arg-type]
