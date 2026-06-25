@@ -52,18 +52,18 @@ surfaces over the same projects, context, configuration, permissions, tools, and
 
 ### CTX — Brain, Wiki, RAG and Context
 
-- [ ] **CTX-01**: The Brain graph is the retrieval spine: project/focus/goal/task/entity
+- [x] **CTX-01**: The Brain graph is the retrieval spine: project/focus/goal/task/entity
   neighborhoods and paths select candidate wiki pages, observations, runs, artifacts, sources,
   and skills.
-- [ ] **CTX-02**: Retrieval supports graph, FTS5, semantic, recency, failure-pattern, and skill
+- [x] **CTX-02**: Retrieval supports graph, FTS5, semantic, recency, failure-pattern, and skill
   signals with deterministic budgets, deduplication, freshness, provenance, and explicit
   confidence/abstention.
-- [ ] **CTX-03**: Automatic context injection runs only for context-dependent requests and records
+- [x] **CTX-03**: Automatic context injection runs only for context-dependent requests and records
   query, retrievers used, selected/rejected sources, scores, truncation, and token cost.
-- [ ] **CTX-04**: Retrieved/project/tool content is treated as evidence, not authority. Trust
+- [x] **CTX-04**: Retrieved/project/tool content is treated as evidence, not authority. Trust
   labels, delimiters, injection scanning, secret redaction, and instruction-hierarchy rules
   prevent untrusted text from overriding system/user policy.
-- [ ] **CTX-05**: The agent has explicit Brain/wiki query tools for search, page/source fetch,
+- [x] **CTX-05**: The agent has explicit Brain/wiki query tools for search, page/source fetch,
   neighbors, relationship paths, provenance, and freshness; it searches before asking the user
   to repeat likely-known context.
 

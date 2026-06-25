@@ -289,7 +289,7 @@ TOOL-03, TOOL-04, TOOL-05, CTX-01, CTX-02, CTX-03, CTX-04, CTX-05, EVAL-01, EVAL
 5. Deterministic, adversarial, RAG, tool-choice, permission, compaction/resume, and multi-model
    eval suites meet the thresholds in `10.2-AI-SPEC.md`.
 
-**Plans:** 2/5 plans executed
+**Plans:** 3/5 plans executed
 
 **Wave 1**
 
@@ -298,7 +298,7 @@ TOOL-03, TOOL-04, TOOL-05, CTX-01, CTX-02, CTX-03, CTX-04, CTX-05, EVAL-01, EVAL
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 10.2-02-PLAN.md — generated tool capability catalog, narrowing, errors, and conformance
-- [ ] 10.2-03-PLAN.md — durable Brain graph, bounded query API, structured retrieval, and abstention
+- [x] 10.2-03-PLAN.md — durable Brain graph, bounded query API, structured retrieval, and abstention
 
 **Wave 3** *(blocked on Waves 1–2 completion)*
 
@@ -471,7 +471,7 @@ milestone is activated through the normal milestone workflow.
 | 10.0.5 Golden Workflows & Quality Gate | v1.0.5 | 5/5 | Complete   | 2026-06-23 |
 | 10.0.6 Public Release Prep & Distribution | v1.0.5 | n/a | Drafts done / operator-gated | 2026-06-23 |
 | 10.1 ATLAS TUI Harness Intake & Provenance | v1.1 | 3/3 | Complete with memory exception | 2026-06-24 |
-| 10.2 Agent Contract, Tool Semantics & Context Intelligence | v1.1 | 2/5 | In Progress|  |
+| 10.2 Agent Contract, Tool Semantics & Context Intelligence | v1.1 | 3/5 | In Progress|  |
 | 10.3 Shared Surface Session & Workspace Protocol | v1.1 | 0/? | Not planned | — |
 | 10.4 Global Configuration, Auth & Model Control Plane | v1.1 | 0/? | Not planned | — |
 | 10.5 Surface-Scoped Permission Broker | v1.1 | 0/? | Not planned | — |
