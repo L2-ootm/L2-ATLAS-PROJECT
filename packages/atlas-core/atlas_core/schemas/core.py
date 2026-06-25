@@ -277,6 +277,8 @@ class AuditEvent(BaseModel):
         "surface_session_suspended",
         "surface_session_resumed",
         "surface_session_reclaimed",
+        "surface_session_completed",
+        "surface_session_failed",
         "run_cancelled",
         "permission_transition",
     ]
