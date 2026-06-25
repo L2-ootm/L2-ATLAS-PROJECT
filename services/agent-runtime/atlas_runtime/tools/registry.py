@@ -67,6 +67,15 @@ class ToolRegistry:
             )
         return self._bindings[name]
 
+    def capability_catalog(self):
+        """Return the generated surface contract for these live manifests."""
+        from atlas_runtime.tool_catalog import build_tool_catalog, capability_from_atlas
+
+        return build_tool_catalog(
+            capability_from_atlas(self._bindings[name][0])
+            for name in sorted(self._bindings)
+        )
+
 
 def _build_registry() -> ToolRegistry:
     manifests = load_manifests(_MANIFESTS_DIR)

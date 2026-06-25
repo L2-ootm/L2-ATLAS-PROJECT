@@ -1,0 +1,162 @@
+{
+  "catalog_version": "1.0.0",
+  "catalog_sha256": "9841e636239f3b3c1660388bab7f79e92b13e66930e434f8d2491c0cfd421442",
+  "capabilities": [
+    {
+      "name": "github",
+      "version": "1.0.0",
+      "aliases": [],
+      "description": "Read GitHub repo/issue/PR data via the operator's authenticated gh CLI.",
+      "category": "read",
+      "input_schema_json": "{\"additionalProperties\":false,\"properties\":{\"limit\":{\"description\":\"max rows for issue_list\",\"type\":\"string\"},\"number\":{\"description\":\"issue or PR number (pr_view)\",\"type\":\"string\"},\"op\":{\"description\":\"repo_view | issue_list | pr_view\",\"type\":\"string\"},\"repo\":{\"description\":\"owner/name\",\"type\":\"string\"}},\"required\":[\"op\",\"repo\"],\"type\":\"object\"}",
+      "output_schema_json": "{\"additionalProperties\":false,\"properties\":{\"json\":{\"type\":\"string\"}},\"type\":\"object\"}",
+      "permissions": [
+        "net:gh"
+      ],
+      "workspace_scope": "none",
+      "network_scope": [
+        "net:gh"
+      ],
+      "side_effects": [
+        "none"
+      ],
+      "timeout_ms": 30000,
+      "cancellable": false,
+      "idempotency": "idempotent",
+      "max_result_bytes": 1000000,
+      "approval_policy": "allow",
+      "audit_events": [
+        "tool_requested",
+        "tool_completed",
+        "tool_failed"
+      ],
+      "renderer": "text",
+      "source": "atlas",
+      "available": true
+    },
+    {
+      "name": "golden_review_write",
+      "version": "1.0.0",
+      "aliases": [],
+      "description": "Write a Self-Review note to the workspace (write-class, approval-gated).",
+      "category": "write",
+      "input_schema_json": "{\"additionalProperties\":false,\"properties\":{\"content\":{\"description\":\"markdown content of the review note\",\"type\":\"string\"},\"path\":{\"description\":\"workspace-relative path of the review note to write\",\"type\":\"string\"}},\"required\":[\"content\",\"path\"],\"type\":\"object\"}",
+      "output_schema_json": "{\"additionalProperties\":false,\"properties\":{\"path\":{\"type\":\"string\"}},\"type\":\"object\"}",
+      "permissions": [
+        "fs:write"
+      ],
+      "workspace_scope": "current",
+      "network_scope": [],
+      "side_effects": [
+        "write"
+      ],
+      "timeout_ms": 30000,
+      "cancellable": false,
+      "idempotency": "non_idempotent",
+      "max_result_bytes": 1000000,
+      "approval_policy": "ask",
+      "audit_events": [
+        "tool_requested",
+        "tool_completed",
+        "tool_failed"
+      ],
+      "renderer": "text",
+      "source": "atlas",
+      "available": true
+    },
+    {
+      "name": "web_fetch",
+      "version": "1.0.0",
+      "aliases": [],
+      "description": "HTTP GET a public URL with an SSRF guard, size cap, and timeout.",
+      "category": "read",
+      "input_schema_json": "{\"additionalProperties\":false,\"properties\":{\"max_bytes\":{\"description\":\"response size cap in bytes\",\"type\":\"string\"},\"url\":{\"description\":\"http(s) URL (loopback/private targets blocked)\",\"type\":\"string\"}},\"required\":[\"url\"],\"type\":\"object\"}",
+      "output_schema_json": "{\"additionalProperties\":false,\"properties\":{\"content\":{\"type\":\"string\"}},\"type\":\"object\"}",
+      "permissions": [
+        "net:get"
+      ],
+      "workspace_scope": "none",
+      "network_scope": [
+        "net:get"
+      ],
+      "side_effects": [
+        "none"
+      ],
+      "timeout_ms": 30000,
+      "cancellable": false,
+      "idempotency": "idempotent",
+      "max_result_bytes": 1000000,
+      "approval_policy": "allow",
+      "audit_events": [
+        "tool_requested",
+        "tool_completed",
+        "tool_failed"
+      ],
+      "renderer": "text",
+      "source": "atlas",
+      "available": true
+    },
+    {
+      "name": "webhook_notify",
+      "version": "1.0.0",
+      "aliases": [],
+      "description": "POST a JSON payload to an outbound webhook (write-class, approval-gated).",
+      "category": "write",
+      "input_schema_json": "{\"additionalProperties\":false,\"properties\":{\"headers\":{\"description\":\"optional request headers\",\"type\":\"string\"},\"payload\":{\"description\":\"JSON body\",\"type\":\"string\"},\"url\":{\"description\":\"http(s) webhook URL (loopback/private targets blocked)\",\"type\":\"string\"}},\"required\":[\"payload\",\"url\"],\"type\":\"object\"}",
+      "output_schema_json": "{\"additionalProperties\":false,\"properties\":{\"status\":{\"type\":\"string\"}},\"type\":\"object\"}",
+      "permissions": [
+        "net:post"
+      ],
+      "workspace_scope": "none",
+      "network_scope": [
+        "net:post"
+      ],
+      "side_effects": [
+        "write"
+      ],
+      "timeout_ms": 30000,
+      "cancellable": false,
+      "idempotency": "non_idempotent",
+      "max_result_bytes": 1000000,
+      "approval_policy": "ask",
+      "audit_events": [
+        "tool_requested",
+        "tool_completed",
+        "tool_failed"
+      ],
+      "renderer": "text",
+      "source": "atlas",
+      "available": true
+    },
+    {
+      "name": "workspace",
+      "version": "1.0.0",
+      "aliases": [],
+      "description": "Read files, list directories, and grep within the workspace boundary.",
+      "category": "read",
+      "input_schema_json": "{\"additionalProperties\":false,\"properties\":{\"op\":{\"description\":\"read | list | grep\",\"type\":\"string\"},\"path\":{\"description\":\"workspace-relative path\",\"type\":\"string\"},\"pattern\":{\"description\":\"literal substring for grep\",\"type\":\"string\"}},\"required\":[\"op\",\"path\"],\"type\":\"object\"}",
+      "output_schema_json": "{\"additionalProperties\":false,\"properties\":{\"content\":{\"type\":\"string\"}},\"type\":\"object\"}",
+      "permissions": [
+        "fs:read"
+      ],
+      "workspace_scope": "current",
+      "network_scope": [],
+      "side_effects": [
+        "none"
+      ],
+      "timeout_ms": 30000,
+      "cancellable": false,
+      "idempotency": "idempotent",
+      "max_result_bytes": 1000000,
+      "approval_policy": "allow",
+      "audit_events": [
+        "tool_requested",
+        "tool_completed",
+        "tool_failed"
+      ],
+      "renderer": "text",
+      "source": "atlas",
+      "available": true
+    }
+  ]
+}

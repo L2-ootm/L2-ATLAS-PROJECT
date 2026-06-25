@@ -1,6 +1,8 @@
 """Fail-closed tool capability policy and error conformance."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from atlas_runtime.tool_catalog import (
@@ -85,3 +87,6 @@ def test_generated_contract_matches_runtime_catalog(tmp_path):
     path = tmp_path / "catalog.json"
     write_catalog_artifact(catalog, path)
     assert path.read_text(encoding="utf-8") == catalog.model_dump_json(indent=2) + "\n"
+
+    repo_artifact = Path(__file__).parents[3] / "docs" / "contracts" / "ATLAS_TOOL_CAPABILITIES.json"
+    assert repo_artifact.read_text(encoding="utf-8") == catalog.model_dump_json(indent=2) + "\n"

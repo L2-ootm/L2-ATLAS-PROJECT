@@ -5,6 +5,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Iterable
 
 from atlas_core.schemas.agent_contract import ToolCapability, ToolCatalog
@@ -139,6 +140,66 @@ def capability_from_mcp(descriptor: dict[str, object]) -> ToolCapability:
     )
 
 
+def _hermes_risk(name: str, toolset: str) -> tuple[str, tuple[str, ...], str]:
+    lowered = f"{toolset}:{name}".lower()
+    if name in {"read_file", "search_files", "web_search", "web_extract"}:
+        return "read", ("none",), "allow"
+    if any(token in lowered for token in ("terminal", "shell", "execute", "code")):
+        return "shell", ("process",), "ask"
+    if any(token in lowered for token in ("write", "patch", "browser", "cron", "memory")):
+        return "write", ("state_change",), "ask"
+    raise ValueError(f"Hermes capability {name!r} lacks an explicit risk classification")
+
+
+def catalog_from_hermes_registry(registry: object) -> tuple[ToolCapability, ...]:
+    """Read registry metadata only; never invoke check_fn or dynamic discovery."""
+
+    snapshot = getattr(registry, "_snapshot_entries", None)
+    if not callable(snapshot):
+        raise ValueError("Hermes registry does not expose a stable metadata snapshot")
+    capabilities: list[ToolCapability] = []
+    for entry in snapshot():
+        name = str(entry.name)
+        toolset = str(entry.toolset)
+        risk, effects, approval = _hermes_risk(name, toolset)
+        max_chars = getattr(entry, "max_result_size_chars", None) or 250_000
+        capabilities.append(
+            capability_from_hermes(
+                {
+                    "name": name,
+                    "description": str(entry.description or name),
+                    "toolset": toolset,
+                    "schema": entry.schema,
+                    "risk_level": risk,
+                    "side_effects": effects,
+                    "approval_policy": approval,
+                    "permissions": (f"hermes:{toolset}",),
+                    "max_result_bytes": int(max_chars) * 4,
+                    "available": True,
+                }
+            )
+        )
+    return tuple(sorted(capabilities, key=lambda item: item.name))
+
+
+def build_shipped_catalog() -> ToolCatalog:
+    """Build the no-probe catalog from the shipped ATLAS manifest registry."""
+
+    from atlas_runtime.tools.registry import load_manifests
+
+    capabilities = tuple(
+        capability_from_atlas(manifest)
+        for manifest in load_manifests().values()
+    )
+    return build_tool_catalog(capabilities)
+
+
+def write_catalog_artifact(catalog: ToolCatalog, path: Path | str) -> None:
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(catalog.model_dump_json(indent=2) + "\n", encoding="utf-8")
+
+
 def build_tool_catalog(
     capabilities: Iterable[ToolCapability],
     *,
@@ -199,9 +260,12 @@ def narrow_capabilities(
 __all__ = [
     "ToolCallError",
     "build_tool_catalog",
+    "build_shipped_catalog",
+    "catalog_from_hermes_registry",
     "capability_from_atlas",
     "capability_from_hermes",
     "capability_from_mcp",
     "narrow_capabilities",
     "normalize_tool_error",
+    "write_catalog_artifact",
 ]
