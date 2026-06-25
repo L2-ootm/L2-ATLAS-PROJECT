@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 
 import pytest
@@ -191,3 +192,148 @@ def test_snapshot_reports_focus_model_override_as_effective_source() -> None:
     assert model.configured_json == '"anthropic/claude-sonnet-4"'
     assert model.effective_json == '"focus/override-model"'
     assert model.source == "focus"
+
+
+def test_audited_patch_emits_masked_diff_after_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    db,
+    lock: threading.Lock,
+) -> None:
+    from atlas_runtime import control_plane_service
+
+    path = tmp_path / "config.yaml"
+    monkeypatch.setenv("PATCH_SECRET", "resolved-secret-never-audit")
+
+    snapshot = control_plane_service.patch(
+        db,
+        lock,
+        expected_revision=0,
+        changes={
+            "provider.api_key": "env:PATCH_SECRET",
+            "context.token_budget": 6000,
+        },
+        source_surface="webui",
+        source_session_id="surface-1",
+        path=path,
+    )
+
+    assert snapshot.revision == 1
+    row = db.execute(
+        "SELECT session_id, data FROM audit_events "
+        "WHERE event_type='config_change'"
+    ).fetchone()
+    assert row[0] == "surface-1"
+    data = json.loads(row[1])
+    assert data["revision"] == 1
+    assert data["changed_paths"] == [
+        "context.token_budget",
+        "provider.api_key",
+    ]
+    assert data["source_surface"] == "webui"
+    assert data["after"]["provider.api_key"] == "env:PATCH_SECRET"
+    assert "resolved-secret-never-audit" not in row[1]
+
+
+def test_conflict_emits_no_success_audit_and_preserves_bytes(
+    tmp_path: Path,
+    db,
+    lock: threading.Lock,
+) -> None:
+    from atlas_runtime import control_plane_service
+
+    path = tmp_path / "config.yaml"
+    control_plane_service.patch(
+        db,
+        lock,
+        expected_revision=0,
+        changes={"provider.model": "winner/model"},
+        path=path,
+    )
+    before = path.read_bytes()
+
+    with pytest.raises(ControlPlaneError) as caught:
+        control_plane_service.patch(
+            db,
+            lock,
+            expected_revision=0,
+            changes={"provider.model": "loser/model"},
+            path=path,
+        )
+
+    assert caught.value.code == "config_revision_conflict"
+    assert path.read_bytes() == before
+    count = db.execute(
+        "SELECT COUNT(*) FROM audit_events WHERE event_type='config_change'"
+    ).fetchone()[0]
+    assert count == 1
+
+
+def test_provider_patch_leaves_active_session_and_run_contract_identical(
+    tmp_path: Path,
+    db,
+    lock: threading.Lock,
+    surface_session: str,
+) -> None:
+    from atlas_runtime import control_plane_service, mission_service
+
+    run_id = mission_service.ensure_operator_run(db, lock)
+    with db:
+        db.execute(
+            "INSERT INTO agent_contract_snapshots"
+            "(id,run_id,contract_sha256,snapshot_json,created_at) VALUES (?,?,?,?,?)",
+            ("snapshot-1", run_id, "a" * 64, '{"model":"frozen/model"}', "now"),
+        )
+    session_before = db.execute(
+        "SELECT * FROM surface_sessions WHERE id=?",
+        (surface_session,),
+    ).fetchone()
+    contract_before = db.execute(
+        "SELECT * FROM agent_contract_snapshots WHERE id='snapshot-1'"
+    ).fetchone()
+
+    control_plane_service.patch(
+        db,
+        lock,
+        expected_revision=0,
+        changes={"provider.model": "new/default-model"},
+        path=tmp_path / "config.yaml",
+    )
+
+    assert db.execute(
+        "SELECT * FROM surface_sessions WHERE id=?",
+        (surface_session,),
+    ).fetchone() == session_before
+    assert db.execute(
+        "SELECT * FROM agent_contract_snapshots WHERE id='snapshot-1'"
+    ).fetchone() == contract_before
+
+
+def test_audit_failure_reports_committed_revision_honestly(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    db,
+    lock: threading.Lock,
+) -> None:
+    from atlas_runtime import audit_service, control_plane_service
+
+    path = tmp_path / "config.yaml"
+    monkeypatch.setattr(
+        audit_service,
+        "emit",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("db offline")),
+    )
+
+    with pytest.raises(ControlPlaneError) as caught:
+        control_plane_service.patch(
+            db,
+            lock,
+            expected_revision=0,
+            changes={"provider.model": "committed/model"},
+            path=path,
+        )
+
+    assert caught.value.code == "config_audit_failed"
+    assert caught.value.current_revision == 1
+    assert config_service.load_config(path).provider.model == "committed/model"
+    assert "committed" in caught.value.remediation
