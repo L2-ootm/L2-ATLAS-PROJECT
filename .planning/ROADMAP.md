@@ -352,8 +352,7 @@ existing agent, bound to either the ATLAS global workspace or a registered Proje
 
 **Goal:** Make ATLAS configuration, provider/model selection, and secret-safe auth status
 consistent and writable from every authorized surface without independent config implementations.
-**Requirements:** CFG-01, CFG-02, CFG-03, CFG-04, CFG-05, CFG-06, AUTH-01, AUTH-02, MOD-01,
-MOD-02, UX-01
+**Requirements:** CFG-01, CFG-02, CFG-03, CFG-04, CFG-05, CFG-06, AUTH-01, AUTH-02, MOD-01, MOD-02, UX-01
 **Success criteria:**
 
 1. `~/.atlas/config.yaml` has a versioned frozen schema, atomic cross-process updates, optimistic
