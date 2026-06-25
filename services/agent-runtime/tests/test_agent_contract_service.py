@@ -1,0 +1,76 @@
+"""Immutable run-contract persistence and replay tests."""
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from atlas_runtime.agent_contract_service import (
+    ContractCompatibilityError,
+    load_contract,
+    persist_contract,
+    prepare_run_contract,
+    replay_contract,
+)
+
+
+def test_migration_creates_immutable_run_linked_snapshot_table(db):
+    columns = {
+        row[1] for row in db.execute("PRAGMA table_info(agent_contract_snapshots)")
+    }
+    assert {"id", "run_id", "contract_sha256", "snapshot_json", "created_at"} <= columns
+
+
+def test_prepare_persist_load_and_replay_round_trip(db, run_id):
+    snapshot = prepare_run_contract(
+        db,
+        run_id=run_id,
+        mission_id=None,
+        prompt="Inspect the workspace and report evidence.",
+    )
+    persisted = persist_contract(db, snapshot)
+    assert persist_contract(db, snapshot).id == persisted.id
+    loaded = load_contract(db, run_id)
+    assert loaded == persisted
+    replay = replay_contract(db, run_id)
+    assert replay.contract_sha256 == snapshot.contract_sha256
+    assert replay.stable_prompt_sha256 == snapshot.stable_prompt_sha256
+
+
+def test_snapshot_is_redacted_and_excludes_hidden_reasoning(db, run_id):
+    snapshot = prepare_run_contract(
+        db,
+        run_id=run_id,
+        mission_id=None,
+        prompt="Authorization: Bearer abc.def.ghi",
+    )
+    persist_contract(db, snapshot)
+    raw = db.execute(
+        "SELECT snapshot_json FROM agent_contract_snapshots WHERE run_id=?", (run_id,)
+    ).fetchone()[0]
+    assert "abc.def.ghi" not in raw
+    assert "[REDACTED]" in raw
+    assert "chain_of_thought" not in raw
+    assert "reasoning" not in raw.lower()
+    json.loads(raw)
+
+
+def test_snapshot_rows_are_immutable(db, run_id):
+    persist_contract(
+        db,
+        prepare_run_contract(db, run_id=run_id, mission_id=None, prompt="x"),
+    )
+    with pytest.raises(Exception):
+        db.execute(
+            "UPDATE agent_contract_snapshots SET snapshot_json='{}' WHERE run_id=?",
+            (run_id,),
+        )
+
+
+def test_replay_reports_explicit_version_incompatibility(db, run_id):
+    persist_contract(
+        db,
+        prepare_run_contract(db, run_id=run_id, mission_id=None, prompt="x"),
+    )
+    with pytest.raises(ContractCompatibilityError, match="prompt version"):
+        replay_contract(db, run_id, expected_prompt_version="9.0.0")
