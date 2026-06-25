@@ -103,6 +103,11 @@ _LOCK = threading.Lock()
 # Connection + lock factories (injectable for tests)
 # ---------------------------------------------------------------------------
 
+# Surface-session liveness TTL: 3x a nominal 30s heartbeat interval (RESEARCH
+# Pattern 5). A session whose heartbeat is older than this is treated as orphaned
+# by the startup reconciliation sweep.
+_HEARTBEAT_TTL_SECONDS = 90.0
+
 
 def _get_connection() -> sqlite3.Connection:
     """Return a file-backed SQLite connection with WAL + FK enabled.
@@ -787,10 +792,44 @@ def runtime_serve(
     that execute on daemon-managed threads (the alternative to detached
     subprocesses). POST /v1/runs/enqueue {mission_id, agent}.
     """
-    from atlas_runtime import runtime_daemon
+    from atlas_runtime import runtime_daemon, surface_session_service
+
+    # Startup reconciliation (SURF-05): before accepting new runs, reclaim any
+    # surface session / run left orphaned by a crashed prior process. The
+    # in-process executor threads are lost on restart, so DB rows still marked
+    # 'running' are stale and must not survive as unowned executions.
+    try:
+        conn = _get_connection()
+        reclaimed = surface_session_service.reconcile_orphans(
+            conn, _get_lock(), ttl_seconds=_HEARTBEAT_TTL_SECONDS
+        )
+        if reclaimed:
+            typer.echo(f"reconciled {len(reclaimed)} orphaned surface session(s) at startup")
+    except Exception as exc:  # noqa: BLE001 — never block the daemon on the sweep
+        typer.echo(f"startup reconciliation skipped: {exc}", err=True)
 
     typer.echo(f"atlas runtime daemon on http://{host}:{port}")
     runtime_daemon.serve(host=host, port=port)
+
+
+@runtime_app.command("reconcile")
+def runtime_reconcile(
+    ttl_seconds: float = typer.Option(
+        _HEARTBEAT_TTL_SECONDS, "--ttl",
+        help="Heartbeat TTL in seconds; sessions stale beyond it are reclaimed.",
+    ),
+) -> None:
+    """Reclaim orphaned surface sessions and crash-left running runs (SURF-05).
+
+    Reads DB state (not in-process threads). Safe to run at startup and idempotent.
+    """
+    from atlas_runtime import surface_session_service
+
+    conn = _get_connection()
+    reclaimed = surface_session_service.reconcile_orphans(
+        conn, _get_lock(), ttl_seconds=ttl_seconds
+    )
+    typer.echo(f"reconciled {len(reclaimed)} orphaned surface session(s)")
 
 
 # ---------------------------------------------------------------------------

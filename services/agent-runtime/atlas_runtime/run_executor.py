@@ -45,16 +45,21 @@ def execute_run(
     mission_id: str,
     run_id: str,
     prompt: str,
+    cancel_token: Optional[threading.Event] = None,
 ) -> RunOutcome:
     """Drive an already-started run to a terminal state. Synchronous; reusable
     by both the CLI `--execute` path and the async executor below.
 
     Never leaves a run 'running': an unhandled agent error becomes a failed
     transition. If the run was cancelled while executing, the cancellation is
-    preserved (the terminal transition is skipped).
+    preserved (the terminal transition is skipped). `cancel_token` is forwarded to
+    the agent for cooperative cancellation; None preserves today's behavior exactly.
     """
     try:
-        outcome = agent.execute(conn, lock, mission_id=mission_id, run_id=run_id, prompt=prompt)
+        outcome = agent.execute(
+            conn, lock, mission_id=mission_id, run_id=run_id, prompt=prompt,
+            cancel_token=cancel_token,
+        )
     except Exception as exc:  # agents should be fail-safe; defend anyway
         outcome = RunOutcome(
             status="failed", summary=f"executor: unhandled agent error: {exc}"[:_SUMMARY_CAP]
@@ -109,6 +114,7 @@ def start_and_execute_async(
     session_id: Optional[str] = None,
     agent: Optional[AgentRuntime] = None,
     conn_factory: Optional[Callable[[], sqlite3.Connection]] = None,
+    cancel_token: Optional[threading.Event] = None,
 ) -> Run:
     """Start a run and execute it on a background daemon thread.
 
@@ -129,7 +135,10 @@ def start_and_execute_async(
     def _worker() -> None:
         wconn = factory()
         try:
-            execute_run(wconn, lock, agent=resolved, mission_id=mission_id, run_id=run.id, prompt=prompt)
+            execute_run(
+                wconn, lock, agent=resolved, mission_id=mission_id, run_id=run.id,
+                prompt=prompt, cancel_token=cancel_token,
+            )
         finally:
             try:
                 wconn.close()

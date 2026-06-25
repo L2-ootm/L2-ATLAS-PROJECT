@@ -58,6 +58,13 @@ class AgentRuntime(ABC):
         mission_id: str,
         run_id: str,
         prompt: str,
+        cancel_token: Optional[threading.Event] = None,
     ) -> RunOutcome:
-        """Execute the run, emitting AuditEvents, and return its outcome."""
+        """Execute the run, emitting AuditEvents, and return its outcome.
+
+        `cancel_token`, when provided and set, requests COOPERATIVE cancellation:
+        the runtime stops at its next observable checkpoint and returns a terminal
+        `cancelled` outcome (CPython cannot hard-kill a thread). None preserves the
+        pre-cancellation behavior exactly.
+        """
         raise NotImplementedError
