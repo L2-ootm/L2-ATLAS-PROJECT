@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
-status: ready_to_execute
-last_updated: "2026-06-24T16:15:00-03:00"
-last_activity: "2026-06-24 -- PHASE 10.2 PLANNED. Five dependency-ordered plans freeze prompt/bootstrap/context schemas and compiler; generate the unified tool capability catalog; build the durable Brain query/retrieval spine; persist replayable run contracts and compaction/resume invariants; and ship a 30-scenario deterministic promotion gate. No new framework or runtime dependency is planned. Next: execute Phase 10.2 Plan 01."
+status: executing
+last_updated: "2026-06-25T00:57:14.916Z"
+last_activity: 2026-06-25
 progress:
   total_phases: 8
   completed_phases: 1
-  total_plans: 5
-  completed_plans: 0
-  percent: 0
+  total_plans: 9
+  completed_plans: 4
+  percent: 13
 ---
 
 # STATE — L2 ATLAS
@@ -28,7 +28,7 @@ Phase 10.2 has 5 executable plans across 4 waves:
 - **10.2-04:** immutable run-contract snapshots, replay, and resume invariants.
 - **10.2-05:** 30-scenario evaluation dataset and deterministic promotion gate.
 
-Progress: 0/5 plans complete. Requirements coverage: 17/17. Next: execute 10.2-01.
+Progress: [█████░░░░░] 50%
 
 ## Phase C — Discord Write Surface (2026-06-21, branch `feat/phase-c-discord-write`)
 
@@ -170,7 +170,7 @@ backfilled embeddings cleared). Phase B (Context Intelligence, B1–B6) fully co
 
 ## Current Position
 
-Phase: 10.0.5 (Golden Workflows & Quality Gate) — EXECUTING
+Phase: 10.2 (agent-contract-tool-context-intelligence) — EXECUTING
   Plan 01 (golden-workflow orchestrator core) shipped: `golden_workflow_service.py`
   (ensure_golden_run/record_artifact/emit_workflow_event — first writer to the
   `artifacts` table in this codebase) via RED-then-GREEN TDD; AuditEvent.event_type
@@ -196,8 +196,8 @@ Phase: 10.0.5 (Golden Workflows & Quality Gate) — EXECUTING
   cli/main.py as its own top-level group. 14/14 tests green; full agent-runtime
   (364 pass, 1 known pre-existing claude_agent_sdk env fail) unaffected. Next:
   plan 04/05 (quality gate smoke + demo-reset, docs).
-Plan: 4 of 5
-Status: Executing Phase 10.0.5
+Plan: 2 of 5
+Status: Ready to execute
 In-flight (ahead of spine, operator-directed): 10.0.3 ATLAS Identity & Cockpit Redesign — brand
   direction approved at gate; ATLAS palette tokens, logo system (3 variants), favicon, topographic
   shell + sidebar redesign landed. UI-SPEC + per-page redesign wave outstanding.
@@ -209,7 +209,7 @@ In-flight (ahead of spine, operator-directed): 10.0.3 ATLAS Identity & Cockpit R
   primitives); soft-aurora OGL effect integrated; first React surface = Dashboard operator HUD
   (live telemetry + graceful loading/empty/offline states), proven via Playwright
   (output/react-pivot/). Svelte cockpit stays live until React reaches route parity.
-Last activity: 2026-06-23
+Last activity: 2026-06-25
 Loop note: pre-existing dirty state on branch `feat/cockpit-p3-glass-p4` (`.planning/prep/next-steps-db-runner-async-supabase.md`)
   blocked safe code-changing automation. Report-only continuation state written to
   `.planning/reports/atlas-living-context-loop-2026-06-18-dirty-worktree-guard.md`.
@@ -446,7 +446,7 @@ tsc/lint/build green.
 See: `.planning/PROJECT.md` (updated 2026-06-15) · `.planning/MILESTONES.md`
 
 **Core value:** A serious, auditable AI operating system for technical founders/operators.
-**Current focus:** Phase 10.0.5 — Golden Workflows & Quality Gate
+**Current focus:** Phase 10.2 — agent-contract-tool-context-intelligence
 
 ## Deferred Items
 
@@ -470,6 +470,7 @@ Acknowledged at milestone close on 2026-06-15:
   bounded scoring, and provider conformance. Capability tiers prevent ATLAS from claiming policy
   enforcement over opaque runtimes; exact runtime/mode/profile values bind immutably to each run;
   ATLAS-to-ATLAS routing has cycle guards; paid/network probes are opt-in and budgeted.
+
 - Autonomous foundation sync/self-evolution is preserved separately as the non-active v1.3
   candidate `EV-01` in `.planning/milestones/v1.3-SELF-EVOLUTION-DRAFT.md`. It begins at
   observe/propose and can advance only through evidence-based promotion gates. It no longer blocks
@@ -477,9 +478,11 @@ Acknowledged at milestone close on 2026-06-15:
   and ADR IDs are assigned only at milestone activation. The original combined design remains in
   `docs/plans/2026-06-24-atlas-provider-mesh-self-evolution-design-superseded.md`; corrected source
   of truth: `docs/plans/2026-06-24-atlas-provider-mesh-self-evolution-design.md`.
+
 - v1.1 resumed and rewritten on 2026-06-23 as Phases 10.1–10.8: one ATLAS agent,
   ATLAS-native donor-derived TUI, shared surface/workspace/config/event contracts,
   surface-scoped permissions, Brain/wiki context intelligence, and cross-surface UAT.
+
 - D-023 accepted: donor code is a terminal-surface source only; no second agent/runtime.
 - Phase 10.0.1 inserted after Phase 10.0: Mass-Adoption Launch Wedge (v1.0.5): Repo Hygiene & Trust Package — first of 6 phases (10.0.1-10.0.6) inserted ahead of v1.1 Phase 10.1+ per l2_atlas_30_day_mass_adoption_wedge_plan.md; v1.1 native-shell/auth/TUI work paused until wedge ships (URGENT)
 
@@ -709,6 +712,7 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 | Phase 10.0.2 P03 | 12min | 1 task | 3 files |
 | Phase 10.0.2 P04 | 35min | 2 tasks | 11 files |
 | Phase 10.0.5 P02 | 35min | 2 tasks | 5 files |
+| Phase 10.2 P01 | 24 min | 2 tasks | 10 files |
 
 ## Operator Next Steps
 

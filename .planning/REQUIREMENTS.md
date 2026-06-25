@@ -21,17 +21,17 @@ surfaces over the same projects, context, configuration, permissions, tools, and
 
 ### PROMPT — Agent Identity and Prompt Compiler
 
-- [ ] **PROMPT-01**: Compile prompts from versioned layers with explicit precedence:
+- [x] **PROMPT-01**: Compile prompts from versioned layers with explicit precedence:
   platform safety → ATLAS core identity → model adapter → workspace instructions → session
   bootstrap → retrieved context → current request.
-- [ ] **PROMPT-02**: The immutable ATLAS core defines operator identity, audit/evidence contract,
+- [x] **PROMPT-02**: The immutable ATLAS core defines operator identity, audit/evidence contract,
   tool discipline, verification, uncertainty, scope control, permission behavior, and concise
   surface-appropriate communication without imported product identity.
-- [ ] **PROMPT-03**: Session bootstrap states surface, workspace/project, Current Focus,
+- [x] **PROMPT-03**: Session bootstrap states surface, workspace/project, Current Focus,
   mission/run/session, available capabilities, permission mode, loaded instruction sources,
   context budget, and prompt/context versions. The agent may form a working plan but cannot
   rewrite its core identity or policy.
-- [ ] **PROMPT-04**: Stable system-prompt bytes are frozen per session for provider prompt caching;
+- [x] **PROMPT-04**: Stable system-prompt bytes are frozen per session for provider prompt caching;
   dynamic context and recall are injected separately and cannot silently mutate invariants.
 - [ ] **PROMPT-05**: Prompt versions, source hashes, tool-catalog version, and context source IDs
   are audit-recorded and replayable without persisting secrets or hidden chain-of-thought.
