@@ -5,6 +5,9 @@ import pytest
 
 from atlas_runtime.tool_catalog import (
     ToolCallError,
+    build_shipped_catalog,
+    catalog_from_hermes_registry,
+    write_catalog_artifact,
     narrow_capabilities,
     normalize_tool_error,
 )
@@ -53,3 +56,32 @@ def test_child_cannot_add_network_or_permissions():
     widened = parent.model_copy(update={"permissions": ("fs:read", "net:get")})
     with pytest.raises(ValueError, match="widen"):
         narrow_capabilities((parent,), (widened,))
+
+
+def test_hermes_registry_adapter_reads_snapshot_without_availability_probe():
+    calls: list[str] = []
+
+    class Entry:
+        name = "read_file"
+        description = "Read a file."
+        toolset = "file"
+        schema = {"type": "object", "properties": {"path": {"type": "string"}}}
+        max_result_size_chars = 1000
+        check_fn = lambda self: calls.append("probe")  # noqa: E731
+
+    class Registry:
+        _generation = 7
+
+        def _snapshot_entries(self):
+            return [Entry()]
+
+    capabilities = catalog_from_hermes_registry(Registry())
+    assert capabilities[0].name == "read_file"
+    assert calls == []
+
+
+def test_generated_contract_matches_runtime_catalog(tmp_path):
+    catalog = build_shipped_catalog()
+    path = tmp_path / "catalog.json"
+    write_catalog_artifact(catalog, path)
+    assert path.read_text(encoding="utf-8") == catalog.model_dump_json(indent=2) + "\n"
