@@ -127,3 +127,96 @@ def test_cli_refresh_and_list(monkeypatch, conn, lock):
     result = runner.invoke(cli_main.app, ["models", "list"])
     assert result.exit_code == 0
     assert "m-cli" in result.output
+
+
+def test_refresh_dual_writes_v2_provider_model_and_derived_auth(conn, lock):
+    secret_ref = "env:SHOULD_NEVER_PERSIST"
+
+    model_registry.refresh(
+        conn,
+        lock,
+        source="gateway-a",
+        fetcher=lambda: [
+            {
+                "id": "shared/model",
+                "owned_by": "openrouter",
+                "api_mode": "responses",
+                "context_window": 128000,
+                "credential": secret_ref,
+            }
+        ],
+        auth_status_resolver=lambda provider: "auth_present",
+    )
+
+    provider = conn.execute(
+        "SELECT provider_id,status FROM provider_registry"
+    ).fetchone()
+    row = conn.execute(
+        "SELECT model_id,provider_id,source,status,auth_status,"
+        "context_window,metadata_json FROM model_registry_v2"
+    ).fetchone()
+    assert provider == ("openrouter", "available")
+    assert row[:6] == (
+        "shared/model",
+        "openrouter",
+        "gateway-a",
+        "available",
+        "auth_present",
+        128000,
+    )
+    assert secret_ref not in row[6]
+    assert secret_ref not in repr(
+        conn.execute("SELECT * FROM provider_registry").fetchall()
+    )
+
+
+def test_v2_first_seen_preserved_and_deactivation_is_source_scoped(conn, lock):
+    model_registry.refresh(
+        conn,
+        lock,
+        source="source-a",
+        fetcher=lambda: [{"id": "same/model", "owned_by": "provider"}],
+    )
+    first_seen = conn.execute(
+        "SELECT first_seen FROM model_registry_v2 WHERE source='source-a'"
+    ).fetchone()[0]
+    model_registry.refresh(
+        conn,
+        lock,
+        source="source-b",
+        fetcher=lambda: [{"id": "same/model", "owned_by": "provider"}],
+    )
+    model_registry.refresh(
+        conn,
+        lock,
+        source="source-a",
+        fetcher=lambda: [],
+    )
+
+    rows = model_registry.list_models_v2(conn, active_only=False)
+    assert len([row for row in rows if row["model_id"] == "same/model"]) == 2
+    source_a = next(row for row in rows if row["source"] == "source-a")
+    source_b = next(row for row in rows if row["source"] == "source-b")
+    assert source_a["first_seen"] == first_seen
+    assert source_a["deactivated_at"] is not None
+    assert source_b["deactivated_at"] is None
+
+
+def test_control_plane_reader_prefers_v2_and_falls_back_to_legacy(conn, lock):
+    model_registry.seed_default_models(
+        conn,
+        lock,
+        models=(("legacy/model", "legacy-provider"),),
+    )
+    legacy = model_registry.list_models_control_plane(conn)
+    assert legacy[0]["model_id"] == "legacy/model"
+    assert legacy[0]["provider_id"] == "legacy-provider"
+
+    model_registry.refresh(
+        conn,
+        lock,
+        source="gateway",
+        fetcher=lambda: [{"id": "v2/model", "owned_by": "v2-provider"}],
+    )
+    preferred = model_registry.list_models_control_plane(conn)
+    assert {row["model_id"] for row in preferred} == {"v2/model"}
