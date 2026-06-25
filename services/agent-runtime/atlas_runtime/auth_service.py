@@ -6,6 +6,7 @@ import json
 import os
 import pathlib
 import re
+import shutil
 from collections.abc import Mapping
 
 from atlas_core.schemas.control_plane import AuthStatus
@@ -278,9 +279,72 @@ def doctor(
     )
 
 
+def _home_directory() -> pathlib.Path:
+    return pathlib.Path.home()
+
+
+def _external_descriptors() -> tuple[tuple[str, str, pathlib.Path], ...]:
+    home = _home_directory()
+    codex_home = pathlib.Path(
+        os.environ.get("CODEX_HOME", "").strip() or home / ".codex"
+    )
+    claude_home = pathlib.Path(
+        os.environ.get("CLAUDE_CONFIG_DIR", "").strip() or home / ".claude"
+    )
+    return (
+        ("codex", "codex", codex_home / "auth.json"),
+        ("claude", "claude", claude_home / ".credentials.json"),
+    )
+
+
 def detect_external_auth() -> tuple[AuthStatus, ...]:
-    """Implemented in the external-detection TDD task."""
-    return ()
+    """Detect external auth by binary/file presence without opening payloads."""
+    statuses: list[AuthStatus] = []
+    for provider, command, credential_path in _external_descriptors():
+        installed = shutil.which(command) is not None
+        try:
+            credential_path.stat()
+            credential_present = True
+        except FileNotFoundError:
+            credential_present = False
+        except OSError:
+            statuses.append(
+                AuthStatus(
+                    provider=provider,
+                    auth_type="external_login",
+                    status="unknown_error",
+                    source="external_read_only",
+                    health="unknown",
+                    remediation=(
+                        f"check access to the {provider} credential file and retry"
+                    ),
+                )
+            )
+            continue
+
+        if credential_present:
+            status = "auth_present"
+            health = "available"
+            remediation = None
+        elif installed:
+            status = "installed_no_auth"
+            health = "needs_auth"
+            remediation = f"authenticate with the {provider} CLI outside ATLAS"
+        else:
+            status = "not_installed"
+            health = "not_installed"
+            remediation = f"install the {provider} CLI if that provider is required"
+        statuses.append(
+            AuthStatus(
+                provider=provider,
+                auth_type="external_login",
+                status=status,
+                source="external_read_only",
+                health=health,
+                remediation=remediation,
+            )
+        )
+    return tuple(statuses)
 
 
 __all__ = [
