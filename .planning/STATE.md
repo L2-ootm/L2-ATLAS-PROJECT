@@ -2,25 +2,26 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
-status: verifying
-last_updated: "2026-06-25T14:14:14.972Z"
+status: ready_to_plan
+last_updated: 2026-06-25T14:14:17.086Z
 last_activity: 2026-06-25
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 9
-  completed_plans: 8
+  completed_plans: 27
   percent: 13
+stopped_at: Phase 10.2 complete (5/5) — ready to discuss Phase 10.3
 ---
 
 # STATE — L2 ATLAS
 
-## Current Position — Phase 10.2 Ready to Execute
+## Current Position — Phase 10.2 Complete
 
 Phase 10.1 is closed with 3/3 plans complete and a documented OpenTUI/Bun
 idle-memory exception carried to Phase 10.6.
 
-Phase 10.2 has 5 executable plans across 4 waves:
+Phase 10.2 completed all 5 plans across 4 dependency waves:
 
 - **10.2-01:** frozen prompt/bootstrap/context schemas and deterministic compiler.
 - **10.2-02:** generated tool capability catalog and conformance.
@@ -29,6 +30,13 @@ Phase 10.2 has 5 executable plans across 4 waves:
 - **10.2-05:** 30-scenario evaluation dataset and deterministic promotion gate.
 
 Progress: [██████████] 100%
+
+Verification passed on 2026-06-25: agent-runtime 436 tests, atlas-core 52 tests,
+and the offline promotion gate 65 checks with 33 scenarios. Next: discuss and
+plan Phase 10.3, Shared Surface Session & Workspace Protocol.
+
+Documentation warning: `.planning/REQUIREMENTS.md` has body requirement IDs
+missing from its Traceability table; tracked for planning-document maintenance.
 
 ## Phase C — Discord Write Surface (2026-06-21, branch `feat/phase-c-discord-write`)
 
@@ -170,7 +178,7 @@ backfilled embeddings cleared). Phase B (Context Intelligence, B1–B6) fully co
 
 ## Current Position
 
-Phase: 10.2 (agent-contract-tool-context-intelligence) — EXECUTING
+Phase: 10.3
   Plan 01 (golden-workflow orchestrator core) shipped: `golden_workflow_service.py`
   (ensure_golden_run/record_artifact/emit_workflow_event — first writer to the
   `artifacts` table in this codebase) via RED-then-GREEN TDD; AuditEvent.event_type
@@ -196,8 +204,8 @@ Phase: 10.2 (agent-contract-tool-context-intelligence) — EXECUTING
   cli/main.py as its own top-level group. 14/14 tests green; full agent-runtime
   (364 pass, 1 known pre-existing claude_agent_sdk env fail) unaffected. Next:
   plan 04/05 (quality gate smoke + demo-reset, docs).
-Plan: 5 of 5
-Status: Phase complete — ready for verification
+Plan: Not started
+Status: Ready to plan
 In-flight (ahead of spine, operator-directed): 10.0.3 ATLAS Identity & Cockpit Redesign — brand
   direction approved at gate; ATLAS palette tokens, logo system (3 variants), favicon, topographic
   shell + sidebar redesign landed. UI-SPEC + per-page redesign wave outstanding.
@@ -446,7 +454,7 @@ tsc/lint/build green.
 See: `.planning/PROJECT.md` (updated 2026-06-15) · `.planning/MILESTONES.md`
 
 **Core value:** A serious, auditable AI operating system for technical founders/operators.
-**Current focus:** Phase 10.2 — agent-contract-tool-context-intelligence
+**Current focus:** Phase 10.3 — shared surface session workspace protocol
 
 ## Deferred Items
 

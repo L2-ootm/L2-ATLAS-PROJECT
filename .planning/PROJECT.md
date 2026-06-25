@@ -25,6 +25,12 @@ default skills quarantined). Pre-public-publish follow-ups tracked in
 
 ## Current Milestone: v1.1 — ATLAS Agent Harness & Multi-Surface Workbench
 
+**Current milestone state:** Phase 10.2 completed and verified on 2026-06-25.
+ATLAS now has a frozen prompt/bootstrap/context contract, generated capability
+catalog, bounded Brain retrieval, immutable replay snapshots, and a 33-scenario
+offline promotion gate. Phase 10.3 is next: bind these contracts to the shared
+surface session and workspace protocol.
+
 **Goal:** Make ATLAS credible as a local AI operator runtime by exposing one owned
 agent/tool/context/policy contract through an ATLAS-native terminal workbench and the existing
 web cockpit. Both surfaces share Projects, Current Focus, missions/runs, Brain/wiki retrieval,
