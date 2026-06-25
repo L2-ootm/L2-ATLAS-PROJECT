@@ -33,6 +33,12 @@ from atlas_core.schemas.registry_v2 import (
     Provider,
     RoutePolicy,
 )
+from atlas_core.schemas.surface_session import (
+    EventKind,
+    SessionState,
+    SurfaceEvent,
+    SurfaceSession,
+)
 
 __all__ = [
     "Artifact",
@@ -45,6 +51,7 @@ __all__ = [
     "DiscordAction",
     "DiscordApproval",
     "DiscordApprovalStatus",
+    "EventKind",
     "Mission",
     "ModelV2",
     "ModelIdentity",
@@ -53,8 +60,11 @@ __all__ = [
     "Run",
     "SECRET_PATTERNS",
     "SessionBootstrap",
+    "SessionState",
     "Source",
+    "SurfaceEvent",
     "SurfaceIdentity",
+    "SurfaceSession",
     "ToolCall",
     "ToolCapability",
     "ToolCatalog",

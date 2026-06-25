@@ -271,6 +271,14 @@ class AuditEvent(BaseModel):
         # Phase 10.0.5 golden workflows — lifecycle bookkeeping events.
         "golden_workflow_started",
         "golden_workflow_completed",
+        # Phase 10.3 — surface session lifecycle / cancellation / permission.
+        # Column is TEXT; enum enforced only by this Literal (no migration, AUD-01).
+        "surface_session_started",
+        "surface_session_suspended",
+        "surface_session_resumed",
+        "surface_session_reclaimed",
+        "run_cancelled",
+        "permission_transition",
     ]
     tool_name: Optional[str] = None
     timestamp: datetime.datetime = Field(

@@ -224,12 +224,13 @@ def test_migration_0016_terminal_rows_are_immutable() -> None:
             "INSERT INTO surface_sessions"
             "(id, surface_kind, surface_session_id, workspace_kind, workspace_root, "
             "agent, model_provider, model_id, permission_mode, prompt_version, "
-            "tool_catalog_version, context_policy_version, state, created_at, updated_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "tool_catalog_version, context_policy_version, state, heartbeat_at, "
+            "created_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 "sid-1", "cli", "surf-1", "global", "/tmp",
                 "atlas", "anthropic", "m", "ask", "1.0.0",
-                "1.0.0", "1.0.0", "completed", "t", "t",
+                "1.0.0", "1.0.0", "completed", "t", "t", "t",
             ),
         )
         conn.commit()
