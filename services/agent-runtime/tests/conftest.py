@@ -83,6 +83,37 @@ def lock_fixture() -> threading.Lock:
     return threading.Lock()
 
 
+@pytest.fixture(name="surface_session")
+def surface_session_fixture(db: sqlite3.Connection) -> str:
+    """A persisted minimal surface_sessions row; yields its id.
+
+    Mirrors the run_id fixture: inserts one valid 'starting' session so transition
+    tests have a row to act on. Migration 0016 is applied by the all-migrations db
+    fixture.
+    """
+    import datetime
+
+    session_id = str(uuid.uuid4())
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    db.execute(
+        "INSERT INTO surface_sessions"
+        "(id, surface_kind, surface_session_id, workspace_kind, workspace_root, "
+        "agent, model_provider, model_id, permission_mode, prompt_version, "
+        "tool_catalog_version, context_policy_version, state, heartbeat_at, "
+        "created_at, updated_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            session_id, "cli", "surf-1", "global", "/tmp/atlas",
+            "atlas", "anthropic", "claude-opus-4", "ask", "1.0.0",
+            "1.0.0", "1.0.0", "starting", now, now, now,
+        ),
+    )
+    db.commit()
+
+    return session_id
+
+
 @pytest.fixture(name="mock_gh")
 def mock_gh_fixture(monkeypatch):
     """Patch subprocess.run so the github adapter never shells out to real `gh`.
