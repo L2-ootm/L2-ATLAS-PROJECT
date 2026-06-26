@@ -89,27 +89,27 @@ surfaces over the same projects, context, configuration, permissions, tools, and
 
 ### CFG — Global Configuration Control Plane
 
-- [ ] **CFG-01**: `~/.atlas/config.yaml` is the authoritative non-secret configuration file with
+- [x] **CFG-01**: `~/.atlas/config.yaml` is the authoritative non-secret configuration file with
   a versioned frozen schema and migration path.
-- [ ] **CFG-02**: Config updates are atomic, cross-process locked, optimistic-concurrency checked,
+- [x] **CFG-02**: Config updates are atomic, cross-process locked, optimistic-concurrency checked,
   validated, permission-hardened, and audited.
 - [x] **CFG-03**: CLI, gateway, TUI, WebUI, and future surfaces use one masked GET/PATCH contract.
-- [ ] **CFG-04**: Config changes publish change events and become visible across surfaces without
+- [x] **CFG-04**: Config changes publish change events and become visible across surfaces without
   restart when hot-reloadable; restart-required fields say so explicitly.
-- [ ] **CFG-05**: Every setting reports configured/effective value, source, validation status,
+- [x] **CFG-05**: Every setting reports configured/effective value, source, validation status,
   restart requirement, and remediation without exposing secret values.
 - [x] **CFG-06**: Conflicting concurrent writes return a version conflict instead of silently
   overwriting another surface.
 
 ### AUTH / MODEL
 
-- [ ] **AUTH-01**: Secrets stay in ATLAS-owned auth storage or `env:` references and never cross
+- [x] **AUTH-01**: Secrets stay in ATLAS-owned auth storage or `env:` references and never cross
   masked config/session/event APIs.
-- [ ] **AUTH-02**: External auth stores are detected read-only unless an explicit later decision
+- [x] **AUTH-02**: External auth stores are detected read-only unless an explicit later decision
   authorizes mutation.
 - [x] **MOD-01**: All surfaces show the same effective provider/model, source, auth state, health,
   and fallback status.
-- [ ] **MOD-02**: Provider/model changes use the shared config/runtime contract and preserve
+- [x] **MOD-02**: Provider/model changes use the shared config/runtime contract and preserve
   current-session prompt/version semantics.
 
 ### PERM — Surface-Scoped Permission Broker
