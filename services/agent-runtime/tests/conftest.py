@@ -33,7 +33,11 @@ def db_fixture() -> sqlite3.Connection:  # type: ignore[return]
     rather than silently returning an empty database (which would cause downstream
     tests to fail with misleading 'no such table' errors instead of a clear cause).
     """
-    conn = sqlite3.connect(":memory:")
+    # check_same_thread=False: the shared connection + threading.Lock is the
+    # production contract (audit_service: "may be shared across threads with
+    # check_same_thread=False"). Concurrency tests (broker at-most-once TOCTOU)
+    # drive this connection from worker threads, so it must not be thread-affine.
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys = ON")
     migrations = sorted(MIGRATIONS_DIR.glob("*.sql"))
