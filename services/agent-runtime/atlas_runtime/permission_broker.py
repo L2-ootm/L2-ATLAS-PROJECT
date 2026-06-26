@@ -42,6 +42,7 @@ from __future__ import annotations
 import datetime
 import sqlite3
 import threading
+import time
 from typing import List, Optional
 
 from atlas_core.schemas.tool import (
@@ -571,8 +572,21 @@ def claim(
                 conn, lock, approval_id=approval_id, reason=reason
             )
     except tool_service.ToolApprovalError:
-        # Lost the race: the winner already flipped the row out of 'pending'.
+        # Lost the race: the winner already flipped the row out of 'pending'. The
+        # winner's atomic flip to 'executing' precedes its later _set_terminal write,
+        # so a naive single re-read can observe the TRANSIENT 'executing' status with
+        # decision/reason still unset — which violates the AlreadyDecided contract that
+        # the loser carries the WINNING terminal outcome (WR-04). Poll (bounded) until
+        # the row reaches a terminal status before constructing AlreadyDecided. The
+        # winner releases the lock between executing->terminal, so this converges; the
+        # bound guarantees we never spin forever if the winner crashed mid-flight
+        # (reconcile_executing_orphans sweeps such rows on the next startup).
+        _TERMINAL = ("executed", "rejected", "failed")
         current = tool_service._load(conn, approval_id)
+        deadline = time.monotonic() + 5.0
+        while current.status not in _TERMINAL and time.monotonic() < deadline:
+            time.sleep(0.01)
+            current = tool_service._load(conn, approval_id)
         raise AlreadyDecided(
             status=current.status,
             decision=current.decision,
