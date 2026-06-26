@@ -491,35 +491,44 @@ def claim(
             f"nonce mismatch for approval {approval_id!r} (replay/stale/missing)"
         )
 
-    # (d) SEC-02 expiry — a claim after expiry_at is denied before the UPDATE. Emit a
-    # deny audit event AFTER releasing any lock (we hold none here) then fail closed.
-    if approval.expiry_at is not None:
-        now_dt = datetime.datetime.now(datetime.timezone.utc)
-        expiry_dt = approval.expiry_at
+    # (d) SEC-02 expiry — FAIL CLOSED. A surface-bound approval always records an
+    # expiry_at (invoke() sets now + ttl). A missing deadline is treated as expired /
+    # untrusted for a surface claim, never "valid indefinitely" (WR-01). A claim at or
+    # after expiry_at is denied before the UPDATE, emitting a deny audit event AFTER
+    # releasing any lock (we hold none here) then failing closed.
+    now_dt = datetime.datetime.now(datetime.timezone.utc)
+    expiry_dt = approval.expiry_at
+    expired = expiry_dt is None
+    if expiry_dt is not None:
         if expiry_dt.tzinfo is None:
             expiry_dt = expiry_dt.replace(tzinfo=datetime.timezone.utc)
-        if now_dt > expiry_dt:
-            run_id = mission_service.ensure_operator_run(conn, lock)
-            audit_service.emit(
-                conn,
-                lock,
-                run_id=run_id,
-                event_type="approval",
-                session_id=surface_session_id,
-                tool_name=approval.tool_name,
-                data={
-                    "approval_id": approval_id,
-                    "tool_name": approval.tool_name,
-                    "status": "rejected",
-                    "decision": decision,
-                    "reason": "expired",
-                    "surface_kind": approval.surface_kind,
-                    "workspace_root": approval.workspace_root,
-                },
-            )
+        expired = now_dt > expiry_dt
+    if expired:
+        run_id = mission_service.ensure_operator_run(conn, lock)
+        audit_service.emit(
+            conn,
+            lock,
+            run_id=run_id,
+            event_type="approval",
+            session_id=surface_session_id,
+            tool_name=approval.tool_name,
+            data={
+                "approval_id": approval_id,
+                "tool_name": approval.tool_name,
+                "status": "rejected",
+                "decision": decision,
+                "reason": "expired",
+                "surface_kind": approval.surface_kind,
+                "workspace_root": approval.workspace_root,
+            },
+        )
+        if approval.expiry_at is None:
             raise StaleApprovalError(
-                f"approval {approval_id!r} expired at {approval.expiry_at!r}"
+                f"approval {approval_id!r} has no expiry (fail-closed)"
             )
+        raise StaleApprovalError(
+            f"approval {approval_id!r} expired at {approval.expiry_at!r}"
+        )
 
     # Persist the decision label on the still-pending row. This is a NON-status
     # UPDATE (decision column only), so it cannot race the at-most-once guard.
