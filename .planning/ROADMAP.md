@@ -402,7 +402,7 @@ AUD-02
 5. Session-scoped “allow once/always” rules cannot silently widen global policy or cross
    workspace/surface boundaries.
 
-**Plans:** 3/5 plans executed
+**Plans:** 4/5 plans executed
 
 **Wave 0**
 
@@ -418,7 +418,7 @@ AUD-02
 
 **Wave 3** *(after Wave 2)*
 
-- [ ] 10.5-04-PLAN.md — PERM-05 headless fail-closed gate + SEC-02 nonce/expiry/malformed claim rejection
+- [x] 10.5-04-PLAN.md — PERM-05 headless fail-closed gate + SEC-02 nonce/expiry/malformed claim rejection
 
 **Wave 4** *(after Wave 3)*
 
@@ -530,7 +530,7 @@ milestone is activated through the normal milestone workflow.
 | 10.2 Agent Contract, Tool Semantics & Context Intelligence | v1.1 | 5/5 | Complete    | 2026-06-25 |
 | 10.3 Shared Surface Session & Workspace Protocol | v1.1 | 5/5 | Complete | 2026-06-25 |
 | 10.4 Global Configuration, Auth & Model Control Plane | v1.1 | 5/5 | Complete   | 2026-06-26 |
-| 10.5 Surface-Scoped Permission Broker | v1.1 | 3/5 | In Progress|  |
+| 10.5 Surface-Scoped Permission Broker | v1.1 | 4/5 | In Progress|  |
 | 10.6 ATLAS Terminal Workbench | v1.1 | 0/? | Not planned | — |
 | 10.7 Web Agent Surface & Permission Queue UX | v1.1 | 0/? | Not planned | — |
 | 10.8 Cross-Surface Conformance, UAT & Cutover | v1.1 | 0/? | Not planned | — |

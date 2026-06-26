@@ -119,7 +119,7 @@ surfaces over the same projects, context, configuration, permissions, tools, and
 - [x] **PERM-02**: Only the initiating live surface session can resolve its actionable request.
 - [ ] **PERM-03**: TUI-owned requests use the ATLAS TUI native blocking prompt.
 - [ ] **PERM-04**: WebUI-owned requests appear in the matching conditional header/sidebar queue.
-- [ ] **PERM-05**: Headless/API `ask` decisions deny by default unless an explicit approval
+- [x] **PERM-05**: Headless/API `ask` decisions deny by default unless an explicit approval
   channel is registered.
 - [x] **PERM-06**: Atomic claim/decision logic guarantees at-most-once deferred execution under
   concurrent replies, reconnects, and process restart.
@@ -164,7 +164,7 @@ surfaces over the same projects, context, configuration, permissions, tools, and
   decision authority.
 - [x] **SEC-01**: Automated scans prove no donor telemetry/update/share/network behavior or
   unapproved imported identity ships.
-- [ ] **SEC-02**: Prompt injection, poisoned wiki/graph entries, malicious tool output, path escape,
+- [x] **SEC-02**: Prompt injection, poisoned wiki/graph entries, malicious tool output, path escape,
   secret leakage, approval spoofing, and replay attacks fail closed.
 
 ### EVAL / TEST
