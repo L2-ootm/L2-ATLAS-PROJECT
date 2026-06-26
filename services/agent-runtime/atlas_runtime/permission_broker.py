@@ -257,10 +257,21 @@ def claim(
     raises ``ToolApprovalError`` (rowcount==0); the loser re-reads the row and raises
     ``AlreadyDecided`` carrying the winning outcome.
 
-    Returns the terminal ToolApproval for the winner. Raises ``ValueError`` for an
-    unknown decision label."""
-    if decision not in ("approve", "reject"):
-        raise ValueError(f"unknown claim decision {decision!r}")
+    SEC-02 replay/stale defenses run AFTER ownership + active-session authority but
+    BEFORE the at-most-once UPDATE, so a stale/replayed claim can never win the race:
+      * malformed contract — a blank/unknown ``decision`` label or a blank ``nonce``
+        raises ``StaleApprovalError`` before any DB read;
+      * nonce mismatch — ``approval.nonce != nonce`` raises ``StaleApprovalError`` with
+        no row mutation;
+      * expiry — ``now > approval.expiry_at`` emits a deny ``approval`` audit event
+        (reason 'expired') AFTER the lock and raises ``StaleApprovalError``.
+
+    Returns the terminal ToolApproval for the winner."""
+    # Malformed-claim guard (SEC-02 V5 input validation) — fail closed BEFORE any SQL.
+    if not decision or decision not in _VALID_CLAIM_DECISIONS:
+        raise StaleApprovalError(f"unknown claim decision {decision!r}")
+    if not nonce or not str(nonce).strip():
+        raise StaleApprovalError("claim nonce must be a non-blank string")
 
     # (a) ownership — load the approval (raises ToolApprovalError on unknown id).
     approval = tool_service._load(conn, approval_id)
@@ -279,6 +290,43 @@ def claim(
             f"surface session {surface_session_id!r} is not active "
             f"(state={None if row is None else row[0]!r})"
         )
+
+    # (c) SEC-02 nonce echo — a replayed/forged nonce that does not match the stored
+    # per-row nonce is rejected with NO row mutation (runs before the UPDATE).
+    if approval.nonce is not None and approval.nonce != nonce:
+        raise StaleApprovalError(
+            f"nonce mismatch for approval {approval_id!r} (replay/stale)"
+        )
+
+    # (d) SEC-02 expiry — a claim after expiry_at is denied before the UPDATE. Emit a
+    # deny audit event AFTER releasing any lock (we hold none here) then fail closed.
+    if approval.expiry_at is not None:
+        now_dt = datetime.datetime.now(datetime.timezone.utc)
+        expiry_dt = approval.expiry_at
+        if expiry_dt.tzinfo is None:
+            expiry_dt = expiry_dt.replace(tzinfo=datetime.timezone.utc)
+        if now_dt > expiry_dt:
+            run_id = mission_service.ensure_operator_run(conn, lock)
+            audit_service.emit(
+                conn,
+                lock,
+                run_id=run_id,
+                event_type="approval",
+                session_id=surface_session_id,
+                tool_name=approval.tool_name,
+                data={
+                    "approval_id": approval_id,
+                    "tool_name": approval.tool_name,
+                    "status": "rejected",
+                    "decision": decision,
+                    "reason": "expired",
+                    "surface_kind": approval.surface_kind,
+                    "workspace_root": approval.workspace_root,
+                },
+            )
+            raise StaleApprovalError(
+                f"approval {approval_id!r} expired at {approval.expiry_at!r}"
+            )
 
     # Persist the decision label on the still-pending row. This is a NON-status
     # UPDATE (decision column only), so it cannot race the at-most-once guard.
