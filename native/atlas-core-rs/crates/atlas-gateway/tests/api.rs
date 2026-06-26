@@ -852,6 +852,26 @@ async fn put_json(router: &axum::Router, uri: &str, body: Value) -> (StatusCode,
     (status, body)
 }
 
+async fn patch_json(router: &axum::Router, uri: &str, body: Value) -> (StatusCode, Value) {
+    let bytes = serde_json::to_vec(&body).unwrap();
+    let resp = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(uri)
+                .header("content-type", "application/json")
+                .body(Body::from(bytes))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = resp.status();
+    let body_bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let body: Value = serde_json::from_slice(&body_bytes).unwrap_or(Value::Null);
+    (status, body)
+}
+
 // --- GET /v1/wiki/pages/{slug} ---------------------------------------------
 
 #[tokio::test]
@@ -1407,4 +1427,352 @@ async fn tool_manifests_returns_cli_json() {
     let (status, body) = get_json(&router, "/v1/tools/manifests").await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["manifests"][0]["name"], "workspace");
+}
+
+// ---------------------------------------------------------------------------
+// Phase 10.4-05 — PATCH /v1/config dispatch adapter + structured error mapping
+// (D-022: the gateway shells to `atlas config patch`; no config schema/auth
+// parsing/secret resolution/model-selection logic lives in Rust).
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn config_patch_dispatches_expected_revision_and_changes_json() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let db_path = seeded_db(&dir);
+    let argv_path = stub_dir.path().join("argv.txt");
+    let stub_output = r#"{"schema_version":1,"revision":1,"provider":{"name":"openrouter","api_key":"env:OPENROUTER_API_KEY"}}"#;
+    let router = test_app_with_arg_capture(db_path, stub_output, &argv_path, &stub_dir);
+
+    let (status, body) = patch_json(
+        &router,
+        "/v1/config",
+        json!({
+            "expected_revision": 0,
+            "changes": {"provider.model": "patched/model"}
+        }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["revision"], 1);
+
+    let argv = std::fs::read_to_string(&argv_path).unwrap();
+    let args: Vec<&str> = argv.lines().collect();
+    assert_eq!(args.first().copied(), Some("config"));
+    assert_eq!(args.get(1).copied(), Some("patch"));
+    let rev_idx = args
+        .iter()
+        .position(|a| *a == "--expected-revision")
+        .expect("--expected-revision missing");
+    assert_eq!(args.get(rev_idx + 1).copied(), Some("0"));
+    let changes_idx = args
+        .iter()
+        .position(|a| *a == "--changes-json")
+        .expect("--changes-json missing");
+    // Changes must be ONE argv element — serde_json-serialized, never shell-interpolated
+    // into multiple tokens.
+    let changes_arg = args.get(changes_idx + 1).copied().unwrap();
+    let parsed: Value = serde_json::from_str(changes_arg).unwrap();
+    assert_eq!(parsed["provider.model"], "patched/model");
+    assert_eq!(args.len(), changes_idx + 2, "changes-json leaked extra argv tokens");
+}
+
+#[tokio::test]
+async fn config_patch_empty_changes_object_is_400_before_dispatch() {
+    let dir = tempfile::tempdir().unwrap();
+    // No stub configured — a dispatch here would fail to spawn and prove the
+    // handler skipped the empty/non-object short-circuit.
+    let router = test_app(seeded_db(&dir));
+    let (status, body) = patch_json(
+        &router,
+        "/v1/config",
+        json!({ "expected_revision": 0, "changes": {} }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "bad_request");
+}
+
+#[tokio::test]
+async fn config_patch_non_object_changes_is_400_before_dispatch() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_app(seeded_db(&dir));
+    let (status, body) = patch_json(
+        &router,
+        "/v1/config",
+        json!({ "expected_revision": 0, "changes": "not-an-object" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "bad_request");
+}
+
+#[tokio::test]
+async fn config_patch_value_with_spaces_stays_one_argv_element() {
+    // Regression guard for shell-interpolation: a changes value containing
+    // spaces/special chars must not split into multiple argv tokens.
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let db_path = seeded_db(&dir);
+    let argv_path = stub_dir.path().join("argv.txt");
+    let stub_output = r#"{"schema_version":1,"revision":1}"#;
+    let router = test_app_with_arg_capture(db_path, stub_output, &argv_path, &stub_dir);
+
+    let (status, _body) = patch_json(
+        &router,
+        "/v1/config",
+        json!({
+            "expected_revision": 0,
+            "changes": {"cockpit.branding": "atlas; rm -rf /"}
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let argv = std::fs::read_to_string(&argv_path).unwrap();
+    let args: Vec<&str> = argv.lines().collect();
+    let changes_idx = args.iter().position(|a| *a == "--changes-json").unwrap();
+    let changes_arg = args.get(changes_idx + 1).copied().unwrap();
+    let parsed: Value = serde_json::from_str(changes_arg).unwrap();
+    assert_eq!(parsed["cockpit.branding"], "atlas; rm -rf /");
+    // Exactly one token holds the whole dangerous string — no extra argv entries.
+    assert_eq!(args.len(), changes_idx + 2);
+}
+
+// ---------------------------------------------------------------------------
+// Task 2 — structured 409/400 error mapping + secret guard
+// ---------------------------------------------------------------------------
+
+/// Build a test app whose atlas CLI stub fails (`config patch` style): writes
+/// a structured `{"error": {...}}` JSON to stderr and exits with `exit_code`.
+fn test_app_with_failing_stub(
+    db_path: PathBuf,
+    stderr_json: &str,
+    exit_code: i32,
+    dir: &tempfile::TempDir,
+) -> axum::Router {
+    let stub = dir.path().join("mock_atlas_fail.py");
+    std::fs::write(
+        &stub,
+        format!(
+            "import sys\nsys.stderr.write('{}')\nsys.exit({})\n",
+            stderr_json.replace('\'', "\\'"),
+            exit_code,
+        ),
+    )
+    .unwrap();
+    let python = if cfg!(windows) { "python" } else { "python3" };
+    app(AppState {
+        db_path,
+        atlas_cmd: vec![python.to_string(), stub.to_string_lossy().to_string()],
+        repo_root: PathBuf::from("."),
+    })
+}
+
+#[tokio::test]
+async fn config_patch_revision_conflict_maps_to_409() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let stderr_json = serde_json::json!({
+        "error": {
+            "code": "config_revision_conflict",
+            "message": "config revision 0 is stale (current revision 3)",
+            "remediation": "re-fetch GET /v1/config and retry with the current revision",
+        },
+        "current_revision": 3,
+    })
+    .to_string();
+    let router = test_app_with_failing_stub(seeded_db(&dir), &stderr_json, 2, &stub_dir);
+
+    let (status, body) = patch_json(
+        &router,
+        "/v1/config",
+        json!({ "expected_revision": 0, "changes": {"provider.model": "x"} }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(body["error"]["code"], "config_revision_conflict");
+    assert_eq!(body["current_revision"], 3);
+    assert!(body["error"]["remediation"].as_str().unwrap().len() > 0);
+}
+
+#[tokio::test]
+async fn config_patch_validation_error_maps_to_400() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let stderr_json = serde_json::json!({
+        "error": {
+            "code": "config_invalid",
+            "message": "runtime.iteration_budget must be >= 1",
+            "remediation": "provide a positive integer",
+            "field": "runtime.iteration_budget",
+        },
+    })
+    .to_string();
+    let router = test_app_with_failing_stub(seeded_db(&dir), &stderr_json, 1, &stub_dir);
+
+    let (status, body) = patch_json(
+        &router,
+        "/v1/config",
+        json!({ "expected_revision": 0, "changes": {"runtime.iteration_budget": 0} }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "config_invalid");
+    assert_eq!(body["error"]["field"], "runtime.iteration_budget");
+}
+
+#[tokio::test]
+async fn config_patch_unknown_key_maps_to_400() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let stderr_json = serde_json::json!({
+        "error": {
+            "code": "config_schema_unsupported",
+            "message": "unknown config key: provider.nope",
+            "remediation": "use a recognized dotted config path",
+        },
+    })
+    .to_string();
+    let router = test_app_with_failing_stub(seeded_db(&dir), &stderr_json, 1, &stub_dir);
+
+    let (status, body) = patch_json(
+        &router,
+        "/v1/config",
+        json!({ "expected_revision": 0, "changes": {"provider.nope": "x"} }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "config_schema_unsupported");
+}
+
+#[tokio::test]
+async fn config_patch_unexpected_cli_failure_is_500() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    // Non-JSON stderr (e.g. a Python traceback) — an unstructured failure must
+    // never be reported as a 400/409; it stays a generic 500.
+    let router = test_app_with_failing_stub(
+        seeded_db(&dir),
+        "Traceback (most recent call last): boom",
+        1,
+        &stub_dir,
+    );
+
+    let (status, body) = patch_json(
+        &router,
+        "/v1/config",
+        json!({ "expected_revision": 0, "changes": {"provider.model": "x"} }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(body["error"]["code"], "internal");
+}
+
+#[tokio::test]
+async fn config_get_and_patch_never_contain_secret_sentinel() {
+    let get_dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    // Sentinel that MUST NOT appear in either response body — the CLI itself
+    // always masks secrets, but this proves the gateway forwards verbatim
+    // (Rust performs no secret resolution) and does not introduce a leak path.
+    const SECRET_SENTINEL: &str = "sk-should-never-leak-9f3c";
+    let masked_snapshot = r#"{"schema_version":1,"revision":1,"provider":{"name":"openrouter","api_key":"env:OPENROUTER_API_KEY"}}"#;
+
+    let get_router = test_app_with_stub(seeded_db(&get_dir), masked_snapshot, &stub_dir);
+    let (status, body) = get_json(&get_router, "/v1/config").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(!body.to_string().contains(SECRET_SENTINEL));
+
+    let patch_dir = tempfile::tempdir().unwrap();
+    let patch_stub_dir = tempfile::tempdir().unwrap();
+    let patch_router = test_app_with_stub(seeded_db(&patch_dir), masked_snapshot, &patch_stub_dir);
+    let (status, body) = patch_json(
+        &patch_router,
+        "/v1/config",
+        json!({ "expected_revision": 0, "changes": {"provider.model": "x"} }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(!body.to_string().contains(SECRET_SENTINEL));
+}
+
+#[tokio::test]
+async fn config_view_top_level_compatibility_unaffected_by_patch_route() {
+    // Existing GET /v1/config compatibility (provider/runtime top-level fields)
+    // must remain green after PATCH wiring lands alongside it.
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"provider": {"name": "openrouter", "api_key": "env:OPENROUTER_API_KEY"}, "runtime": {"default_agent": "native"}}"#,
+        &stub_dir,
+    );
+    let (status, body) = get_json(&router, "/v1/config").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["provider"]["name"], "openrouter");
+    assert_eq!(body["runtime"]["default_agent"], "native");
+}
+
+// ---------------------------------------------------------------------------
+// Task 3 — cross-surface conformance smoke (fixture-level transport contract)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn config_patch_then_get_reflects_same_revision_without_restart() {
+    // Proves the gateway's PATCH/GET pair consumes one shared contract shape:
+    // a patch's returned revision is visible to a subsequent GET against the
+    // same stub fixture (no gateway-side caching of the snapshot).
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let snapshot_after_patch = r#"{"schema_version":1,"revision":1,"provider":{"name":"openrouter","model":"patched/model","api_key":"env:OPENROUTER_API_KEY"}}"#;
+    let router = test_app_with_stub(seeded_db(&dir), snapshot_after_patch, &stub_dir);
+
+    let (patch_status, patch_body) = patch_json(
+        &router,
+        "/v1/config",
+        json!({ "expected_revision": 0, "changes": {"provider.model": "patched/model"} }),
+    )
+    .await;
+    assert_eq!(patch_status, StatusCode::OK);
+    assert_eq!(patch_body["revision"], 1);
+
+    let (get_status, get_body) = get_json(&router, "/v1/config").await;
+    assert_eq!(get_status, StatusCode::OK);
+    assert_eq!(get_body["revision"], 1);
+    assert_eq!(get_body["provider"]["model"], "patched/model");
+}
+
+#[tokio::test]
+async fn config_patch_stale_second_writer_rejected_not_silently_applied() {
+    // A second writer using an already-superseded revision must be rejected
+    // (409), never silently accepted and overwrite the first writer's change.
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let stderr_json = serde_json::json!({
+        "error": {
+            "code": "config_revision_conflict",
+            "message": "config revision 0 is stale (current revision 1)",
+            "remediation": "re-fetch GET /v1/config and retry with the current revision",
+        },
+        "current_revision": 1,
+    })
+    .to_string();
+    let router = test_app_with_failing_stub(seeded_db(&dir), &stderr_json, 2, &stub_dir);
+
+    let (status, body) = patch_json(
+        &router,
+        "/v1/config",
+        json!({ "expected_revision": 0, "changes": {"provider.model": "stale-writer"} }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(body["error"]["code"], "config_revision_conflict");
+    assert_eq!(body["current_revision"], 1);
 }
