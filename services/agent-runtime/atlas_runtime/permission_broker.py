@@ -229,18 +229,53 @@ def list_actionable(
     return [tool_service._row_to_approval(r) for r in cur.fetchall()]
 
 
-def list_outcomes(conn: sqlite3.Connection) -> List[ToolApproval]:
-    """Read-only projection of terminal approval outcomes (AUD-02).
+def list_outcomes(
+    conn: sqlite3.Connection, *, limit: Optional[int] = None
+) -> List[ToolApproval]:
+    """Cross-surface read-only projection of terminal approval outcomes (AUD-02).
 
-    Pure read: performs NO status flip and exposes no mutating verb. Returns every
-    approval that has reached a terminal status (executed | rejected | failed),
-    newest decided first."""
-    cur = conn.execute(
+    This is the cross-surface VISIBILITY mechanism (D-022: no pub/sub bus — audit IS
+    the mechanism). An observer can see every terminal outcome (executed | rejected |
+    failed) with its surface provenance, newest decided first, but gains NO decision
+    authority: there is no ``lock`` parameter, no INSERT/UPDATE, and no call into
+    claim/approve/reject. A non-owning surface cannot act via this projection — the
+    actionable claim path stays strictly session-scoped (``list_actionable``/``claim``).
+    Pending rows are intentionally excluded so an observer cannot mistake the read for a
+    claimable queue. ``limit`` optionally caps the rows returned. Pure SELECT
+    (T-10.5-05-OBSERVER)."""
+    sql = (
         f"SELECT {tool_service._COLS} FROM tool_approvals "
         "WHERE status IN ('executed', 'rejected', 'failed') "
         "ORDER BY decided_at DESC"
     )
+    params: tuple = ()
+    if limit is not None:
+        sql += " LIMIT ?"
+        params = (int(limit),)
+    cur = conn.execute(sql, params)
     return [tool_service._row_to_approval(r) for r in cur.fetchall()]
+
+
+def get_outcome(
+    conn: sqlite3.Connection, approval_id: str
+) -> Optional[ToolApproval]:
+    """Read-only single terminal-outcome view for ``approval_id`` (AUD-02).
+
+    Returns the terminal ToolApproval (executed | rejected | failed) for the id, or
+    None if the approval does not exist or is still pending/executing. Pure read: no
+    ``lock``, no mutation, no claim/approve/reject call — an observer gains no decision
+    authority from it. The returned view carries the redacted args/result the emit
+    boundary already produced; the live nonce is part of the persisted row but the
+    projection grants no claim handle, so possessing the view cannot resolve anything
+    (the claim path enforces ownership + active session independently)."""
+    row = conn.execute(
+        f"SELECT {tool_service._COLS} FROM tool_approvals "
+        "WHERE id = ? AND status IN ('executed', 'rejected', 'failed')",
+        (approval_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return tool_service._row_to_approval(row)
 
 
 # ---------------------------------------------------------------------------
@@ -624,6 +659,7 @@ __all__ = [
     "revoke_channel",
     "list_actionable",
     "list_outcomes",
+    "get_outcome",
     "record_allow_rule",
     "allow_pattern_for_args",
     "match_allow_rule",
