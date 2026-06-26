@@ -337,6 +337,29 @@ def record_allow_rule(
     read-only authority, unchanged for every other session). A rule recorded for
     session A is invisible to session B's authority (different ``surface_session_id``).
     """
+    # WR-05 fail-closed: validate ALL scope inputs BEFORE any side effect. These map to
+    # NOT NULL columns in session_allow_rules (DDL) and to non-Optional ``str`` fields on
+    # SessionAllowRule. A NULL/blank value would otherwise raise a Pydantic
+    # ValidationError at construction — and at the claim() call site that fires AFTER the
+    # approval has already executed (irreversible), surfacing as an unexpected post-exec
+    # exception. Reject up front so this function can never throw mid-write, and so the
+    # caller can skip rule recording (rather than crash) when the approval lacks scope.
+    missing = [
+        name
+        for name, value in (
+            ("surface_session_id", surface_session_id),
+            ("workspace_root", workspace_root),
+            ("surface_kind", surface_kind),
+            ("tool_name", tool_name),
+            ("arg_pattern", arg_pattern),
+        )
+        if value is None or not str(value).strip()
+    ]
+    if missing:
+        raise ValueError(
+            "record_allow_rule requires non-null scope fields; missing/blank: "
+            + ", ".join(missing)
+        )
     rule = SessionAllowRule(
         surface_session_id=surface_session_id,
         workspace_root=workspace_root,
@@ -601,10 +624,25 @@ def claim(
     # cannot match another session/workspace/tool/arg-pattern. arg_pattern reuses the
     # SAME shared normalization helper as the approval's args_normalized (byte-identical
     # match), so a recorded rule actually matches a real re-invocation.
+    # WR-05: the convenience rule is derived from the terminal approval's scope columns,
+    # all of which are nullable in 0017. If any is NULL/blank, record_allow_rule would
+    # raise AFTER the gated side effect already executed (irreversible). SKIP rule
+    # recording in that case rather than crash the caller post-execution — the claim
+    # itself succeeded; only the optional convenience rule is dropped. record_allow_rule
+    # also fail-closes internally, so this guard is defense-in-depth, not the sole check.
+    rule_scope_ok = bool(
+        terminal.workspace_root
+        and str(terminal.workspace_root).strip()
+        and terminal.surface_kind
+        and str(terminal.surface_kind).strip()
+        and terminal.args_normalized
+        and str(terminal.args_normalized).strip()
+    )
     if (
         decision == "approve"
         and record_rule is not None
         and record_rule in _VALID_RULE_KINDS
+        and rule_scope_ok
     ):
         rule = record_allow_rule(
             conn,
