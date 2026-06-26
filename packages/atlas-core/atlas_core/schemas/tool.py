@@ -93,10 +93,67 @@ class ToolApproval(BaseModel):
         default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
     decided_at: Optional[datetime.datetime] = None
+    # Phase 10.5 surface-scoped broker (PERM-01). All Optional so legacy NULL rows
+    # load; mirrors migration 0017 additive columns 1:1 (Pitfall 2 lockstep).
+    surface_session_id: Optional[str] = None  # soft anchor to surface_sessions.id
+    surface_kind: Optional[str] = None  # cli | tui | webui | api
+    workspace_root: Optional[str] = None  # resolved workspace for scope binding
+    expiry_at: Optional[datetime.datetime] = None  # TTL deadline (SEC-02 stale gate)
+    decision: Optional[str] = None  # claim outcome (allow/deny cause)
+    nonce: Optional[str] = None  # replay guard (SEC-02)
+    args_normalized: Optional[str] = None  # redacted canonical args = policy match key
 
-    @field_serializer("requested_at", "decided_at")
+    @field_serializer("requested_at", "decided_at", "expiry_at")
     def serialize_dt(self, dt: datetime.datetime | None) -> str | None:
         return None if dt is None else dt.isoformat()
+
+
+class ApprovalChannel(BaseModel):
+    """A registered approval delivery channel for a surface session (PERM-05).
+
+    Presence of an unrevoked row is the fail-closed gate for headless ('api')
+    surfaces. Mirrors the 0017 approval_channels table."""
+
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    surface_session_id: str
+    surface_kind: str
+    registered_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+    revoked_at: Optional[datetime.datetime] = None
+
+    @field_serializer("registered_at", "revoked_at")
+    def serialize_dt(self, dt: datetime.datetime | None) -> str | None:
+        return None if dt is None else dt.isoformat()
+
+
+# allow_once: this approval only; allow_session: rest of the session; allow_always:
+# persists across sessions (still scope-bound to workspace + surface + tool).
+SessionAllowRuleKind = Literal["allow_once", "allow_session", "allow_always"]
+
+
+class SessionAllowRule(BaseModel):
+    """A scope-bound allow rule (PERM-07). Anchored to one surface session +
+    workspace + surface kind + tool + arg pattern — never a global policy.
+    Mirrors the 0017 session_allow_rules table."""
+
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    surface_session_id: str
+    workspace_root: str
+    surface_kind: str
+    tool_name: str
+    arg_pattern: str
+    rule_kind: SessionAllowRuleKind
+    created_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+
+    @field_serializer("created_at")
+    def serialize_dt(self, dt: datetime.datetime) -> str:
+        return dt.isoformat()
 
 
 __all__ = [
@@ -106,4 +163,7 @@ __all__ = [
     "ToolManifest",
     "ToolResult",
     "ToolApproval",
+    "ApprovalChannel",
+    "SessionAllowRuleKind",
+    "SessionAllowRule",
 ]

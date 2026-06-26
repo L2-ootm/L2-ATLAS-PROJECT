@@ -65,6 +65,11 @@ class ContextConfig(_FrozenControlPlaneModel):
 
 class PermissionConfig(_FrozenControlPlaneModel):
     mode: PermissionMode = "ask"
+    # Phase 10.5 surface-scoped broker defaults (PERM-01/SEC-02). Bounded ints via
+    # Field(ge=...) matching the RuntimeConfig/GatewayConfig convention. Defaults
+    # apply to existing config.yaml automatically via model_validate.
+    approval_ttl_seconds: int = Field(default=300, ge=1)
+    fail_closed_on_disconnect: bool = True
 
 
 class ModulesConfig(_FrozenControlPlaneModel):
