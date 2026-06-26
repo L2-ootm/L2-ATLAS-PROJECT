@@ -4,13 +4,13 @@ milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: planning
 last_updated: "2026-06-26T03:18:37.679Z"
-last_activity: 2026-06-25
+last_activity: 2026-06-26
 progress:
   total_phases: 8
-  completed_phases: 2
+  completed_phases: 4
   total_plans: 20
   completed_plans: 18
-  percent: 25
+  percent: 50
 ---
 
 # STATE — L2 ATLAS
