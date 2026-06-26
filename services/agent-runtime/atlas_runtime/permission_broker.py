@@ -481,11 +481,14 @@ def claim(
             f"(state={None if row is None else row[0]!r})"
         )
 
-    # (c) SEC-02 nonce echo — a replayed/forged nonce that does not match the stored
-    # per-row nonce is rejected with NO row mutation (runs before the UPDATE).
-    if approval.nonce is not None and approval.nonce != nonce:
+    # (c) SEC-02 nonce echo — FAIL CLOSED. A surface-bound approval always carries a
+    # uuid4 nonce (invoke() sets it). A missing/blank stored nonce or a nonce that does
+    # not match the caller's is rejected with NO row mutation (runs before the UPDATE).
+    # Gating on ``approval.nonce is not None`` would let a NULL-nonce row (legacy / any
+    # non-broker insert) accept ANY caller nonce — an opt-out-by-data-state hole (CR-02).
+    if approval.nonce is None or not str(approval.nonce).strip() or approval.nonce != nonce:
         raise StaleApprovalError(
-            f"nonce mismatch for approval {approval_id!r} (replay/stale)"
+            f"nonce mismatch for approval {approval_id!r} (replay/stale/missing)"
         )
 
     # (d) SEC-02 expiry — a claim after expiry_at is denied before the UPDATE. Emit a
