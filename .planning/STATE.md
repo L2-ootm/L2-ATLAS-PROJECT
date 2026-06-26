@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
-status: executing
-last_updated: "2026-06-26T21:32:33.837Z"
+status: verifying
+last_updated: "2026-06-26T21:39:08.610Z"
 last_activity: 2026-06-26
 progress:
   total_phases: 8
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 25
-  completed_plans: 22
-  percent: 25
+  completed_plans: 23
+  percent: 38
 ---
 
 # STATE — L2 ATLAS
@@ -77,7 +77,7 @@ Phase 10.2 completed all 5 plans across 4 dependency waves:
 - **10.2-04:** immutable run-contract snapshots, replay, and resume invariants.
 - **10.2-05:** 30-scenario evaluation dataset and deterministic promotion gate.
 
-Progress: [██████████] 96%
+Progress: [██████████] 100%
 
 Verification passed on 2026-06-25: agent-runtime 436 tests, atlas-core 52 tests,
 and the offline promotion gate 65 checks with 33 scenarios. Next: discuss and
@@ -253,7 +253,7 @@ Phase: 10.5 (surface-scoped-permission-broker) — EXECUTING
   (364 pass, 1 known pre-existing claude_agent_sdk env fail) unaffected. Next:
   plan 04/05 (quality gate smoke + demo-reset, docs).
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 In-flight (ahead of spine, operator-directed): 10.0.3 ATLAS Identity & Cockpit Redesign — brand
   direction approved at gate; ATLAS palette tokens, logo system (3 variants), favicon, topographic
   shell + sidebar redesign landed. UI-SPEC + per-page redesign wave outstanding.
@@ -778,6 +778,7 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 | Phase 10.5 P02 | 5min | 3 tasks | 4 files |
 | Phase 10.5 P03 | 4m | 2 tasks | 3 files |
 | Phase 10.5 P04 | 6 | 2 tasks | 2 files |
+| Phase 10.5 P05 | 9 | 2 tasks | 1 files |
 
 ## Operator Next Steps
 

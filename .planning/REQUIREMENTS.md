@@ -123,7 +123,7 @@ surfaces over the same projects, context, configuration, permissions, tools, and
   channel is registered.
 - [x] **PERM-06**: Atomic claim/decision logic guarantees at-most-once deferred execution under
   concurrent replies, reconnects, and process restart.
-- [ ] **PERM-07**: Allow-once/session/always decisions cannot widen scope across surface sessions,
+- [x] **PERM-07**: Allow-once/session/always decisions cannot widen scope across surface sessions,
   workspaces, projects, tools, argument patterns, or global policy.
 
 ### TUI — ATLAS Terminal Workbench
@@ -160,7 +160,7 @@ surfaces over the same projects, context, configuration, permissions, tools, and
 
 - [x] **AUD-01**: Every surface session, model call, retrieval, tool call, permission transition,
   config change, subagent, cancellation, and completion has structured audit identity.
-- [ ] **AUD-02**: Audit can show cross-surface terminal outcomes but never grants another surface
+- [x] **AUD-02**: Audit can show cross-surface terminal outcomes but never grants another surface
   decision authority.
 - [x] **SEC-01**: Automated scans prove no donor telemetry/update/share/network behavior or
   unapproved imported identity ships.
