@@ -96,6 +96,12 @@ enum ApiError {
     NotFound(&'static str),
     BadRequest(&'static str),
     Internal(String),
+    /// A structured error body parsed verbatim from a CLI's stderr JSON
+    /// (e.g. `atlas config patch`'s `{"error": {...}, "current_revision": N}`).
+    /// The gateway maps the CLI's machine-readable `code` to an HTTP status
+    /// (409 conflict / 400 validation) but never inspects config fields —
+    /// the JSON body itself is forwarded unchanged (D-022).
+    Structured(StatusCode, Value),
 }
 
 impl From<db::DbError> for ApiError {
@@ -109,6 +115,9 @@ impl From<db::DbError> for ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
+        if let ApiError::Structured(status, body) = self {
+            return (status, Json(body)).into_response();
+        }
         let (status, code, message) = match self {
             ApiError::DbAbsent => (
                 StatusCode::SERVICE_UNAVAILABLE,
@@ -123,6 +132,7 @@ impl IntoResponse for ApiError {
             ),
             ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, "bad_request", msg.to_string()),
             ApiError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, "internal", msg),
+            ApiError::Structured(..) => unreachable!("handled above"),
         };
         let body = Json(json!({ "error": { "code": code, "message": message } }));
         (status, body).into_response()
@@ -488,6 +498,34 @@ async fn dispatch_atlas(
     dispatch_atlas_with_timeout(atlas_cmd, args, DISPATCH_TIMEOUT).await
 }
 
+/// Dispatch a write and return the raw child `Output` (exit status, stdout,
+/// stderr) instead of collapsing a non-zero exit to a generic `ApiError`.
+/// For callers (e.g. `config_patch`) that need to parse a CLI's structured
+/// JSON error from stderr to map specific failure codes (409/400) rather
+/// than always reporting 500.
+async fn dispatch_atlas_raw(
+    atlas_cmd: &[String],
+    args: &[&str],
+    timeout: Duration,
+) -> Result<std::process::Output, ApiError> {
+    if atlas_cmd.is_empty() {
+        return Err(ApiError::Internal("atlas_cmd is empty".into()));
+    }
+    let mut cmd = tokio::process::Command::new(&atlas_cmd[0]);
+    hide_console_tokio(&mut cmd);
+    for pre in &atlas_cmd[1..] {
+        cmd.arg(pre);
+    }
+    for arg in args {
+        cmd.arg(arg);
+    }
+    cmd.kill_on_drop(true);
+    tokio::time::timeout(timeout, cmd.output())
+        .await
+        .map_err(|_| ApiError::Internal("atlas command timed out".into()))?
+        .map_err(|e| ApiError::Internal(format!("failed to spawn atlas: {e}")))
+}
+
 async fn dispatch_atlas_with_timeout(
     atlas_cmd: &[String],
     args: &[&str],
@@ -555,6 +593,70 @@ async fn config_view(State(state): State<AppState>) -> ApiResult {
     let value: Value = serde_json::from_str(&out)
         .map_err(|e| ApiError::Internal(format!("config json parse failed: {e}")))?;
     Ok(Json(value))
+}
+
+#[derive(Deserialize)]
+struct ConfigPatchBody {
+    expected_revision: i64,
+    changes: Value,
+}
+
+/// PATCH /v1/config — one optimistic config mutation dispatched to the
+/// canonical `atlas config patch` CLI contract. The Rust gateway contains no
+/// config schema, validation, or secret-resolution logic (D-022): it only
+/// (1) rejects an empty/non-object `changes` payload before any dispatch,
+/// (2) serializes `changes` as ONE argv element via serde_json (never
+/// shell-interpolated), and (3) parses the CLI's structured stderr JSON
+/// error to map `config_revision_conflict` -> 409 and other known
+/// validation codes -> 400; any unstructured/unexpected failure stays 500.
+async fn config_patch(
+    State(state): State<AppState>,
+    Json(body): Json<ConfigPatchBody>,
+) -> ApiResult {
+    let changes_obj = match &body.changes {
+        Value::Object(map) if !map.is_empty() => &body.changes,
+        Value::Object(_) => {
+            return Err(ApiError::BadRequest("changes must be a non-empty object"))
+        }
+        _ => return Err(ApiError::BadRequest("changes must be a JSON object")),
+    };
+    let revision_arg = body.expected_revision.to_string();
+    // serde_json::Value::to_string() serializes the whole object into one
+    // String -> one argv element; there is no shell involved, so no value
+    // inside `changes` (spaces, semicolons, etc.) can split into extra args.
+    let changes_arg = changes_obj.to_string();
+    let args = [
+        "config",
+        "patch",
+        "--expected-revision",
+        &revision_arg,
+        "--changes-json",
+        &changes_arg,
+    ];
+    let output = dispatch_atlas_raw(&state.atlas_cmd, &args, DISPATCH_TIMEOUT).await?;
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let value: Value = serde_json::from_str(stdout.trim())
+            .map_err(|e| ApiError::Internal(format!("config patch parse failed: {e}")))?;
+        return Ok(Json(value));
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if let Ok(error_body) = serde_json::from_str::<Value>(stderr.trim()) {
+        let code = error_body
+            .get("error")
+            .and_then(|e| e.get("code"))
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let status = match code {
+            "config_revision_conflict" => StatusCode::CONFLICT,
+            "config_invalid" | "config_schema_unsupported" => StatusCode::BAD_REQUEST,
+            _ => return Err(ApiError::Internal(format!("atlas config patch failed: {stderr}"))),
+        };
+        return Err(ApiError::Structured(status, error_body));
+    }
+    Err(ApiError::Internal(format!(
+        "atlas config patch failed: {stderr}"
+    )))
 }
 
 /// GET /v1/channels — configured messaging channels (foundation gateway config).
@@ -1835,7 +1937,7 @@ async fn cors(req: Request, next: Next) -> Response {
         headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin.unwrap());
         headers.insert(
             header::ACCESS_CONTROL_ALLOW_METHODS,
-            HeaderValue::from_static("GET, POST, PUT, OPTIONS"),
+            HeaderValue::from_static("GET, POST, PUT, PATCH, OPTIONS"),
         );
         headers.insert(
             header::ACCESS_CONTROL_ALLOW_HEADERS,
@@ -1870,7 +1972,7 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/wiki/pages/{slug}", get(wiki_page_detail).put(wiki_update))
         .route("/v1/wiki/search", get(wiki_search))
         .route("/v1/models", get(models_list))
-        .route("/v1/config", get(config_view))
+        .route("/v1/config", get(config_view).patch(config_patch))
         .route("/v1/channels", get(channels_list))
         .route("/v1/channels/{name}/toggle", post(channel_toggle))
         .route("/v1/gateway/messaging/status", get(messaging_gateway_status))
