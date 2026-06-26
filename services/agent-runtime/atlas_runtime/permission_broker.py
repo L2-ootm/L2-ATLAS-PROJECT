@@ -44,9 +44,27 @@ import sqlite3
 import threading
 from typing import List, Optional
 
-from atlas_core.schemas.tool import ApprovalChannel, ToolApproval
+from atlas_core.schemas.tool import (
+    ApprovalChannel,
+    SessionAllowRule,
+    SessionAllowRuleKind,
+    ToolApproval,
+)
 
 from atlas_runtime import audit_service, mission_service, tool_service
+
+# PERM-07 scope-guard hard rule (do NOT regress):
+#   Session allow-rules are a per-claim CONVENIENCE for the initiating active
+#   session ONLY. They live exclusively on the `session_allow_rules` table keyed by
+#   surface_session_id and bounded to the (workspace_root, surface_kind, tool_name,
+#   arg_pattern) 4-tuple. They are NEVER written to policy.py or config.yaml and can
+#   NEVER widen what policy.decide() returns for any other session or globally. There
+#   is intentionally NO import of a config-write API (config_service.patch_config /
+#   policy mutation) in this module — a session rule that escaped into global policy
+#   would be an elevation-of-privilege bug (T-10.5-05-WIDEN / T-10.5-05-WILDCARD).
+
+# Closed set of accepted allow-rule kinds (mirrors the SessionAllowRuleKind Literal).
+_VALID_RULE_KINDS = ("allow_once", "allow_session", "allow_always")
 
 
 def _now_iso() -> str:
@@ -226,6 +244,142 @@ def list_outcomes(conn: sqlite3.Connection) -> List[ToolApproval]:
 
 
 # ---------------------------------------------------------------------------
+# Session-scoped allow-rule store + consume (PERM-07, hard scope bound)
+# ---------------------------------------------------------------------------
+
+
+def record_allow_rule(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    *,
+    surface_session_id: str,
+    workspace_root: str,
+    surface_kind: str,
+    tool_name: str,
+    arg_pattern: str,
+    rule_kind: SessionAllowRuleKind,
+) -> SessionAllowRule:
+    """Store a scope-bound allow-rule on ``session_allow_rules`` (PERM-07).
+
+    The rule is anchored to one ``surface_session_id`` and bounded to the
+    (workspace_root, surface_kind, tool_name, arg_pattern) 4-tuple — there is NO
+    global/cross-session row and NO wildcard. Construct-validate-then-write: build the
+    frozen ``SessionAllowRule`` first (rejecting a malformed ``rule_kind`` before any
+    SQL), then INSERT inside ``with lock: with conn:``.
+
+    CRITICAL (Warning-5 cross-path parity): ``arg_pattern`` MUST be produced by the
+    SAME shared normalization helper ``tool_service._normalize_args(args)`` that the
+    ``invoke()`` insert path uses for the approval's ``args_normalized`` column, so a
+    rule's ``arg_pattern`` is byte-identical to a real approval's ``args_normalized``
+    and the ``==`` match in ``match_allow_rule`` is reliable. Callers pass the already
+    normalized string here; do NOT hand-roll a second normalization. (See
+    ``allow_pattern_for_args`` for the convenience wrapper that calls the shared
+    helper.)
+
+    HARD GUARD: this function writes ONLY to ``session_allow_rules``. It never touches
+    policy.py or config.yaml and never calls ``policy.decide`` (which stays the global
+    read-only authority, unchanged for every other session). A rule recorded for
+    session A is invisible to session B's authority (different ``surface_session_id``).
+    """
+    rule = SessionAllowRule(
+        surface_session_id=surface_session_id,
+        workspace_root=workspace_root,
+        surface_kind=surface_kind,
+        tool_name=tool_name,
+        arg_pattern=arg_pattern,
+        rule_kind=rule_kind,
+    )
+    with lock:
+        with conn:
+            conn.execute(
+                "INSERT INTO session_allow_rules "
+                "(id, surface_session_id, workspace_root, surface_kind, tool_name, "
+                " arg_pattern, rule_kind, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    rule.id,
+                    rule.surface_session_id,
+                    rule.workspace_root,
+                    rule.surface_kind,
+                    rule.tool_name,
+                    rule.arg_pattern,
+                    rule.rule_kind,
+                    rule.created_at.isoformat(),
+                ),
+            )
+    return rule
+
+
+def allow_pattern_for_args(args: Optional[dict]) -> str:
+    """The arg_pattern for an allow-rule covering ``args`` (Warning-5 parity).
+
+    Delegates to ``tool_service._normalize_args`` — the SINGLE source of truth the
+    ``invoke()`` insert path uses for ``args_normalized`` — so a rule recorded with
+    ``record_allow_rule(arg_pattern=allow_pattern_for_args(args), ...)`` produces a
+    byte-identical key to the approval ``invoke({...args})`` persists. Do not
+    re-implement json.dumps/redaction here; that would risk a non-matching pattern."""
+    return tool_service._normalize_args(args or {})
+
+
+def match_allow_rule(
+    conn: sqlite3.Connection,
+    *,
+    surface_session_id: str,
+    workspace_root: str,
+    surface_kind: str,
+    tool_name: str,
+    args_normalized: str,
+) -> Optional[SessionAllowRule]:
+    """Return a session-scoped allow-rule that EXACTLY matches the 4-tuple, or None.
+
+    Session-scoped: SELECTs rules for ``surface_session_id`` ONLY — a rule on session
+    A can never match a query for session B. Exact 4-tuple match: every one of
+    workspace_root, surface_kind, tool_name, and ``arg_pattern == args_normalized``
+    must hold — no wildcard widening across workspace, surface, tool, or arg pattern
+    (T-10.5-05-WILDCARD). Pure read (no lock, no mutation). Newest rule first so an
+    allow_once recorded most recently is the first candidate to consume."""
+    row = conn.execute(
+        "SELECT id, surface_session_id, workspace_root, surface_kind, tool_name, "
+        "arg_pattern, rule_kind, created_at FROM session_allow_rules "
+        "WHERE surface_session_id = ? AND workspace_root = ? AND surface_kind = ? "
+        "AND tool_name = ? AND arg_pattern = ? "
+        "ORDER BY created_at DESC LIMIT 1",
+        (
+            surface_session_id,
+            workspace_root,
+            surface_kind,
+            tool_name,
+            args_normalized,
+        ),
+    ).fetchone()
+    if row is None:
+        return None
+    return SessionAllowRule(
+        id=row[0],
+        surface_session_id=row[1],
+        workspace_root=row[2],
+        surface_kind=row[3],
+        tool_name=row[4],
+        arg_pattern=row[5],
+        rule_kind=row[6],
+        created_at=row[7],
+    )
+
+
+def _consume_allow_once(
+    conn: sqlite3.Connection, lock: threading.Lock, rule_id: str
+) -> None:
+    """Delete a matched allow_once rule (consumed on first use). Bounded to the rule
+    id, so it can never affect another session's rules. Idempotent."""
+    with lock:
+        with conn:
+            conn.execute(
+                "DELETE FROM session_allow_rules WHERE id = ? AND rule_kind = 'allow_once'",
+                (rule_id,),
+            )
+
+
+# ---------------------------------------------------------------------------
 # Authority-checked at-most-once claim (PERM-02 / PERM-06)
 # ---------------------------------------------------------------------------
 
@@ -240,6 +394,7 @@ def claim(
     nonce: str,
     ctx: Optional[dict] = None,
     reason: Optional[str] = None,
+    record_rule: Optional[SessionAllowRuleKind] = None,
 ) -> ToolApproval:
     """Resolve a pending approval for its owning active surface session.
 
@@ -357,6 +512,32 @@ def claim(
             reason=current.reason,
         )
 
+    # PERM-07 consume path: if the caller requested an allow-rule alongside an
+    # approve, record it BOUND to this approval's exact 4-tuple for THIS session only.
+    # allow_once is recorded then consumed immediately (it covered this single claim);
+    # allow_session/allow_always persist for the session, bounded to the 4-tuple. The
+    # rule lives ONLY on session_allow_rules — it never widens global policy/config and
+    # cannot match another session/workspace/tool/arg-pattern. arg_pattern reuses the
+    # SAME shared normalization helper as the approval's args_normalized (byte-identical
+    # match), so a recorded rule actually matches a real re-invocation.
+    if (
+        decision == "approve"
+        and record_rule is not None
+        and record_rule in _VALID_RULE_KINDS
+    ):
+        rule = record_allow_rule(
+            conn,
+            lock,
+            surface_session_id=surface_session_id,
+            workspace_root=terminal.workspace_root,
+            surface_kind=terminal.surface_kind,
+            tool_name=terminal.tool_name,
+            arg_pattern=terminal.args_normalized,
+            rule_kind=record_rule,
+        )
+        if record_rule == "allow_once":
+            _consume_allow_once(conn, lock, rule.id)
+
     # Winner: emit the broker's routing/claim provenance AFTER the lock is released
     # (approve()/reject() already emitted their terminal tool_completed/approval
     # event; this is the surface-provenance record, not a duplicate terminal emit).
@@ -443,6 +624,9 @@ __all__ = [
     "revoke_channel",
     "list_actionable",
     "list_outcomes",
+    "record_allow_rule",
+    "allow_pattern_for_args",
+    "match_allow_rule",
     "claim",
     "reconcile_executing_orphans",
 ]
