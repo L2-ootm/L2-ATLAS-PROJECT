@@ -114,7 +114,7 @@ surfaces over the same projects, context, configuration, permissions, tools, and
 
 ### PERM — Surface-Scoped Permission Broker
 
-- [ ] **PERM-01**: Approval records include requesting surface/session, run/tool call, risk,
+- [x] **PERM-01**: Approval records include requesting surface/session, run/tool call, risk,
   normalized args, workspace, expiry, decision, reason, and provenance.
 - [ ] **PERM-02**: Only the initiating live surface session can resolve its actionable request.
 - [ ] **PERM-03**: TUI-owned requests use the ATLAS TUI native blocking prompt.
