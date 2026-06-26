@@ -610,10 +610,32 @@ def claim(
         while current.status not in _TERMINAL and time.monotonic() < deadline:
             time.sleep(0.01)
             current = tool_service._load(conn, approval_id)
+        # WR-01: the `decision` column is written on the still-pending row BEFORE the
+        # at-most-once flip (lines 581-585), so it is last-writer-wins among concurrent
+        # claimers and can contradict the WINNING terminal status (e.g. a thread that
+        # wrote decision='reject' but lost to an approve()-winner leaves the row
+        # status='executed' with decision='reject'). Since the at-most-once guard lives
+        # solely in tool_service and never writes `decision`, derive the loser's
+        # AlreadyDecided.decision from the authoritative terminal STATUS the winner
+        # converged to (WR-04), not the race-prone `decision` column:
+        #   status=='rejected'             -> the winner ran reject()  -> 'reject'
+        #   status in ('executed','failed')-> the winner ran approve() -> 'approve'
+        #     ('failed' is approve()'s terminal when the tool itself errored, so it is
+        #      still an approve decision — the action was authorized and attempted.)
+        # reason: reject() persists the winning reject reason onto the row, so for a
+        # 'rejected' winner `current.reason` IS authoritative. approve() writes no
+        # reason, so for an approve/failed winner the persisted reason is stale/unset
+        # and must not be surfaced as the winning outcome.
+        if current.status == "rejected":
+            winning_decision = "reject"
+            winning_reason = current.reason
+        else:
+            winning_decision = "approve"
+            winning_reason = None
         raise AlreadyDecided(
             status=current.status,
-            decision=current.decision,
-            reason=current.reason,
+            decision=winning_decision,
+            reason=winning_reason,
         )
 
     # PERM-07 consume path: if the caller requested an allow-rule alongside an
