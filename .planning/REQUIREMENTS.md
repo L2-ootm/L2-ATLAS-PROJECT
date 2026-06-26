@@ -116,12 +116,12 @@ surfaces over the same projects, context, configuration, permissions, tools, and
 
 - [x] **PERM-01**: Approval records include requesting surface/session, run/tool call, risk,
   normalized args, workspace, expiry, decision, reason, and provenance.
-- [ ] **PERM-02**: Only the initiating live surface session can resolve its actionable request.
+- [x] **PERM-02**: Only the initiating live surface session can resolve its actionable request.
 - [ ] **PERM-03**: TUI-owned requests use the ATLAS TUI native blocking prompt.
 - [ ] **PERM-04**: WebUI-owned requests appear in the matching conditional header/sidebar queue.
 - [ ] **PERM-05**: Headless/API `ask` decisions deny by default unless an explicit approval
   channel is registered.
-- [ ] **PERM-06**: Atomic claim/decision logic guarantees at-most-once deferred execution under
+- [x] **PERM-06**: Atomic claim/decision logic guarantees at-most-once deferred execution under
   concurrent replies, reconnects, and process restart.
 - [ ] **PERM-07**: Allow-once/session/always decisions cannot widen scope across surface sessions,
   workspaces, projects, tools, argument patterns, or global policy.

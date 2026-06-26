@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
-last_updated: "2026-06-26T16:57:50.178Z"
+last_updated: "2026-06-26T21:26:25.404Z"
 last_activity: 2026-06-26
 progress:
   total_phases: 8
   completed_phases: 2
   total_plans: 25
-  completed_plans: 20
+  completed_plans: 21
   percent: 25
 ---
 
@@ -77,7 +77,7 @@ Phase 10.2 completed all 5 plans across 4 dependency waves:
 - **10.2-04:** immutable run-contract snapshots, replay, and resume invariants.
 - **10.2-05:** 30-scenario evaluation dataset and deterministic promotion gate.
 
-Progress: [█████████░] 87%
+Progress: [█████████░] 91%
 
 Verification passed on 2026-06-25: agent-runtime 436 tests, atlas-core 52 tests,
 and the offline promotion gate 65 checks with 33 scenarios. Next: discuss and
@@ -252,7 +252,7 @@ Phase: 10.5 (surface-scoped-permission-broker) — EXECUTING
   cli/main.py as its own top-level group. 14/14 tests green; full agent-runtime
   (364 pass, 1 known pre-existing claude_agent_sdk env fail) unaffected. Next:
   plan 04/05 (quality gate smoke + demo-reset, docs).
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 In-flight (ahead of spine, operator-directed): 10.0.3 ATLAS Identity & Cockpit Redesign — brand
   direction approved at gate; ATLAS palette tokens, logo system (3 variants), favicon, topographic
@@ -776,6 +776,7 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 | Phase 10.4 P05 | 5 min | - tasks | - files |
 | Phase 10.5 P01 | 12m | 2 tasks | 2 files |
 | Phase 10.5 P02 | 5min | 3 tasks | 4 files |
+| Phase 10.5 P03 | 4m | 2 tasks | 3 files |
 
 ## Operator Next Steps
 
@@ -813,6 +814,7 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 - [Phase 10.4-05]: HTTP status for config errors is mapped purely from the CLI structured code field (409 conflict, 400 validation/unknown-key, 500 unexpected), never from config field content
 - [Phase ?]: Phase 10.5 broker public API frozen as executable failing-first assertions before implementation (Wave 0)
 - [Phase ?]: 10.5-02: migration 0017 additive soft-FK surface columns + approval_channels + session_allow_rules; ToolApproval/PermissionConfig extended; tool_service 18-col lockstep + _normalize_args policy key
+- [Phase ?]: 10.5-03: permission_broker core — claim() delegates the only at-most-once status-flip to tool_service.approve()/reject(); broker writes only the non-status decision column; losers raise typed AlreadyDecided; active-state authority is a column read, never a PID probe (PERM-01/02/06)
 
 ## Session Analysis Documentation (2026-06-19/20)
 
