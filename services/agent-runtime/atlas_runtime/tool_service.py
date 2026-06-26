@@ -35,7 +35,12 @@ from atlas_runtime.tools import registry
 
 _COLS = (
     "id, tool_name, risk_level, args, summary, status, reason, result, "
-    "run_id, requested_at, decided_at"
+    "run_id, requested_at, decided_at, "
+    # Phase 10.5 surface-scoped broker columns (migration 0017). MUST stay in the
+    # SAME order as the ToolApproval model fields and the invoke() INSERT below
+    # (Pitfall 2: _row_to_approval zips this list into kwargs by position).
+    "surface_session_id, surface_kind, workspace_root, expiry_at, decision, "
+    "nonce, args_normalized"
 )
 
 
@@ -75,6 +80,16 @@ def _set_terminal(
                 "UPDATE tool_approvals SET status = ?, result = ?, decided_at = ? WHERE id = ?",
                 (status, result_json, when.isoformat(), approval_id),
             )
+
+
+def _normalize_args(args: dict) -> str:
+    """Canonical, secret-redacted form of a tool's args (Phase 10.5).
+
+    The single source of truth for the `args_normalized` column and the policy
+    match key Plan 05's session_allow_rules resolution reuses verbatim: sort keys
+    so two logically identical arg dicts produce one stable string, then redact
+    once at this boundary (D-002 — never a second sanitizer)."""
+    return _redact(json.dumps(args or {}, sort_keys=True))
 
 
 def _summarize(tool_name: str, risk_level: str, args: dict) -> str:
@@ -144,9 +159,13 @@ def invoke(
                 conn.execute(
                     "INSERT INTO tool_approvals "
                     "(id, tool_name, risk_level, args, summary, status, reason, result, "
-                    " run_id, requested_at, decided_at) "
+                    " run_id, requested_at, decided_at, "
+                    " surface_session_id, surface_kind, workspace_root, expiry_at, "
+                    " decision, nonce, args_normalized) "
                     "VALUES (:id, :tool_name, :risk_level, :args, :summary, :status, :reason, "
-                    ":result, :run_id, :requested_at, :decided_at)",
+                    ":result, :run_id, :requested_at, :decided_at, "
+                    ":surface_session_id, :surface_kind, :workspace_root, :expiry_at, "
+                    ":decision, :nonce, :args_normalized)",
                     approval.model_dump(),
                 )
         emit(
