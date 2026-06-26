@@ -219,14 +219,34 @@ def list_actionable(
     conn: sqlite3.Connection, *, surface_session_id: str
 ) -> List[ToolApproval]:
     """Pending, non-expired approvals owned by ``surface_session_id`` — and only
-    those. Never another session's rows (strict scope, PERM-02/04). Newest first."""
+    those. Never another session's rows (strict scope, PERM-02/04). Newest first.
+
+    Expiry uses the SAME timezone-aware ``datetime`` comparison contract as ``claim()``
+    (WR-03): the SQL filter is the strict scope/status predicate only, and expiry is
+    evaluated in Python after loading so a row written with a non-``+00:00`` offset, a
+    ``Z`` suffix, or naive form cannot mis-sort under lexical ISO ordering. A NULL
+    ``expiry_at`` is treated as expired/untrusted and excluded here, consistent with the
+    fail-closed deny in ``claim()`` (WR-01/WR-02) — a row with no deadline is never
+    surfaced as actionable."""
     cur = conn.execute(
         f"SELECT {tool_service._COLS} FROM tool_approvals "
-        "WHERE surface_session_id = ? AND status = 'pending' AND expiry_at > ? "
+        "WHERE surface_session_id = ? AND status = 'pending' "
         "ORDER BY requested_at DESC",
-        (surface_session_id, _now_iso()),
+        (surface_session_id,),
     )
-    return [tool_service._row_to_approval(r) for r in cur.fetchall()]
+    now_dt = datetime.datetime.now(datetime.timezone.utc)
+    actionable: List[ToolApproval] = []
+    for r in cur.fetchall():
+        approval = tool_service._row_to_approval(r)
+        expiry_dt = approval.expiry_at
+        if expiry_dt is None:  # fail-closed: no deadline -> not actionable (WR-01/02)
+            continue
+        if expiry_dt.tzinfo is None:
+            expiry_dt = expiry_dt.replace(tzinfo=datetime.timezone.utc)
+        if now_dt > expiry_dt:  # expired
+            continue
+        actionable.append(approval)
+    return actionable
 
 
 def list_outcomes(
