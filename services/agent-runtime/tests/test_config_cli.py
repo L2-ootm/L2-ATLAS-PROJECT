@@ -184,6 +184,85 @@ def test_config_patch_multi_field_and_stale_conflict(
     assert error["error"]["remediation"]
 
 
+def test_config_patch_visible_to_subsequent_json_read_without_restart(
+    monkeypatch,
+    tmp_path,
+    db,
+    lock,
+):
+    """Cross-surface conformance (Phase 10.4-05 Task 3): the same control-plane
+    contract that the Rust gateway dispatches PATCH/GET against must show a
+    patch's new revision/value to a subsequent independent CLI read — proving
+    there is no process-global config cache only the CLI process benefits from.
+    """
+    _home(monkeypatch, tmp_path, db, lock)
+    changes = json.dumps({"provider.model": "conformance/model"}, separators=(",", ":"))
+
+    patched = runner.invoke(
+        app,
+        ["config", "patch", "--expected-revision", "0", "--changes-json", changes],
+    )
+    assert patched.exit_code == 0, patched.output
+    patched_snapshot = json.loads(patched.output)
+    assert patched_snapshot["revision"] == 1
+    assert patched_snapshot["provider"]["model"] == "conformance/model"
+
+    # A fresh `config json` read (the same call the gateway's GET /v1/config
+    # dispatches) must reflect the patch without any restart or extra step.
+    read_back = runner.invoke(app, ["config", "json"])
+    assert read_back.exit_code == 0, read_back.output
+    read_snapshot = json.loads(read_back.output)
+    assert read_snapshot["revision"] == 1
+    assert read_snapshot["provider"]["model"] == "conformance/model"
+    # Same object shape consumed by both surfaces (settings/auth/effective present).
+    assert read_snapshot["settings"]
+    assert "effective" in read_snapshot
+
+
+def test_config_patch_stale_second_writer_rejected_not_silently_applied(
+    monkeypatch,
+    tmp_path,
+    db,
+    lock,
+):
+    """A stale second writer must be rejected (409-equivalent exit 2), never
+    silently accepted and overwrite the first writer's already-committed change
+    — the same invariant the Rust gateway's conformance smoke proves at HTTP level.
+    """
+    _home(monkeypatch, tmp_path, db, lock)
+    first = runner.invoke(
+        app,
+        [
+            "config",
+            "patch",
+            "--expected-revision",
+            "0",
+            "--changes-json",
+            '{"provider.model":"first-writer"}',
+        ],
+    )
+    assert first.exit_code == 0, first.output
+    assert json.loads(first.output)["revision"] == 1
+
+    stale_second = runner.invoke(
+        app,
+        [
+            "config",
+            "patch",
+            "--expected-revision",
+            "0",
+            "--changes-json",
+            '{"provider.model":"stale-second-writer"}',
+        ],
+    )
+    assert stale_second.exit_code == 2
+    error = json.loads(stale_second.output)
+    assert error["error"]["code"] == "config_revision_conflict"
+    assert error["current_revision"] == 1
+    # First writer's value must remain committed and unharmed.
+    assert cfgsvc.load_config().provider.model == "first-writer"
+
+
 def test_setup_preserves_context_permission_modules_and_untouched_sections(
     monkeypatch,
     tmp_path,
