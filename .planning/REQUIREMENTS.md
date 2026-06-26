@@ -93,12 +93,12 @@ surfaces over the same projects, context, configuration, permissions, tools, and
   a versioned frozen schema and migration path.
 - [ ] **CFG-02**: Config updates are atomic, cross-process locked, optimistic-concurrency checked,
   validated, permission-hardened, and audited.
-- [ ] **CFG-03**: CLI, gateway, TUI, WebUI, and future surfaces use one masked GET/PATCH contract.
+- [x] **CFG-03**: CLI, gateway, TUI, WebUI, and future surfaces use one masked GET/PATCH contract.
 - [ ] **CFG-04**: Config changes publish change events and become visible across surfaces without
   restart when hot-reloadable; restart-required fields say so explicitly.
 - [ ] **CFG-05**: Every setting reports configured/effective value, source, validation status,
   restart requirement, and remediation without exposing secret values.
-- [ ] **CFG-06**: Conflicting concurrent writes return a version conflict instead of silently
+- [x] **CFG-06**: Conflicting concurrent writes return a version conflict instead of silently
   overwriting another surface.
 
 ### AUTH / MODEL
@@ -107,7 +107,7 @@ surfaces over the same projects, context, configuration, permissions, tools, and
   masked config/session/event APIs.
 - [ ] **AUTH-02**: External auth stores are detected read-only unless an explicit later decision
   authorizes mutation.
-- [ ] **MOD-01**: All surfaces show the same effective provider/model, source, auth state, health,
+- [x] **MOD-01**: All surfaces show the same effective provider/model, source, auth state, health,
   and fallback status.
 - [ ] **MOD-02**: Provider/model changes use the shared config/runtime contract and preserve
   current-session prompt/version semantics.
@@ -187,7 +187,7 @@ surfaces over the same projects, context, configuration, permissions, tools, and
 
 ### UX / DOCS
 
-- [ ] **UX-01**: Errors state what failed, which contract/source decided it, and the next safe
+- [x] **UX-01**: Errors state what failed, which contract/source decided it, and the next safe
   remediation action.
 - [ ] **DOC-01**: Runbooks cover TUI, Web agent sessions, projects, config/auth/models, Brain/wiki
   retrieval, permissions, recovery, attribution, and rollback.

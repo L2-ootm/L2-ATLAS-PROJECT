@@ -2,24 +2,23 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
-status: executing
-last_updated: "2026-06-25T23:23:03.000Z"
+status: planning
+last_updated: "2026-06-26T03:18:37.679Z"
 last_activity: 2026-06-25
 progress:
   total_phases: 8
-  completed_phases: 3
+  completed_phases: 2
   total_plans: 20
-  completed_plans: 17
-  percent: 85
-stopped_at: Completed 10.4-04-PLAN.md — Rust gateway delivery next
+  completed_plans: 18
+  percent: 25
 ---
 
 # STATE — L2 ATLAS
 
-## Current Position — Phase 10.4 Execution
+## Current Position — Phase 10.4 Complete
 
-Phase 10.4 (Global Configuration, Auth & Model Control Plane) entered autonomous execution on
-2026-06-25. Smart-discuss context is captured in
+Phase 10.4 (Global Configuration, Auth & Model Control Plane) completed all 5 plans
+(2026-06-26). Smart-discuss context is captured in
 `.planning/phases/10.4-global-config-auth-model-control-plane/10.4-CONTEXT.md`.
 
 Locked direction: one revisioned masked GET/PATCH contract; OS-handle cross-process locking;
@@ -27,11 +26,17 @@ owner-only durable config/auth files; typed optimistic conflicts; audit-backed c
 read-only external auth detection; one provider/model effective-status projection; no watcher
 daemon, OAuth flow, keychain, new dependency, or active-session model mutation.
 
-Plan 10.4-04 is complete. Discovery now dual-writes idempotent v2 provider/model rows while legacy
-readers remain available; one ProviderModelStatus joins configured/effective selection, masked
-auth, registry health, and recorded fallback state. `config` and `models status --json` share the
-same object. Verification: 19 registry/model tests and 42 integrated config/auth tests passed;
-registry secret scan clean. Next: Plan 10.4-05 Rust gateway GET/PATCH delivery and error mapping.
+Plan 10.4-05 is complete (final plan, Wave 4). The Rust gateway gained a PATCH /v1/config
+dispatch adapter — `expected_revision`/`changes` forwarded to `atlas config patch` with changes
+serialized as one argv element (no shell interpolation) — plus structured HTTP error mapping
+(409 conflict with current_revision/remediation, 400 validation/unknown-key, 500 unexpected).
+GET/PATCH bodies never contain resolved secrets. Cross-surface conformance proven: gateway and
+CLI consume one control-plane contract, patches are visible to a subsequent CLI read without
+restart, and a stale second writer is rejected rather than silently overwriting the first.
+Gateway source remains a pure dispatch adapter with no config/auth/model logic (D-022).
+Verification: cargo test -p atlas-gateway 87 passed; focused Python config CLI suite 16 passed;
+broader config sanity 31 passed; git diff --check clean. Phase 10.4 is 5/5 plans complete.
+Next: discuss and plan the next phase per ROADMAP.md sequencing.
 
 ## Prior Position — Phase 10.3 Complete
 
@@ -72,7 +77,7 @@ Phase 10.2 completed all 5 plans across 4 dependency waves:
 - **10.2-04:** immutable run-contract snapshots, replay, and resume invariants.
 - **10.2-05:** 30-scenario evaluation dataset and deterministic promotion gate.
 
-Progress: [███████░░░] 72%
+Progress: [██████████] 100%
 
 Verification passed on 2026-06-25: agent-runtime 436 tests, atlas-core 52 tests,
 and the offline promotion gate 65 checks with 33 scenarios. Next: discuss and
@@ -768,6 +773,7 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 | Phase 10.2 P03 | 17 min | 2 tasks | 7 files |
 | Phase 10.2 P04 | 12 min | 2 tasks | 5 files |
 | Phase 10.2 P05 | 11 min | 2 tasks | 5 files |
+| Phase 10.4 P05 | 5 min | - tasks | - files |
 
 ## Operator Next Steps
 
@@ -801,6 +807,8 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 - [Phase 10.0.5-01]: no write_wiki_entry wrapper — wave 2/3 golden workflows call atlas_wiki.wiki_service.update_wiki_page directly with the run_id from ensure_golden_run
 - [Phase ?]: 10.0.5-02: wiki_dir.mkdir is called inside each golden-workflow function (not left to caller) so the function is self-sufficient for both production callers and tests
 - [Phase ?]: 10.0.5-02: same-day re-runs of a golden workflow intentionally upsert the same wiki slug (version increments) rather than creating distinct pages per run
+- [Phase 10.4-05]: Gateway PATCH serializes changes as one argv element via serde_json to guarantee no shell interpolation regardless of embedded metacharacters
+- [Phase 10.4-05]: HTTP status for config errors is mapped purely from the CLI structured code field (409 conflict, 400 validation/unknown-key, 500 unexpected), never from config field content
 
 ## Session Analysis Documentation (2026-06-19/20)
 
