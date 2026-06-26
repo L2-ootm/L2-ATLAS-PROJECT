@@ -110,11 +110,16 @@ def _resolve_approval_ttl_seconds(ctx: dict) -> int:
         except (TypeError, ValueError):
             return _DEFAULT_APPROVAL_TTL_SECONDS
     try:
+        from atlas_core.schemas.control_plane import ControlPlaneError
         from atlas_runtime import config_service
 
-        ttl = config_service.load_config().permissions.approval_ttl_seconds
+        # NOTE: field is ``permission`` (singular) per AtlasConfig in control_plane.py.
+        ttl = config_service.load_config().permission.approval_ttl_seconds
         return max(1, int(ttl))
-    except Exception:  # noqa: BLE001 — config absent/locked/invalid -> safe default
+    except (ImportError, OSError, ControlPlaneError, ValueError, TypeError):
+        # Config genuinely absent/locked/invalid -> safe default. The except is
+        # NARROW on purpose: a typo/schema mismatch raises AttributeError, which is
+        # NOT caught here so it surfaces loudly instead of silently defaulting (CR-01).
         return _DEFAULT_APPROVAL_TTL_SECONDS
 
 
