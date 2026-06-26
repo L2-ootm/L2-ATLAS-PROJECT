@@ -44,7 +44,7 @@ import sqlite3
 import threading
 from typing import List, Optional
 
-from atlas_core.schemas.tool import ToolApproval
+from atlas_core.schemas.tool import ApprovalChannel, ToolApproval
 
 from atlas_runtime import audit_service, mission_service, tool_service
 
@@ -88,6 +88,108 @@ class WrongSessionError(ValueError):
 
 class NotActiveSessionError(ValueError):
     """The owning surface session is missing or not in state 'active' (fail-closed)."""
+
+
+class ApprovalChannelMissingError(ValueError):
+    """A headless ('api') surface has no unrevoked approval channel registered.
+
+    Raised/used as the PERM-05 fail-closed signal: an `ask` decision for a headless
+    surface with no open approval channel must DENY rather than queue a pending row.
+    The denial provenance lives ENTIRELY in the emitted `approval` audit event (no
+    tool_approvals row is persisted), by design (PERM-05; not a PERM-01 record gap)."""
+
+
+class StaleApprovalError(ValueError):
+    """A claim is stale/replayed/malformed and must fail closed (SEC-02).
+
+    Covers a mismatched nonce (replay/forgery), an expired approval (now >
+    expiry_at), and a malformed claim contract (blank/unknown decision label or a
+    blank nonce) — all rejected as a typed error BEFORE the at-most-once UPDATE, so a
+    stale claim can never win the race."""
+
+
+# Closed set of accepted claim decision labels (SEC-02 V5 input validation). An
+# unknown label is a malformed contract -> StaleApprovalError before any SQL.
+_VALID_CLAIM_DECISIONS = ("approve", "reject")
+
+
+# ---------------------------------------------------------------------------
+# Approval-channel registration (PERM-05 fail-closed gate)
+# ---------------------------------------------------------------------------
+
+
+def has_open_channel(conn: sqlite3.Connection, surface_session_id: str) -> bool:
+    """True iff an unrevoked approval_channels row exists for ``surface_session_id``.
+
+    Presence of an unrevoked row is the PERM-05 fail-closed gate: a headless ('api')
+    surface may only queue a pending approval when this returns True. Pure read."""
+    row = conn.execute(
+        "SELECT 1 FROM approval_channels "
+        "WHERE surface_session_id = ? AND revoked_at IS NULL LIMIT 1",
+        (surface_session_id,),
+    ).fetchone()
+    return row is not None
+
+
+def register_channel(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    *,
+    surface_session_id: str,
+    surface_kind: str,
+) -> ApprovalChannel:
+    """Register (or re-activate) an unrevoked approval channel for a surface session.
+
+    Construct-validate-then-write: build the frozen ``ApprovalChannel`` model first
+    (registered_at=now, revoked_at=None) so a malformed input is rejected before any
+    SQL, then UPSERT the row (TEXT PK on surface_session_id) inside the lock so a
+    re-register clears any prior ``revoked_at`` and re-opens the gate. Returns the
+    model."""
+    channel = ApprovalChannel(
+        surface_session_id=surface_session_id,
+        surface_kind=surface_kind,
+        registered_at=datetime.datetime.now(datetime.timezone.utc),
+        revoked_at=None,
+    )
+    with lock:
+        with conn:
+            conn.execute(
+                "INSERT INTO approval_channels "
+                "(surface_session_id, surface_kind, registered_at, revoked_at) "
+                "VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(surface_session_id) DO UPDATE SET "
+                "surface_kind = excluded.surface_kind, "
+                "registered_at = excluded.registered_at, "
+                "revoked_at = NULL",
+                (
+                    channel.surface_session_id,
+                    channel.surface_kind,
+                    channel.registered_at.isoformat(),
+                    None,
+                ),
+            )
+    return channel
+
+
+def revoke_channel(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    *,
+    surface_session_id: str,
+) -> bool:
+    """Revoke the approval channel for ``surface_session_id`` (set revoked_at=now).
+
+    Closes the PERM-05 gate so a subsequent headless ask fails closed again. Returns
+    True if an unrevoked row was revoked, False if none was open (idempotent)."""
+    now = _now_iso()
+    with lock:
+        with conn:
+            cur = conn.execute(
+                "UPDATE approval_channels SET revoked_at = ? "
+                "WHERE surface_session_id = ? AND revoked_at IS NULL",
+                (now, surface_session_id),
+            )
+            return cur.rowcount > 0
 
 
 # ---------------------------------------------------------------------------
@@ -286,6 +388,11 @@ __all__ = [
     "AlreadyDecided",
     "WrongSessionError",
     "NotActiveSessionError",
+    "ApprovalChannelMissingError",
+    "StaleApprovalError",
+    "has_open_channel",
+    "register_channel",
+    "revoke_channel",
     "list_actionable",
     "list_outcomes",
     "claim",
