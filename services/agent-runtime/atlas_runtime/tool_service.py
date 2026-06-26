@@ -25,6 +25,7 @@ import datetime
 import json
 import sqlite3
 import threading
+import uuid
 from typing import Optional
 
 from atlas_core.schemas.tool import ToolApproval, ToolResult
@@ -92,6 +93,31 @@ def _normalize_args(args: dict) -> str:
     return _redact(json.dumps(args or {}, sort_keys=True))
 
 
+_DEFAULT_APPROVAL_TTL_SECONDS = 300
+
+
+def _resolve_approval_ttl_seconds(ctx: dict) -> int:
+    """TTL (seconds) for a surface-bound approval's expiry_at (Phase 10.5).
+
+    Precedence: an explicit ``ctx['approval_ttl_seconds']`` override (tests / callers)
+    wins; otherwise read PermissionConfig.approval_ttl_seconds from the durable config;
+    a missing/locked/invalid config falls back to 300 (never break invoke() on config
+    I/O). Bounded to >= 1 so an expiry is always strictly in the future."""
+    override = ctx.get("approval_ttl_seconds")
+    if override is not None:
+        try:
+            return max(1, int(override))
+        except (TypeError, ValueError):
+            return _DEFAULT_APPROVAL_TTL_SECONDS
+    try:
+        from atlas_runtime import config_service
+
+        ttl = config_service.load_config().permissions.approval_ttl_seconds
+        return max(1, int(ttl))
+    except Exception:  # noqa: BLE001 — config absent/locked/invalid -> safe default
+        return _DEFAULT_APPROVAL_TTL_SECONDS
+
+
 def _summarize(tool_name: str, risk_level: str, args: dict) -> str:
     if tool_name == "webhook_notify":
         return f"webhook_notify POST {args.get('url', '')}".strip()
@@ -114,10 +140,19 @@ def invoke(
     mode: str = "read_only",
     ctx: Optional[dict] = None,
     reason: Optional[str] = None,
+    surface_session_id: Optional[str] = None,
+    surface_kind: Optional[str] = None,
 ) -> ToolResult | ToolApproval:
     """The single chokepoint. Returns a ToolResult (read-class executed) or a
     pending ToolApproval (write/shell short-circuited). Raises ValueError if the
-    tool is unknown — an unclassified tool never auto-runs."""
+    tool is unknown — an unclassified tool never auto-runs.
+
+    Phase 10.5: when ``surface_session_id``/``surface_kind`` are passed and the
+    policy requires approval, the persisted ToolApproval is anchored to the
+    initiating surface session (surface anchor + workspace_root + a fresh nonce +
+    expiry_at = now + approval_ttl_seconds + args_normalized). Existing callers omit
+    both kwargs and persist NULL surface fields — fully back-compatible. The PERM-05
+    fail-closed gate for headless 'api' surfaces lands in Plan 04, not here."""
     manifest, adapter = registry.get_registry().resolve(tool_name)  # ValueError on unknown
     args = args or {}
     ctx = ctx or {}
@@ -147,12 +182,25 @@ def invoke(
 
     decision = policy.decide(manifest, mode)
     if decision.requires_approval:
+        # Phase 10.5 surface anchor: bind the approval to the initiating surface
+        # session at insert time. No surface kwargs -> fields stay NULL (legacy).
+        now = datetime.datetime.now(datetime.timezone.utc)
+        ttl = _resolve_approval_ttl_seconds(ctx)
+        expiry_at = now + datetime.timedelta(seconds=ttl)
+        nonce = str(uuid.uuid4())
+        workspace_root = ctx.get("workspace_root")
         approval = ToolApproval(
             tool_name=tool_name,
             risk_level=manifest.risk_level,
             args=args_json,
             summary=_summarize(tool_name, manifest.risk_level, args),
             reason=reason,
+            surface_session_id=surface_session_id,
+            surface_kind=surface_kind,
+            workspace_root=workspace_root,
+            expiry_at=expiry_at,
+            nonce=nonce,
+            args_normalized=_normalize_args(args),
         )
         with lock:
             with conn:
@@ -170,10 +218,13 @@ def invoke(
                 )
         emit(
             conn, lock, run_id=run_id, event_type="approval", tool_name=tool_name,
+            session_id=surface_session_id,
             data={
                 "approval_id": approval.id, "tool_name": tool_name,
                 "risk_level": manifest.risk_level, "status": "pending",
                 "reason": decision.reason,
+                "surface_kind": surface_kind,
+                "workspace_root": workspace_root,
             },
         )
         return approval
