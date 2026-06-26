@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
-status: planning
-last_updated: "2026-06-26T03:18:37.679Z"
+status: executing
+last_updated: "2026-06-26T16:49:31.025Z"
 last_activity: 2026-06-26
 progress:
   total_phases: 8
-  completed_phases: 4
-  total_plans: 20
-  completed_plans: 18
-  percent: 50
+  completed_phases: 2
+  total_plans: 25
+  completed_plans: 19
+  percent: 25
 ---
 
 # STATE — L2 ATLAS
@@ -77,7 +77,7 @@ Phase 10.2 completed all 5 plans across 4 dependency waves:
 - **10.2-04:** immutable run-contract snapshots, replay, and resume invariants.
 - **10.2-05:** 30-scenario evaluation dataset and deterministic promotion gate.
 
-Progress: [██████████] 100%
+Progress: [████████░░] 83%
 
 Verification passed on 2026-06-25: agent-runtime 436 tests, atlas-core 52 tests,
 and the offline promotion gate 65 checks with 33 scenarios. Next: discuss and
@@ -226,7 +226,7 @@ backfilled embeddings cleared). Phase B (Context Intelligence, B1–B6) fully co
 
 ## Current Position
 
-Phase: 10.3
+Phase: 10.5 (surface-scoped-permission-broker) — EXECUTING
   Plan 01 (golden-workflow orchestrator core) shipped: `golden_workflow_service.py`
   (ensure_golden_run/record_artifact/emit_workflow_event — first writer to the
   `artifacts` table in this codebase) via RED-then-GREEN TDD; AuditEvent.event_type
@@ -252,8 +252,8 @@ Phase: 10.3
   cli/main.py as its own top-level group. 14/14 tests green; full agent-runtime
   (364 pass, 1 known pre-existing claude_agent_sdk env fail) unaffected. Next:
   plan 04/05 (quality gate smoke + demo-reset, docs).
-Plan: Not started
-Status: Ready to plan
+Plan: 2 of 5
+Status: Ready to execute
 In-flight (ahead of spine, operator-directed): 10.0.3 ATLAS Identity & Cockpit Redesign — brand
   direction approved at gate; ATLAS palette tokens, logo system (3 variants), favicon, topographic
   shell + sidebar redesign landed. UI-SPEC + per-page redesign wave outstanding.
@@ -265,7 +265,7 @@ In-flight (ahead of spine, operator-directed): 10.0.3 ATLAS Identity & Cockpit R
   primitives); soft-aurora OGL effect integrated; first React surface = Dashboard operator HUD
   (live telemetry + graceful loading/empty/offline states), proven via Playwright
   (output/react-pivot/). Svelte cockpit stays live until React reaches route parity.
-Last activity: 2026-06-25
+Last activity: 2026-06-26
 Loop note: pre-existing dirty state on branch `feat/cockpit-p3-glass-p4` (`.planning/prep/next-steps-db-runner-async-supabase.md`)
   blocked safe code-changing automation. Report-only continuation state written to
   `.planning/reports/atlas-living-context-loop-2026-06-18-dirty-worktree-guard.md`.
@@ -502,7 +502,7 @@ tsc/lint/build green.
 See: `.planning/PROJECT.md` (updated 2026-06-15) · `.planning/MILESTONES.md`
 
 **Core value:** A serious, auditable AI operating system for technical founders/operators.
-**Current focus:** Phase 10.3 — shared surface session workspace protocol
+**Current focus:** Phase 10.5 — surface-scoped-permission-broker
 
 ## Deferred Items
 
@@ -774,6 +774,7 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 | Phase 10.2 P04 | 12 min | 2 tasks | 5 files |
 | Phase 10.2 P05 | 11 min | 2 tasks | 5 files |
 | Phase 10.4 P05 | 5 min | - tasks | - files |
+| Phase 10.5 P01 | 12m | 2 tasks | 2 files |
 
 ## Operator Next Steps
 
@@ -809,6 +810,7 @@ Final count: 34 REQ-IDs total, all mapped, no duplicates.
 - [Phase ?]: 10.0.5-02: same-day re-runs of a golden workflow intentionally upsert the same wiki slug (version increments) rather than creating distinct pages per run
 - [Phase 10.4-05]: Gateway PATCH serializes changes as one argv element via serde_json to guarantee no shell interpolation regardless of embedded metacharacters
 - [Phase 10.4-05]: HTTP status for config errors is mapped purely from the CLI structured code field (409 conflict, 400 validation/unknown-key, 500 unexpected), never from config field content
+- [Phase ?]: Phase 10.5 broker public API frozen as executable failing-first assertions before implementation (Wave 0)
 
 ## Session Analysis Documentation (2026-06-19/20)
 
