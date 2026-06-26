@@ -182,6 +182,49 @@ def invoke(
 
     decision = policy.decide(manifest, mode)
     if decision.requires_approval:
+        # PERM-05 fail-closed gate (Plan 04): a headless ('api') surface may only
+        # queue a pending approval when an UNREVOKED approval_channels row exists for
+        # its session. Inline SELECT (NOT an import of permission_broker, which itself
+        # imports tool_service — keeping the gate inline avoids that cycle).
+        # No channel -> DENY: emit an `approval` deny audit event AND return a denied
+        # ToolApproval WITHOUT inserting any pending row. DENIAL PROVENANCE NOTE: the
+        # denial record lives ENTIRELY in this audit event (event_type='approval',
+        # status='rejected', reason='no_approval_channel', surface_kind +
+        # workspace_root in data); by design NO tool_approvals row is persisted, so
+        # PERM-01 record-completeness (which applies to queued approvals) is NOT
+        # violated here.
+        if surface_kind == "api":
+            channel_row = conn.execute(
+                "SELECT 1 FROM approval_channels "
+                "WHERE surface_session_id = ? AND revoked_at IS NULL LIMIT 1",
+                (surface_session_id,),
+            ).fetchone()
+            if channel_row is None:
+                emit(
+                    conn, lock, run_id=run_id, event_type="approval",
+                    tool_name=tool_name, session_id=surface_session_id,
+                    data={
+                        "tool_name": tool_name,
+                        "risk_level": manifest.risk_level,
+                        "status": "rejected",
+                        "reason": "no_approval_channel",
+                        "surface_kind": surface_kind,
+                        "workspace_root": ctx.get("workspace_root"),
+                    },
+                    policy_result="denied",
+                )
+                return ToolApproval(
+                    tool_name=tool_name,
+                    risk_level=manifest.risk_level,
+                    args=args_json,
+                    summary=_summarize(tool_name, manifest.risk_level, args),
+                    status="rejected",
+                    reason="no_approval_channel",
+                    surface_session_id=surface_session_id,
+                    surface_kind=surface_kind,
+                    workspace_root=ctx.get("workspace_root"),
+                )
+
         # Phase 10.5 surface anchor: bind the approval to the initiating surface
         # session at insert time. No surface kwargs -> fields stay NULL (legacy).
         now = datetime.datetime.now(datetime.timezone.utc)
