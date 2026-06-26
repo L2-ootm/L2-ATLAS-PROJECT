@@ -114,6 +114,123 @@ def surface_session_fixture(db: sqlite3.Connection) -> str:
     return session_id
 
 
+# ---------------------------------------------------------------------------
+# Phase 10.5 — permission broker test helpers (Wave 0, RED-first).
+#
+# These callables seed the rows the broker contract tests act on: an *active*
+# surface session, a surface-anchored *pending* approval, and a registered
+# *approval channel*. They depend on the migration 0017 schema additions
+# (surface_session_id/surface_kind/workspace_root/expiry_at/decision/nonce/
+# args_normalized on tool_approvals, plus the approval_channels table) which
+# Wave 1 introduces — so calling them before 0017 lands raises sqlite3.Operational
+# Error. That is the intended RED state for the Wave 0 plan; the helpers are
+# plain installer callables (not autouse fixtures) so conftest import never fails.
+#
+# Liveness is set PURELY by a column UPDATE on surface_sessions.state — NEVER by
+# probing a PID for liveness (PID-signal probing is broken on Windows; see the
+# PATTERNS "do NOT build" table). stdlib only (sqlite3 via the passed conn,
+# datetime, uuid).
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(name="make_active_session")
+def make_active_session_fixture(db: sqlite3.Connection, surface_session: str):
+    """Return a callable that flips the `surface_session` row to state='active'.
+
+    Authority in the broker requires `surface_sessions.state == 'active'`
+    (PERM-02). This sets it via a direct column UPDATE and returns the session id
+    so a test can claim against an authoritative owner.
+    """
+
+    def _activate(*, surface_session_id: str | None = None) -> str:
+        sid = surface_session_id or surface_session
+        db.execute(
+            "UPDATE surface_sessions SET state='active' WHERE id=?",
+            (sid,),
+        )
+        db.commit()
+        return sid
+
+    return _activate
+
+
+@pytest.fixture(name="seed_pending_approval")
+def seed_pending_approval_fixture(db: sqlite3.Connection):
+    """Return a callable that INSERTs a surface-anchored `pending` tool_approvals row.
+
+    The INSERT references the migration-0017 surface columns
+    (surface_session_id, surface_kind, workspace_root, expiry_at, nonce,
+    args_normalized) alongside the base 0013 columns, so it is RED until Wave 1.
+    Returns the new approval id.
+    """
+    import datetime
+
+    def _seed(
+        conn: sqlite3.Connection = None,  # noqa: ANN001 — accept positional conn for parity
+        *,
+        surface_session_id: str,
+        surface_kind: str = "cli",
+        nonce: str,
+        expiry_at: str,
+        tool_name: str = "workspace",
+        workspace_root: str = "/tmp/atlas",
+        risk_level: str = "write",
+        args_normalized: str = "{}",
+        reason: str | None = None,
+    ) -> str:
+        target = conn if conn is not None else db
+        approval_id = str(uuid.uuid4())
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        target.execute(
+            "INSERT INTO tool_approvals"
+            "(id, tool_name, risk_level, args, summary, status, reason, result, "
+            "run_id, requested_at, decided_at, "
+            "surface_session_id, surface_kind, workspace_root, expiry_at, "
+            "decision, nonce, args_normalized) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                approval_id, tool_name, risk_level, args_normalized, "", "pending",
+                reason, None, "operator", now, None,
+                surface_session_id, surface_kind, workspace_root, expiry_at,
+                None, nonce, args_normalized,
+            ),
+        )
+        target.commit()
+        return approval_id
+
+    return _seed
+
+
+@pytest.fixture(name="register_test_channel")
+def register_test_channel_fixture(db: sqlite3.Connection):
+    """Return a callable that INSERTs an unrevoked `approval_channels` row.
+
+    A headless ('api') surface only produces a pending approval when an
+    unrevoked approval_channels row exists for its session (PERM-05 fail-closed).
+    RED until Wave 1 creates the approval_channels table.
+    """
+    import datetime
+
+    def _register(
+        conn: sqlite3.Connection = None,  # noqa: ANN001
+        *,
+        surface_session_id: str,
+        surface_kind: str = "api",
+    ) -> str:
+        target = conn if conn is not None else db
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        target.execute(
+            "INSERT INTO approval_channels"
+            "(surface_session_id, surface_kind, registered_at, revoked_at) "
+            "VALUES (?,?,?,?)",
+            (surface_session_id, surface_kind, now, None),
+        )
+        target.commit()
+        return surface_session_id
+
+    return _register
+
+
 @pytest.fixture(name="mock_gh")
 def mock_gh_fixture(monkeypatch):
     """Patch subprocess.run so the github adapter never shells out to real `gh`.
