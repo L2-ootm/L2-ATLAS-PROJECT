@@ -443,6 +443,31 @@ TUI-10, TUI-11
 5. Source, snapshots, packages, paths, runtime output, and binaries contain no imported product
    identity beyond approved documentation/notices.
 
+**Plans:** 8 plans
+
+**Wave 0**
+
+- [ ] 10.6-01-PLAN.md — RED-first test scaffold (tests/tui/ + app-entry/debrand audits) + rich/prompt_toolkit direct deps (all TUI-01..11 test coverage)
+
+**Wave 1** *(after Wave 0)*
+
+- [ ] 10.6-02-PLAN.md — capabilities/theme probing, workspace/Project session select, status header (TUI-02, TUI-03, TUI-10)
+- [ ] 10.6-03-PLAN.md — transcript poll/replay primitive + per-EventKind renderers (TUI-04, TUI-05, TUI-10)
+
+**Wave 2** *(after Wave 1)*
+
+- [ ] 10.6-04-PLAN.md — permission approval panel + 4-option resolve onto permission_broker (TUI-06)
+- [ ] 10.6-05-PLAN.md — fail-closed resume/replay wrapper over surface_session_service (TUI-09)
+
+**Wave 3** *(after Wave 2)*
+
+- [ ] 10.6-06-PLAN.md — Ctrl-C cancel unwind + single asyncio-loop workbench app (TUI-04, TUI-08)
+- [ ] 10.6-07-PLAN.md — command dispatch registry: core groups + deferred extension seams (TUI-07)
+
+**Wave 4** *(after Wave 3)*
+
+- [ ] 10.6-08-PLAN.md — wire atlas/atlas tui to run_workbench, demote legacy Hermes TUI, flip debrand audit positive (TUI-01, TUI-11)
+
 #### Phase 10.7: Web Agent Surface & Permission Queue UX
 
 **Goal:** Make the cockpit a first-class client of the same agent/session/config/permission
@@ -531,7 +556,7 @@ milestone is activated through the normal milestone workflow.
 | 10.3 Shared Surface Session & Workspace Protocol | v1.1 | 5/5 | Complete | 2026-06-25 |
 | 10.4 Global Configuration, Auth & Model Control Plane | v1.1 | 5/5 | Complete   | 2026-06-26 |
 | 10.5 Surface-Scoped Permission Broker | v1.1 | 5/5 | Complete   | 2026-06-26 |
-| 10.6 ATLAS Terminal Workbench | v1.1 | 0/? | Not planned | — |
+| 10.6 ATLAS Terminal Workbench | v1.1 | 0/8 | Planned | — |
 | 10.7 Web Agent Surface & Permission Queue UX | v1.1 | 0/? | Not planned | — |
 | 10.8 Cross-Surface Conformance, UAT & Cutover | v1.1 | 0/? | Not planned | — |
 | 11. CRM via Twenty | v2.0 | 0/? | Not started | — |
