@@ -171,7 +171,7 @@ def run_workbench(
 
     async def _poll_loop(stop_event: asyncio.Event) -> None:
         """Background transcript-poll task: print unseen events, never via `Live`."""
-        last_seq = 0
+        last_seq = -1  # transcript.poll_and_render's "nothing seen yet" sentinel
         while not stop_event.is_set():
             events = transcript_module.poll_and_render(
                 eff_conn, console, session_id=session.id, last_seq=last_seq

@@ -2,12 +2,16 @@
 
 Two pure-ish layers live in this single module:
 
-- `poll_and_render`: a gap-free poll/replay primitive. It reads the durable
-  `surface_events` table (the persisted projection cache written by the
-  surface-session run loop) for one session, and returns only the events with
+- `poll_and_render`: a gap-free poll/replay primitive. It is the LOCKED
+  "no new event bus, no new persistence" design (CONTEXT.md "Streaming /
+  Refresh Model"): fetch the session's full `AuditEvent` ledger via
+  `audit_service.get_events_for_session`, project it into `SurfaceEvent`s via
+  `surface_events.normalize_surface_events`, then return only the events with
   `seq > last_seq`, in ascending seq order — via `surface_events.replay_since`,
   never by re-deriving ordering/gap-detection itself (RESEARCH Don't Hand-Roll).
-  It performs zero Rich `Console`/`Live` calls; printing each returned event is
+  There is no separate persisted `surface_events` table — the projection is
+  recomputed from the immutable `audit_events` ledger on every poll. It
+  performs zero Rich `Console`/`Live` calls; printing each returned event is
   the caller's responsibility (Wave 3's app.py background poll task).
 - `render_event`: a per-`EventKind` dispatcher that turns one already-normalized,
   already-redacted `SurfaceEvent` (D-013) into a Rich renderable. It never
@@ -27,35 +31,11 @@ from rich.text import Text
 
 from atlas_core.schemas.surface_session import SurfaceEvent
 
+from atlas_runtime import audit_service
 from atlas_runtime import surface_events as surface_events_module
 from atlas_runtime.agents.base import RunOutcome
 from atlas_runtime.tui.capabilities import Capabilities, probe_capabilities
 from atlas_runtime.tui.theme import safe_style
-
-
-def _events_for_session(conn: sqlite3.Connection, session_id: str) -> tuple[SurfaceEvent, ...]:
-    """Read the persisted `surface_events` rows for one session, in seq order.
-
-    This is the durable read-side counterpart to `surface_events.normalize_surface_events`:
-    rows here are already-normalized SurfaceEvents (one row per projected event), so this
-    function only re-hydrates them — it never re-derives `kind` or re-assigns `seq`.
-    """
-    cursor = conn.execute(
-        "SELECT session_id, seq, kind, run_id, occurred_at, payload_json "
-        "FROM surface_events WHERE session_id = ? ORDER BY seq ASC",
-        (session_id,),
-    )
-    return tuple(
-        SurfaceEvent(
-            session_id=row[0],
-            seq=row[1],
-            kind=row[2],
-            run_id=row[3],
-            occurred_at=row[4],
-            payload_json=row[5],
-        )
-        for row in cursor.fetchall()
-    )
 
 
 def poll_and_render(
@@ -63,7 +43,7 @@ def poll_and_render(
     console: Console,
     *,
     session_id: str,
-    last_seq: int = 0,
+    last_seq: int = -1,
     run_outcome: Optional[RunOutcome] = None,
 ) -> list[SurfaceEvent]:
     """Poll the per-session SurfaceEvent stream and return only the unseen tail.
@@ -71,12 +51,21 @@ def poll_and_render(
     Pure data retrieval and gap-free slicing — never prints/clears via `console`
     (the parameter is accepted for call-site symmetry with the Wave 3 render loop
     but is not invoked here; callers print each returned event with `render_event`
-    themselves). Returns a list ordered by ascending `seq`, all `seq > last_seq`.
-    Delegates ordering/gap-detection to `surface_events.replay_since` (never
-    re-derived here) and only adapts its tuple result to a list for callers.
+    themselves). Fetches the session's `AuditEvent` ledger via
+    `audit_service.get_events_for_session`, projects it via
+    `surface_events.normalize_surface_events` (re-derived from `seq=0` every
+    call — cheap at single-operator scale and avoids a second persistence
+    layer), then delegates the unseen-tail slice to `surface_events.replay_since`
+    (never re-derived here). Returns a list ordered by ascending `seq`, all
+    `seq > last_seq`. Defaults to `last_seq=-1` (not `0`) because
+    `normalize_surface_events` assigns the FIRST event `seq=0` — a `0` default
+    would silently drop that first event on a session's very first poll.
     """
     del console  # accepted for signature symmetry; poll_and_render does no I/O on it
-    events = _events_for_session(conn, session_id)
+    audit_events = audit_service.get_events_for_session(conn, session_id)
+    events = surface_events_module.normalize_surface_events(
+        audit_events, run_outcome, session_id=session_id
+    )
     return list(surface_events_module.replay_since(events, last_seq))
 
 
