@@ -5,31 +5,55 @@ RED until atlas_runtime.tui.resume exists (Wave 1+).
 from __future__ import annotations
 
 import datetime
-import json
 import uuid
 
 import pytest
 
-from atlas_runtime.agent_contract_service import ContractCompatibilityError
+from atlas_runtime.agent_contract_service import (
+    ContractCompatibilityError,
+    RunContractSnapshot,
+    persist_contract,
+)
 from atlas_runtime.tui.resume import resume_or_fail_closed
 
 
 def _seed_mismatched_contract(db, run_id: str) -> None:
+    """Seed a real, schema-valid run + immutable contract snapshot whose stored
+    prompt/catalog/context-policy versions are stale relative to the "1.0.0"
+    versions every test in this module expects, so replay_contract's real
+    comparison (not a mock) fails closed."""
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    snapshot_json = json.dumps(
-        {
-            "run_id": run_id,
-            "prompt_version": "0.9.0-stale",
-            "tool_catalog_version": "0.9.0-stale",
-            "context_policy_version": "0.9.0-stale",
-        }
+    mission_id = str(uuid.uuid4())
+    db.execute(
+        "INSERT INTO missions(id, title, intent, status, project, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (mission_id, "resume-test-mission", "", "pending", "", now, now),
     )
     db.execute(
-        "INSERT INTO agent_contract_snapshots(run_id, snapshot_json, created_at) "
-        "VALUES (?,?,?)",
-        (run_id, snapshot_json, now),
+        "INSERT INTO runs(id, mission_id, session_id, status, started_at, finished_at, summary) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (run_id, mission_id, None, "running", now, None, ""),
     )
     db.commit()
+    snapshot = RunContractSnapshot(
+        id=str(uuid.uuid4()),
+        run_id=run_id,
+        mission_id=mission_id,
+        contract_sha256=str(uuid.uuid4()),
+        prompt_version="0.9.0-stale",
+        stable_prompt_sha256="stale",
+        tool_catalog_version="0.9.0-stale",
+        tool_catalog_sha256="stale",
+        context_policy_version="0.9.0-stale",
+        instruction_source_ids=(),
+        selected_source_ids=(),
+        rejected_source_ids=(),
+        bootstrap_message="",
+        context_message="",
+        rendered_user_message="",
+        created_at=now,
+    )
+    persist_contract(db, snapshot)
 
 
 def test_resume_calls_replay_contract_before_transition(
