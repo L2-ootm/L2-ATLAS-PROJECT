@@ -1,30 +1,20 @@
 """De-brand audit: no imported product identity (Hermes/Ink) leaks into source or output (TUI-11).
 
-Grep-style smoke test, not a fixture-based unit test. Runs WITHOUT depending on
-atlas_runtime.tui existing, so it collects and runs cleanly pre-Wave-1. This
-becomes a meaningful regression guard once Wave 1+ lands the real
-atlas_runtime/tui/ package and Wave 4 wires the CLI; until then it documents the
-intended invariant. Per Nyquist, pytest.xfail is forbidden — instead this file
-asserts the CURRENT real condition and flags explicitly where the assertion
-direction must flip post-Wave-1.
+Grep-style smoke test, not a fixture-based unit test. This is the final
+phase-wide enforcement point for TUI-11/criterion 5 (Wave 4): atlas_runtime/tui/
+source and all --help output (including the hidden dev-foundation-tui
+command's own help) must carry no Hermes/Ink identity outside a `# provenance:`
+comment.
 
-KNOWN PRE-EXISTING LEAKS (documented, not fixed by this Wave-0 plan): two
-*existing* commands legitimately reference "foundation/atlas-hermes" in their
-own help= strings today, because that is literally the vendored directory they
-inspect/launch:
-  - `atlas tui` (cli/main.py registration: "Launch the ATLAS terminal UI
-    (foundation Ink TUI, ATLAS-skinned).") — the OLD Hermes-Ink wrapper this
-    whole phase replaces. Wave 4 rewires this registration to the native
-    workbench, at which point the phrase disappears.
-  - `atlas foundation` (cli/foundation.py: "Inspect and verify the vendored
-    ATLAS foundation (foundation/atlas-hermes).") — out of scope for this
-    phase entirely; it inspects the vendored tree by design and is not part
-    of the terminal-workbench surface TUI-11 governs.
-Editing either pre-existing help= string now is out of scope for this Wave-0
-RED-scaffolding plan (Wave 4 owns the `tui` rewiring; `foundation` is untouched
-by this phase). This test instead strips the two known phrases before checking
-for identity leaks, so it stays meaningful for catching any OTHER (new,
-unexpected) leak without false-failing on pre-existing, intentional text.
+ONE REMAINING KNOWN PRE-EXISTING LEAK (documented, out of scope for this
+phase): `atlas foundation` (cli/foundation.py: "Inspect and verify the
+vendored ATLAS foundation (foundation/atlas-hermes).") legitimately references
+"foundation/atlas-hermes" in its own help= string, because that is literally
+the vendored directory it inspects. It is unrelated to the terminal-workbench
+surface TUI-11 governs and is untouched by this phase. This test strips that
+one known phrase before checking for identity leaks, so it stays meaningful
+for catching any OTHER (new, unexpected) leak without false-failing on
+pre-existing, intentional text.
 """
 from __future__ import annotations
 
@@ -45,7 +35,6 @@ _FORBIDDEN_IDENTITY_TOKENS = ("hermes", "ink", "atlas-hermes")
 # strings across box-drawing table cells, so raw substrings never survive
 # intact in captured output — match on whitespace-collapsed text instead.
 _KNOWN_LEAK_PATTERNS = (
-    re.compile(r"foundation\s+ink\s+tui", re.IGNORECASE),  # `tui` command (Wave 4 rewires)
     re.compile(
         r"vendored\s+atlas\s+foundation\s+foundation\s+atlas-hermes",
         re.IGNORECASE,
@@ -75,57 +64,42 @@ def _strip_known_pre_existing_leaks(text: str) -> str:
 
 
 def test_help_output_contains_no_hermes_identity():
-    """TUI-11: --help output (root + `tui --help`) leaks no Hermes/Ink identity
-    EXCEPT the known pre-existing sources (the old `tui` command's own help=
-    string, and the unrelated `foundation` command's help= string — both
-    documented in the module docstring). Those known phrases are stripped
-    before asserting; any OTHER occurrence is a real, unexpected leak.
+    """TUI-11: --help output (root + `tui --help` + `dev-foundation-tui --help`)
+    leaks no Hermes/Ink identity EXCEPT the one remaining known pre-existing
+    source (the unrelated `foundation` command's help= string, documented in
+    the module docstring). That known phrase is stripped before asserting; any
+    OTHER occurrence is a real, unexpected leak.
 
-    WAVE-4-FLIP: once Wave 4 rewires the `tui` command's registration to the
-    native workbench, its pattern stops matching anything in --help. At that
-    point narrow `_KNOWN_LEAK_PATTERNS` to just the `foundation` command's
-    pattern (which stays out of scope for this phase).
+    LOAD-BEARING (Wave 4): the `tui` command was rewired to the native
+    workbench, so its own help text no longer carries any legacy phrase.
+    `dev-foundation-tui --help` is asserted clean too — the de-branded help
+    text introduced in Wave 4 must hold here.
     """
     root_help = runner.invoke(app, ["--help"])
     tui_help = runner.invoke(app, ["tui", "--help"])
-    combined = _strip_known_pre_existing_leaks(root_help.output + tui_help.output).lower()
+    dev_tui_help = runner.invoke(app, ["dev-foundation-tui", "--help"])
+    combined = _strip_known_pre_existing_leaks(
+        root_help.output + tui_help.output + dev_tui_help.output
+    ).lower()
     for token in _FORBIDDEN_IDENTITY_TOKENS:
         assert token not in combined, f"forbidden identity token {token!r} leaked into --help output"
 
 
-def test_tui_subcommand_help_leak_is_known_pre_existing_not_a_new_regression():
-    """TUI-11 (documentation test): confirms the current `tui --help` leak is the
-    pre-existing old wrapper's own help text, not something newly introduced. If
-    this starts failing because the leak disappears, that is good news — delete
-    this test and narrow `_KNOWN_LEAK_PATTERNS` (Wave 4 owns this flip)."""
-    tui_help = runner.invoke(app, ["tui", "--help"])
-    assert _KNOWN_LEAK_PATTERNS[0].search(_collapse_whitespace(tui_help.output))
-
-
 def test_tui_package_source_contains_no_hermes_identity():
-    """TUI-11: once atlas_runtime/tui/ exists, no source file leaks Hermes/Ink identity
+    """TUI-11: no source file under atlas_runtime/tui/ leaks Hermes/Ink identity
     (excluding documented `# provenance:` comments).
 
-    WAVE-1-FLIP: today `atlas_runtime/tui/` does not exist, so this asserts the
-    directory's CURRENT absence rather than scanning it (there is nothing to scan).
-    Once Wave 1 creates the package, this assertion MUST be updated to: (a) assert
-    the directory exists, and (b) glob *.py under it and assert none of
-    _FORBIDDEN_IDENTITY_TOKENS appear case-insensitively in any line that does not
-    contain the substring "provenance:". Wave 4's plan task owns flipping this.
+    LOAD-BEARING (Wave 4): atlas_runtime/tui/ now exists (landed in Waves 1+);
+    this is the real positive scan, no longer the pre-Wave-1 directory-absence
+    placeholder.
     """
     # Locate the atlas_runtime package root (this test file is at
     # services/agent-runtime/tests/test_tui_debrand_audit.py).
     package_root = pathlib.Path(__file__).resolve().parent.parent / "atlas_runtime"
     tui_dir = package_root / "tui"
 
-    if not tui_dir.is_dir():
-        # Pre-Wave-1 RED-adjacent state: the package does not exist yet. This is
-        # the CURRENT real condition (not a skip/xfail) -- intentionally trivial.
-        assert not tui_dir.is_dir()
-        return
+    assert tui_dir.is_dir(), "atlas_runtime/tui/ must exist by Wave 4"
 
-    # Post-Wave-1: real scan (this branch is dead code until Wave 1 lands, but is
-    # written now so Wave 4 only needs to delete the early-return above).
     offending: list[str] = []
     for py_file in tui_dir.rglob("*.py"):
         for lineno, line in enumerate(py_file.read_text(encoding="utf-8").splitlines(), start=1):
