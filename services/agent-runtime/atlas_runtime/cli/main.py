@@ -12,6 +12,7 @@ from __future__ import annotations
 import sqlite3
 import threading
 import json
+from typing import Optional
 
 import typer
 
@@ -95,8 +96,41 @@ app.add_typer(discord_app, name="discord")
 from atlas_runtime.cli.tools import tools_app
 app.add_typer(tools_app, name="tools")
 
-from atlas_runtime.cli.tui import tui as _tui_cmd
-app.command("tui", help="Launch the ATLAS terminal UI (foundation Ink TUI, ATLAS-skinned).")(_tui_cmd)
+import atlas_runtime.tui.app as _tui_app_mod
+from atlas_runtime.cli.tui import legacy_foundation_tui
+
+_TUI_OPTION_PROJECT = typer.Option(
+    None, "--project", help="Registered Project id to open (skips the interactive picker)."
+)
+_TUI_OPTION_GLOBAL = typer.Option(
+    False, "--global", help="Open the global workspace (skips the interactive picker)."
+)
+
+
+@app.callback(invoke_without_command=True)
+def _root(
+    ctx: typer.Context,
+    project: Optional[str] = _TUI_OPTION_PROJECT,
+    global_: bool = _TUI_OPTION_GLOBAL,
+) -> None:
+    """ATLAS — bare invocation launches the terminal workbench."""
+    if ctx.invoked_subcommand is None:
+        _tui_app_mod.run_workbench(project=project, global_=global_)
+
+
+@app.command("tui", help="Launch the ATLAS terminal workbench.")
+def _tui_cmd(
+    project: Optional[str] = _TUI_OPTION_PROJECT,
+    global_: bool = _TUI_OPTION_GLOBAL,
+) -> None:
+    _tui_app_mod.run_workbench(project=project, global_=global_)
+
+
+app.command(
+    "dev-foundation-tui",
+    hidden=True,
+    help="Run the legacy vendored TUI from source (checkout-only, hidden).",
+)(legacy_foundation_tui)
 
 # Module-level lock singleton (monkeypatched in tests via _get_lock)
 _LOCK = threading.Lock()
