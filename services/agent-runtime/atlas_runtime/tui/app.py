@@ -24,7 +24,7 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 import threading
-from typing import Optional
+from typing import Callable, Optional
 
 from rich.console import Console
 from rich.live import Live
@@ -32,20 +32,24 @@ from rich.live import Live
 from atlas_core.schemas.agent_contract import ModelIdentity, SurfaceIdentity, WorkspaceIdentity
 
 from atlas_runtime import agent_contract_service
+from atlas_runtime import mission_service
 from atlas_runtime import surface_session_service
+from atlas_runtime.run_executor import start_and_execute_async
 from atlas_runtime.tool_catalog import build_shipped_catalog
 from atlas_runtime.tui import capabilities as capabilities_module
+from atlas_runtime.tui import command_dispatch as command_dispatch_module
 from atlas_runtime.tui import header as header_module
 from atlas_runtime.tui import session_select as session_select_module
 from atlas_runtime.tui import transcript as transcript_module
 
 _POLL_INTERVAL_SECONDS = 0.5
 
-# Placeholder model identity for the not-yet-wired agent path (see
-# `_submit_to_agent`). Mirrors `agent_contract_service.prepare_run_contract`'s
-# own placeholder convention ("resolved-at-execution") rather than inventing a
-# new sentinel — real model resolution is wired when the agent-invocation path
-# lands (out of this plan's scope, TUI-04/TUI-08 backbone only).
+# Placeholder model identity shown in the status header at session-creation
+# time, before any run has resolved a real provider/model. Mirrors
+# `agent_contract_service.prepare_run_contract`'s own placeholder convention
+# ("resolved-at-execution") rather than inventing a new sentinel — the REAL
+# model is resolved per-run by NativeAtlasAgent._resolve_provider (ATLAS
+# config + active Focus), independent of this header-only placeholder.
 _PLACEHOLDER_MODEL = ModelIdentity(provider="resolved-at-execution", model_id="resolved-at-execution")
 
 
@@ -70,17 +74,42 @@ def handle_cancel(
     surface_session_service.transition_session(conn, eff_lock, session_id, "cancelling")
 
 
-async def _submit_to_agent(line: str) -> None:
-    """Extension point for the agent-invocation path — NOT wired in this plan.
+def _submit_to_agent(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    *,
+    session_id: str,
+    line: str,
+    start_and_execute: Callable[..., object] = start_and_execute_async,
+) -> None:
+    """Submit one composer line as a mission run for the active session.
 
-    The composer's non-slash-command input lands here. Actually invoking the
-    agent runtime (model call, tool loop, transcript event emission) is wired
-    in a later phase/plan; this stub exists so that path is a clearly-named,
-    visibly-not-yet-implemented no-op rather than a silently dropped line of
-    operator input (T-10.6-21, disposition "accept" — no agent invocation, no
-    secret/credential path exists yet to leak).
+    Creates a fresh `pending` Mission (one per submitted line — `run_service`
+    requires a pending mission to start a run), then drives it via
+    `run_executor.start_and_execute_async` on a background daemon thread so
+    the composer prompt is never blocked. The run is created with
+    `session_id=session_id` so every AuditEvent it emits is joined back to
+    THIS surface session by `audit_service.get_events_for_session` — closing
+    the session -> run -> audit_events -> transcript loop CR-01 depends on.
+
+    Defaults to the "native" AgentRuntime (`atlas_runtime.agents.native`),
+    which never requires `claude_agent_sdk` — with no provider configured it
+    falls back to a deterministic, clearly-labeled mock response rather than
+    silently no-op'ing (the existing honest-failure contract). `start_and_execute`
+    is injectable so tests can pass a stub/mock executor instead of spawning a
+    real background thread (unit-testable without any live agent runtime).
+
+    A blank/whitespace-only line is a no-op (stray Enter press) — no mission,
+    no run, nothing submitted.
     """
-    del line  # not yet wired — see docstring
+    if not line.strip():
+        return
+    mission = mission_service.create_mission(
+        conn, lock, title=line[:120], intent=line,
+    )
+    start_and_execute(
+        conn, lock, mission_id=mission.id, prompt=line, session_id=session_id,
+    )
 
 
 def _resolve_conn_and_lock(
@@ -165,6 +194,12 @@ def run_workbench(
         tool_catalog_version=catalog.catalog_version,
         context_policy_version=agent_contract_service.CONTEXT_POLICY_VERSION,
     )
+    # A session is created in 'starting'; the composer loop only begins once
+    # the workbench is actually ready to accept input, so transition to
+    # 'active' here (Rule 1 fix — without this, handle_cancel's Ctrl-C/EOF
+    # unwind always raised ValueError: 'starting' has no outgoing edge to
+    # 'cancelling', _ALLOWED_FROM only permits that from 'active'/'suspended').
+    surface_session_service.transition_session(eff_conn, eff_lock, session.id, "active")
 
     caps = capabilities_module.probe_capabilities()
     console = Console()
@@ -193,7 +228,9 @@ def run_workbench(
                     "model_provider": _PLACEHOLDER_MODEL.provider,
                     "permission_mode": session.permission_mode,
                     "focus_title": None,
-                    "state": session.state,
+                    # "active", not the stale frozen session.state ("starting")
+                    # captured before the transition_session call above.
+                    "state": "active",
                 }
                 live.update(_render_header_for_live(console, snapshot))
 
@@ -204,12 +241,14 @@ def run_workbench(
                     while True:
                         line = await ptk_session.prompt_async("> ")
                         if line.startswith("/"):
-                            # Slash-command dispatch lands in a later plan
-                            # (10.6-07's command_dispatch.dispatch_command);
-                            # no dispatcher exists yet in this plan's scope.
-                            console.print(f"(unrecognized command: {line})")
+                            result = command_dispatch_module.dispatch_command(
+                                eff_conn, line, surface_session_id=session.id
+                            )
+                            console.print(result.text)
                         else:
-                            await _submit_to_agent(line)
+                            _submit_to_agent(
+                                eff_conn, eff_lock, session_id=session.id, line=line
+                            )
                 except (EOFError, KeyboardInterrupt):
                     handle_cancel(eff_conn, eff_lock, session_id=session.id)
                     stop_event.set()
@@ -221,3 +260,4 @@ def run_workbench(
 
 
 __all__ = ["handle_cancel", "run_workbench"]
+

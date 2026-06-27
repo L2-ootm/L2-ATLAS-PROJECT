@@ -14,9 +14,16 @@ are registered through the SAME `_register` path with `deferred=True`, so a
 follow-up phase can swap in a real implementation by re-registering the name
 without touching `dispatch_command` itself (CONTEXT's "clean extension seam,
 not an opaque error stub" requirement).
+
+`dispatch_command` takes the active surface session's id as a required
+keyword-only `surface_session_id` and threads it to every handler (CR-02/CR-03
+fix) — the `/permission` group's `list_actionable`/`resolve_approval_choice`
+calls are scoped to a REAL session id, never the empty-string placeholder this
+module previously hard-coded.
 """
 from __future__ import annotations
 
+import logging
 import shlex
 import sqlite3
 from dataclasses import dataclass
@@ -27,6 +34,8 @@ from atlas_runtime import focus_service
 from atlas_runtime import permission_broker
 from atlas_runtime import project_service
 from atlas_runtime.tui import permission_ui
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -47,7 +56,7 @@ class CommandResult:
         return not self.ok
 
 
-Handler = Callable[[sqlite3.Connection, List[str]], CommandResult]
+Handler = Callable[[sqlite3.Connection, List[str], str], CommandResult]
 
 COMMAND_REGISTRY: Dict[str, "_RegistryEntry"] = {}
 
@@ -74,7 +83,10 @@ def _register(name: str, handler: Handler, *, deferred: bool = False) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _handle_project(conn: sqlite3.Connection, args: List[str]) -> CommandResult:
+def _handle_project(
+    conn: sqlite3.Connection, args: List[str], surface_session_id: str
+) -> CommandResult:
+    del surface_session_id  # project commands are not session-scoped
     sub = args[0] if args else "list"
     try:
         if sub == "list":
@@ -93,7 +105,10 @@ def _handle_project(conn: sqlite3.Connection, args: List[str]) -> CommandResult:
         return CommandResult(ok=False, text=str(exc))
 
 
-def _handle_focus(conn: sqlite3.Connection, args: List[str]) -> CommandResult:
+def _handle_focus(
+    conn: sqlite3.Connection, args: List[str], surface_session_id: str
+) -> CommandResult:
+    del surface_session_id  # focus commands are not session-scoped
     sub = args[0] if args else "show"
     try:
         if sub == "show":
@@ -112,21 +127,10 @@ def _handle_focus(conn: sqlite3.Connection, args: List[str]) -> CommandResult:
         return CommandResult(ok=False, text=str(exc))
 
 
-def _handle_mission(conn: sqlite3.Connection, args: List[str]) -> CommandResult:
-    # Full mission-run dispatch (agent invocation) is wired by the Wave 4
-    # agent-submission integration in app.py — NOT duplicated here. This
-    # handler only supports read-style subcommands in this plan's scope.
-    sub = args[0] if args else "list"
-    if sub in ("list", "show"):
-        return CommandResult(
-            ok=False,
-            text="mission read commands are wired by the app.py mission-submission "
-            "integration (Wave 4), not by command_dispatch directly",
-        )
-    return CommandResult(ok=False, text=f"unknown mission subcommand: {sub}")
-
-
-def _handle_config(conn: sqlite3.Connection, args: List[str]) -> CommandResult:
+def _handle_config(
+    conn: sqlite3.Connection, args: List[str], surface_session_id: str
+) -> CommandResult:
+    del surface_session_id  # config commands are not session-scoped
     if not args:
         return CommandResult(ok=False, text="usage: config get <key> | config set <key> <value>")
     sub = args[0]
@@ -147,18 +151,20 @@ def _handle_config(conn: sqlite3.Connection, args: List[str]) -> CommandResult:
     return CommandResult(ok=False, text=f"unknown config subcommand: {sub}")
 
 
-def _handle_permission(conn: sqlite3.Connection, args: List[str]) -> CommandResult:
+def _handle_permission(
+    conn: sqlite3.Connection, args: List[str], surface_session_id: str
+) -> CommandResult:
     if not args:
         return CommandResult(ok=False, text="usage: permission list | permission decide <id> <choice>")
     sub = args[0]
     if sub == "list":
-        # surface_session_id is not threaded through dispatch_command's
-        # current (conn, command_text) signature; the composer-facing entry
-        # point is expected to be extended with session context in the
-        # Wave 4 wiring pass. Until then this scopes to an empty session id,
-        # which list_actionable's strict-scope filter resolves to no rows
-        # rather than leaking another session's approvals.
-        approvals = permission_broker.list_actionable(conn, surface_session_id="")
+        # surface_session_id is the REAL active session's id, threaded through
+        # dispatch_command by the app.py composer call site (CR-02/CR-03 fix).
+        # list_actionable's strict-scope filter returns only THIS session's
+        # actionable approvals — never another session's rows.
+        approvals = permission_broker.list_actionable(
+            conn, surface_session_id=surface_session_id
+        )
         if not approvals:
             return CommandResult(ok=True, text="no actionable approvals")
         lines = [f"{a.id}  {a.tool_name}  {a.risk_level}" for a in approvals]
@@ -169,7 +175,7 @@ def _handle_permission(conn: sqlite3.Connection, args: List[str]) -> CommandResu
             result = permission_ui.resolve_approval_choice(
                 conn,
                 approval_id=approval_id,
-                surface_session_id="",
+                surface_session_id=surface_session_id,
                 choice=choice,
             )
         except Exception as exc:  # noqa: BLE001 - surfaced as a typed CommandResult
@@ -187,7 +193,10 @@ def _handle_permission(conn: sqlite3.Connection, args: List[str]) -> CommandResu
 
 
 def _make_deferred_handler(name: str) -> Handler:
-    def _handler(conn: sqlite3.Connection, args: List[str]) -> CommandResult:
+    def _handler(
+        conn: sqlite3.Connection, args: List[str], surface_session_id: str
+    ) -> CommandResult:
+        del conn, args, surface_session_id
         return CommandResult(
             ok=False,
             deferred=True,
@@ -203,11 +212,15 @@ def _make_deferred_handler(name: str) -> Handler:
 
 _register("project", _handle_project)
 _register("focus", _handle_focus)
-_register("mission", _handle_mission)
 _register("config", _handle_config)
 _register("permission", _handle_permission)
 
-for _deferred_name in ("wiki", "subagent", "context"):
+# WR-02: "mission" is registered as a deferred extension seam, not a working
+# "core" handler — its only previous subcommands (list/show) unconditionally
+# returned failure, presenting a delivered-but-broken feature as core scope.
+# A follow-up phase implementing real mission list/show against
+# mission_service replaces this via _register("mission", real_handler).
+for _deferred_name in ("mission", "wiki", "subagent", "context"):
     _register(_deferred_name, _make_deferred_handler(_deferred_name), deferred=True)
 
 
@@ -232,8 +245,16 @@ def _parse(command_text: str) -> tuple[Optional[str], List[str]]:
     return parts[0], parts[1:]
 
 
-def dispatch_command(conn: sqlite3.Connection, command_text: str) -> CommandResult:
+def dispatch_command(
+    conn: sqlite3.Connection, command_text: str, *, surface_session_id: str
+) -> CommandResult:
     """Parse and dispatch a composer slash-command string.
+
+    `surface_session_id` is the active workbench session's id (CR-02/CR-03
+    fix) — every handler receives it as its third positional argument so
+    session-scoped groups (`permission`) can filter strictly to THIS
+    session's rows rather than an empty-string placeholder that could never
+    match a real row.
 
     Never raises: an unknown command name returns an error-card-shaped
     `CommandResult` (never an exception); any exception raised by a
@@ -251,8 +272,9 @@ def dispatch_command(conn: sqlite3.Connection, command_text: str) -> CommandResu
         return CommandResult(ok=False, text=f"unknown command: {command}")
 
     try:
-        return entry.handler(conn, args)
+        return entry.handler(conn, args, surface_session_id)
     except Exception as exc:  # noqa: BLE001 - last line of defense, see T-10.6-22
+        logger.exception("tui command dispatch failed: %s", command)
         return CommandResult(ok=False, text=f"command '{command}' failed: {exc}")
 
 

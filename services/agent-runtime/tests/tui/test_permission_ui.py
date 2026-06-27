@@ -9,6 +9,7 @@ import uuid
 
 import pytest
 
+from atlas_runtime import permission_broker
 from atlas_runtime.tui.permission_ui import resolve_approval_choice
 
 
@@ -102,7 +103,7 @@ def test_headless_missing_channel_fails_closed(
 ):
     """TUI-06: a headless surface with no registered approval_channels row fails closed."""
     session_id, approval_id = _seed(db, seed_pending_approval, make_active_session, surface_session)
-    with pytest.raises(Exception):
+    with pytest.raises(permission_broker.ApprovalChannelMissingError):
         resolve_approval_choice(
             db,
             approval_id=approval_id,
