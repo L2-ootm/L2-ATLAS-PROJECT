@@ -50,14 +50,21 @@ def global_root() -> pathlib.Path:
 def resolve_workspace(
     conn,
     *,
-    kind: str,
+    kind: Optional[str] = None,
     project_id: Optional[str] = None,
+    use_global: bool = False,
 ) -> str:
     """Resolve a workspace request to a canonical absolute root string.
 
     - `global` → the DB-home-bound `global_root()`.
     - `project` → the registered project's resolved root; unknown id → `unregistered`.
+
+    `use_global=True` is an accepted alias for `kind="global"` (added for
+    `tui.session_select`'s call convention, Phase 10.6 plan 02) — callers may
+    pass either `kind="global"` or `use_global=True` interchangeably.
     """
+    if kind is None:
+        kind = "global" if use_global else "project"
     if kind == "global":
         return str(global_root())
     if kind == "project":
