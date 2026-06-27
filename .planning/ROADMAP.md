@@ -556,7 +556,7 @@ milestone is activated through the normal milestone workflow.
 | 10.3 Shared Surface Session & Workspace Protocol | v1.1 | 5/5 | Complete | 2026-06-25 |
 | 10.4 Global Configuration, Auth & Model Control Plane | v1.1 | 5/5 | Complete   | 2026-06-26 |
 | 10.5 Surface-Scoped Permission Broker | v1.1 | 5/5 | Complete   | 2026-06-26 |
-| 10.6 ATLAS Terminal Workbench | v1.1 | 0/8 | Planned | — |
+| 10.6 ATLAS Terminal Workbench | v1.1 | 8/8 | Complete (human-verify deferred) | 2026-06-27 |
 | 10.7 Web Agent Surface & Permission Queue UX | v1.1 | 0/? | Not planned | — |
 | 10.8 Cross-Surface Conformance, UAT & Cutover | v1.1 | 0/? | Not planned | — |
 | 11. CRM via Twenty | v2.0 | 0/? | Not started | — |

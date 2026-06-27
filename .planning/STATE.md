@@ -2,18 +2,46 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
-status: verifying
-last_updated: "2026-06-26T21:39:08.610Z"
-last_activity: 2026-06-26
+status: in_progress
+last_updated: "2026-06-27T00:00:00.000Z"
+last_activity: 2026-06-27
 progress:
   total_phases: 8
-  completed_phases: 3
-  total_plans: 25
-  completed_plans: 23
-  percent: 38
+  completed_phases: 6
+  total_plans: 41
+  completed_plans: 41
+  percent: 75
 ---
 
 # STATE — L2 ATLAS
+
+## Current Position — Phase 10.6 Complete (human-verify deferred)
+
+Phase 10.6 (ATLAS Terminal Workbench) completed all 8 plans across 5 waves (2026-06-27).
+Native `atlas` / `atlas tui` terminal client built on the leanest Python stack (Rich +
+prompt_toolkit, both promoted to direct deps). Both bare `atlas` and `atlas tui` launch the native
+workbench via a new `@app.callback(invoke_without_command=True)`; the vendored Hermes Ink wrapper
+is demoted to a hidden `dev-foundation-tui` command (D-001 honored — foundation/atlas-hermes
+unedited). Streaming transcript normalizes from `audit_events` (get_events_for_session →
+normalize_surface_events → replay_since, append-only) — NO new event bus. Permission prompt maps a
+4-option dialog onto `permission_broker.claim`/`record_allow_rule` (cancel = TUI-local, headless =
+ApprovalChannelMissingError fail-closed). Resume is fail-closed on prompt/context/tool-catalog
+version drift. Command palette is core-first (project/workspace, mission/focus, config/model,
+permissions) with deferred extension seams for wiki/Brain, subagents, context.
+
+Code-review gate caught 3 HIGH integration defects (CR-01 transcript read a dead unwritten
+`surface_events` table; CR-02 command palette never wired into run_workbench; CR-03 empty
+surface_session_id) plus 2 latent bugs (first-event drop; session stuck in "starting"). All were
+fixed in a gap-closure (commits c7c520f, 7439e55) — migration 0018 deleted, transcript rewired to
+the locked audit_events path, dispatch + real session id wired, `_submit_to_agent` now drives the
+real mission/run-execution path. Verification: 11/11 must-haves at code level; phase suite 45
+passed; full agent-runtime suite 605 passed, 2 failed (both PRE-EXISTING and untouched by 10.6:
+`claude_agent_sdk` optional dep missing; `test_surface_events` `_KIND_MAP` coverage gap — tech debt
+for 10.8). Status `human_needed`: 4 environment-gated items deferred (live agent run, real-terminal
+rendering, interactive Ctrl-C, live permission UX) — see 10.6-HUMAN-UAT.md.
+
+Next: discuss → plan → execute Phase 10.7 (Web Agent Surface & Permission Queue UX), then 10.8.
+Resume the autonomous run with: /gsd-autonomous --from 10.7 --to 10.8
 
 ## Current Position — Phase 10.4 Complete
 
