@@ -98,6 +98,12 @@ Codex spike: `docs/plans/2026-06-28-codex-oauth-spike-findings.md`.
 - **P7** in-TUI provider/settings + "test-probe" (pick a mode, enter creds, fire a one-shot probe
   run and stream it — the "wire any provider and test" deliverable). Substrate now complete for all
   four modes (api_key / oauth_import / claude_code / freellmapi).
+  - **Secret-safe write boundary DONE (2026-06-28):** `atlas auth add --stdin` reads API keys
+    without prompts or argv exposure, and `POST /v1/auth/providers` remains a dispatch-only Rust
+    adapter that pipes the secret to Python over stdin. Provider/base URL stay ordinary metadata;
+    responses are masked and failed child output cannot echo the secret. Fresh verification:
+    agent-runtime **644 passed / 1 skipped**; gateway **89 API + 3 contract tests passed**.
+  - Next: add the typed Go control-plane client, then the settings editor and one-shot probe UX.
 - **P8** `atlas tui` launches the Go binary; the Rich workbench becomes a hidden rollback until
   Phase 10.8 makes the final cross-surface retirement decision.
 

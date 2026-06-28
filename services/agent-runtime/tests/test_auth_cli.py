@@ -57,6 +57,33 @@ def test_auth_help_exposes_no_secret_argv_option() -> None:
     assert "--secret" not in result.output
 
 
+def test_auth_add_stdin_reads_secret_without_prompt_or_argv(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    db,
+    lock: threading.Lock,
+) -> None:
+    _wire(monkeypatch, tmp_path, db, lock)
+    secret = "stdin-only-secret-9876"
+
+    result = runner.invoke(
+        app,
+        ["auth", "add", "openrouter", "--stdin", "--source", "gateway"],
+        input=secret + "\n",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "API key" not in result.output
+    assert secret not in result.output
+    assert auth_service.resolve_secret("openrouter") == secret
+    data = json.loads(
+        db.execute(
+            "SELECT data FROM audit_events WHERE event_type='auth_change'"
+        ).fetchone()[0]
+    )
+    assert data["source"] == "gateway"
+
+
 def test_auth_json_status_and_doctor_are_masked(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

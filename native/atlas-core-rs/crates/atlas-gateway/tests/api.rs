@@ -178,6 +178,56 @@ async fn auth_codex_import_surfaces_not_imported_as_200() {
 }
 
 #[tokio::test]
+async fn auth_provider_write_sends_secret_on_stdin_not_argv() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let stub = stub_dir.path().join("mock_auth_stdin.py");
+    std::fs::write(
+        &stub,
+        r#"import json
+import sys
+
+secret = sys.stdin.read().strip()
+assert secret == "stdin-only-secret-9876"
+assert secret not in "\0".join(sys.argv)
+assert sys.argv[1:] == [
+    "auth", "add", "--stdin", "--source", "gateway",
+    "--base-url", "https://example.test/v1", "--", "openrouter",
+]
+print(json.dumps({
+    "provider": "openrouter",
+    "status": "configured",
+    "source": "owned",
+    "redacted_hint": "...9876",
+}))
+"#,
+    )
+    .unwrap();
+    let python = if cfg!(windows) { "python" } else { "python3" };
+    let router = app(AppState {
+        db_path: seeded_db(&dir),
+        atlas_cmd: vec![python.to_string(), stub.to_string_lossy().to_string()],
+        repo_root: PathBuf::from("."),
+    });
+
+    let (status, body) = post_json(
+        &router,
+        "/v1/auth/providers",
+        json!({
+            "provider": "openrouter",
+            "api_key": "stdin-only-secret-9876",
+            "base_url": "https://example.test/v1",
+        }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["provider"], "openrouter");
+    assert_eq!(body["redacted_hint"], "...9876");
+    assert!(!body.to_string().contains("stdin-only-secret-9876"));
+}
+
+#[tokio::test]
 async fn health_reports_db_absent() {
     let dir = tempfile::tempdir().unwrap();
     let router = test_app(dir.path().join("missing.db"));

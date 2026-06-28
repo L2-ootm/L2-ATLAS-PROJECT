@@ -14,7 +14,7 @@ use axum::response::{IntoResponse, Response};
 use axum::{routing::{get, post}, Json, Router};
 use futures_util::stream::Stream;
 use serde::Deserialize;
-use tokio::io::AsyncBufReadExt;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -526,6 +526,52 @@ async fn dispatch_atlas_raw(
         .map_err(|e| ApiError::Internal(format!("failed to spawn atlas: {e}")))
 }
 
+/// Dispatch an atlas CLI command while supplying sensitive input through the
+/// child's stdin. Secret bytes never enter argv, process listings, error
+/// messages, or audit metadata.
+async fn dispatch_atlas_raw_with_stdin(
+    atlas_cmd: &[String],
+    args: &[&str],
+    stdin_bytes: &[u8],
+    timeout: Duration,
+) -> Result<std::process::Output, ApiError> {
+    if atlas_cmd.is_empty() {
+        return Err(ApiError::Internal("atlas_cmd is empty".into()));
+    }
+    let mut cmd = tokio::process::Command::new(&atlas_cmd[0]);
+    hide_console_tokio(&mut cmd);
+    for pre in &atlas_cmd[1..] {
+        cmd.arg(pre);
+    }
+    for arg in args {
+        cmd.arg(arg);
+    }
+    cmd.stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| ApiError::Internal(format!("failed to spawn atlas: {e}")))?;
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| ApiError::Internal("atlas stdin unavailable".into()))?;
+    stdin
+        .write_all(stdin_bytes)
+        .await
+        .map_err(|e| ApiError::Internal(format!("failed to write atlas stdin: {e}")))?;
+    stdin
+        .write_all(b"\n")
+        .await
+        .map_err(|e| ApiError::Internal(format!("failed to finish atlas stdin: {e}")))?;
+    drop(stdin);
+    tokio::time::timeout(timeout, child.wait_with_output())
+        .await
+        .map_err(|_| ApiError::Internal("atlas command timed out".into()))?
+        .map_err(|e| ApiError::Internal(format!("failed to wait for atlas: {e}")))
+}
+
 async fn dispatch_atlas_with_timeout(
     atlas_cmd: &[String],
     args: &[&str],
@@ -622,6 +668,68 @@ async fn auth_codex_import(State(state): State<AppState>) -> ApiResult {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let value: Value = serde_json::from_str(stdout.trim())
         .map_err(|e| ApiError::Internal(format!("import-codex parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+#[derive(Deserialize)]
+struct AuthProviderBody {
+    provider: String,
+    api_key: String,
+    base_url: Option<String>,
+}
+
+/// POST /v1/auth/providers — store an API key through the Python auth service.
+///
+/// The gateway remains dispatch-only (D-022). The secret crosses the local HTTP
+/// request boundary, then is piped to `atlas auth add --stdin`; it is never an
+/// argv element and the response is the CLI's masked AuthStatus.
+async fn auth_provider_write(
+    State(state): State<AppState>,
+    Json(body): Json<AuthProviderBody>,
+) -> ApiResult {
+    require_arg(&body.provider, "provider is required")?;
+    if body.provider.starts_with('-') {
+        return Err(ApiError::BadRequest("provider must not start with '-'"));
+    }
+    if body.api_key.is_empty() {
+        return Err(ApiError::BadRequest("api_key is required"));
+    }
+    if body.api_key.len() > 16 * 1024 {
+        return Err(ApiError::BadRequest("api_key exceeds 16384 bytes"));
+    }
+    let mut owned_args = vec![
+        "auth".to_string(),
+        "add".to_string(),
+        "--stdin".to_string(),
+        "--source".to_string(),
+        "gateway".to_string(),
+    ];
+    if let Some(base_url) = body.base_url.as_deref().filter(|v| !v.trim().is_empty()) {
+        owned_args.push("--base-url".to_string());
+        owned_args.push(base_url.to_string());
+    }
+    owned_args.push("--".to_string());
+    owned_args.push(body.provider.clone());
+    let args = owned_args.iter().map(String::as_str).collect::<Vec<_>>();
+    let output = dispatch_atlas_raw_with_stdin(
+        &state.atlas_cmd,
+        &args,
+        body.api_key.as_bytes(),
+        DISPATCH_TIMEOUT,
+    )
+    .await?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if let Ok(error_body) = serde_json::from_str::<Value>(stderr.trim()) {
+            return Err(ApiError::Structured(StatusCode::BAD_REQUEST, error_body));
+        }
+        return Err(ApiError::Internal(
+            "atlas auth add failed without a structured error".into(),
+        ));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let value: Value = serde_json::from_str(stdout.trim())
+        .map_err(|e| ApiError::Internal(format!("auth status parse failed: {e}")))?;
     Ok(Json(value))
 }
 
@@ -2020,6 +2128,7 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/models", get(models_list))
         .route("/v1/config", get(config_view).patch(config_patch))
         .route("/v1/auth", get(auth_list))
+        .route("/v1/auth/providers", post(auth_provider_write))
         .route("/v1/auth/codex", get(auth_codex_status))
         .route("/v1/auth/codex/import", post(auth_codex_import))
         .route("/v1/provider/status", get(provider_status))
