@@ -46,10 +46,29 @@ Codex spike: `docs/plans/2026-06-28-codex-oauth-spike-findings.md`.
   completion, group help strings, `atlas version`. Windows ASCII-safety enforced (caught+fixed
   Unicode glyphs a UTF CliRunner hid; ascii regression test). agent-runtime 638 passed / 1 skipped.
 
-**Operator decision (2026-06-28): P3 DEFERRED.** Continue with the CLI/best-practices polish
-(done) → P4 gateway routes → Go TUI. P3 (FreeLLMAPI native-routing + claude_code venv) resumes later.
+- **P4** `feat(gateway)` — `/v1/auth`, `/v1/auth/codex`, `POST /v1/auth/codex/import`,
+  `/v1/provider/status`, `/v1/provider/modes` dispatch-only routes (mirror the CLI; D-022).
+  import surfaces `{imported:false}` as 200 via `dispatch_atlas_raw`. cargo api target 88 passed.
+- **P5 (middle)** `feat(atlas-tui)` — Go/BubbleTea sidecar `services/atlas-tui/` (Go 1.26,
+  bubbletea v1.3.10). Thin client of the Rust gateway (HTTP + SSE); reimplements opencode/MiMo
+  patterns, no donor runtime (ATTRIBUTION.md). `internal/client` (ProviderStatus/Modes/Missions/
+  LatestRunID/StreamRun) with 5 httptest tests incl. SSE parsing; `internal/tui` BubbleTea
+  workbench (header + provider-modes board + missions list + live run-stream log). go vet clean,
+  go test green, go build OK. A live TTY run wasn't possible in the harness — verified via the
+  client tests instead.
 
-**RESUME HERE (next session) — P4 / P5 onward (P3 deferred):**
+**Operator decision (2026-06-28): P3 DEFERRED.** Order: CLI polish -> P4 -> P5 (done to middle).
+
+**RESUME HERE (next session) — P5 back half onward (P3 still deferred):**
+- **P5 back half**: composer (submit a mission/prompt), permission pane (map tool/permission
+  approvals), scrollback viewport (bubbles/viewport), theming polish. Wire `enter` -> a real run
+  end-to-end against a live gateway (boot gateway first: see `atlas-local-run-recipe` memory).
+- **P6** full pane set across terminals; **P7** in-TUI provider/settings + "test-probe"; **P8**
+  `atlas tui` launches the Go binary, retire the Rich workbench (10.8-style cutover).
+- **P3** (still deferred): FreeLLMAPI native `execute()` routing + claude_code venv gap.
+
+Branch `feat/go-tui-provider-mesh` now has 9 commits on top of bd914a1. Toolchains added: Go
+(isolated to services/atlas-tui). agent-runtime 638 / gateway api 88 / atlas-tui 5 — all green.
 - **P3** FreeLLMAPI + Claude-Code profiles. FreeLLMAPI needs a careful TDD change to
   `native.execute()` factory selection: when `auth_mode=="freellmapi"` and `base_url` is set,
   route to the REAL `_default_factory` even with an empty api_key (free endpoints need base_url,
