@@ -39,8 +39,17 @@ Codex spike: `docs/plans/2026-06-28-codex-oauth-spike-findings.md`.
   from ~/.codex, owns refresh — D-001, never reimplemented). `codex_auth.py` adapter + native
   `oauth_import` routing + `atlas auth codex-status|import-codex`. Live secret-free status
   verified against the real ~/.codex (no token leak).
+- **CLI surface + best practices** `feat(cli)` — `provider_service.py` +
+  `atlas provider {status,modes,test}`: the operator view of the mesh (active resolution +
+  mock-vs-live verdict, and the four-way "which ways can I wire?" board with per-mode
+  availability/remediation). Plus top-level help with quickstart examples, `-h` alias, shell
+  completion, group help strings, `atlas version`. Windows ASCII-safety enforced (caught+fixed
+  Unicode glyphs a UTF CliRunner hid; ascii regression test). agent-runtime 638 passed / 1 skipped.
 
-**RESUME HERE (next session) — P3 onward:**
+**Operator decision (2026-06-28): P3 DEFERRED.** Continue with the CLI/best-practices polish
+(done) → P4 gateway routes → Go TUI. P3 (FreeLLMAPI native-routing + claude_code venv) resumes later.
+
+**RESUME HERE (next session) — P4 / P5 onward (P3 deferred):**
 - **P3** FreeLLMAPI + Claude-Code profiles. FreeLLMAPI needs a careful TDD change to
   `native.execute()` factory selection: when `auth_mode=="freellmapi"` and `base_url` is set,
   route to the REAL `_default_factory` even with an empty api_key (free endpoints need base_url,
