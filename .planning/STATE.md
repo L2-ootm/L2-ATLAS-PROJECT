@@ -624,6 +624,20 @@ tsc/lint/build green.
 - Coexistence: do not run the vendored L2-BOT and the foundation messaging gateway's Discord adapter on
   the same bot token simultaneously.
 
+## Forward scope captured (2026-06-28)
+
+- **Model/function routing, config UX & provider/model test suite** — operator-requested forward
+  scope documented in `docs/plans/2026-06-28-model-function-routing-and-test-suite-plan.md`. Covers:
+  modular **per-function model routing** (function registry binding each function to a provider
+  profile, starting from the Hermes base functions — main / curator / auxiliary / background-review),
+  a full **WebUI Models page suite** (provider board + model catalog + function→model matrix + test
+  results), a **full interactive CLI setup + config UX** (`atlas setup` wizard, `atlas models`,
+  `atlas profiles`), **provider/model test suites** (connectivity probe, per-function smoke, 10.2
+  eval-gate reuse) + **direct interactive test** shared across CLI/TUI/WebUI, and planned UX per
+  surface. Slots after the Go-TUI line (P7 = the TUI test-probe slice) into the v1.2 Provider Mesh
+  milestone. Highest risk flagged: confirming each Hermes function exposes a model seam without
+  editing the foundation (D-001) — spike before committing.
+
 ## Project Reference
 
 See: `.planning/PROJECT.md` (updated 2026-06-15) · `.planning/MILESTONES.md`
