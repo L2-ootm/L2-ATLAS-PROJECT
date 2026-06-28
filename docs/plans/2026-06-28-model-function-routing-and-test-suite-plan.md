@@ -23,16 +23,18 @@ Today a run resolves ONE provider/model for the whole agent (`config_service.res
 | Function (Hermes base) | Source | Today's model | Why it could differ |
 |---|---|---|---|
 | **main agent** | `run_agent.AIAgent` (via `NativeAtlasAgent`) | provider/model from config + Focus | the reasoning workhorse — strongest model |
-| **curator** | `foundation/atlas-hermes/agent/curator.py` | foundation default | background skill consolidation — cheaper/async model is fine |
-| **auxiliary** | `foundation/atlas-hermes/agent/auxiliary_client.py` | foundation default | sub-tasks (session search, quick lookups) — small/fast model |
-| **background review** | `foundation/atlas-hermes/agent/background_review.py` | foundation default | batched consolidation — cost-optimized model |
+| **curator** | `foundation/atlas-hermes/agent/curator.py` | `auxiliary.curator` or main fallback | background skill consolidation — cheaper/async model is fine |
+| **auxiliary task slots** | `foundation/atlas-hermes/agent/auxiliary_client.py` | `auxiliary.<task>` or explicit call args | sub-tasks (compression, quick lookups, etc.) — small/fast model |
+| **background review** | `foundation/atlas-hermes/agent/background_review.py` | inherits the main agent runtime | batched consolidation — potentially cost-optimized, but not independently routable today |
 | **(future ATLAS functions)** | golden workflows, context/brain retrieval rerank, etc. | n/a | extensible registry |
 
 **Goal:** a **function registry** where each function binds to a **provider profile** (mode +
 provider + model), with a sane default (the main provider) and per-function overrides. Functions
-are **modular** — the registry ships with the Hermes base set and is extensible without code
+are **modular** — the registry ships with the real Hermes seams and is extensible without code
 changes to consumers. Setting "which model runs the curator" should be a one-line config edit or a
-single click/keystroke, not a foundation patch.
+single click/keystroke, not a foundation patch. Registry entries must declare capability:
+`routed`, `inherited`, or `unavailable`; surfaces must never offer an override the runtime cannot
+honor.
 
 ### 1.1 Proposed config shape (additive, back-compat)
 
@@ -57,14 +59,29 @@ profiles:            # NEW — named provider profiles the functions/TUI can ref
 ```
 
 Resolution precedence (extends A4): explicit call override → `functions.<fn>` → active `provider`
-→ foundation default. Every binding is **immutable per run** (the run-contract snapshot already
-records the resolved runtime/mode/model; extend it to record the *per-function* resolution too, so
-audits show exactly which model served curator vs. main).
+→ foundation default. Every binding is **immutable per run**. The existing
+`RunContractSnapshot` freezes prompt/tool/context inputs but does **not** currently record runtime,
+mode, or model; this work must add a separate immutable binding snapshot (or explicitly version
+and extend the contract schema) so audits show exactly which model served curator vs. main.
 
 > **Constraint:** the foundation is used, not edited (D-001). Per-function model selection must be
 > threaded through the existing foundation entry points (env/kwargs the harness already accepts),
 > NOT by forking curator/auxiliary. De-risk spike required to confirm each Hermes function exposes
 > a model/provider seam before committing (mirror the P2/P4 spike discipline).
+
+### 1.2 Foundation seam spike — completed 2026-06-28
+
+The spike resolved the highest-risk question with a **partial-support** result:
+
+| Registry entry | Evidence | Capability | v1.2 action |
+|---|---|---|---|
+| `main` | `AIAgent.__init__(model, provider, api_mode, base_url, api_key, …)`; `NativeAtlasAgent._default_factory` already passes the resolved values | `routed` | Bind directly through the existing A4 path |
+| `curator` | `curator._resolve_review_runtime()` already resolves `auxiliary.curator.{provider,model,api_key,base_url}` and falls back to main | `routed` | Translate the ATLAS function binding to this existing slot without editing foundation |
+| `auxiliary.<task>` | `_resolve_task_provider_model(task, provider, model, base_url, api_key)` already implements explicit-arg → `auxiliary.<task>` → auto precedence | `routed` | Register actual task IDs; do not collapse every auxiliary task into one misleading row |
+| `background-review` | `_run_review_in_thread()` constructs its fork with `model=agent.model`, `provider=agent.provider`, and the parent runtime credentials | `inherited` | Display as inherited/read-only; no independent override until an upstream seam exists or the boundary becomes ATLAS-owned |
+
+**Decision:** proceed with a capability-aware registry. Do not fall back to “main only,” and do
+not pretend background review is independently routable. No foundation edit is authorized.
 
 ---
 
@@ -170,8 +187,9 @@ endpoints). No surface owns business logic (D-022); Python resolves and tests, s
   `provider_service` status/modes board, `atlas doctor` visibility, the run-contract snapshot, the
   10.2 eval dataset/gate, `/v1/models` + `/v1/provider/*` + `/v1/config`.
 - **New work this plan implies (proposed phases):**
-  1. **Function registry + per-function resolution** (config schema, resolution precedence,
-     run-contract per-function record) — spike each Hermes function's model seam first (D-001).
+  1. **Function registry + per-function resolution** (capability metadata, config schema,
+     resolution precedence, immutable per-run binding record) — use the completed seam matrix
+     above; inherited entries remain visible but read-only.
   2. **Test substrate** — `POST /v1/provider/test` + per-function smoke + eval-gate hook (shared by
      all surfaces; ephemeral/throwaway mission discipline; budgeted network probes).
   3. **CLI interactive setup + config UX** — expanded `atlas setup`, `atlas models`, `atlas profiles`.
@@ -180,9 +198,9 @@ endpoints). No surface owns business logic (D-022); Python resolves and tests, s
 
 ## 7. Open questions / risks
 
-- **Foundation model seams (highest risk):** do `curator.py` / `auxiliary_client.py` /
-  `background_review.py` each accept a model/provider override without editing the foundation? Spike
-  before committing; fall back to "main model only, per-function deferred" if a seam is missing.
+- **Foundation model seams (resolved):** main, curator, and named auxiliary task slots are routable;
+  background review is inherited-only. The registry/UI must expose this honestly and remain
+  forward-compatible with a future upstream seam.
 - **Cost/safety of test probes:** real probes spend tokens. Default to mock/dry-run; gate live
   probes behind explicit opt-in + a budget (reuse `SECRET_PATTERNS` stop so a test prompt can't leak
   secrets; freellmapi privacy warning applies).
