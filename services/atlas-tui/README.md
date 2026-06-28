@@ -8,12 +8,14 @@ contract the cockpit uses. The Rust runtime and Python services stay authoritati
 
 ## Status
 
-Phase P5 complete (scaffold + gateway client + composer/permissions/scrollback). Working today:
+Phase P6 complete (usable workbench + rich transcript + cross-terminal render gates). Working today:
 
 - Connects to the gateway and renders the **provider mesh** (`/v1/provider/status`,
   `/v1/provider/modes`) — which ways you can wire a model and what's active.
 - Lists **missions** (`/v1/missions`).
 - **Streams a run live** over SSE (`/v1/runs/{id}/stream`) into a scrollback viewport.
+- Renders assistant text, reasoning, tool calls/results, diffs, retrieval, and failures from the
+  append-only audit stream using a display-field allowlist (unknown payload maps stay opaque).
 - **Composer**: press `n`, type a mission, `ctrl+s` — creates the mission, starts an
   executing run (`/v1/missions`, `/v1/missions/{id}/run` with `execute:true`) and streams it.
 - **Permission pane**: polls `/v1/tools/approvals` and lets you `a`pprove / re`x`ject the
@@ -47,11 +49,15 @@ Windows consoles (detected by the absence of `WT_SESSION`). Force either with
 ```sh
 go build -o atlas-tui .
 go test ./...
+go vet ./...
 ```
+
+P6 Windows/amd64 baseline (2026-06-28): 11,358,208 bytes / 10.83 MiB, within the locked
+15 MiB ceiling. No dependency was added.
 
 ## Roadmap (P6 → P8)
 
-- P6: full pane set (richer transcript: reasoning/tool/diff/retrieval) across terminals.
+- P6: complete — rich transcript + 80x24/140x40 ASCII/Unicode render tests.
 - P7: in-TUI provider/settings flow with a "test-probe" action (wire any mode, run a probe).
 - P8: `atlas tui` launches this binary; retire the Python Rich workbench (10.8-style cutover).
 

@@ -18,6 +18,7 @@ type glyphSet struct {
 	submit   string // mission-submit marker
 	bullet   string // audit-event bullet
 	dash     string // run-boundary rule
+	ascii    bool
 }
 
 var gl = pickGlyphs()
@@ -36,7 +37,7 @@ func pickGlyphs() glyphSet {
 		ascii = false
 	}
 	if ascii {
-		return glyphSet{live: "*", ellipsis: "...", prompt: "| ", paneBar: "|", submit: ">>", bullet: "-", dash: "--"}
+		return glyphSet{live: "*", ellipsis: "...", prompt: "| ", paneBar: "|", submit: ">>", bullet: "-", dash: "--", ascii: true}
 	}
 	return glyphSet{live: "●", ellipsis: "…", prompt: "┃ ", paneBar: "▌", submit: "»", bullet: "•", dash: "—"}
 }
@@ -60,10 +61,22 @@ var (
 	styleBad         = lipgloss.NewStyle().Foreground(colBad)
 	styleVal         = lipgloss.NewStyle().Foreground(colWhite)
 
-	stylePanel = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colMuted).
-			Padding(0, 1)
-
 	styleSelected = lipgloss.NewStyle().Foreground(colWhite).Background(colViolet).Bold(true)
 )
+
+var asciiBorder = lipgloss.Border{
+	Top: "-", Bottom: "-", Left: "|", Right: "|",
+	TopLeft: "+", TopRight: "+", BottomLeft: "+", BottomRight: "+",
+}
+
+func panelStyle(width int) lipgloss.Style {
+	border := lipgloss.RoundedBorder()
+	if gl.ascii {
+		border = asciiBorder
+	}
+	return lipgloss.NewStyle().
+		Border(border).
+		BorderForeground(colMuted).
+		Padding(0, 1).
+		Width(width)
+}
