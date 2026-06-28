@@ -2,11 +2,13 @@
 
 This module is the structural backbone CONTEXT.md/RESEARCH.md mandate: ONE
 asyncio event loop owns both the `prompt_toolkit` composer and the background
-event-poll task. Rich `Live` is scoped EXCLUSIVELY to the status header line —
-it never co-owns the terminal with `prompt_toolkit`'s `patch_stdout` (RESEARCH
-Pitfall 1). All transcript/event content is printed via plain
-`console.print(...)` under `patch_stdout`, never through a second `Live`
-region.
+event-poll task. The status header is printed ONCE as a static line above the
+composer; Rich `Live` is deliberately NOT used, because a timer-repainting
+`Live` region cannot co-own the terminal with `prompt_toolkit`'s
+`patch_stdout` + `prompt_async` without flooding the screen and leaking raw
+cursor/erase escape codes (RESEARCH Pitfall 1). All header and
+transcript/event content is printed via plain `console.print(...)` under
+`patch_stdout`.
 
 `handle_cancel` is the Ctrl-C / cancel unwind (TUI-08): it drives the owning
 session toward `"cancelling"` via `surface_session_service.transition_session`
@@ -27,7 +29,6 @@ import threading
 from typing import Callable, Optional
 
 from rich.console import Console
-from rich.live import Live
 
 from atlas_core.schemas.agent_contract import ModelIdentity, SurfaceIdentity, WorkspaceIdentity
 
@@ -130,24 +131,6 @@ def _resolve_conn_and_lock(
     return eff_conn, eff_lock
 
 
-def _render_header_for_live(console: Console, snapshot: dict) -> object:
-    """Adapt `header.render_status_header`'s print-side-effect contract to a renderable.
-
-    `tui.header.render_status_header(console, snapshot)` prints directly and
-    returns `None` (its committed Wave-1 contract) rather than returning a
-    `RenderableType` — so it cannot be passed straight to `Live.update`, which
-    requires a renderable. Capturing the same call's console output via
-    `console.capture()` and replaying it as `Text.from_ansi(...)` preserves
-    `header.py` as the single source of header-formatting logic (never
-    duplicated here) while satisfying `Live.update`'s renderable contract.
-    """
-    from rich.text import Text
-
-    with console.capture() as capture:
-        header_module.render_status_header(console, snapshot)
-    return Text.from_ansi(capture.get())
-
-
 def run_workbench(
     *,
     project: Optional[str] = None,
@@ -159,11 +142,11 @@ def run_workbench(
 
     Resolves the workspace, creates a `starting` surface session, probes
     terminal capabilities, then runs ONE `asyncio.run` call that owns both the
-    `prompt_toolkit` composer and the background transcript-poll task. Rich
-    `Live` is constructed exactly once, scoped exclusively to the status
-    header (`tui.header.render_status_header`) — `console.print(...)` under
-    `patch_stdout` carries every other line (transcript events, command
-    output), never a second `Live` region (RESEARCH Pattern 2 / Pitfall 1).
+    `prompt_toolkit` composer and the background transcript-poll task. The
+    status header (`tui.header.render_status_header`) is printed once as a
+    static line; every line — header, transcript events, command output — goes
+    through `console.print(...)` under `patch_stdout`, never a Rich `Live`
+    region (RESEARCH Pattern 2 / Pitfall 1).
 
     Ctrl-C / EOF on the composer prompt calls `handle_cancel` for the
     session-state unwind, then unconditionally cancels-and-awaits the poll
@@ -221,40 +204,48 @@ def run_workbench(
         from prompt_toolkit import PromptSession
         from prompt_toolkit.patch_stdout import patch_stdout
 
-        async with patch_stdout():
-            with Live(console=console, refresh_per_second=4, transient=False) as live:
-                snapshot = {
-                    "model_id": _PLACEHOLDER_MODEL.model_id,
-                    "model_provider": _PLACEHOLDER_MODEL.provider,
-                    "permission_mode": session.permission_mode,
-                    "focus_title": None,
-                    # "active", not the stale frozen session.state ("starting")
-                    # captured before the transition_session call above.
-                    "state": "active",
-                }
-                live.update(_render_header_for_live(console, snapshot))
+        snapshot = {
+            "model_id": _PLACEHOLDER_MODEL.model_id,
+            "model_provider": _PLACEHOLDER_MODEL.provider,
+            "permission_mode": session.permission_mode,
+            "focus_title": None,
+            # "active", not the stale frozen session.state ("starting")
+            # captured before the transition_session call above.
+            "state": "active",
+        }
 
-                ptk_session: PromptSession = PromptSession(multiline=True)
-                stop_event = asyncio.Event()
-                poll_task = asyncio.create_task(_poll_loop(stop_event))
-                try:
-                    while True:
-                        line = await ptk_session.prompt_async("> ")
-                        if line.startswith("/"):
-                            result = command_dispatch_module.dispatch_command(
-                                eff_conn, line, surface_session_id=session.id
-                            )
-                            console.print(result.text)
-                        else:
-                            _submit_to_agent(
-                                eff_conn, eff_lock, session_id=session.id, line=line
-                            )
-                except (EOFError, KeyboardInterrupt):
-                    handle_cancel(eff_conn, eff_lock, session_id=session.id)
-                    stop_event.set()
-                finally:
-                    poll_task.cancel()
-                    await asyncio.gather(poll_task, return_exceptions=True)
+        with patch_stdout():
+            # One-shot static status header above the composer. Deliberately NOT
+            # wrapped in a Rich `Live` region: `Live` repaints on a timer and,
+            # co-owning the terminal with prompt_toolkit's `patch_stdout` +
+            # `prompt_async`, floods the screen with repeated headers and leaks
+            # raw cursor/erase escape codes (RESEARCH Pitfall 1). The snapshot is
+            # fixed for the session's lifetime, so a single print suffices;
+            # transcript events stream below via `console.print` under the same
+            # `patch_stdout`.
+            header_module.render_status_header(console, snapshot)
+
+            ptk_session: PromptSession = PromptSession(multiline=True)
+            stop_event = asyncio.Event()
+            poll_task = asyncio.create_task(_poll_loop(stop_event))
+            try:
+                while True:
+                    line = await ptk_session.prompt_async("> ")
+                    if line.startswith("/"):
+                        result = command_dispatch_module.dispatch_command(
+                            eff_conn, line, surface_session_id=session.id
+                        )
+                        console.print(result.text)
+                    else:
+                        _submit_to_agent(
+                            eff_conn, eff_lock, session_id=session.id, line=line
+                        )
+            except (EOFError, KeyboardInterrupt):
+                handle_cancel(eff_conn, eff_lock, session_id=session.id)
+                stop_event.set()
+            finally:
+                poll_task.cancel()
+                await asyncio.gather(poll_task, return_exceptions=True)
 
     asyncio.run(_main_loop())
 

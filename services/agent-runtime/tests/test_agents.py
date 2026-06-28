@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import datetime
 import sqlite3
+import sys
 import threading
 import uuid
 
@@ -235,13 +236,16 @@ def test_claude_code_exception_is_failsafe(db: sqlite3.Connection, lock: threadi
     assert any(e.event_type == "failure" for e in events)
 
 
-def test_claude_code_missing_sdk_raises() -> None:
-    # No query_fn injected and SDK import guarded — _resolve raises a clear error
-    # only if the SDK is absent. Here we just assert the agent is constructible
-    # and _resolve returns a callable when the SDK is present in this env.
+def test_claude_code_missing_sdk_raises(monkeypatch) -> None:
+    """_resolve() must fail closed with a clear remediation when the optional
+    claude-agent-sdk is absent. Forced deterministically (the SDK may or may not
+    be installed in a given venv) by making its import fail."""
+    import pytest
+
+    monkeypatch.setitem(sys.modules, "claude_agent_sdk", None)
     agent = ClaudeCodeAgent()
-    fn, of = agent._resolve()
-    assert callable(fn) and callable(of)
+    with pytest.raises(RuntimeError, match="claude-agent-sdk is not installed"):
+        agent._resolve()
 
 
 # --- start_run records agent_runtime ---------------------------------------

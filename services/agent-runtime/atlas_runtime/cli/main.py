@@ -149,11 +149,13 @@ _HEARTBEAT_TTL_SECONDS = 90.0
 def _get_connection() -> sqlite3.Connection:
     """Return a file-backed SQLite connection with WAL + FK enabled.
 
-    Delegates to db.connect() — the single connection definition. Does NOT apply
-    migrations (the gateway also opens this DB; schema changes happen only via the
-    explicit `atlas db init`).
+    Auto-applies any pending migrations on first use per process (idempotent,
+    drift-tolerant). The gateway is dispatch-only (D-022) and shells out to the
+    CLI for writes, so applying Python migrations before it reads is safe.
     """
-    return db.connect()
+    conn = db.connect()
+    db.apply_migrations(conn)
+    return conn
 
 
 def _get_lock() -> threading.Lock:

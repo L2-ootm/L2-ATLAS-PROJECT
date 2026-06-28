@@ -51,6 +51,11 @@ _KIND_MAP: dict[str, EventKind] = {
     "surface_session_failed": "error",
     "run_cancelled": "error",
     "permission_transition": "approval",
+    "config_change": "task",
+    "auth_change": "task",
+    "model_call_start": "text",
+    "model_call_end": "text",
+    "provider_fallback": "error",
 }
 
 

@@ -49,14 +49,18 @@ def _patch_prompt_toolkit(monkeypatch, lines):
 
     fake_patch_stdout_mod = types.ModuleType("prompt_toolkit.patch_stdout")
 
-    class _NullAsyncCtx:
-        async def __aenter__(self):
+    # Mirror the REAL prompt_toolkit.patch_stdout: a *synchronous* context
+    # manager (has __enter__/__exit__, not __aenter__). The production code uses
+    # `with patch_stdout():`; a stub that only supported the async protocol is
+    # what let the original `async with` bug ship green.
+    class _NullSyncCtx:
+        def __enter__(self):
             return None
 
-        async def __aexit__(self, *exc):
+        def __exit__(self, *exc):
             return False
 
-    fake_patch_stdout_mod.patch_stdout = lambda: _NullAsyncCtx()
+    fake_patch_stdout_mod.patch_stdout = lambda: _NullSyncCtx()
 
     monkeypatch.setitem(sys.modules, "prompt_toolkit", fake_ptk)
     monkeypatch.setitem(sys.modules, "prompt_toolkit.patch_stdout", fake_patch_stdout_mod)
