@@ -34,10 +34,23 @@ from atlas_runtime import (
 # App setup
 # ---------------------------------------------------------------------------
 
-app = typer.Typer()
-mission_app = typer.Typer(name="mission")
+app = typer.Typer(
+    help=(
+        "ATLAS - an auditable AI operating system for technical operators.\n\n"
+        "Run bare `atlas` to open the terminal workbench. Common starting points:\n"
+        "  atlas provider modes     show how you can wire a model\n"
+        "  atlas provider status    what the active provider resolves to\n"
+        "  atlas setup              first-run configuration wizard\n"
+        "  atlas mission run <id> --execute   run an agent for real\n"
+        "  atlas doctor             diagnose your install"
+    ),
+    no_args_is_help=False,  # bare `atlas` launches the workbench (see _root callback)
+    add_completion=True,
+    context_settings={"help_option_names": ["-h", "--help"]},
+)
+mission_app = typer.Typer(name="mission", help="Create, run, retry, and cancel agent missions.")
 app.add_typer(mission_app, name="mission")
-project_app = typer.Typer(name="project")
+project_app = typer.Typer(name="project", help="Register and manage Project workspaces.")
 app.add_typer(project_app, name="project")
 db_app = typer.Typer(name="db", help="Database lifecycle: apply migrations, inspect status.")
 app.add_typer(db_app, name="db")
@@ -87,6 +100,9 @@ app.add_typer(auth_app, name="auth")
 from atlas_runtime.cli.models import models_app
 app.add_typer(models_app, name="models")
 
+from atlas_runtime.cli.provider import provider_app
+app.add_typer(provider_app, name="provider")
+
 from atlas_runtime.cli.channels import channels_app
 app.add_typer(channels_app, name="channels")
 
@@ -116,6 +132,22 @@ def _root(
     """ATLAS — bare invocation launches the terminal workbench."""
     if ctx.invoked_subcommand is None:
         _tui_app_mod.run_workbench(project=project, global_=global_)
+
+
+@app.command("version", help="Print the ATLAS runtime version.")
+def _version_cmd(
+    json_output: bool = typer.Option(False, "--json", help="Emit as JSON."),
+) -> None:
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        ver = version("atlas-runtime")
+    except PackageNotFoundError:  # running from a source checkout without install
+        ver = "0.1.0+dev"
+    if json_output:
+        typer.echo(json.dumps({"name": "atlas", "version": ver}))
+    else:
+        typer.echo(f"atlas {ver}")
 
 
 @app.command("tui", help="Launch the ATLAS terminal workbench.")
