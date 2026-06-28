@@ -59,16 +59,32 @@ Codex spike: `docs/plans/2026-06-28-codex-oauth-spike-findings.md`.
 
 **Operator decision (2026-06-28): P3 DEFERRED.** Order: CLI polish -> P4 -> P5 (done to middle).
 
-**RESUME HERE (next session) — P5 back half onward (P3 still deferred):**
-- **P5 back half**: composer (submit a mission/prompt), permission pane (map tool/permission
-  approvals), scrollback viewport (bubbles/viewport), theming polish. Wire `enter` -> a real run
-  end-to-end against a live gateway (boot gateway first: see `atlas-local-run-recipe` memory).
-- **P6** full pane set across terminals; **P7** in-TUI provider/settings + "test-probe"; **P8**
-  `atlas tui` launches the Go binary, retire the Rich workbench (10.8-style cutover).
+- **P5 back half** `feat(atlas-tui)` — composer + permission pane + scrollback + focus model +
+  ASCII-safety, wired end-to-end against a LIVE gateway. Go client gained `CreateMission`,
+  `StartRun(agent,execute)`, `ToolApprovals`, `ApproveTool`, `RejectTool` (+ `postJSON` helper,
+  4 new httptest tests = 9 total). TUI: bubbles `textarea` composer (`n` to compose, `ctrl+s`
+  submits → create mission → start run with execute=true → stream SSE), permission pane polling
+  `/v1/tools/approvals` every 4s (`a`/`x` approve/reject the selected pending row), bubbles
+  `viewport` scrollback replacing tail-8, a 3-way focus state machine (missions/permissions/
+  composer) with context-sensitive footer help. ASCII-safe glyph set auto-selected on legacy
+  Windows consoles (no `WT_SESSION`); override with `ATLAS_TUI_ASCII`/`ATLAS_TUI_UNICODE`.
+  **Live-verified this session** (unlike P5-middle): rebuilt the gateway, booted it per
+  `atlas-local-run-recipe`, confirmed the composer's create→execute→stream path produces audit
+  frames terminating in `event: end {status:succeeded}` (probe mission created + archived to keep
+  operator state clean), AND got a real TTY render of the full workbench (header/modes/missions/
+  permissions/viewport/composer) against the live gateway. go vet clean, 9 go tests green, build OK.
+
+**RESUME HERE (next session) — P6 onward (P3 still deferred):**
+- **P6** full pane set across terminals (transcript richness: reasoning/tool/diff/retrieval
+  rendering; cross-terminal render tests).
+- **P7** in-TUI provider/settings + "test-probe" (pick a mode, enter creds, fire a one-shot probe
+  run and stream it — the "wire any provider and test" deliverable).
+- **P8** `atlas tui` launches the Go binary, retire the Rich workbench (10.8-style cutover).
 - **P3** (still deferred): FreeLLMAPI native `execute()` routing + claude_code venv gap.
 
-Branch `feat/go-tui-provider-mesh` now has 9 commits on top of bd914a1. Toolchains added: Go
-(isolated to services/atlas-tui). agent-runtime 638 / gateway api 88 / atlas-tui 5 — all green.
+Branch `feat/go-tui-provider-mesh` (10 commits on top of bd914a1 after this one). Toolchains added:
+Go (isolated to services/atlas-tui; now also depends on `charmbracelet/bubbles`). agent-runtime 638
+/ gateway api 88 / atlas-tui 9 — all green.
 - **P3** FreeLLMAPI + Claude-Code profiles. FreeLLMAPI needs a careful TDD change to
   `native.execute()` factory selection: when `auth_mode=="freellmapi"` and `base_url` is set,
   route to the REAL `_default_factory` even with an empty api_key (free endpoints need base_url,
