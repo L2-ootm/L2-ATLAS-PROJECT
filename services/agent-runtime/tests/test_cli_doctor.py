@@ -81,6 +81,36 @@ def test_doctor_mock_provider_exits_zero_and_never_leaks_api_key(monkeypatch):
     assert fake_secret not in result.output
 
 
+def test_doctor_reports_claude_code_mode(monkeypatch):
+    """P3: doctor surfaces claude_code (SDK + claude CLI) availability so the
+    operator can see whether the local-subscription runtime is wired."""
+    _patch_all_healthy(monkeypatch)
+    result = runner.invoke(app, ["doctor"])
+    assert result.exit_code == 0, result.output
+    assert "claude_code:" in result.output
+
+
+def test_doctor_provider_live_for_keyless_claude_code(monkeypatch):
+    """P3: a credential-less mode (claude_code/freellmapi) is a LIVE run, not
+    mock. The provider line must reflect that rather than falsely saying mock."""
+    _patch_all_healthy(monkeypatch)
+    monkeypatch.setattr(
+        config_service,
+        "resolve_provider",
+        lambda cfg=None, **kw: {
+            "provider": "anthropic",
+            "model": "x",
+            "base_url": "",
+            "api_key": "",
+            "auth_mode": "claude_code",
+        },
+    )
+    result = runner.invoke(app, ["doctor"])
+    assert result.exit_code == 0, result.output
+    assert "provider: live" in result.output
+    assert "provider: mock" not in result.output
+
+
 def test_doctor_invalid_config_exits_nonzero_without_raising(monkeypatch):
     _patch_all_healthy(monkeypatch)
 

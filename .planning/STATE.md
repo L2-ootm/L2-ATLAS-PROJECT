@@ -74,17 +74,31 @@ Codex spike: `docs/plans/2026-06-28-codex-oauth-spike-findings.md`.
   operator state clean), AND got a real TTY render of the full workbench (header/modes/missions/
   permissions/viewport/composer) against the live gateway. go vet clean, 9 go tests green, build OK.
 
-**RESUME HERE (next session) — P6 onward (P3 still deferred):**
+- **P3 (NO LONGER DEFERRED — DONE this session)** `feat(provider-mesh)` — TDD (RED→GREEN, 5 new
+  tests). FreeLLMAPI native routing: `_resolve_provider` now returns `auth_mode` as a 5th tuple
+  element; `native.execute()` treats `auth_mode=="freellmapi"` + a `base_url` as a REAL run and
+  routes to `_default_factory` (free OpenAI-compatible endpoints need a base_url, not a key) —
+  WITHOUT breaking the empty-key→mock honest-failure contract for api_key mode (guard test proves
+  api_key+base_url+empty-key still mocks). A one-time, audited privacy warning
+  (`tool_name=freellmapi`, `privacy_warning`) fires at the run boundary (D-002). Claude-Code: the
+  dispatch `.venv` ALREADY has `claude_agent_sdk` + the `claude` CLI (venv gap was effectively
+  closed); added `provider_service.claude_code_status()` (public, self-contained) and surfaced it
+  in `atlas doctor` as a `claude_code:` line, plus fixed the doctor provider line to report
+  `live (<mode>)` for credential-less modes (claude_code/freellmapi) instead of a false `mock`.
+  Live-verified: `atlas doctor` → `claude_code: ok` + `provider: live (freellmapi)` in an isolated
+  ATLAS_HOME. Full agent-runtime suite 643 passed / 1 skipped.
+
+**RESUME HERE (next session) — P6 onward:**
 - **P6** full pane set across terminals (transcript richness: reasoning/tool/diff/retrieval
   rendering; cross-terminal render tests).
 - **P7** in-TUI provider/settings + "test-probe" (pick a mode, enter creds, fire a one-shot probe
-  run and stream it — the "wire any provider and test" deliverable).
+  run and stream it — the "wire any provider and test" deliverable). Substrate now complete for all
+  four modes (api_key / oauth_import / claude_code / freellmapi).
 - **P8** `atlas tui` launches the Go binary, retire the Rich workbench (10.8-style cutover).
-- **P3** (still deferred): FreeLLMAPI native `execute()` routing + claude_code venv gap.
 
-Branch `feat/go-tui-provider-mesh` (10 commits on top of bd914a1 after this one). Toolchains added:
-Go (isolated to services/atlas-tui; now also depends on `charmbracelet/bubbles`). agent-runtime 638
-/ gateway api 88 / atlas-tui 9 — all green.
+Branch `feat/go-tui-provider-mesh` (11 commits on top of bd914a1 after this one). Toolchains added:
+Go (isolated to services/atlas-tui; depends on `charmbracelet/bubbles`). agent-runtime 643 / gateway
+api 88 / atlas-tui 9 — all green. All four provider-mesh wiring modes now have working native routing.
 - **P3** FreeLLMAPI + Claude-Code profiles. FreeLLMAPI needs a careful TDD change to
   `native.execute()` factory selection: when `auth_mode=="freellmapi"` and `base_url` is set,
   route to the REAL `_default_factory` even with an empty api_key (free endpoints need base_url,

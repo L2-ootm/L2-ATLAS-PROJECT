@@ -73,20 +73,39 @@ def _doctor_cmd() -> None:
         typer.echo(f"cockpit: error - {exc}")
         all_ok = False
 
-    # 5. Provider — configured vs. mock. Never echo the resolved api_key value.
-    # Provider/mock is informational only — never itself fails the overall run.
+    # 5. Provider — configured / live (credential-less) / mock. Never echo the
+    # resolved api_key value. Informational only — never fails the overall run.
+    # Uses provider_service.active_status so credential-less modes (claude_code,
+    # freellmapi) report "live", not a false "mock" (P3).
     if cfg is None:
         # all_ok already False from the config check above; this branch is purely informational.
         typer.echo("provider: skipped (config invalid)")
     else:
         try:
-            resolved = config_service.resolve_provider(cfg)
-            if resolved.get("api_key"):
+            from atlas_runtime import provider_service
+
+            st = provider_service.active_status(cfg)
+            if st["credentials_present"]:
                 typer.echo("provider: configured")
+            elif not st["mock_mode"]:
+                typer.echo(f"provider: live ({st['auth_mode']})")
             else:
                 typer.echo("provider: mock")
         except Exception as exc:  # noqa: BLE001
             typer.echo(f"provider: error - {exc}")
+
+    # 6. Claude-Code runtime — SDK + local `claude` CLI presence (P3). Reuses the
+    # canonical provider_service check; informational, never fails the run.
+    try:
+        from atlas_runtime import provider_service
+
+        cc = provider_service.claude_code_status()
+        if cc["available"]:
+            typer.echo("claude_code: ok")
+        else:
+            typer.echo(f"claude_code: unavailable - {cc['detail']}")
+    except Exception as exc:  # noqa: BLE001
+        typer.echo(f"claude_code: error - {exc}")
 
     if not all_ok:
         raise typer.Exit(1)
