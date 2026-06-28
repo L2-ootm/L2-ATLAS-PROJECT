@@ -120,11 +120,14 @@ class NativeAtlasAgent(AgentRuntime):
 
     def _resolve_provider(
         self, conn: sqlite3.Connection
-    ) -> tuple[str, Optional[str], Optional[str], Optional[str]]:
-        """Resolve (model, provider, base_url, api_key) for this run from ATLAS
-        config, with the active Focus.framework overriding the model. Fail-open
-        to the constructor values so a config/DB hiccup never blocks a run."""
+    ) -> tuple[str, Optional[str], Optional[str], Optional[str], str]:
+        """Resolve (model, provider, base_url, api_key, auth_mode) for this run
+        from ATLAS config, with the active Focus.framework overriding the model.
+        auth_mode is threaded out so execute() can treat credential-less modes
+        (freellmapi) as real runs. Fail-open to the constructor values so a
+        config/DB hiccup never blocks a run."""
         model, provider, base_url, api_key = self._model, self._provider, None, None
+        auth_mode = "api_key"
         try:
             from atlas_runtime import config_service, focus_service  # noqa: PLC0415
 
@@ -135,11 +138,12 @@ class NativeAtlasAgent(AgentRuntime):
             provider = self._provider or resolved["provider"]
             base_url = resolved["base_url"] or None
             api_key = resolved["api_key"] or None
+            auth_mode = resolved.get("auth_mode") or "api_key"
             # auth_mode="oauth_import" (Codex/ChatGPT): delegate credential
             # resolution to the foundation, which imports from ~/.codex once and
             # then owns refresh in its own store (D-001; never touches ~/.codex
             # after import). Model stays operator/Focus-chosen.
-            if resolved.get("auth_mode") == "oauth_import":
+            if auth_mode == "oauth_import":
                 from atlas_runtime import codex_auth  # noqa: PLC0415
 
                 creds = codex_auth.resolve_codex_credentials()
@@ -148,7 +152,7 @@ class NativeAtlasAgent(AgentRuntime):
                 api_key = creds["api_key"] or api_key
         except Exception as exc:  # noqa: BLE001 — never block a run on config
             logger.debug("native provider resolution fell back to defaults: %s", exc)
-        return model, provider, base_url, api_key
+        return model, provider, base_url, api_key, auth_mode
 
     def execute(
         self,
@@ -208,8 +212,26 @@ class NativeAtlasAgent(AgentRuntime):
         # active Focus (A4); an injected factory (tests) bypasses resolution.
         factory = self._agent_factory
         if factory is None:
-            model, provider, base_url, api_key = self._resolve_provider(conn)
-            if not api_key:
+            model, provider, base_url, api_key, auth_mode = self._resolve_provider(conn)
+            # freellmapi resolves a KEYLESS base_url — free OpenAI-compatible
+            # endpoints need a base_url, not a key — so it is a real run even
+            # with an empty api_key. Every other mode requires a resolved
+            # credential; an empty key falls back to the deterministic mock.
+            free_keyless = auth_mode == "freellmapi" and bool(base_url)
+            if free_keyless:
+                # Privacy posture (§2.3): free models may log prompts. Surface a
+                # one-time, audited warning at the run boundary (D-002 audit-first)
+                # so the operator sees the cost of the mode they wired.
+                self._safe_emit(
+                    conn, lock, run_id, event_type="tool_call", tool_name="freellmapi",
+                    data={
+                        "runtime": "native",
+                        "privacy_warning": (
+                            "free models may log prompts — do not send secrets"
+                        ),
+                    },
+                )
+            if not api_key and not free_keyless:
                 # Zero-credential path: route to the deterministic mock so a
                 # mission run still completes with a clearly-labeled MOCK MODE
                 # response. A non-empty-but-wrong api_key (configured but

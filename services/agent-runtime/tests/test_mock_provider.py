@@ -86,7 +86,7 @@ def test_native_execute_routes_to_mock_when_api_key_empty(
     monkeypatch.setattr(
         NativeAtlasAgent,
         "_resolve_provider",
-        lambda self, conn: ("gpt-4", "openai", None, ""),
+        lambda self, conn: ("gpt-4", "openai", None, "", "api_key"),
     )
 
     from atlas_runtime.agents import mock as mock_module
@@ -129,7 +129,7 @@ def test_native_execute_routes_to_real_provider_when_key_present_but_wrong(
     monkeypatch.setattr(
         NativeAtlasAgent,
         "_resolve_provider",
-        lambda self, conn: ("gpt-4", "openai", None, "sk-wrong-key-still-present"),
+        lambda self, conn: ("gpt-4", "openai", None, "sk-wrong-key-still-present", "api_key"),
     )
 
     from atlas_runtime.agents import mock as mock_module

@@ -95,7 +95,10 @@ def _codex_mode() -> dict[str, Any]:
     }
 
 
-def _claude_code_mode() -> dict[str, Any]:
+def claude_code_status() -> dict[str, Any]:
+    """Claude-Code mode readiness: the SDK (atlas-runtime[claude]) + the local
+    `claude` CLI must both be present in the *running* runtime. Self-contained
+    (no config/DB), so health aggregators like `atlas doctor` can reuse it."""
     sdk = importlib.util.find_spec("claude_agent_sdk") is not None
     cli = shutil.which("claude") is not None
     available = sdk and cli
@@ -111,6 +114,10 @@ def _claude_code_mode() -> dict[str, Any]:
         "remediation": None if available
         else "install atlas-runtime[claude] into the runtime venv and the claude CLI",
     }
+
+
+def _claude_code_mode() -> dict[str, Any]:
+    return claude_code_status()
 
 
 def _freellmapi_mode(config: config_service.AtlasConfig) -> dict[str, Any]:
@@ -146,4 +153,4 @@ def modes_status(config: Optional[config_service.AtlasConfig] = None) -> list[di
     return out
 
 
-__all__ = ["active_status", "modes_status"]
+__all__ = ["active_status", "modes_status", "claude_code_status"]

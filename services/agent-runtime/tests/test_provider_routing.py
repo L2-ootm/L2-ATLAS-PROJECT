@@ -203,3 +203,59 @@ def test_resolve_provider_surfaces_auth_mode(monkeypatch, tmp_path):
     )
     r = config_service.resolve_provider()
     assert r["auth_mode"] == "freellmapi"
+
+
+# --- P3: FreeLLMAPI native execute() routing -------------------------------
+# A freellmapi profile resolves a keyless base_url. That is a REAL run (free
+# OpenAI-compatible endpoints need a base_url, not a key), so execute() must
+# route it to the real _default_factory — NOT the zero-credential mock branch
+# (which exists for api_key mode's honest-failure contract).
+
+from atlas_runtime.audit_service import get_events_for_run
+
+
+def test_native_execute_freellmapi_routes_to_real_factory(db, lock, monkeypatch, tmp_path):
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    (tmp_path / "config.yaml").write_text(
+        "provider:\n  auth_mode: freellmapi\n  base_url: https://free.example/v1\n",
+        encoding="utf-8",
+    )
+    cap = _Capture()
+    monkeypatch.setattr(native, "_default_factory", cap)
+    mid, rid = _insert_mission_run(db)
+    outcome = NativeAtlasAgent().execute(db, lock, mission_id=mid, run_id=rid, prompt="go")
+    assert outcome.status == "succeeded"
+    # Real factory was called (mock branch would leave cap.kw == {}).
+    assert cap.kw.get("base_url") == "https://free.example/v1"
+
+
+def test_native_execute_freellmapi_emits_privacy_warning(db, lock, monkeypatch, tmp_path):
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    (tmp_path / "config.yaml").write_text(
+        "provider:\n  auth_mode: freellmapi\n  base_url: https://free.example/v1\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(native, "_default_factory", _Capture())
+    mid, rid = _insert_mission_run(db)
+    NativeAtlasAgent().execute(db, lock, mission_id=mid, run_id=rid, prompt="go")
+    events = get_events_for_run(db, rid)
+    assert any(
+        e.tool_name == "freellmapi" and "privacy" in str(e.data).lower() for e in events
+    ), "expected a freellmapi privacy-warning audit event"
+
+
+def test_native_execute_api_key_empty_key_still_mocks_even_with_base_url(db, lock, monkeypatch, tmp_path):
+    """Honest-failure contract guard: api_key mode with an empty key routes to
+    MOCK even if a base_url is set — only freellmapi treats a keyless base_url
+    as a real run. Protects the contract while widening the real-factory gate."""
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    (tmp_path / "config.yaml").write_text(
+        "provider:\n  auth_mode: api_key\n  base_url: https://x.example/v1\n",
+        encoding="utf-8",
+    )
+    cap = _Capture()
+    monkeypatch.setattr(native, "_default_factory", cap)
+    mid, rid = _insert_mission_run(db)
+    outcome = NativeAtlasAgent().execute(db, lock, mission_id=mid, run_id=rid, prompt="go")
+    assert outcome.status == "succeeded"
+    assert cap.kw == {}  # mock path: real factory never called
