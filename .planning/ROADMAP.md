@@ -240,7 +240,8 @@ configuration, and approval state.
 
 **Dependency spine:** 10.1 donor intake → 10.2 agent/tool/context contract → 10.3 shared
 surface/workspace protocol → 10.4 global config control plane → 10.5 permission broker →
-10.6 TUI → 10.7 WebUI agent/queue UX → 10.8 cross-surface UAT and cutover.
+10.6 TUI → operator-approved Go-TUI/provider-mesh follow-up (P1–P8) → 10.7 WebUI agent/queue
+UX → 10.8 cross-surface UAT and cutover.
 
 #### Phase 10.1: ATLAS TUI Harness Intake & Provenance
 
@@ -443,30 +444,37 @@ TUI-10, TUI-11
 5. Source, snapshots, packages, paths, runtime output, and binaries contain no imported product
    identity beyond approved documentation/notices.
 
-**Plans:** 8 plans
+**Plans:** 8/8 plans complete
 
 **Wave 0**
 
-- [ ] 10.6-01-PLAN.md — RED-first test scaffold (tests/tui/ + app-entry/debrand audits) + rich/prompt_toolkit direct deps (all TUI-01..11 test coverage)
+- [x] 10.6-01-PLAN.md — RED-first test scaffold (tests/tui/ + app-entry/debrand audits) + rich/prompt_toolkit direct deps (all TUI-01..11 test coverage)
 
 **Wave 1** *(after Wave 0)*
 
-- [ ] 10.6-02-PLAN.md — capabilities/theme probing, workspace/Project session select, status header (TUI-02, TUI-03, TUI-10)
-- [ ] 10.6-03-PLAN.md — transcript poll/replay primitive + per-EventKind renderers (TUI-04, TUI-05, TUI-10)
+- [x] 10.6-02-PLAN.md — capabilities/theme probing, workspace/Project session select, status header (TUI-02, TUI-03, TUI-10)
+- [x] 10.6-03-PLAN.md — transcript poll/replay primitive + per-EventKind renderers (TUI-04, TUI-05, TUI-10)
 
 **Wave 2** *(after Wave 1)*
 
-- [ ] 10.6-04-PLAN.md — permission approval panel + 4-option resolve onto permission_broker (TUI-06)
-- [ ] 10.6-05-PLAN.md — fail-closed resume/replay wrapper over surface_session_service (TUI-09)
+- [x] 10.6-04-PLAN.md — permission approval panel + 4-option resolve onto permission_broker (TUI-06)
+- [x] 10.6-05-PLAN.md — fail-closed resume/replay wrapper over surface_session_service (TUI-09)
 
 **Wave 3** *(after Wave 2)*
 
-- [ ] 10.6-06-PLAN.md — Ctrl-C cancel unwind + single asyncio-loop workbench app (TUI-04, TUI-08)
-- [ ] 10.6-07-PLAN.md — command dispatch registry: core groups + deferred extension seams (TUI-07)
+- [x] 10.6-06-PLAN.md — Ctrl-C cancel unwind + single asyncio-loop workbench app (TUI-04, TUI-08)
+- [x] 10.6-07-PLAN.md — command dispatch registry: core groups + deferred extension seams (TUI-07)
 
 **Wave 4** *(after Wave 3)*
 
-- [ ] 10.6-08-PLAN.md — wire atlas/atlas tui to run_workbench, demote legacy Hermes TUI, flip debrand audit positive (TUI-01, TUI-11)
+- [x] 10.6-08-PLAN.md — wire atlas/atlas tui to run_workbench, demote legacy Hermes TUI, flip debrand audit positive (TUI-01, TUI-11)
+
+**Operator-approved follow-up before 10.7 (2026-06-28):** finish
+`docs/plans/2026-06-28-go-tui-provider-mesh-continuation-implementation-plan.md`.
+P1–P5 and P3 are complete on `feat/go-tui-provider-mesh`; P6 rich transcript/render tests,
+P7 current-provider settings + probe, and P8 Go launcher/install cutover remain. P8 keeps the
+Rich workbench as a hidden rollback until Phase 10.8; final deletion/retention is a 10.8
+conformance decision.
 
 #### Phase 10.7: Web Agent Surface & Permission Queue UX
 
@@ -508,7 +516,7 @@ Future work is intentionally kept out of the active phase list so GSD progress,
 dependency, and completion queries describe only v1.1. Milestone-local identifiers
 avoid reserving global phase and ADR numbers before activation.
 
-- **v1.2 Provider Mesh & Runtime Interoperability:** draft phases `PM-01`–`PM-06`.
+- **v1.2 Provider Mesh & Runtime Interoperability:** draft phases `PM-01`–`PM-07`.
   Scope, dependencies, requirements, and activation gates:
   `.planning/milestones/v1.2-ROADMAP-DRAFT.md` and
   `.planning/milestones/v1.2-REQUIREMENTS-DRAFT.md`.

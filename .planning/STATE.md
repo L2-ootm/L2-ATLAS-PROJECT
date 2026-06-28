@@ -88,31 +88,31 @@ Codex spike: `docs/plans/2026-06-28-codex-oauth-spike-findings.md`.
   Live-verified: `atlas doctor` → `claude_code: ok` + `provider: live (freellmapi)` in an isolated
   ATLAS_HOME. Full agent-runtime suite 643 passed / 1 skipped.
 
-**RESUME HERE (next session) — P6 onward:**
+**ACTIVE EXECUTION — P6 onward:**
 - **P6** full pane set across terminals (transcript richness: reasoning/tool/diff/retrieval
   rendering; cross-terminal render tests).
 - **P7** in-TUI provider/settings + "test-probe" (pick a mode, enter creds, fire a one-shot probe
   run and stream it — the "wire any provider and test" deliverable). Substrate now complete for all
   four modes (api_key / oauth_import / claude_code / freellmapi).
-- **P8** `atlas tui` launches the Go binary, retire the Rich workbench (10.8-style cutover).
+- **P8** `atlas tui` launches the Go binary; the Rich workbench becomes a hidden rollback until
+  Phase 10.8 makes the final cross-surface retirement decision.
 
-Branch `feat/go-tui-provider-mesh` (11 commits on top of bd914a1 after this one). Toolchains added:
-Go (isolated to services/atlas-tui; depends on `charmbracelet/bubbles`). agent-runtime 643 / gateway
-api 88 / atlas-tui 9 — all green. All four provider-mesh wiring modes now have working native routing.
-- **P3** FreeLLMAPI + Claude-Code profiles. FreeLLMAPI needs a careful TDD change to
-  `native.execute()` factory selection: when `auth_mode=="freellmapi"` and `base_url` is set,
-  route to the REAL `_default_factory` even with an empty api_key (free endpoints need base_url,
-  not a key) instead of the mock branch — without breaking the empty-key→mock honest-failure
-  contract for api_key mode. Thread `auth_mode` through `_resolve_provider`'s return into
-  `execute()`. Add a privacy warning at freellmapi selection. Claude-Code: first-class selectable
-  profile + close the venv gap (install `atlas-runtime[claude]` into the gateway dispatch venv —
-  PATH python is the pip-less Hermes venv) + a `doctor` check.
-- **P4** Gateway `/v1/auth*` dispatch routes (mirror `atlas auth`, dispatch-only D-022).
-- **P5-P8** Go/BubbleTea TUI sidecar `services/atlas-tui/` (scaffold + gateway client → panes →
-  provider/settings "test-probe" flow → `atlas tui` cutover retiring the Rich TUI).
+Continuation plan:
+`docs/plans/2026-06-28-go-tui-provider-mesh-continuation-implementation-plan.md`.
 
-Gateway endpoints the TUI consumes already exist: `/v1/missions/*`, `/v1/runs/{id}/{events,stream}`
-(SSE), `/v1/config`, `/v1/models`, `/v1/tools/*`. Gap to add: `/v1/auth*` (P4).
+**State correction / discovery (2026-06-28):**
+- Branch is **12** commits above `bd914a1` (not 11), has no upstream, and the only pre-existing
+  working-tree item is untracked `.pytest-cache/`.
+- Fresh P6 baseline: Go 1.26.4; `go test ./...`, `go vet ./...`, and `go build` pass; Windows
+  binary is 11,331,072 bytes (budget locked at <15 MiB); no new dependency is authorized.
+- P7 has one real substrate gap: P4 shipped masked auth reads + Codex import but not a secret-safe
+  API-key write route. Close it with stdin-only CLI dispatch so secret bytes never enter argv.
+- Function-routing seam spike is complete: `main`, `curator`, and named `auxiliary.<task>` slots
+  are routable; `background-review` explicitly inherits the parent runtime and is read-only in the
+  future registry. `RunContractSnapshot` does not yet contain model bindings. Full registry/profile/
+  Models-suite work remains v1.2 PM-04/PM-05/PM-07; no foundation edit is authorized.
+- Active milestone sequencing is now explicit: finish P6–P8 → resume 10.7 → execute 10.8 →
+  milestone audit/archive → activate corrected v1.2 PM-01–PM-07.
 
 ## Current Position — Phase 10.6 Complete (human-verify deferred)
 
