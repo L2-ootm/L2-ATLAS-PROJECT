@@ -133,6 +133,34 @@ def emit_json() -> None:
     )
 
 
+@auth_app.command("codex-status")
+def codex_status() -> None:
+    """Show the operator's Codex (ChatGPT OAuth) login status — secret-free."""
+    from atlas_runtime import codex_auth
+
+    typer.echo(json.dumps(codex_auth.cli_status(), ensure_ascii=False))
+
+
+@auth_app.command("import-codex")
+def import_codex() -> None:
+    """Import the existing Codex/ChatGPT OAuth login for use as a provider.
+
+    Reads ~/.codex/auth.json read-only and hands the tokens to the foundation,
+    which stores+refreshes them in its own store (never writes back to ~/.codex).
+    Set provider.auth_mode=oauth_import to run on the imported login.
+    """
+    from atlas_runtime import codex_auth
+
+    try:
+        result = codex_auth.import_from_codex_cli()
+    except Exception as exc:  # noqa: BLE001 — surface as a clean CLI error
+        typer.echo(json.dumps({"error": {"message": str(exc)[:200]}}), err=True)
+        raise typer.Exit(1)
+    typer.echo(json.dumps(result, ensure_ascii=False))
+    if not result.get("imported"):
+        raise typer.Exit(1)
+
+
 @auth_app.command("doctor")
 def doctor(provider: str = typer.Argument(..., help="Provider id")) -> None:
     """Diagnose one provider's auth boundary and show remediation."""

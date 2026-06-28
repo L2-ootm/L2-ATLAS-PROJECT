@@ -135,6 +135,17 @@ class NativeAtlasAgent(AgentRuntime):
             provider = self._provider or resolved["provider"]
             base_url = resolved["base_url"] or None
             api_key = resolved["api_key"] or None
+            # auth_mode="oauth_import" (Codex/ChatGPT): delegate credential
+            # resolution to the foundation, which imports from ~/.codex once and
+            # then owns refresh in its own store (D-001; never touches ~/.codex
+            # after import). Model stays operator/Focus-chosen.
+            if resolved.get("auth_mode") == "oauth_import":
+                from atlas_runtime import codex_auth  # noqa: PLC0415
+
+                creds = codex_auth.resolve_codex_credentials()
+                provider = self._provider or creds["provider"] or provider
+                base_url = creds["base_url"] or base_url
+                api_key = creds["api_key"] or api_key
         except Exception as exc:  # noqa: BLE001 — never block a run on config
             logger.debug("native provider resolution fell back to defaults: %s", exc)
         return model, provider, base_url, api_key
