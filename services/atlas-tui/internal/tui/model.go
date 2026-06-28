@@ -9,7 +9,6 @@ package tui
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -470,7 +469,16 @@ func (m model) View() string {
 	}
 	var b strings.Builder
 	b.WriteString(m.header() + "\n\n")
-	b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, m.modesPanel(), "  ", m.missionsPanel(), "  ", m.permissionsPanel()))
+	if m.width > 0 && m.width < 120 {
+		b.WriteString(lipgloss.JoinVertical(
+			lipgloss.Left,
+			m.modesPanel(),
+			m.missionsPanel(),
+			m.permissionsPanel(),
+		))
+	} else {
+		b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, m.modesPanel(), "  ", m.missionsPanel(), "  ", m.permissionsPanel()))
+	}
 	b.WriteString("\n\n" + m.logPanel())
 	b.WriteString("\n" + m.composerPanel())
 	b.WriteString("\n" + m.footer())
@@ -491,6 +499,16 @@ func (m model) header() string {
 		styleKey.Render(orDash(m.status.AuthMode)),
 		mode,
 	)
+	if m.width > 0 && m.width < 100 {
+		line = fmt.Sprintf("%s  [%s]\n%s  %s/%s  auth=%s",
+			title,
+			mode,
+			styleMuted.Render(m.gateway),
+			styleVal.Render(orDash(m.status.Provider)),
+			styleVal.Render(orDash(m.status.Model)),
+			styleKey.Render(orDash(m.status.AuthMode)),
+		)
+	}
 	if m.errMsg != "" {
 		line += "\n" + styleBad.Render("! "+m.errMsg)
 	}
@@ -514,7 +532,7 @@ func (m model) modesPanel() string {
 	if len(m.modes) == 0 {
 		b.WriteString(styleMuted.Render("(none)\n"))
 	}
-	return stylePanel.Width(30).Render(strings.TrimRight(b.String(), "\n"))
+	return panelStyle(30).Render(strings.TrimRight(b.String(), "\n"))
 }
 
 func (m model) missionsPanel() string {
@@ -536,7 +554,7 @@ func (m model) missionsPanel() string {
 		}
 		b.WriteString(row + "\n")
 	}
-	return stylePanel.Width(40).Render(strings.TrimRight(b.String(), "\n"))
+	return panelStyle(40).Render(strings.TrimRight(b.String(), "\n"))
 }
 
 func (m model) permissionsPanel() string {
@@ -562,7 +580,7 @@ func (m model) permissionsPanel() string {
 		}
 		b.WriteString(label + "\n")
 	}
-	return stylePanel.Width(40).Render(strings.TrimRight(b.String(), "\n"))
+	return panelStyle(40).Render(strings.TrimRight(b.String(), "\n"))
 }
 
 func (m model) logPanel() string {
@@ -574,7 +592,7 @@ func (m model) logPanel() string {
 	}
 	body := m.viewport.View()
 	if !m.vpReady {
-		body = stylePanel.Render(styleMuted.Render("select a mission and press enter, or n to compose a new one"))
+		body = panelStyle(max(20, m.width-2)).Render(styleMuted.Render("select a mission and press enter, or n to compose a new one"))
 	}
 	return title + "\n" + body
 }
@@ -587,6 +605,9 @@ func (m model) composerPanel() string {
 }
 
 func (m model) footer() string {
+	if m.width > 0 && m.width < 100 && m.focus != focusComposer {
+		return styleMuted.Render("j/k move | enter action | tab panes | n compose | r refresh | q quit")
+	}
 	switch m.focus {
 	case focusComposer:
 		return styleMuted.Render("ctrl+s run · esc cancel · ctrl+c quit")
@@ -594,32 +615,6 @@ func (m model) footer() string {
 		return styleMuted.Render("j/k move · a/enter approve · x reject · tab missions · n compose · r refresh · q quit")
 	default:
 		return styleMuted.Render("j/k move · enter stream · tab permissions · n compose · p perms · r refresh · q quit")
-	}
-}
-
-// --- helpers ---------------------------------------------------------------
-
-func renderEvent(ev client.RunEvent) string {
-	switch ev.Name {
-	case "end":
-		var d struct {
-			Status string `json:"status"`
-		}
-		_ = json.Unmarshal(ev.Data, &d)
-		return styleMuted.Render(gl.dash + " run " + orDash(d.Status) + " " + gl.dash)
-	case "stream_error":
-		return styleBad.Render("stream error: " + string(ev.Data))
-	default: // "audit"
-		var d struct {
-			EventType string `json:"event_type"`
-			ToolName  string `json:"tool_name"`
-		}
-		_ = json.Unmarshal(ev.Data, &d)
-		label := d.EventType
-		if d.ToolName != "" {
-			label += " " + d.ToolName
-		}
-		return styleVal.Render(gl.bullet + " " + orDash(label))
 	}
 }
 
