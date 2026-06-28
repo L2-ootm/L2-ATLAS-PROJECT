@@ -1,0 +1,4 @@
+# Go build artifacts
+/atlas-tui
+/atlas-tui.exe
+*.exe
