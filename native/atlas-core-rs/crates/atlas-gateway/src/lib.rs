@@ -595,6 +595,52 @@ async fn config_view(State(state): State<AppState>) -> ApiResult {
     Ok(Json(value))
 }
 
+/// GET /v1/auth — masked auth status (owned + env + external). Dispatch-only:
+/// the CLI owns the auth store; nothing secret crosses this surface.
+async fn auth_list(State(state): State<AppState>) -> ApiResult {
+    let out = dispatch_atlas(&state.atlas_cmd, &["auth", "json"]).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("auth json parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+/// GET /v1/auth/codex — secret-free status of the operator's Codex/ChatGPT login.
+async fn auth_codex_status(State(state): State<AppState>) -> ApiResult {
+    let out = dispatch_atlas(&state.atlas_cmd, &["auth", "codex-status"]).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("codex status parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+/// POST /v1/auth/codex/import — import the Codex login into the foundation store.
+/// `import-codex` exits non-zero when there is nothing valid to import but still
+/// emits a structured JSON result on stdout ({imported:false,reason}); surface
+/// that as 200 rather than collapsing the legitimate outcome to a 500.
+async fn auth_codex_import(State(state): State<AppState>) -> ApiResult {
+    let output =
+        dispatch_atlas_raw(&state.atlas_cmd, &["auth", "import-codex"], DISPATCH_TIMEOUT).await?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let value: Value = serde_json::from_str(stdout.trim())
+        .map_err(|e| ApiError::Internal(format!("import-codex parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+/// GET /v1/provider/status — active provider resolution + mock-vs-live verdict.
+async fn provider_status(State(state): State<AppState>) -> ApiResult {
+    let out = dispatch_atlas(&state.atlas_cmd, &["provider", "status", "--json"]).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("provider status parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+/// GET /v1/provider/modes — the four-way "which ways can I wire?" board.
+async fn provider_modes(State(state): State<AppState>) -> ApiResult {
+    let out = dispatch_atlas(&state.atlas_cmd, &["provider", "modes", "--json"]).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("provider modes parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
 #[derive(Deserialize)]
 struct ConfigPatchBody {
     expected_revision: i64,
@@ -1973,6 +2019,11 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/wiki/search", get(wiki_search))
         .route("/v1/models", get(models_list))
         .route("/v1/config", get(config_view).patch(config_patch))
+        .route("/v1/auth", get(auth_list))
+        .route("/v1/auth/codex", get(auth_codex_status))
+        .route("/v1/auth/codex/import", post(auth_codex_import))
+        .route("/v1/provider/status", get(provider_status))
+        .route("/v1/provider/modes", get(provider_modes))
         .route("/v1/channels", get(channels_list))
         .route("/v1/channels/{name}/toggle", post(channel_toggle))
         .route("/v1/gateway/messaging/status", get(messaging_gateway_status))

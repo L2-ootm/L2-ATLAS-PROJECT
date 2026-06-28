@@ -115,6 +115,68 @@ async fn health_reports_db_ok() {
     assert_eq!(body["service"], "atlas-gateway");
 }
 
+// --- provider mesh + auth dispatch routes (P4) -----------------------------
+
+#[tokio::test]
+async fn provider_modes_returns_dispatched_board() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"[{"mode": "api_key", "available": false, "active": true}]"#,
+        &stub_dir,
+    );
+    let (status, body) = get_json(&router, "/v1/provider/modes").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body[0]["mode"], "api_key");
+    assert_eq!(body[0]["active"], true);
+}
+
+#[tokio::test]
+async fn provider_status_returns_dispatched_resolution() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"provider": "openrouter", "auth_mode": "api_key", "mock_mode": true}"#,
+        &stub_dir,
+    );
+    let (status, body) = get_json(&router, "/v1/provider/status").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["auth_mode"], "api_key");
+    assert_eq!(body["mock_mode"], true);
+}
+
+#[tokio::test]
+async fn auth_list_returns_dispatched_status() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"[{"provider": "openrouter", "status": "missing_auth"}]"#,
+        &stub_dir,
+    );
+    let (status, body) = get_json(&router, "/v1/auth").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body[0]["provider"], "openrouter");
+}
+
+#[tokio::test]
+async fn auth_codex_import_surfaces_not_imported_as_200() {
+    // import-codex exits non-zero with a structured {imported:false} on stdout;
+    // the route must surface that as 200, not collapse it to a 500.
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"imported": false, "reason": "no_valid_codex_tokens"}"#,
+        &stub_dir,
+    );
+    let (status, body) = post_json(&router, "/v1/auth/codex/import", serde_json::json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["imported"], false);
+}
+
 #[tokio::test]
 async fn health_reports_db_absent() {
     let dir = tempfile::tempdir().unwrap();
