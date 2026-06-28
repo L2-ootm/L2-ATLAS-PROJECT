@@ -2,6 +2,8 @@ package client
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -73,6 +75,104 @@ func TestLatestRunID(t *testing.T) {
 	}
 	if id != "r2" {
 		t.Fatalf("want r2, got %q", id)
+	}
+}
+
+func TestToolApprovals(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("status"); got != "pending" {
+			t.Errorf("want status=pending, got %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"approvals":[{"id":"a1","tool_name":"golden_review_write","risk_level":"high","summary":"write x","status":"pending"}]}`))
+	}))
+	defer srv.Close()
+	as, err := New(srv.URL).ToolApprovals(context.Background(), "pending")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(as) != 1 || as[0].ID != "a1" || as[0].RiskLevel != "high" || as[0].ToolName != "golden_review_write" {
+		t.Fatalf("unexpected approvals: %+v", as)
+	}
+}
+
+func TestCreateMissionSendsBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("want POST, got %s", r.Method)
+		}
+		raw, _ := io.ReadAll(r.Body)
+		var body map[string]string
+		_ = json.Unmarshal(raw, &body)
+		if body["title"] != "Ship it" || body["intent"] != "do the thing" {
+			t.Errorf("unexpected body: %s", raw)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"mission":{"id":"m9","title":"Ship it","status":"pending"},"runs":[]}`))
+	}))
+	defer srv.Close()
+	ms, err := New(srv.URL).CreateMission(context.Background(), "Ship it", "do the thing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ms.ID != "m9" || ms.Title != "Ship it" {
+		t.Fatalf("unexpected mission: %+v", ms)
+	}
+}
+
+func TestStartRunReturnsRunID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/missions/m9/run" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		raw, _ := io.ReadAll(r.Body)
+		var body map[string]any
+		_ = json.Unmarshal(raw, &body)
+		if body["agent"] != "native" || body["execute"] != true {
+			t.Errorf("unexpected body: %s", raw)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"run":{"id":"r7"},"executing":true}`))
+	}))
+	defer srv.Close()
+	id, err := New(srv.URL).StartRun(context.Background(), "m9", "native", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != "r7" {
+		t.Fatalf("want r7, got %q", id)
+	}
+}
+
+func TestApproveAndRejectTool(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/tools/approvals/a1/approve":
+			_, _ = w.Write([]byte(`{"id":"a1","tool_name":"t","status":"executed"}`))
+		case "/v1/tools/approvals/a1/reject":
+			raw, _ := io.ReadAll(r.Body)
+			var body map[string]string
+			_ = json.Unmarshal(raw, &body)
+			if body["reason"] == "" {
+				t.Errorf("expected reason in reject body, got %s", raw)
+			}
+			_, _ = w.Write([]byte(`{"id":"a1","tool_name":"t","status":"rejected"}`))
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+	c := New(srv.URL)
+	ok, err := c.ApproveTool(context.Background(), "a1")
+	if err != nil || ok.Status != "executed" {
+		t.Fatalf("approve: %+v err=%v", ok, err)
+	}
+	rej, err := c.RejectTool(context.Background(), "a1", "nope")
+	if err != nil || rej.Status != "rejected" {
+		t.Fatalf("reject: %+v err=%v", rej, err)
 	}
 }
 

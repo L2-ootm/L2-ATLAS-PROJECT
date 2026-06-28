@@ -7,6 +7,7 @@ package client
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -41,6 +42,38 @@ func (c *Client) getJSON(ctx context.Context, path string, out any) error {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("GET %s: %s", path, resp.Status)
+	}
+	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+// postJSON sends body as JSON to path and decodes a 2xx response into out
+// (out may be nil to discard). Non-2xx surfaces the gateway's status line.
+func (c *Client) postJSON(ctx context.Context, path string, body, out any) error {
+	var rdr *bytes.Reader
+	if body != nil {
+		raw, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		rdr = bytes.NewReader(raw)
+	} else {
+		rdr = bytes.NewReader(nil)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+path, rdr)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("POST %s: %s", path, resp.Status)
+	}
+	if out == nil {
+		return nil
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
 }
@@ -83,6 +116,65 @@ func (c *Client) LatestRunID(ctx context.Context, missionID string) (string, err
 		return "", nil
 	}
 	return detail.Runs[len(detail.Runs)-1].ID, nil
+}
+
+// CreateMission creates a mission (POST /v1/missions) and returns it. The
+// gateway dispatches `atlas mission create` (D-022); title must be non-empty.
+func (c *Client) CreateMission(ctx context.Context, title, intent string) (Mission, error) {
+	var env createMissionEnvelope
+	body := map[string]string{"title": title, "intent": intent}
+	if err := c.postJSON(ctx, "/v1/missions", body, &env); err != nil {
+		return Mission{}, err
+	}
+	return env.Mission, nil
+}
+
+// StartRun starts a run on a mission (POST /v1/missions/{id}/run) and returns
+// the new run id. With execute=true the gateway spawns a detached `run exec`
+// so the run drives to completion in the background and streams audit events.
+func (c *Client) StartRun(ctx context.Context, missionID, agent string, execute bool) (string, error) {
+	if agent == "" {
+		agent = "native"
+	}
+	var env startRunEnvelope
+	body := map[string]any{"agent": agent, "execute": execute}
+	if err := c.postJSON(ctx, "/v1/missions/"+missionID+"/run", body, &env); err != nil {
+		return "", err
+	}
+	return env.Run.ID, nil
+}
+
+// ToolApprovals lists tool approvals (GET /v1/tools/approvals). status filters
+// by lifecycle ("pending" by default at the CLI; "all" for every row).
+func (c *Client) ToolApprovals(ctx context.Context, status string) ([]ToolApproval, error) {
+	path := "/v1/tools/approvals"
+	if status != "" {
+		path += "?status=" + status
+	}
+	var env approvalsEnvelope
+	if err := c.getJSON(ctx, path, &env); err != nil {
+		return nil, err
+	}
+	return env.Approvals, nil
+}
+
+// ApproveTool approves + executes a pending tool call (POST .../approve). A
+// processed-but-failed tool returns status="failed" (still a 200, not an error).
+func (c *Client) ApproveTool(ctx context.Context, id string) (ToolApproval, error) {
+	var a ToolApproval
+	err := c.postJSON(ctx, "/v1/tools/approvals/"+id+"/approve", nil, &a)
+	return a, err
+}
+
+// RejectTool rejects a pending tool call (POST .../reject); it never executes.
+func (c *Client) RejectTool(ctx context.Context, id, reason string) (ToolApproval, error) {
+	var a ToolApproval
+	var body any
+	if reason != "" {
+		body = map[string]string{"reason": reason}
+	}
+	err := c.postJSON(ctx, "/v1/tools/approvals/"+id+"/reject", body, &a)
+	return a, err
 }
 
 // StreamRun consumes GET /v1/runs/{id}/stream (text/event-stream) and delivers
