@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import sys
 import threading
 
 import typer
@@ -57,9 +58,27 @@ def add(
         "--base-url",
         help="Optional provider endpoint metadata",
     ),
+    stdin_input: bool = typer.Option(
+        False,
+        "--stdin",
+        help="Read the API key from stdin without printing a prompt.",
+    ),
+    source: str = typer.Option(
+        "cli",
+        "--source",
+        help="Audit source (cli, gateway, tui, or webui).",
+        hidden=True,
+    ),
 ) -> None:
     """Prompt privately for an API key and store it in auth.json."""
-    secret = typer.prompt("API key", hide_input=True)
+    if source not in {"cli", "gateway", "tui", "webui"}:
+        typer.echo('{"error":{"code":"auth_source_invalid"}}', err=True)
+        raise typer.Exit(2)
+    secret = (
+        sys.stdin.readline().rstrip("\r\n")
+        if stdin_input
+        else typer.prompt("API key", hide_input=True)
+    )
     try:
         status = auth_service.set_api_key(
             provider,
@@ -67,7 +86,7 @@ def add(
             base_url=base_url,
             conn=_get_connection(),
             audit_lock=_get_lock(),
-            source="cli",
+            source=source,
         )
     except auth_service.AuthServiceError as exc:
         _render_error(exc)
