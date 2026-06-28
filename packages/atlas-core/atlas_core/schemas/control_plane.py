@@ -23,6 +23,14 @@ class _FrozenControlPlaneModel(BaseModel):
 class ProviderConfig(_FrozenControlPlaneModel):
     name: str = "openrouter"
     model: str = "anthropic/claude-sonnet-4"
+    # How this provider's credentials are sourced (multi-mode provider mesh).
+    # api_key: direct key (env:VAR or ATLAS auth store) — the back-compat default.
+    # oauth_import: import an external OAuth login (e.g. Codex/ChatGPT ~/.codex).
+    # claude_code: run on the local Claude Code subscription session (no key).
+    # freellmapi: free OpenAI-compatible endpoint via base_url (privacy-cost).
+    auth_mode: Literal["api_key", "oauth_import", "claude_code", "freellmapi"] = (
+        "api_key"
+    )
     api_key: str = ""
     base_url: str | None = None
 

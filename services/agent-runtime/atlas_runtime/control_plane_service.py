@@ -25,6 +25,7 @@ from atlas_runtime import (
 _SETTING_METADATA: tuple[tuple[str, bool], ...] = (
     ("provider.name", False),
     ("provider.model", False),
+    ("provider.auth_mode", False),
     ("provider.api_key", False),
     ("provider.base_url", False),
     ("runtime.default_agent", False),

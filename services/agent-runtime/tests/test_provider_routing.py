@@ -156,3 +156,50 @@ def test_native_explicit_model_beats_config(db, lock, monkeypatch, tmp_path):
     assert outcome.status == "succeeded"
     assert cap.kw["model"] == "explicit/model"
     assert cap.kw["provider"] == "explicit"
+
+
+# --- P1: multi-mode auth (auth_mode) ---------------------------------------
+# A provider profile carries an explicit auth mode so the operator can wire
+# models every way (api_key / oauth_import / claude_code / freellmapi). P1 adds
+# the field, keeps full back-compat (default api_key), and surfaces it through
+# resolve_provider; the per-mode credential resolution lands in P2/P3.
+
+import pytest
+from pydantic import ValidationError
+
+
+def test_provider_config_default_auth_mode_is_api_key():
+    assert config_service.ProviderConfig().auth_mode == "api_key"
+
+
+@pytest.mark.parametrize(
+    "mode", ["api_key", "oauth_import", "claude_code", "freellmapi"]
+)
+def test_provider_config_accepts_known_auth_modes(mode):
+    assert config_service.ProviderConfig(auth_mode=mode).auth_mode == mode
+
+
+def test_provider_config_rejects_unknown_auth_mode():
+    with pytest.raises(ValidationError):
+        config_service.ProviderConfig(auth_mode="totally-bogus")
+
+
+def test_legacy_config_without_auth_mode_loads_as_api_key(monkeypatch, tmp_path):
+    """A pre-P1 config.yaml (no auth_mode key) must still validate, defaulting
+    to api_key — extra='forbid' models adopt new fields via their default."""
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    (tmp_path / "config.yaml").write_text(
+        "provider:\n  name: openrouter\n", encoding="utf-8"
+    )
+    cfg = config_service.load_config()
+    assert cfg.provider.auth_mode == "api_key"
+
+
+def test_resolve_provider_surfaces_auth_mode(monkeypatch, tmp_path):
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    (tmp_path / "config.yaml").write_text(
+        "provider:\n  auth_mode: freellmapi\n  base_url: https://free.example/v1\n",
+        encoding="utf-8",
+    )
+    r = config_service.resolve_provider()
+    assert r["auth_mode"] == "freellmapi"

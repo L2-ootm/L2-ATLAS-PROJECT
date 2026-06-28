@@ -279,6 +279,7 @@ def resolve_provider(
     return {
         "provider": provider.name,
         "model": model,
+        "auth_mode": provider.auth_mode,
         "base_url": provider.base_url or "",
         "api_key": api_key,
     }
