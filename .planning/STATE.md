@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: in_progress
-last_updated: "2026-06-27T00:00:00.000Z"
-last_activity: 2026-06-27
+last_updated: "2026-06-28T00:00:00.000Z"
+last_activity: 2026-06-28
 progress:
   total_phases: 8
   completed_phases: 6
@@ -14,6 +14,47 @@ progress:
 ---
 
 # STATE — L2 ATLAS
+
+## Current Position — Go TUI + Provider Mesh (operator pivot, 2026-06-28)
+
+Operator directive (2026-06-28): replace the below-bar Rich/prompt_toolkit TUI with an
+opencode/MiMo-grade **Go/BubbleTea TUI sidecar** over the existing Rust gateway (runtime
+STAYS), plus a full **multi-mode provider mesh** so models wire every way: Codex OAuth import /
+Claude Code / API keys / FreeLLMAPI. Pulls the v1.2 *Provider Mesh* + *SOTA-TUI* candidates
+forward, reordered **provider-first**. Branch: `feat/go-tui-provider-mesh`.
+
+Design: `docs/plans/2026-06-28-atlas-go-tui-and-provider-mesh-design.md` (8 phases P1-P8).
+Codex spike: `docs/plans/2026-06-28-codex-oauth-spike-findings.md`.
+
+**Shipped + committed this session (all green, agent-runtime 628 passed / 1 skipped):**
+- `fix(10.6)` — made `atlas tui` launchable (sync patch_stdout; dropped Live co-ownership) and
+  closed the two pre-existing test gaps STATE had flagged (surface_events `_KIND_MAP`;
+  claude_agent_sdk test now deterministic). Those two STATE-noted failures are RESOLVED.
+- **P1** `feat(provider-mesh)` — `ProviderConfig.auth_mode` Literal
+  (api_key|oauth_import|claude_code|freellmapi), default api_key, full back-compat; surfaced via
+  `resolve_provider`, registered as a patchable setting.
+- **P2** `feat(provider-mesh)` — Codex (ChatGPT OAuth) import. Spike confirmed the
+  chatgpt.com/backend-api/codex contract + the refresh-rotation risk; resolved per operator by
+  **delegating to the foundation** (Hermes keeps its own ~/.hermes Codex session, imports once
+  from ~/.codex, owns refresh — D-001, never reimplemented). `codex_auth.py` adapter + native
+  `oauth_import` routing + `atlas auth codex-status|import-codex`. Live secret-free status
+  verified against the real ~/.codex (no token leak).
+
+**RESUME HERE (next session) — P3 onward:**
+- **P3** FreeLLMAPI + Claude-Code profiles. FreeLLMAPI needs a careful TDD change to
+  `native.execute()` factory selection: when `auth_mode=="freellmapi"` and `base_url` is set,
+  route to the REAL `_default_factory` even with an empty api_key (free endpoints need base_url,
+  not a key) instead of the mock branch — without breaking the empty-key→mock honest-failure
+  contract for api_key mode. Thread `auth_mode` through `_resolve_provider`'s return into
+  `execute()`. Add a privacy warning at freellmapi selection. Claude-Code: first-class selectable
+  profile + close the venv gap (install `atlas-runtime[claude]` into the gateway dispatch venv —
+  PATH python is the pip-less Hermes venv) + a `doctor` check.
+- **P4** Gateway `/v1/auth*` dispatch routes (mirror `atlas auth`, dispatch-only D-022).
+- **P5-P8** Go/BubbleTea TUI sidecar `services/atlas-tui/` (scaffold + gateway client → panes →
+  provider/settings "test-probe" flow → `atlas tui` cutover retiring the Rich TUI).
+
+Gateway endpoints the TUI consumes already exist: `/v1/missions/*`, `/v1/runs/{id}/{events,stream}`
+(SSE), `/v1/config`, `/v1/models`, `/v1/tools/*`. Gap to add: `/v1/auth*` (P4).
 
 ## Current Position — Phase 10.6 Complete (human-verify deferred)
 
