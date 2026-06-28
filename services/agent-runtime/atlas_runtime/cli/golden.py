@@ -30,12 +30,9 @@ _LOCK = threading.Lock()
 
 def _get_connection() -> sqlite3.Connection:
     """File-backed SQLite connection (WAL + FK) for golden-workflow side effects."""
-    db_path = pathlib.Path.home() / ".atlas" / "atlas.db"
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path), check_same_thread=False)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    from atlas_runtime.cli import main
+
+    return main._get_connection()
 
 
 def _get_lock() -> threading.Lock:
