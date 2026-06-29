@@ -471,10 +471,10 @@ TUI-10, TUI-11
 
 **Operator-approved follow-up before 10.7 (2026-06-28):** finish
 `docs/plans/2026-06-28-go-tui-provider-mesh-continuation-implementation-plan.md`.
-P1–P5 and P3 are complete on `feat/go-tui-provider-mesh`; P6 rich transcript/render tests,
-P7 current-provider settings + probe, and P8 Go launcher/install cutover remain. P8 keeps the
-Rich workbench as a hidden rollback until Phase 10.8; final deletion/retention is a 10.8
-conformance decision.
+**Completed 2026-06-28:** P1–P8 are committed on `feat/go-tui-provider-mesh`; bare `atlas` now
+launches the Go sidecar, provider settings/probes use the shared gateway contracts, and the
+Rich workbench remains a hidden rollback. Final deletion/retention is a Phase 10.8 conformance
+decision. GSD `roadmap.analyze` reconfirmed Phase 10.7 as the next active phase.
 
 #### Phase 10.7: Web Agent Surface & Permission Queue UX
 
