@@ -13,6 +13,7 @@ D-012/013: frozen Pydantic v2; `args`/`result`/`output` are JSON *strings* (not
 dicts) and `args` is secret-redacted before persistence (tool_service). Datetimes
 serialize to ISO 8601.
 """
+
 from __future__ import annotations
 
 import datetime
@@ -102,6 +103,7 @@ class ToolApproval(BaseModel):
     decision: Optional[str] = None  # claim outcome (allow/deny cause)
     nonce: Optional[str] = None  # replay guard (SEC-02)
     args_normalized: Optional[str] = None  # redacted canonical args = policy match key
+    policy_receipt: Optional[str] = None  # JSON PermissionExplainReceipt, secret-safe
 
     @field_serializer("requested_at", "decided_at", "expiry_at")
     def serialize_dt(self, dt: datetime.datetime | None) -> str | None:

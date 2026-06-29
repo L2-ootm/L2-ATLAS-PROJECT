@@ -496,7 +496,7 @@ contracts, with unobtrusive controls that appear only when operationally relevan
 
 - [x] 10.7-01-PLAN.md — freeze versioned policy/config schemas, narrowing validation, and
   cross-language policy/event fixtures (WEB-05)
-- [ ] 10.7-02-PLAN.md — implement the deterministic policy engine, immutable hardline floor,
+- [x] 10.7-02-PLAN.md — implement the deterministic policy engine, immutable hardline floor,
   workspace/maintenance scopes, and broker integration (WEB-04, WEB-05)
 
 **Wave 2 *(blocked on Wave 1 completion)* — service and nonvisual adapters**

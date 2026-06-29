@@ -1,4 +1,5 @@
 """Frozen, JSON-stable contracts for the ATLAS control plane."""
+
 from __future__ import annotations
 
 import json
@@ -28,9 +29,7 @@ class ProviderConfig(_FrozenControlPlaneModel):
     # oauth_import: import an external OAuth login (e.g. Codex/ChatGPT ~/.codex).
     # claude_code: run on the local Claude Code subscription session (no key).
     # freellmapi: free OpenAI-compatible endpoint via base_url (privacy-cost).
-    auth_mode: Literal["api_key", "oauth_import", "claude_code", "freellmapi"] = (
-        "api_key"
-    )
+    auth_mode: Literal["api_key", "oauth_import", "claude_code", "freellmapi"] = "api_key"
     api_key: str = ""
     base_url: str | None = None
 
@@ -42,9 +41,7 @@ class ProviderConfig(_FrozenControlPlaneModel):
         if value != value.strip():
             raise ValueError("provider.api_key reference must not contain outer whitespace")
         if value and not _ENV_REFERENCE.fullmatch(value):
-            raise ValueError(
-                "provider.api_key must be empty or an env:VAR_NAME reference"
-            )
+            raise ValueError("provider.api_key must be empty or an env:VAR_NAME reference")
         return value
 
 
@@ -200,13 +197,9 @@ class PermissionConfig(_FrozenControlPlaneModel):
             if not profile.enabled:
                 continue
             if _PRESET_RANK[profile.preset] > master_rank:
-                raise ValueError(
-                    f"profile {profile.id!r} may only narrow the master preset"
-                )
+                raise ValueError(f"profile {profile.id!r} may only narrow the master preset")
             if profile.workspace_only is False and self.workspace_only:
-                raise ValueError(
-                    f"profile {profile.id!r} may only narrow workspace_only"
-                )
+                raise ValueError(f"profile {profile.id!r} may only narrow workspace_only")
             if self.preset == "full_autonomy":
                 continue
             for rule in profile.rules:

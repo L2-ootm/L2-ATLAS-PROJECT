@@ -1,4 +1,5 @@
 """Permission policy integration tests for the revisioned control plane."""
+
 from __future__ import annotations
 
 import json
@@ -135,13 +136,15 @@ def test_cross_language_fixtures_are_schema_valid_and_complete() -> None:
         (fixture_dir / "surface_event_parity.json").read_text(encoding="utf-8")
     )
     events = tuple(
-        SurfaceEvent.model_validate(item)
-        for item in event_fixture["events"]
+        SurfaceEvent.model_validate(item) for item in event_fixture["events"]
     )
 
     assert [event.seq for event in events] == list(range(len(events)))
     assert {event.kind for event in events} == set(get_args(EventKind))
-    assert json.loads(events[-1].payload_json)["status"] == event_fixture["terminal_outcome"]
+    assert (
+        json.loads(events[-1].payload_json)["status"]
+        == event_fixture["terminal_outcome"]
+    )
 
     matrix = json.loads(
         (fixture_dir / "permission_policy_matrix.json").read_text(encoding="utf-8")

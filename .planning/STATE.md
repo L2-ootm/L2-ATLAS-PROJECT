@@ -9,7 +9,7 @@ progress:
   total_phases: 8
   completed_phases: 6
   total_plans: 48
-  completed_plans: 41
+  completed_plans: 43
   percent: 75
 ---
 
@@ -35,9 +35,13 @@ Research confirmed that the existing surface-session service, permission broker,
 chokepoint, and revisioned config are sufficient; Hermes contributes guard semantics and adapter
 behavior, not a parallel runtime. Baselines and a seven-plan/four-wave decomposition are locked.
 Planning is complete: seven plans cover all WEB-01–WEB-06 requirements and all 25 locked
-decisions; the decision-coverage gate passed 25/25. Plan 10.7-01 is complete: frozen policy,
-profile, explain-receipt, event, and matrix contracts are green (22 core + 55 runtime targeted
-tests). Phase progress: 1/7 plans. Next: implement the deterministic policy/hardline authority.
+decisions; the decision-coverage gate passed 25/25. Wave 1 is complete (plans 10.7-01/02):
+frozen contracts, narrowing validation, deterministic policy, immutable hardline floor,
+workspace/maintenance scopes, nullable persisted receipts, scoped allows, and bounded
+timeout-deny waits are green. Operator review was incorporated into migration, compatibility,
+React bootstrap, dependency-audit, and final-suite gates. Fresh verification: atlas-core 97
+passed; agent-runtime 708 passed / 2 skipped. Phase progress: 2/7 plans. Next: Wave 2 CLI service
+bridge.
 Branch: `feat/go-tui-provider-mesh`.
 
 ## Prior Position — Go TUI + Provider Mesh (operator pivot, 2026-06-28)
