@@ -57,11 +57,18 @@ fn test_app(db_path: PathBuf) -> axum::Router {
 
 /// Build a test app that routes atlas CLI calls to a Python one-liner stub.
 /// The stub script just prints `stub_output` to stdout and exits 0.
-fn test_app_with_stub(db_path: PathBuf, stub_output: &str, dir: &tempfile::TempDir) -> axum::Router {
+fn test_app_with_stub(
+    db_path: PathBuf,
+    stub_output: &str,
+    dir: &tempfile::TempDir,
+) -> axum::Router {
     let stub = dir.path().join("mock_atlas.py");
     std::fs::write(
         &stub,
-        format!("import sys\nprint('{}')\n", stub_output.replace('\'', "\\'")),
+        format!(
+            "import sys\nprint('{}')\n",
+            stub_output.replace('\'', "\\'")
+        ),
     )
     .unwrap();
     let python = if cfg!(windows) { "python" } else { "python3" };
@@ -272,8 +279,12 @@ async fn channel_toggle_dispatches_and_echoes_state() {
     let dir = tempfile::tempdir().unwrap();
     let stub_dir = tempfile::tempdir().unwrap();
     let router = test_app_with_stub(seeded_db(&dir), "enabled discord", &stub_dir);
-    let (status, body) =
-        post_json(&router, "/v1/channels/discord/toggle", json!({ "enabled": true })).await;
+    let (status, body) = post_json(
+        &router,
+        "/v1/channels/discord/toggle",
+        json!({ "enabled": true }),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["name"], "discord");
     assert_eq!(body["enabled"], true);
@@ -283,7 +294,11 @@ async fn channel_toggle_dispatches_and_echoes_state() {
 async fn messaging_gateway_status_returns_cli_json() {
     let dir = tempfile::tempdir().unwrap();
     let stub_dir = tempfile::tempdir().unwrap();
-    let router = test_app_with_stub(seeded_db(&dir), r#"{"running": false, "pid": null}"#, &stub_dir);
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"running": false, "pid": null}"#,
+        &stub_dir,
+    );
     let (status, body) = get_json(&router, "/v1/gateway/messaging/status").await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["running"], false);
@@ -420,8 +435,12 @@ async fn discord_reject_returns_cli_json() {
         r#"{"id": "ap1", "status": "rejected", "reason": "not now"}"#,
         &stub_dir,
     );
-    let (status, body) =
-        post_json(&router, "/v1/discord/approvals/ap1/reject", json!({"reason": "not now"})).await;
+    let (status, body) = post_json(
+        &router,
+        "/v1/discord/approvals/ap1/reject",
+        json!({"reason": "not now"}),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["status"], "rejected");
 }
@@ -891,7 +910,9 @@ async fn console_chat_forwards_agent_prompt_and_cwd() {
     assert_eq!(args.first().copied(), Some("console"));
     assert!(args.windows(2).any(|w| w == ["--agent", "claude_code"]));
     assert!(args.windows(2).any(|w| w == ["--cwd", "C:\\Work\\Atlas"]));
-    assert!(args.windows(2).any(|w| w == ["--prompt", "inspect project"]));
+    assert!(args
+        .windows(2)
+        .any(|w| w == ["--prompt", "inspect project"]));
 }
 
 #[tokio::test]
@@ -1063,12 +1084,7 @@ async fn wiki_update_unknown_slug_is_404() {
     let dir = tempfile::tempdir().unwrap();
     // Unknown slug 404s on the read-current step, before any dispatch.
     let router = test_app(seeded_db(&dir));
-    let (status, body) = put_json(
-        &router,
-        "/v1/wiki/pages/nope",
-        json!({ "title": "x" }),
-    )
-    .await;
+    let (status, body) = put_json(&router, "/v1/wiki/pages/nope", json!({ "title": "x" })).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert_eq!(body["error"]["code"], "not_found");
 }
@@ -1167,7 +1183,11 @@ async fn fresh_multi_migration_db_serves_all_read_surfaces() {
         "/v1/models",
     ] {
         let (status, _) = get_json(&router, uri).await;
-        assert_eq!(status, StatusCode::OK, "read surface {uri} did not return 200");
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "read surface {uri} did not return 200"
+        );
     }
 }
 
@@ -1295,7 +1315,9 @@ async fn focus_create_forwards_args_and_returns_201() {
     assert!(args.windows(2).any(|w| w == ["--title", "Ship the loop"]));
     assert!(args.windows(2).any(|w| w == ["--framework", "GSD"]));
     // Vec<String> priorities/drivers joined with commas for the CLI's _split_csv.
-    assert!(args.windows(2).any(|w| w == ["--priorities", "latency,trust"]));
+    assert!(args
+        .windows(2)
+        .any(|w| w == ["--priorities", "latency,trust"]));
     assert!(args.windows(2).any(|w| w == ["--drivers", "operator"]));
     assert!(args.windows(2).any(|w| w == ["--project", "atlas"]));
 }
@@ -1434,7 +1456,8 @@ async fn task_create_and_status_forward_args() {
     assert!(args.contains("--goal"));
     assert!(args.contains("write service"));
 
-    let (status, body) = post_json(&router, "/v1/tasks/t1/status", json!({ "status": "done" })).await;
+    let (status, body) =
+        post_json(&router, "/v1/tasks/t1/status", json!({ "status": "done" })).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["updated"], true);
     let argv = std::fs::read_to_string(&argv_path).unwrap();
@@ -1485,10 +1508,10 @@ async fn operation_run_prepares_and_returns_201() {
     let dir = tempfile::tempdir().unwrap();
     let stub_dir = tempfile::tempdir().unwrap();
     let db_path = seeded_db(&dir); // has run r1
-    // Stub prints the seeded run id so the prepare read-back succeeds. (argv is not
-    // asserted here: operation_run dispatches twice — prepare + a detached
-    // `run exec` — which would race on a shared argv file. The response body
-    // proves prepare ran: r1 only resolves if `operation prepare` was invoked.)
+                                   // Stub prints the seeded run id so the prepare read-back succeeds. (argv is not
+                                   // asserted here: operation_run dispatches twice — prepare + a detached
+                                   // `run exec` — which would race on a shared argv file. The response body
+                                   // proves prepare ran: r1 only resolves if `operation prepare` was invoked.)
     let router = test_app_with_stub(db_path, "r1", &stub_dir);
     let (status, body) = post_json(
         &router,
@@ -1587,7 +1610,11 @@ async fn config_patch_dispatches_expected_revision_and_changes_json() {
     let changes_arg = args.get(changes_idx + 1).copied().unwrap();
     let parsed: Value = serde_json::from_str(changes_arg).unwrap();
     assert_eq!(parsed["provider.model"], "patched/model");
-    assert_eq!(args.len(), changes_idx + 2, "changes-json leaked extra argv tokens");
+    assert_eq!(
+        args.len(),
+        changes_idx + 2,
+        "changes-json leaked extra argv tokens"
+    );
 }
 
 #[tokio::test]

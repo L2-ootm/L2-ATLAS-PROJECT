@@ -11,15 +11,18 @@ use axum::http::{header, HeaderValue, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
-use axum::{routing::{get, post}, Json, Router};
+use axum::{
+    routing::{get, post},
+    Json, Router,
+};
 use futures_util::stream::Stream;
 use serde::Deserialize;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::time::Duration;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -382,10 +385,11 @@ async fn run_stream(
                         // from the live stream.
                         let (db_path, run_id, cursor) =
                             (s.db_path.clone(), s.run_id.clone(), s.cursor);
-                        if let Ok(Ok((late, late_cursor))) = tokio::task::spawn_blocking(
-                            move || db::list_events(&db_path, &run_id, cursor, 500),
-                        )
-                        .await
+                        if let Ok(Ok((late, late_cursor))) =
+                            tokio::task::spawn_blocking(move || {
+                                db::list_events(&db_path, &run_id, cursor, 500)
+                            })
+                            .await
                         {
                             s.cursor = late_cursor;
                             for ev in late {
@@ -432,10 +436,7 @@ async fn run_stream(
     Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15))))
 }
 
-async fn wiki_pages(
-    State(state): State<AppState>,
-    Query(params): Query<ListParams>,
-) -> ApiResult {
+async fn wiki_pages(State(state): State<AppState>, Query(params): Query<ListParams>) -> ApiResult {
     let path = state.db_path.clone();
     let limit = clamp_limit(params.limit, 100, 500);
     let pages = blocking(move || db::list_wiki_pages(&path, limit)).await?;
@@ -491,10 +492,7 @@ fn require_arg(value: &str, what: &'static str) -> Result<(), ApiError> {
 ///
 /// Callers pass user-controlled values AFTER a `--` separator so click/typer
 /// never parses request data as options (argument-injection guard).
-async fn dispatch_atlas(
-    atlas_cmd: &[String],
-    args: &[&str],
-) -> Result<String, ApiError> {
+async fn dispatch_atlas(atlas_cmd: &[String], args: &[&str]) -> Result<String, ApiError> {
     dispatch_atlas_with_timeout(atlas_cmd, args, DISPATCH_TIMEOUT).await
 }
 
@@ -663,8 +661,12 @@ async fn auth_codex_status(State(state): State<AppState>) -> ApiResult {
 /// emits a structured JSON result on stdout ({imported:false,reason}); surface
 /// that as 200 rather than collapsing the legitimate outcome to a 500.
 async fn auth_codex_import(State(state): State<AppState>) -> ApiResult {
-    let output =
-        dispatch_atlas_raw(&state.atlas_cmd, &["auth", "import-codex"], DISPATCH_TIMEOUT).await?;
+    let output = dispatch_atlas_raw(
+        &state.atlas_cmd,
+        &["auth", "import-codex"],
+        DISPATCH_TIMEOUT,
+    )
+    .await?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     let value: Value = serde_json::from_str(stdout.trim())
         .map_err(|e| ApiError::Internal(format!("import-codex parse failed: {e}")))?;
@@ -769,9 +771,7 @@ async fn config_patch(
 ) -> ApiResult {
     let changes_obj = match &body.changes {
         Value::Object(map) if !map.is_empty() => &body.changes,
-        Value::Object(_) => {
-            return Err(ApiError::BadRequest("changes must be a non-empty object"))
-        }
+        Value::Object(_) => return Err(ApiError::BadRequest("changes must be a non-empty object")),
         _ => return Err(ApiError::BadRequest("changes must be a JSON object")),
     };
     let revision_arg = body.expected_revision.to_string();
@@ -804,7 +804,11 @@ async fn config_patch(
         let status = match code {
             "config_revision_conflict" => StatusCode::CONFLICT,
             "config_invalid" | "config_schema_unsupported" => StatusCode::BAD_REQUEST,
-            _ => return Err(ApiError::Internal(format!("atlas config patch failed: {stderr}"))),
+            _ => {
+                return Err(ApiError::Internal(format!(
+                    "atlas config patch failed: {stderr}"
+                )))
+            }
         };
         return Err(ApiError::Structured(status, error_body));
     }
@@ -843,8 +847,11 @@ async fn channel_toggle(
 /// Dispatches `atlas channels gateway status --json` -> {running, pid}. This is the
 /// Python *messaging* daemon's lifecycle, NOT the Rust REST gateway serving here.
 async fn messaging_gateway_status(State(state): State<AppState>) -> ApiResult {
-    let out =
-        dispatch_atlas(&state.atlas_cmd, &["channels", "gateway", "status", "--json"]).await?;
+    let out = dispatch_atlas(
+        &state.atlas_cmd,
+        &["channels", "gateway", "status", "--json"],
+    )
+    .await?;
     let value: Value = serde_json::from_str(&out)
         .map_err(|e| ApiError::Internal(format!("messaging gateway status parse failed: {e}")))?;
     Ok(Json(value))
@@ -854,8 +861,11 @@ async fn messaging_gateway_status(State(state): State<AppState>) -> ApiResult {
 /// Returns the CLI's `{ok, message, running, pid}`. A missing foundation CLI is a
 /// genuine misconfiguration and surfaces as an error.
 async fn messaging_gateway_start(State(state): State<AppState>) -> ApiResult {
-    let out =
-        dispatch_atlas(&state.atlas_cmd, &["channels", "gateway", "start", "--json"]).await?;
+    let out = dispatch_atlas(
+        &state.atlas_cmd,
+        &["channels", "gateway", "start", "--json"],
+    )
+    .await?;
     let value: Value = serde_json::from_str(&out)
         .map_err(|e| ApiError::Internal(format!("messaging gateway start parse failed: {e}")))?;
     Ok(Json(value))
@@ -864,8 +874,7 @@ async fn messaging_gateway_start(State(state): State<AppState>) -> ApiResult {
 /// POST /v1/gateway/messaging/stop — stop the foundation messaging gateway.
 /// Idempotent: stopping an already-stopped gateway succeeds.
 async fn messaging_gateway_stop(State(state): State<AppState>) -> ApiResult {
-    let out =
-        dispatch_atlas(&state.atlas_cmd, &["channels", "gateway", "stop", "--json"]).await?;
+    let out = dispatch_atlas(&state.atlas_cmd, &["channels", "gateway", "stop", "--json"]).await?;
     let value: Value = serde_json::from_str(&out)
         .map_err(|e| ApiError::Internal(format!("messaging gateway stop parse failed: {e}")))?;
     Ok(Json(value))
@@ -912,12 +921,12 @@ async fn discord_guilds(State(state): State<AppState>) -> ApiResult {
 /// GET /v1/discord/guilds/{id}/structure — a guild's categories/channels/roles.
 /// The user-controlled `id` is passed after `--` (injection guard); `--json`
 /// stays BEFORE `--` so it is parsed as the flag, not a positional arg.
-async fn discord_structure(
-    State(state): State<AppState>,
-    AxPath(id): AxPath<String>,
-) -> ApiResult {
-    let out =
-        dispatch_atlas(&state.atlas_cmd, &["discord", "structure", "--json", "--", &id]).await?;
+async fn discord_structure(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
+    let out = dispatch_atlas(
+        &state.atlas_cmd,
+        &["discord", "structure", "--json", "--", &id],
+    )
+    .await?;
     let value: Value = serde_json::from_str(&out)
         .map_err(|e| ApiError::Internal(format!("discord structure parse failed: {e}")))?;
     Ok(Json(value))
@@ -984,11 +993,12 @@ async fn discord_approvals(State(state): State<AppState>) -> ApiResult {
 /// POST /v1/discord/approvals/{id}/approve — execute a pending write via the
 /// sidecar. A failed Discord write returns 200 with status="failed" (the CLI
 /// exits 0 on a processed outcome); only an unknown/non-pending id errors.
-async fn discord_approve(
-    State(state): State<AppState>,
-    AxPath(id): AxPath<String>,
-) -> ApiResult {
-    let out = dispatch_atlas(&state.atlas_cmd, &["discord", "approve", "--json", "--", &id]).await?;
+async fn discord_approve(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
+    let out = dispatch_atlas(
+        &state.atlas_cmd,
+        &["discord", "approve", "--json", "--", &id],
+    )
+    .await?;
     let value: Value = serde_json::from_str(&out)
         .map_err(|e| ApiError::Internal(format!("discord approve parse failed: {e}")))?;
     Ok(Json(value))
@@ -1101,8 +1111,7 @@ async fn tool_approvals(
 /// only an unknown/non-pending id errors.
 async fn tool_approve(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
     require_arg(&id, "approval id must be non-empty")?;
-    let out =
-        dispatch_atlas(&state.atlas_cmd, &["tools", "approve", "--json", "--", &id]).await?;
+    let out = dispatch_atlas(&state.atlas_cmd, &["tools", "approve", "--json", "--", &id]).await?;
     let value: Value = serde_json::from_str(&out)
         .map_err(|e| ApiError::Internal(format!("tools approve parse failed: {e}")))?;
     Ok(Json(value))
@@ -1176,15 +1185,21 @@ if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
         .map_err(|e| ApiError::Internal(format!("failed to open folder picker: {e}")))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(ApiError::Internal(format!("folder picker failed: {stderr}")));
+        return Err(ApiError::Internal(format!(
+            "folder picker failed: {stderr}"
+        )));
     }
     let picked = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    Ok(Json(json!({ "path": if picked.is_empty() { Value::Null } else { Value::String(picked) } })))
+    Ok(Json(
+        json!({ "path": if picked.is_empty() { Value::Null } else { Value::String(picked) } }),
+    ))
 }
 
 #[cfg(not(windows))]
 async fn select_folder(_body: Option<Json<SelectFolderBody>>) -> ApiResult {
-    Err(ApiError::BadRequest("folder picker is only available on Windows in browser mode"))
+    Err(ApiError::BadRequest(
+        "folder picker is only available on Windows in browser mode",
+    ))
 }
 #[derive(Deserialize)]
 struct ConsoleChatBody {
@@ -1193,7 +1208,10 @@ struct ConsoleChatBody {
     cwd: Option<String>,
 }
 
-async fn console_chat(State(state): State<AppState>, Json(body): Json<ConsoleChatBody>) -> ApiResult {
+async fn console_chat(
+    State(state): State<AppState>,
+    Json(body): Json<ConsoleChatBody>,
+) -> ApiResult {
     let prompt = body.prompt.trim().to_string();
     require_arg(&prompt, "prompt must be non-empty")?;
     let agent = body
@@ -1215,12 +1233,17 @@ async fn console_chat(State(state): State<AppState>, Json(body): Json<ConsoleCha
         "--prompt".to_string(),
         prompt,
     ];
-    if let Some(cwd) = body.cwd.map(|c| c.trim().to_string()).filter(|c| !c.is_empty()) {
+    if let Some(cwd) = body
+        .cwd
+        .map(|c| c.trim().to_string())
+        .filter(|c| !c.is_empty())
+    {
         owned_args.push("--cwd".to_string());
         owned_args.push(cwd);
     }
     let args: Vec<&str> = owned_args.iter().map(String::as_str).collect();
-    let out = dispatch_atlas_with_timeout(&state.atlas_cmd, &args, CONSOLE_DISPATCH_TIMEOUT).await?;
+    let out =
+        dispatch_atlas_with_timeout(&state.atlas_cmd, &args, CONSOLE_DISPATCH_TIMEOUT).await?;
     let value: Value = serde_json::from_str(&out).map_err(|e| {
         ApiError::Internal(format!("atlas console chat returned invalid JSON: {e}"))
     })?;
@@ -1242,7 +1265,9 @@ async fn console_stream(
         .filter(|a| !a.is_empty())
         .unwrap_or_else(|| "native".to_string());
     if agent != "native" && agent != "claude_code" {
-        return Err(ApiError::BadRequest("agent must be 'native' or 'claude_code'"));
+        return Err(ApiError::BadRequest(
+            "agent must be 'native' or 'claude_code'",
+        ));
     }
     if state.atlas_cmd.is_empty() {
         return Err(ApiError::Internal("atlas_cmd is empty".into()));
@@ -1254,7 +1279,11 @@ async fn console_stream(
         cmd.arg(pre);
     }
     cmd.args(["console", "chat", "--agent", &agent, "--prompt", &prompt]);
-    if let Some(cwd) = body.cwd.map(|c| c.trim().to_string()).filter(|c| !c.is_empty()) {
+    if let Some(cwd) = body
+        .cwd
+        .map(|c| c.trim().to_string())
+        .filter(|c| !c.is_empty())
+    {
         cmd.args(["--cwd", &cwd]);
     }
     cmd.arg("--stream");
@@ -1272,18 +1301,19 @@ async fn console_stream(
     let lines = tokio::io::BufReader::new(stdout).lines();
 
     // Hold the child in the stream state so kill_on_drop fires if the client disconnects.
-    let stream = futures_util::stream::unfold((lines, child), |(mut lines, mut child)| async move {
-        match lines.next_line().await {
-            Ok(Some(line)) => {
-                let chunk = axum::body::Bytes::from(format!("{line}\n"));
-                Some((Ok::<_, std::io::Error>(chunk), (lines, child)))
+    let stream =
+        futures_util::stream::unfold((lines, child), |(mut lines, mut child)| async move {
+            match lines.next_line().await {
+                Ok(Some(line)) => {
+                    let chunk = axum::body::Bytes::from(format!("{line}\n"));
+                    Some((Ok::<_, std::io::Error>(chunk), (lines, child)))
+                }
+                _ => {
+                    let _ = child.wait().await;
+                    None
+                }
             }
-            _ => {
-                let _ = child.wait().await;
-                None
-            }
-        }
-    });
+        });
 
     Response::builder()
         .header(header::CONTENT_TYPE, "application/x-ndjson")
@@ -1302,16 +1332,21 @@ struct GraphParams {
 /// `atlas` (the gateway's `.planning/`), `global` (repo-wide markdown),
 /// `projects` (sibling L2 projects), or `obsidian` (the configured vault).
 async fn graph_view(State(state): State<AppState>, Query(params): Query<GraphParams>) -> ApiResult {
-    let scope = match params.scope.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+    let scope = match params
+        .scope
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
         Some(s) if matches!(s, "atlas" | "global" | "projects" | "obsidian") => s,
         _ => "atlas",
     };
     let root = state.repo_root.to_string_lossy();
     let args = ["graph", "build", "--root", root.as_ref(), "--scope", scope];
-    let out = dispatch_atlas_with_timeout(&state.atlas_cmd, &args, CONSOLE_DISPATCH_TIMEOUT).await?;
-    let value: Value = serde_json::from_str(&out).map_err(|e| {
-        ApiError::Internal(format!("atlas graph build returned invalid JSON: {e}"))
-    })?;
+    let out =
+        dispatch_atlas_with_timeout(&state.atlas_cmd, &args, CONSOLE_DISPATCH_TIMEOUT).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("atlas graph build returned invalid JSON: {e}")))?;
     Ok(Json(value))
 }
 
@@ -1502,11 +1537,17 @@ async fn wiki_create(
     // canonical form to stdout — read back with THAT, not the request slug.
     let canonical = dispatch_atlas(
         &state.atlas_cmd,
-        &["wiki", "update", "--title", &title, "--body", &content, "--", &slug],
+        &[
+            "wiki", "update", "--title", &title, "--body", &content, "--", &slug,
+        ],
     )
     .await?;
     let path = state.db_path.clone();
-    let slug_clone = if canonical.is_empty() { slug.clone() } else { canonical };
+    let slug_clone = if canonical.is_empty() {
+        slug.clone()
+    } else {
+        canonical
+    };
     let found = blocking(move || db::get_wiki_page(&path, &slug_clone)).await?;
     match found {
         Some(page) => Ok((StatusCode::CREATED, Json(json!({ "page": page })))),
@@ -1543,7 +1584,16 @@ async fn wiki_update(
         .unwrap_or_else(|| current["body"].as_str().unwrap_or("").to_string());
     dispatch_atlas(
         &state.atlas_cmd,
-        &["wiki", "update", "--title", &merged_title, "--body", &merged_body, "--", &slug],
+        &[
+            "wiki",
+            "update",
+            "--title",
+            &merged_title,
+            "--body",
+            &merged_body,
+            "--",
+            &slug,
+        ],
     )
     .await?;
     let path = state.db_path.clone();
@@ -1561,10 +1611,7 @@ async fn wiki_update(
 // Model registry handler (Phase 8 — D-017 read-only model panel)
 // ---------------------------------------------------------------------------
 
-async fn models_list(
-    State(state): State<AppState>,
-    Query(params): Query<ListParams>,
-) -> ApiResult {
+async fn models_list(State(state): State<AppState>, Query(params): Query<ListParams>) -> ApiResult {
     let path = state.db_path.clone();
     let limit = clamp_limit(params.limit, 100, 500);
     let models = blocking(move || db::list_models(&path, limit)).await?;
@@ -1649,10 +1696,7 @@ async fn projects_register(
 // Focus handlers (WP-2 — Command Center Current Focus, D-022 dispatch pattern)
 // ---------------------------------------------------------------------------
 
-async fn focus_list(
-    State(state): State<AppState>,
-    Query(params): Query<ListParams>,
-) -> ApiResult {
+async fn focus_list(State(state): State<AppState>, Query(params): Query<ListParams>) -> ApiResult {
     let path = state.db_path.clone();
     let limit = clamp_limit(params.limit, 50, 200);
     let focus = blocking(move || db::list_focus(&path, limit)).await?;
@@ -1711,10 +1755,7 @@ async fn focus_create(
     }
 }
 
-async fn focus_archive(
-    State(state): State<AppState>,
-    AxPath(id): AxPath<String>,
-) -> ApiResult {
+async fn focus_archive(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
     require_arg(&id, "focus id must be non-empty")?;
     dispatch_atlas(&state.atlas_cmd, &["focus", "archive", "--", &id]).await?;
     Ok(Json(json!({ "archived": true, "id": id })))
@@ -1797,7 +1838,10 @@ async fn task_create(
         &["task", "add", "--goal", &body.goal, "--title", &body.title],
     )
     .await?;
-    Ok((StatusCode::CREATED, Json(json!({ "created": true, "id": id }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({ "created": true, "id": id })),
+    ))
 }
 
 #[derive(Deserialize)]
@@ -1818,7 +1862,9 @@ async fn task_set_status(
         &["task", "status", "--status", &body.status, "--", &id],
     )
     .await?;
-    Ok(Json(json!({ "updated": true, "id": id, "status": body.status })))
+    Ok(Json(
+        json!({ "updated": true, "id": id, "status": body.status }),
+    ))
 }
 
 #[derive(Deserialize)]
@@ -1848,7 +1894,10 @@ async fn observation_create(
         args.extend_from_slice(&["--source", &source]);
     }
     let id = dispatch_atlas(&state.atlas_cmd, &args).await?;
-    Ok((StatusCode::CREATED, Json(json!({ "created": true, "id": id }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({ "created": true, "id": id })),
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -1886,11 +1935,22 @@ async fn operation_run(
         .filter(|a| !a.is_empty())
         .unwrap_or_else(|| "native".to_string());
     if agent != "native" && agent != "claude_code" {
-        return Err(ApiError::BadRequest("agent must be 'native' or 'claude_code'"));
+        return Err(ApiError::BadRequest(
+            "agent must be 'native' or 'claude_code'",
+        ));
     }
     let run_id = dispatch_atlas(
         &state.atlas_cmd,
-        &["operation", "prepare", "--op", &op_id, "--goal", &body.goal_id, "--agent", &agent],
+        &[
+            "operation",
+            "prepare",
+            "--op",
+            &op_id,
+            "--goal",
+            &body.goal_id,
+            "--agent",
+            &agent,
+        ],
     )
     .await?;
     let path = state.db_path.clone();
@@ -1973,7 +2033,9 @@ async fn cashflow_start(
         .and_then(|b| b.0.backend)
         .unwrap_or_else(|| "local".to_string());
     if backend != "local" && backend != "supabase" {
-        return Err(ApiError::BadRequest("backend must be 'local' or 'supabase'"));
+        return Err(ApiError::BadRequest(
+            "backend must be 'local' or 'supabase'",
+        ));
     }
     let msg = dispatch_atlas(
         &state.atlas_cmd,
@@ -2000,10 +2062,7 @@ async fn cashflow_summary() -> ApiResult {
 // Run cancel handler (Phase 8 — Surface 2 run monitoring)
 // ---------------------------------------------------------------------------
 
-async fn cancel_run(
-    State(state): State<AppState>,
-    AxPath(id): AxPath<String>,
-) -> ApiResult {
+async fn cancel_run(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
     require_arg(&id, "mission id must be non-empty")?;
     dispatch_atlas(&state.atlas_cmd, &["mission", "cancel", "--", &id]).await?;
     let path = state.db_path.clone();
@@ -2123,7 +2182,10 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/runs/{id}/events", get(run_events))
         .route("/v1/runs/{id}/stream", get(run_stream))
         .route("/v1/wiki/pages", get(wiki_pages).post(wiki_create))
-        .route("/v1/wiki/pages/{slug}", get(wiki_page_detail).put(wiki_update))
+        .route(
+            "/v1/wiki/pages/{slug}",
+            get(wiki_page_detail).put(wiki_update),
+        )
         .route("/v1/wiki/search", get(wiki_search))
         .route("/v1/models", get(models_list))
         .route("/v1/config", get(config_view).patch(config_patch))
@@ -2135,7 +2197,10 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/provider/modes", get(provider_modes))
         .route("/v1/channels", get(channels_list))
         .route("/v1/channels/{name}/toggle", post(channel_toggle))
-        .route("/v1/gateway/messaging/status", get(messaging_gateway_status))
+        .route(
+            "/v1/gateway/messaging/status",
+            get(messaging_gateway_status),
+        )
         .route("/v1/gateway/messaging/start", post(messaging_gateway_start))
         .route("/v1/gateway/messaging/stop", post(messaging_gateway_stop))
         .route("/v1/discord/status", get(discord_status))

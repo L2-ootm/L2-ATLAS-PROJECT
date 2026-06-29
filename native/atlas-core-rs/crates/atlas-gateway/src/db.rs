@@ -124,13 +124,12 @@ pub fn list_missions(path: &Path, limit: i64) -> Result<Vec<Value>, DbError> {
          ORDER BY m.created_at DESC LIMIT ?1"
     );
     let rows = match conn.prepare(&sql) {
-        Ok(mut stmt) => {
-            stmt
-                .query_map([limit], mission_row_with_archive)?
-                .collect::<rusqlite::Result<Vec<_>>>()?
-        }
+        Ok(mut stmt) => stmt
+            .query_map([limit], mission_row_with_archive)?
+            .collect::<rusqlite::Result<Vec<_>>>()?,
         Err(rusqlite::Error::SqliteFailure(_, Some(ref msg))) if msg.contains("no such table") => {
-            let sql = format!("SELECT {MISSION_COLS} FROM missions ORDER BY created_at DESC LIMIT ?1");
+            let sql =
+                format!("SELECT {MISSION_COLS} FROM missions ORDER BY created_at DESC LIMIT ?1");
             let mut stmt = conn.prepare(&sql)?;
             let rows = stmt
                 .query_map([limit], mission_row)?
@@ -355,7 +354,11 @@ pub fn goal_tree(path: &Path, focus_id: &str) -> Result<Vec<Value>, DbError> {
     // (id, parent_goal_id, base goal JSON)
     let goals: Vec<(String, Option<String>, Value)> = stmt
         .query_map([focus_id], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(2)?, goal_row(row)?))
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, Option<String>>(2)?,
+                goal_row(row)?,
+            ))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     if goals.is_empty() {
@@ -363,12 +366,16 @@ pub fn goal_tree(path: &Path, focus_id: &str) -> Result<Vec<Value>, DbError> {
     }
 
     // Group tasks / observations by goal_id (tables co-created in 0010; tolerate absence).
-    let tasks_by_goal = group_by_goal(&conn, &format!(
-        "SELECT {TASK_COLS} FROM tasks ORDER BY position ASC, created_at ASC"
-    ), task_row)?;
-    let obs_by_goal = group_by_goal(&conn, &format!(
-        "SELECT {OBSERVATION_COLS} FROM observations ORDER BY created_at DESC"
-    ), observation_row)?;
+    let tasks_by_goal = group_by_goal(
+        &conn,
+        &format!("SELECT {TASK_COLS} FROM tasks ORDER BY position ASC, created_at ASC"),
+        task_row,
+    )?;
+    let obs_by_goal = group_by_goal(
+        &conn,
+        &format!("SELECT {OBSERVATION_COLS} FROM observations ORDER BY created_at DESC"),
+        observation_row,
+    )?;
 
     Ok(build_goal_nodes(None, &goals, &tasks_by_goal, &obs_by_goal))
 }
@@ -390,7 +397,9 @@ fn group_by_goal(
         Err(e) => return Err(e.into()),
     };
     let rows: Vec<(Option<String>, Value)> = stmt
-        .query_map([], |row| Ok((row.get::<_, Option<String>>(1)?, mapper(row)?)))?
+        .query_map([], |row| {
+            Ok((row.get::<_, Option<String>>(1)?, mapper(row)?))
+        })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     let mut map: HashMap<String, Vec<Value>> = HashMap::new();
     for (gid, v) in rows {
@@ -415,13 +424,26 @@ fn build_goal_nodes(
         }
         let mut node = base.clone();
         if let Some(obj) = node.as_object_mut() {
-            obj.insert("tasks".into(), json!(tasks_by_goal.get(id).cloned().unwrap_or_default()));
-            let obs: Vec<Value> =
-                obs_by_goal.get(id).cloned().unwrap_or_default().into_iter().take(10).collect();
+            obj.insert(
+                "tasks".into(),
+                json!(tasks_by_goal.get(id).cloned().unwrap_or_default()),
+            );
+            let obs: Vec<Value> = obs_by_goal
+                .get(id)
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .take(10)
+                .collect();
             obj.insert("observations".into(), json!(obs));
             obj.insert(
                 "children".into(),
-                json!(build_goal_nodes(Some(id), goals, tasks_by_goal, obs_by_goal)),
+                json!(build_goal_nodes(
+                    Some(id),
+                    goals,
+                    tasks_by_goal,
+                    obs_by_goal
+                )),
             );
         }
         out.push(node);
@@ -666,7 +688,10 @@ fn cashflow_db_path() -> PathBuf {
         return PathBuf::from(p);
     }
     if let Some(root) = std::env::var_os("ATLAS_REPO_ROOT") {
-        return PathBuf::from(root).join("services").join("cashflow").join("dev.db");
+        return PathBuf::from(root)
+            .join("services")
+            .join("cashflow")
+            .join("dev.db");
     }
     std::env::current_dir()
         .unwrap_or_default()
@@ -790,20 +815,21 @@ pub fn cashflow_summary() -> Result<Value, DbError> {
             "SELECT id, name, service, monthlyPayment, startDate, contractMonths, active, phone, notes \
              FROM Client ORDER BY createdAt DESC LIMIT 8",
         )?;
-        let rows = stmt.query_map([], |row| {
-            Ok(json!({
-                "id": row.get::<_, String>(0)?,
-                "name": row.get::<_, String>(1)?,
-                "service": row.get::<_, String>(2)?,
-                "monthlyPayment": row.get::<_, f64>(3)?,
-                "startDate": row.get::<_, String>(4)?,
-                "contractMonths": row.get::<_, Option<i64>>(5)?.unwrap_or(0),
-                "active": row.get::<_, i64>(6)? != 0,
-                "phone": row.get::<_, Option<String>>(7)?,
-                "notes": row.get::<_, Option<String>>(8)?.unwrap_or_default(),
-            }))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(json!({
+                    "id": row.get::<_, String>(0)?,
+                    "name": row.get::<_, String>(1)?,
+                    "service": row.get::<_, String>(2)?,
+                    "monthlyPayment": row.get::<_, f64>(3)?,
+                    "startDate": row.get::<_, String>(4)?,
+                    "contractMonths": row.get::<_, Option<i64>>(5)?.unwrap_or(0),
+                    "active": row.get::<_, i64>(6)? != 0,
+                    "phone": row.get::<_, Option<String>>(7)?,
+                    "notes": row.get::<_, Option<String>>(8)?.unwrap_or_default(),
+                }))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
         rows
     } else {
         vec![]
@@ -814,19 +840,20 @@ pub fn cashflow_summary() -> Result<Value, DbError> {
             "SELECT id, clientName, description, amount, issueDate, dueDate, paidDate, status \
              FROM Invoice ORDER BY dueDate ASC LIMIT 10",
         )?;
-        let rows = stmt.query_map([], |row| {
-            Ok(json!({
-                "id": row.get::<_, String>(0)?,
-                "clientName": row.get::<_, String>(1)?,
-                "description": row.get::<_, String>(2)?,
-                "amount": row.get::<_, f64>(3)?,
-                "issueDate": row.get::<_, String>(4)?,
-                "dueDate": row.get::<_, String>(5)?,
-                "paidDate": row.get::<_, Option<String>>(6)?,
-                "status": row.get::<_, String>(7)?,
-            }))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(json!({
+                    "id": row.get::<_, String>(0)?,
+                    "clientName": row.get::<_, String>(1)?,
+                    "description": row.get::<_, String>(2)?,
+                    "amount": row.get::<_, f64>(3)?,
+                    "issueDate": row.get::<_, String>(4)?,
+                    "dueDate": row.get::<_, String>(5)?,
+                    "paidDate": row.get::<_, Option<String>>(6)?,
+                    "status": row.get::<_, String>(7)?,
+                }))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
         rows
     } else {
         vec![]
@@ -837,18 +864,19 @@ pub fn cashflow_summary() -> Result<Value, DbError> {
             "SELECT id, clientId, category, description, amount, date, recurring \
              FROM Expense ORDER BY date DESC LIMIT 10",
         )?;
-        let rows = stmt.query_map([], |row| {
-            Ok(json!({
-                "id": row.get::<_, String>(0)?,
-                "clientId": row.get::<_, Option<String>>(1)?,
-                "category": row.get::<_, String>(2)?,
-                "description": row.get::<_, String>(3)?,
-                "amount": row.get::<_, f64>(4)?,
-                "date": row.get::<_, String>(5)?,
-                "recurring": row.get::<_, i64>(6)? != 0,
-            }))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(json!({
+                    "id": row.get::<_, String>(0)?,
+                    "clientId": row.get::<_, Option<String>>(1)?,
+                    "category": row.get::<_, String>(2)?,
+                    "description": row.get::<_, String>(3)?,
+                    "amount": row.get::<_, f64>(4)?,
+                    "date": row.get::<_, String>(5)?,
+                    "recurring": row.get::<_, i64>(6)? != 0,
+                }))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
         rows
     } else {
         vec![]

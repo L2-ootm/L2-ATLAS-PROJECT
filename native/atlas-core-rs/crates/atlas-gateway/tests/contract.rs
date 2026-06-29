@@ -124,7 +124,10 @@ async fn mission_response_matches_pydantic_schema() {
         }
     };
     let required = required_fields(&schema);
-    assert!(!required.is_empty(), "Mission schema has no required fields — suspicious");
+    assert!(
+        !required.is_empty(),
+        "Mission schema has no required fields — suspicious"
+    );
 
     let dir = tempfile::tempdir().unwrap();
     let router = test_app(seeded_db(&dir));
@@ -148,7 +151,10 @@ async fn run_response_matches_pydantic_schema() {
         }
     };
     let required = required_fields(&schema);
-    assert!(!required.is_empty(), "Run schema has no required fields — suspicious");
+    assert!(
+        !required.is_empty(),
+        "Run schema has no required fields — suspicious"
+    );
 
     let dir = tempfile::tempdir().unwrap();
     let router = test_app(seeded_db(&dir));
@@ -172,7 +178,10 @@ async fn audit_event_response_matches_pydantic_schema() {
         }
     };
     let required = required_fields(&schema);
-    assert!(!required.is_empty(), "AuditEvent schema has no required fields — suspicious");
+    assert!(
+        !required.is_empty(),
+        "AuditEvent schema has no required fields — suspicious"
+    );
 
     let dir = tempfile::tempdir().unwrap();
     let router = test_app(seeded_db(&dir));
