@@ -3,9 +3,11 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -173,6 +175,168 @@ func TestApproveAndRejectTool(t *testing.T) {
 	rej, err := c.RejectTool(context.Background(), "a1", "nope")
 	if err != nil || rej.Status != "rejected" {
 		t.Fatalf("reject: %+v err=%v", rej, err)
+	}
+}
+
+func TestConfigAndPatchConfig(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/config":
+			_, _ = w.Write([]byte(`{"schema_version":1,"revision":4,"provider":{"name":"openrouter","model":"anthropic/claude-sonnet-4","auth_mode":"api_key","api_key":"","base_url":null}}`))
+		case r.Method == http.MethodPatch && r.URL.Path == "/v1/config":
+			var body struct {
+				ExpectedRevision int64          `json:"expected_revision"`
+				Changes          map[string]any `json:"changes"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			if body.ExpectedRevision != 4 || body.Changes["provider.model"] != "openai/gpt-5" {
+				t.Fatalf("unexpected patch body: %+v", body)
+			}
+			_, _ = w.Write([]byte(`{"schema_version":1,"revision":5,"provider":{"name":"openrouter","model":"openai/gpt-5","auth_mode":"api_key","api_key":"","base_url":null}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL)
+	snapshot, err := c.Config(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Revision != 4 || snapshot.Provider.AuthMode != "api_key" {
+		t.Fatalf("unexpected config: %+v", snapshot)
+	}
+	patched, err := c.PatchConfig(
+		context.Background(),
+		snapshot.Revision,
+		map[string]any{"provider.model": "openai/gpt-5"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if patched.Revision != 5 || patched.Provider.Model != "openai/gpt-5" {
+		t.Fatalf("unexpected patched config: %+v", patched)
+	}
+}
+
+func TestPatchConfigReturnsStructuredConflict(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"error":{"code":"config_revision_conflict","message":"stale","remediation":"reload config"},"current_revision":7}`))
+	}))
+	defer srv.Close()
+
+	_, err := New(srv.URL).PatchConfig(
+		context.Background(),
+		4,
+		map[string]any{"provider.model": "openai/gpt-5"},
+	)
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("want APIError, got %T: %v", err, err)
+	}
+	if apiErr.StatusCode != http.StatusConflict || apiErr.Code != "config_revision_conflict" ||
+		apiErr.CurrentRevision != 7 || apiErr.Remediation != "reload config" {
+		t.Fatalf("unexpected API error: %+v", apiErr)
+	}
+}
+
+func TestModelsUsesGatewayEnvelope(t *testing.T) {
+	srv := newTestServer(t, map[string]string{
+		"/v1/models": `{"models":[{"model_id":"gpt-test","provider":"openrouter","source":"remote","active":true}],"count":1}`,
+	})
+	defer srv.Close()
+	models, err := New(srv.URL).Models(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(models) != 1 || models[0].ModelID != "gpt-test" || !models[0].Active {
+		t.Fatalf("unexpected models: %+v", models)
+	}
+}
+
+func TestStoreAPIKeyReturnsMaskedStatus(t *testing.T) {
+	const secret = "stdin-only-secret-9876"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/auth/providers" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body["provider"] != "openrouter" || body["api_key"] != secret ||
+			body["base_url"] != "https://example.test/v1" {
+			t.Fatalf("unexpected auth body: %+v", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"provider":"openrouter","auth_type":"api_key","status":"configured","source":"owned","health":"ok","redacted_hint":"...9876"}`))
+	}))
+	defer srv.Close()
+
+	status, err := New(srv.URL).StoreAPIKey(
+		context.Background(),
+		"openrouter",
+		secret,
+		"https://example.test/v1",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Provider != "openrouter" || status.RedactedHint != "...9876" {
+		t.Fatalf("unexpected auth status: %+v", status)
+	}
+}
+
+func TestStoreAPIKeyRejectsNonLoopbackGateway(t *testing.T) {
+	const secret = "must-not-leave-this-machine"
+	_, err := New("https://gateway.example.com").StoreAPIKey(
+		context.Background(),
+		"openrouter",
+		secret,
+		"",
+	)
+	if err == nil || !strings.Contains(err.Error(), "loopback") {
+		t.Fatalf("want loopback rejection, got %v", err)
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("loopback rejection leaked secret: %v", err)
+	}
+}
+
+func TestImportCodexAndArchiveMission(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/auth/codex/import":
+			_, _ = w.Write([]byte(`{"imported":true}`))
+		case "/v1/missions/probe-1/archive":
+			var body map[string]int
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			if body["delete_after_days"] != 1 {
+				t.Fatalf("unexpected archive body: %+v", body)
+			}
+			_, _ = w.Write([]byte(`{"mission":{"id":"probe-1","status":"succeeded"},"runs":[]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL)
+	result, err := c.ImportCodex(context.Background())
+	if err != nil || !result.Imported {
+		t.Fatalf("import: %+v err=%v", result, err)
+	}
+	if err := c.ArchiveMission(context.Background(), "probe-1"); err != nil {
+		t.Fatal(err)
 	}
 }
 

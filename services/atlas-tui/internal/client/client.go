@@ -10,8 +10,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -20,6 +23,24 @@ import (
 type Client struct {
 	BaseURL string
 	http    *http.Client
+}
+
+// APIError preserves the gateway's structured remediation for UI surfaces.
+type APIError struct {
+	Method          string
+	Path            string
+	StatusCode      int
+	Code            string
+	Message         string
+	Remediation     string
+	CurrentRevision int64
+}
+
+func (e *APIError) Error() string {
+	if e.Message != "" {
+		return e.Message
+	}
+	return fmt.Sprintf("%s %s: %s", e.Method, e.Path, http.StatusText(e.StatusCode))
 }
 
 // New builds a Client for the given gateway base URL (e.g. http://127.0.0.1:8484).
@@ -31,24 +52,22 @@ func New(baseURL string) *Client {
 }
 
 func (c *Client) getJSON(ctx context.Context, path string, out any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+path, nil)
-	if err != nil {
-		return err
-	}
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("GET %s: %s", path, resp.Status)
-	}
-	return json.NewDecoder(resp.Body).Decode(out)
+	return c.requestJSON(ctx, http.MethodGet, path, nil, out)
 }
 
 // postJSON sends body as JSON to path and decodes a 2xx response into out
 // (out may be nil to discard). Non-2xx surfaces the gateway's status line.
 func (c *Client) postJSON(ctx context.Context, path string, body, out any) error {
+	return c.requestJSON(ctx, http.MethodPost, path, body, out)
+}
+
+func (c *Client) requestJSON(
+	ctx context.Context,
+	method string,
+	path string,
+	body any,
+	out any,
+) error {
 	var rdr *bytes.Reader
 	if body != nil {
 		raw, err := json.Marshal(body)
@@ -59,23 +78,128 @@ func (c *Client) postJSON(ctx context.Context, path string, body, out any) error
 	} else {
 		rdr = bytes.NewReader(nil)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+path, rdr)
+	req, err := http.NewRequestWithContext(ctx, method, c.BaseURL+path, rdr)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("POST %s: %s", path, resp.Status)
+		var payload struct {
+			Error struct {
+				Code        string `json:"code"`
+				Message     string `json:"message"`
+				Remediation string `json:"remediation"`
+			} `json:"error"`
+			CurrentRevision int64 `json:"current_revision"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&payload)
+		return &APIError{
+			Method:          method,
+			Path:            path,
+			StatusCode:      resp.StatusCode,
+			Code:            payload.Error.Code,
+			Message:         payload.Error.Message,
+			Remediation:     payload.Error.Remediation,
+			CurrentRevision: payload.CurrentRevision,
+		}
 	}
 	if out == nil {
 		return nil
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+// Config returns the masked provider config and optimistic revision.
+func (c *Client) Config(ctx context.Context) (ConfigSnapshot, error) {
+	var snapshot ConfigSnapshot
+	err := c.getJSON(ctx, "/v1/config", &snapshot)
+	return snapshot, err
+}
+
+// PatchConfig atomically applies dotted control-plane changes.
+func (c *Client) PatchConfig(
+	ctx context.Context,
+	expectedRevision int64,
+	changes map[string]any,
+) (ConfigSnapshot, error) {
+	var snapshot ConfigSnapshot
+	body := map[string]any{
+		"expected_revision": expectedRevision,
+		"changes":           changes,
+	}
+	err := c.requestJSON(ctx, http.MethodPatch, "/v1/config", body, &snapshot)
+	return snapshot, err
+}
+
+// Models lists the shared model catalog exposed by the gateway.
+func (c *Client) Models(ctx context.Context) ([]Model, error) {
+	var env modelsEnvelope
+	if err := c.getJSON(ctx, "/v1/models", &env); err != nil {
+		return nil, err
+	}
+	return env.Models, nil
+}
+
+// StoreAPIKey crosses the loopback HTTP boundary once; the gateway then sends
+// the secret to the Python owner over stdin, never argv.
+func (c *Client) StoreAPIKey(
+	ctx context.Context,
+	provider string,
+	apiKey string,
+	baseURL string,
+) (AuthStatus, error) {
+	var status AuthStatus
+	if !isLoopbackURL(c.BaseURL) {
+		return status, errors.New("credential writes require a loopback ATLAS gateway")
+	}
+	body := struct {
+		Provider string `json:"provider"`
+		APIKey   string `json:"api_key"`
+		BaseURL  string `json:"base_url,omitempty"`
+	}{
+		Provider: provider,
+		APIKey:   apiKey,
+		BaseURL:  baseURL,
+	}
+	err := c.postJSON(ctx, "/v1/auth/providers", body, &status)
+	return status, err
+}
+
+func isLoopbackURL(raw string) bool {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	host := parsed.Hostname()
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// ImportCodex delegates token ownership and refresh to the Hermes foundation.
+func (c *Client) ImportCodex(ctx context.Context) (CodexImportResult, error) {
+	var result CodexImportResult
+	err := c.postJSON(ctx, "/v1/auth/codex/import", map[string]any{}, &result)
+	return result, err
+}
+
+// ArchiveMission removes an ephemeral probe from the active mission list.
+func (c *Client) ArchiveMission(ctx context.Context, missionID string) error {
+	return c.postJSON(
+		ctx,
+		"/v1/missions/"+missionID+"/archive",
+		map[string]int{"delete_after_days": 1},
+		nil,
+	)
 }
 
 // ProviderStatus resolves the active provider (mock-vs-live verdict included).

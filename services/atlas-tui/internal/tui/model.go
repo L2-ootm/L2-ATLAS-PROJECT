@@ -36,6 +36,7 @@ const (
 	focusMissions focus = iota
 	focusPermissions
 	focusComposer
+	focusSettings
 )
 
 const approvalPollInterval = 4 * time.Second
@@ -105,6 +106,12 @@ type model struct {
 
 	composer   textarea.Model
 	submitting bool
+
+	settings        *settingsForm
+	settingsLoading bool
+	probing         bool
+	probeMissionID  string
+	probeOutcome    string
 
 	width, height int
 	errMsg        string
@@ -295,12 +302,88 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case runEventMsg:
-		m.appendLog(renderEvent(client.RunEvent(msg)))
+		event := client.RunEvent(msg)
+		if m.probeMissionID != "" {
+			if outcome := classifyProbeEvent(event); outcome != "" {
+				m.probeOutcome = outcome
+			}
+		}
+		m.appendLog(renderEvent(event))
 		return m, waitForEvent(m.eventCh)
 
 	case streamDoneMsg:
 		m.streaming = false
 		m.appendLog(styleMuted.Render("stream ended (" + short(m.streamRun) + ")"))
+		if m.probeMissionID != "" {
+			m.probing = false
+			if msg.err != nil {
+				m.probeOutcome = "failed"
+			} else if m.probeOutcome == "" {
+				m.probeOutcome = "live"
+			}
+			m.appendLog(probeVerdict(m.probeOutcome))
+			missionID := m.probeMissionID
+			m.probeMissionID = ""
+			return m, archiveProbe(m.c, missionID)
+		}
+
+	case settingsLoadedMsg:
+		m.settingsLoading = false
+		if msg.err != nil {
+			m.errMsg = "settings: " + msg.err.Error()
+		} else {
+			form := newSettingsForm(msg.snapshot, msg.models)
+			m.settings = &form
+		}
+
+	case settingsSavedMsg:
+		if m.settings != nil {
+			m.settings.busy = false
+		}
+		if msg.err != nil {
+			message := msg.err.Error()
+			if apiErr, ok := msg.err.(*client.APIError); ok && apiErr.Remediation != "" {
+				message += " - " + apiErr.Remediation
+			}
+			if m.settings != nil {
+				m.settings.message = message
+				m.settings.messageBad = true
+			}
+			return m, nil
+		}
+		models := []client.Model(nil)
+		if m.settings != nil {
+			models = m.settings.models
+		}
+		form := newSettingsForm(msg.snapshot, models)
+		form.message = msg.message
+		m.settings = &form
+		m.appendLog(styleGood.Render(msg.message))
+		if msg.probeAfter {
+			m.probing = true
+			m.probeOutcome = ""
+			m.appendLog(styleKey.Render("starting provider probe" + gl.ellipsis))
+			return m, startProbe(m.c)
+		}
+		return m, tea.Batch(m.fetchStatus(), m.fetchModes())
+
+	case probeStartedMsg:
+		if msg.err != nil {
+			m.probing = false
+			m.probeOutcome = "failed"
+			m.appendLog(styleBad.Render("provider probe failed: " + msg.err.Error()))
+		} else {
+			m.probeMissionID = msg.missionID
+			m.probeOutcome = ""
+			m.appendLog(styleGood.Render("provider probe running " + short(msg.runID) + " " + gl.ellipsis))
+			return m.beginStream(msg.runID)
+		}
+
+	case probeArchivedMsg:
+		if msg.err != nil {
+			m.appendLog(styleWarn.Render("probe cleanup failed: " + msg.err.Error()))
+		}
+		return m, m.fetchMissions()
 	}
 
 	return m, nil
@@ -315,15 +398,21 @@ func (m model) beginStream(runID string) (tea.Model, tea.Cmd) {
 	c := m.c
 	m.appendLog(styleGood.Render("streaming run " + short(runID) + " " + gl.ellipsis))
 	go func() {
-		_ = c.StreamRun(context.Background(), runID, func(ev client.RunEvent) {
+		err := c.StreamRun(context.Background(), runID, func(ev client.RunEvent) {
 			ch <- ev
 		})
+		if err != nil {
+			ch <- streamFailureEvent(err)
+		}
 		close(ch)
 	}()
 	return m, waitForEvent(ch)
 }
 
 func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.focus == focusSettings {
+		return m.handleSettingsKey(msg)
+	}
 	// Composer owns most keys while focused; only the explicit verbs escape it.
 	if m.focus == focusComposer {
 		switch msg.String() {
@@ -354,6 +443,12 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.focus = focusComposer
 		m.composer.Focus()
 		return m, textarea.Blink
+	case "s":
+		m.focus = focusSettings
+		m.settingsLoading = true
+		m.settings = nil
+		m.errMsg = ""
+		return m, m.fetchSettings()
 	case "p":
 		m.focus = focusPermissions
 		return m, nil
@@ -369,6 +464,24 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handlePermissionsKey(msg)
 	}
 	return m, nil
+}
+
+func (m model) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
+		return m, tea.Quit
+	case "esc":
+		m.focus = focusMissions
+		return m, nil
+	case "ctrl+s":
+		return m.saveSettings(false)
+	case "ctrl+t":
+		return m.saveSettings(true)
+	}
+	if m.settings == nil || m.settings.busy {
+		return m, nil
+	}
+	return m, m.settings.update(msg)
 }
 
 func (m model) handleMissionsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -469,6 +582,16 @@ func (m model) View() string {
 	}
 	var b strings.Builder
 	b.WriteString(m.header() + "\n\n")
+	if m.focus == focusSettings {
+		if m.settingsLoading || m.settings == nil {
+			b.WriteString(styleMuted.Render("loading provider settings " + gl.ellipsis))
+		} else {
+			b.WriteString(m.settings.view(m.width))
+		}
+		b.WriteString("\n\n" + m.logPanel())
+		b.WriteString("\n" + m.footer())
+		return b.String()
+	}
 	if m.width > 0 && m.width < 120 {
 		b.WriteString(lipgloss.JoinVertical(
 			lipgloss.Left,
@@ -611,10 +734,23 @@ func (m model) footer() string {
 	switch m.focus {
 	case focusComposer:
 		return styleMuted.Render("ctrl+s run · esc cancel · ctrl+c quit")
+	case focusSettings:
+		return styleMuted.Render("tab fields · left/right mode · ctrl+s save · ctrl+t save + probe · esc close")
 	case focusPermissions:
 		return styleMuted.Render("j/k move · a/enter approve · x reject · tab missions · n compose · r refresh · q quit")
 	default:
-		return styleMuted.Render("j/k move · enter stream · tab permissions · n compose · p perms · r refresh · q quit")
+		return styleMuted.Render("j/k move · enter stream · tab permissions · n compose · s settings · p perms · r refresh · q quit")
+	}
+}
+
+func probeVerdict(outcome string) string {
+	switch outcome {
+	case "live":
+		return styleGood.Render("provider probe: LIVE")
+	case "mock":
+		return styleWarn.Render("provider probe: MOCK MODE")
+	default:
+		return styleBad.Render("provider probe: FAILED")
 	}
 }
 
