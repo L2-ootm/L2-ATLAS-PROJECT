@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"atlas-tui/internal/client"
 )
 
@@ -45,6 +47,63 @@ func TestSettingsFormCyclesModesAndMasksAPIKey(t *testing.T) {
 	}
 	if !strings.Contains(view, "****************") {
 		t.Fatalf("settings view did not mask API key: %s", view)
+	}
+
+	for _, want := range providerModes {
+		for form.mode() != want {
+			form.cycleMode(1)
+		}
+		if form.mode() != want {
+			t.Fatalf("mode %q was not selectable", want)
+		}
+	}
+	for form.mode() != "freellmapi" {
+		form.cycleMode(1)
+	}
+	if !strings.Contains(form.view(100), "may log prompts") {
+		t.Fatal("FreeLLMAPI privacy warning missing")
+	}
+}
+
+func TestSettingsOpenValidationConflictAndEscape(t *testing.T) {
+	m := New(nil, "http://127.0.0.1:8484")
+	m.phase = phaseReady
+
+	opened, openCmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	openedModel := opened.(model)
+	if openedModel.focus != focusSettings || openCmd == nil {
+		t.Fatalf("s must open and load settings: focus=%v cmd=%v", openedModel.focus, openCmd)
+	}
+
+	form := newSettingsForm(testConfig(), nil)
+	for form.mode() != "freellmapi" {
+		form.cycleMode(1)
+	}
+	form.inputs[settingsBaseURL].SetValue("")
+	openedModel.settings = &form
+	invalid, cmd := openedModel.saveSettings(false)
+	if cmd != nil || !strings.Contains(invalid.settings.message, "requires a base URL") {
+		t.Fatalf("missing mode-specific validation: message=%q", invalid.settings.message)
+	}
+
+	invalid.settings.busy = true
+	updated, _ := invalid.Update(settingsSavedMsg{err: &client.APIError{
+		StatusCode:  409,
+		Code:        "config_revision_conflict",
+		Message:     "stale config",
+		Remediation: "reload config",
+	}})
+	conflicted := updated.(model)
+	if !strings.Contains(conflicted.settings.message, "reload config") {
+		t.Fatalf("conflict remediation missing: %q", conflicted.settings.message)
+	}
+
+	before := conflicted.settings.inputs[settingsProvider].Value()
+	escaped, escapeCmd := conflicted.handleSettingsKey(tea.KeyMsg{Type: tea.KeyEsc})
+	escapedModel := escaped.(model)
+	if escapeCmd != nil || escapedModel.focus != focusMissions ||
+		escapedModel.settings.inputs[settingsProvider].Value() != before {
+		t.Fatal("escape must close settings without mutation")
 	}
 }
 
