@@ -61,15 +61,16 @@ atlas_shim="$root/atlas"
 } > "$atlas_shim"
 chmod +x "$atlas_shim"
 
-# Build the terminal UI bundle so `atlas tui` runs without a first-run build.
-# Skipped gracefully when node/npm are absent (the launcher still builds on
-# first run). dist/ and node_modules/ are gitignored, machine-local artifacts.
-tui="$root/foundation/atlas-hermes/ui-tui"
-if command -v npm >/dev/null 2>&1 && [ -d "$tui" ]; then
-  echo "Building the terminal UI ($tui)"
-  (cd "$tui" && npm install && npm run build)
+# Build the Go/BubbleTea sidecar into the ATLAS-owned binary directory used by
+# the Python launcher. No shell or foundation npm bundle participates in P8.
+atlas_home="${ATLAS_HOME:-$HOME/.atlas}"
+tui="$root/services/atlas-tui"
+if command -v go >/dev/null 2>&1; then
+  mkdir -p "$atlas_home/bin"
+  echo "Building atlas-tui -> $atlas_home/bin/atlas-tui"
+  (cd "$tui" && go build -trimpath -ldflags='-s -w' -o "$atlas_home/bin/atlas-tui" .)
 else
-  echo "Skipping TUI build (npm not found); 'atlas tui' will build on first run."
+  echo "Skipping atlas-tui build: Go not found. Install Go 1.26+ and rerun, or set ATLAS_TUI_BIN to a prebuilt binary."
 fi
 
 # Build the Rust gateway binary (release). Skipped gracefully when cargo is

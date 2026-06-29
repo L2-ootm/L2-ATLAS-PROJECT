@@ -42,21 +42,22 @@ $atlasExe = Join-Path $venv 'Scripts\atlas.exe'
 $shim = "@echo off`r`n`"$venvPy`" -m atlas_runtime.cli.main %*`r`n"
 Set-Content -Path (Join-Path $root 'atlas.cmd') -Value $shim -Encoding ascii -NoNewline
 
-# Build the terminal UI bundle so `atlas tui` runs without a first-run build.
-# Skipped gracefully when node/npm are absent (the launcher still builds on
-# first run). dist/ and node_modules/ are gitignored, machine-local artifacts.
-$tui = Join-Path $root 'foundation/atlas-hermes/ui-tui'
-if ((Get-Command npm -ErrorAction SilentlyContinue) -and (Test-Path $tui)) {
-    Write-Host "Building the terminal UI ($tui)"
+# Build the Go/BubbleTea sidecar into the ATLAS-owned binary directory used by
+# the Python launcher. No shell or foundation npm bundle participates in P8.
+$atlasHome = if ($env:ATLAS_HOME) { $env:ATLAS_HOME } else { Join-Path $HOME '.atlas' }
+$tui = Join-Path $root 'services/atlas-tui'
+$tuiBinDir = Join-Path $atlasHome 'bin'
+$tuiBinary = Join-Path $tuiBinDir 'atlas-tui.exe'
+if (Get-Command go -ErrorAction SilentlyContinue) {
+    New-Item -ItemType Directory -Force -Path $tuiBinDir | Out-Null
+    Write-Host "Building atlas-tui -> $tuiBinary"
     Push-Location $tui
     try {
-        npm install --silent
-        if ($LASTEXITCODE -ne 0) { throw "npm install (TUI) failed (exit $LASTEXITCODE)" }
-        npm run build
-        if ($LASTEXITCODE -ne 0) { throw "npm run build (TUI) failed (exit $LASTEXITCODE)" }
+        & go build -trimpath -ldflags "-s -w" -o $tuiBinary .
+        if ($LASTEXITCODE -ne 0) { throw "go build (atlas-tui) failed (exit $LASTEXITCODE)" }
     } finally { Pop-Location }
 } else {
-    Write-Host "Skipping TUI build (npm not found); 'atlas tui' will build on first run."
+    Write-Host "Skipping atlas-tui build: Go not found. Install Go 1.26+ and rerun, or set ATLAS_TUI_BIN to a prebuilt binary."
 }
 
 # Build the Rust gateway binary (release). Skipped gracefully when cargo is
