@@ -26,7 +26,8 @@ allow/deny exceptions, while a Hermes-quality hardline floor remains unbypassabl
 user-directed ATLAS self-update/configuration uses a protected, audited maintenance scope.
 
 Spec: `.planning/phases/10.7-web-agent-permission-queue-ux/10.7-SPEC.md`.
-Next: autonomous implementation discussion → UI contract → plan → execute.
+Context: `.planning/phases/10.7-web-agent-permission-queue-ux/10.7-CONTEXT.md`.
+Next: UI contract → plan → execute.
 Branch: `feat/go-tui-provider-mesh`.
 
 ## Prior Position — Go TUI + Provider Mesh (operator pivot, 2026-06-28)
