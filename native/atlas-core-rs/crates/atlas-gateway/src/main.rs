@@ -1,6 +1,8 @@
 //! atlas-gateway binary — loopback-only HTTP server (Phase 7, D-022).
 
-use atlas_gateway::{app, default_atlas_cli, default_db_path, default_repo_root, AppState, VERSION};
+use atlas_gateway::{
+    app, default_atlas_cli, default_db_path, default_repo_root, AppState, VERSION,
+};
 use std::net::SocketAddr;
 
 #[tokio::main]
