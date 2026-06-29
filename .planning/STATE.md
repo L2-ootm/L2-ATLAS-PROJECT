@@ -27,7 +27,10 @@ user-directed ATLAS self-update/configuration uses a protected, audited maintena
 
 Spec: `.planning/phases/10.7-web-agent-permission-queue-ux/10.7-SPEC.md`.
 Context: `.planning/phases/10.7-web-agent-permission-queue-ux/10.7-CONTEXT.md`.
-Next: UI contract → plan → execute.
+UI contract: `.planning/phases/10.7-web-agent-permission-queue-ux/10.7-UI-SPEC.md`.
+Execution boundary: one Phase 10.7 with four gated waves (contract/policy → adapters → WebUI →
+conformance). Frontend migration waits for frozen Wave 1 contract fixtures.
+Next: technical research → plan → execute.
 Branch: `feat/go-tui-provider-mesh`.
 
 ## Prior Position — Go TUI + Provider Mesh (operator pivot, 2026-06-28)
