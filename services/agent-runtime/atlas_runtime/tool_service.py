@@ -19,6 +19,7 @@ run_id="operator"; mission_service.ensure_operator_run bootstraps the synthetic
 run so the audit FK holds on a fresh DB. The atomic `UPDATE … WHERE status='pending'`
 claim (rowcount==1) is the TOCTOU guard copied verbatim from discord_service.
 """
+
 from __future__ import annotations
 
 import datetime
@@ -28,6 +29,7 @@ import threading
 import uuid
 from typing import Optional
 
+from atlas_core.schemas.control_plane import PermissionConfig
 from atlas_core.schemas.tool import ToolApproval, ToolResult
 
 from atlas_runtime import mission_service, policy
@@ -41,7 +43,7 @@ _COLS = (
     # SAME order as the ToolApproval model fields and the invoke() INSERT below
     # (Pitfall 2: _row_to_approval zips this list into kwargs by position).
     "surface_session_id, surface_kind, workspace_root, expiry_at, decision, "
-    "nonce, args_normalized"
+    "nonce, args_normalized, policy_receipt"
 )
 
 
@@ -60,7 +62,9 @@ def _row_to_approval(row: sqlite3.Row | tuple) -> ToolApproval:
 
 
 def _load(conn: sqlite3.Connection, approval_id: str) -> ToolApproval:
-    cur = conn.execute(f"SELECT {_COLS} FROM tool_approvals WHERE id = ?", (approval_id,))
+    cur = conn.execute(
+        f"SELECT {_COLS} FROM tool_approvals WHERE id = ?", (approval_id,)
+    )
     row = cur.fetchone()
     if row is None:
         raise ToolApprovalError(f"no tool approval {approval_id!r}")
@@ -131,6 +135,84 @@ def _summarize(tool_name: str, risk_level: str, args: dict) -> str:
     return f"{tool_name} ({risk_level})"
 
 
+def _permission_config(ctx: dict) -> PermissionConfig:
+    supplied = ctx.get("permission_config")
+    if isinstance(supplied, PermissionConfig):
+        return supplied
+    if supplied is not None:
+        return PermissionConfig.model_validate(supplied)
+    try:
+        from atlas_core.schemas.control_plane import ControlPlaneError
+        from atlas_runtime import config_service
+
+        return config_service.load_config().permission
+    except (ImportError, OSError, ControlPlaneError):
+        return PermissionConfig()
+
+
+_PATH_ARG_KEYS = frozenset(
+    {
+        "cwd",
+        "dest",
+        "destination",
+        "directory",
+        "file",
+        "path",
+        "root",
+        "source",
+        "src",
+        "target",
+        "target_path",
+    }
+)
+
+
+def _policy_facts(
+    manifest,
+    tool_name: str,
+    args: dict,
+    ctx: dict,
+    surface_kind: str | None,
+) -> policy.PolicyFacts:
+    target_paths: list[str] = []
+    for key, value in args.items():
+        if key.casefold() not in _PATH_ARG_KEYS:
+            continue
+        if isinstance(value, str) and value.strip():
+            target_paths.append(value)
+        elif isinstance(value, (list, tuple)):
+            target_paths.extend(
+                str(item) for item in value if isinstance(item, str) and item.strip()
+            )
+    capability = ctx.get("capability")
+    permissions = getattr(manifest, "permissions", ())
+    if capability is None and permissions:
+        capability = permissions[0]
+    command = next(
+        (
+            args[key]
+            for key in ("command", "cmd", "script")
+            if isinstance(args.get(key), str)
+        ),
+        None,
+    )
+    return policy.PolicyFacts(
+        tool=tool_name,
+        risk=manifest.risk_level,
+        capability=capability,
+        command=command,
+        target_paths=tuple(target_paths),
+        workspace_root=ctx.get("workspace_root"),
+        workspace=ctx.get("workspace"),
+        project=ctx.get("project"),
+        surface=surface_kind,
+        agent=ctx.get("agent"),
+        channel=ctx.get("channel"),
+        explicit_user_maintenance=bool(ctx.get("explicit_user_maintenance")),
+        smart_recommendation=ctx.get("smart_recommendation"),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -158,7 +240,9 @@ def invoke(
     expiry_at = now + approval_ttl_seconds + args_normalized). Existing callers omit
     both kwargs and persist NULL surface fields — fully back-compatible. The PERM-05
     fail-closed gate for headless 'api' surfaces lands in Plan 04, not here."""
-    manifest, adapter = registry.get_registry().resolve(tool_name)  # ValueError on unknown
+    manifest, adapter = registry.get_registry().resolve(
+        tool_name
+    )  # ValueError on unknown
     args = args or {}
     ctx = ctx or {}
 
@@ -174,18 +258,85 @@ def invoke(
     cancel_token = ctx.get("cancel_token")
     if cancel_token is not None and cancel_token.is_set():
         emit(
-            conn, lock, run_id=run_id, event_type="tool_failed", tool_name=tool_name,
+            conn,
+            lock,
+            run_id=run_id,
+            event_type="tool_failed",
+            tool_name=tool_name,
             data={"tool_name": tool_name, "stop_reason": "cancelled"},
             policy_result="cancelled",
         )
         return ToolResult(tool_name=tool_name, ok=False, error="cancelled")
 
     emit(
-        conn, lock, run_id=run_id, event_type="tool_requested", tool_name=tool_name,
+        conn,
+        lock,
+        run_id=run_id,
+        event_type="tool_requested",
+        tool_name=tool_name,
         data={"tool_name": tool_name, "risk_level": manifest.risk_level},
     )
 
-    decision = policy.decide(manifest, mode)
+    config = _permission_config(ctx)
+    facts = _policy_facts(manifest, tool_name, args, ctx, surface_kind)
+    args_normalized = _normalize_args(args)
+    matched_allow_rule = None
+    if surface_session_id and surface_kind and facts.workspace_root:
+        # Local import avoids the permission_broker -> tool_service module cycle.
+        from atlas_runtime import permission_broker
+
+        matched_allow_rule = permission_broker.match_allow_rule(
+            conn,
+            surface_session_id=surface_session_id,
+            workspace_root=facts.workspace_root,
+            surface_kind=surface_kind,
+            tool_name=tool_name,
+            args_normalized=args_normalized,
+        )
+    decision = policy.decide(
+        manifest,
+        mode,
+        config=config,
+        facts=facts,
+        scoped_allow_rule_id=(
+            matched_allow_rule.id if matched_allow_rule is not None else None
+        ),
+    )
+    policy_receipt = (
+        json.dumps(
+            decision.receipt.model_dump(mode="json"),
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        if decision.receipt is not None
+        else None
+    )
+    if not decision.allowed and not decision.requires_approval:
+        emit(
+            conn,
+            lock,
+            run_id=run_id,
+            event_type="tool_failed",
+            tool_name=tool_name,
+            session_id=surface_session_id,
+            data={
+                "tool_name": tool_name,
+                "risk_level": manifest.risk_level,
+                "reason": decision.reason,
+                "surface_kind": surface_kind,
+                "policy_receipt": (
+                    decision.receipt.model_dump(mode="json")
+                    if decision.receipt is not None
+                    else None
+                ),
+            },
+            policy_result=decision.reason,
+        )
+        return ToolResult(
+            tool_name=tool_name,
+            ok=False,
+            error=decision.reason,
+        )
     if decision.requires_approval:
         # PERM-05 fail-closed gate (Plan 04): a headless ('api') surface may only
         # queue a pending approval when an UNREVOKED approval_channels row exists for
@@ -206,8 +357,12 @@ def invoke(
             ).fetchone()
             if channel_row is None:
                 emit(
-                    conn, lock, run_id=run_id, event_type="approval",
-                    tool_name=tool_name, session_id=surface_session_id,
+                    conn,
+                    lock,
+                    run_id=run_id,
+                    event_type="approval",
+                    tool_name=tool_name,
+                    session_id=surface_session_id,
                     data={
                         "tool_name": tool_name,
                         "risk_level": manifest.risk_level,
@@ -248,7 +403,8 @@ def invoke(
             workspace_root=workspace_root,
             expiry_at=expiry_at,
             nonce=nonce,
-            args_normalized=_normalize_args(args),
+            args_normalized=args_normalized,
+            policy_receipt=policy_receipt,
         )
         with lock:
             with conn:
@@ -257,54 +413,92 @@ def invoke(
                     "(id, tool_name, risk_level, args, summary, status, reason, result, "
                     " run_id, requested_at, decided_at, "
                     " surface_session_id, surface_kind, workspace_root, expiry_at, "
-                    " decision, nonce, args_normalized) "
+                    " decision, nonce, args_normalized, policy_receipt) "
                     "VALUES (:id, :tool_name, :risk_level, :args, :summary, :status, :reason, "
                     ":result, :run_id, :requested_at, :decided_at, "
                     ":surface_session_id, :surface_kind, :workspace_root, :expiry_at, "
-                    ":decision, :nonce, :args_normalized)",
+                    ":decision, :nonce, :args_normalized, :policy_receipt)",
                     approval.model_dump(),
                 )
         emit(
-            conn, lock, run_id=run_id, event_type="approval", tool_name=tool_name,
+            conn,
+            lock,
+            run_id=run_id,
+            event_type="approval",
+            tool_name=tool_name,
             session_id=surface_session_id,
             data={
-                "approval_id": approval.id, "tool_name": tool_name,
-                "risk_level": manifest.risk_level, "status": "pending",
+                "approval_id": approval.id,
+                "tool_name": tool_name,
+                "risk_level": manifest.risk_level,
+                "status": "pending",
                 "reason": decision.reason,
                 "surface_kind": surface_kind,
                 "workspace_root": workspace_root,
+                "policy_receipt": (
+                    decision.receipt.model_dump(mode="json")
+                    if decision.receipt is not None
+                    else None
+                ),
             },
         )
         return approval
 
-    # Read-class: run now.
+    if matched_allow_rule is not None and matched_allow_rule.rule_kind == "allow_once":
+        from atlas_runtime import permission_broker
+
+        permission_broker.consume_allow_once(
+            conn,
+            lock,
+            matched_allow_rule.id,
+        )
+
+    # Policy-allowed action: run now.
     return _run_and_emit(conn, lock, run_id, tool_name, adapter, args, args_json, ctx)
 
 
-def _run_and_emit(conn, lock, run_id, tool_name, adapter, args, args_json, ctx) -> ToolResult:
+def _run_and_emit(
+    conn, lock, run_id, tool_name, adapter, args, args_json, ctx
+) -> ToolResult:
     """Run an authorized adapter and emit tool_completed/tool_failed + a ToolCall."""
     try:
         result = adapter(args, ctx)
     except Exception as exc:  # noqa: BLE001 - adapter failure is an honest tool_failed
         emit(
-            conn, lock, run_id=run_id, event_type="tool_failed", tool_name=tool_name,
+            conn,
+            lock,
+            run_id=run_id,
+            event_type="tool_failed",
+            tool_name=tool_name,
             data={"tool_name": tool_name, "error": str(exc)},
             policy_result="tool_failed",
             tool_call_kwargs={
-                "tool_name": tool_name, "args": args_json, "result": json.dumps({"error": str(exc)}),
-                "policy_allowed": True, "requires_approval": False, "exit_code": 1,
+                "tool_name": tool_name,
+                "args": args_json,
+                "result": json.dumps({"error": str(exc)}),
+                "policy_allowed": True,
+                "requires_approval": False,
+                "exit_code": 1,
             },
         )
         return ToolResult(tool_name=tool_name, ok=False, error=str(exc))
 
     event_type = "tool_completed" if result.ok else "tool_failed"
     emit(
-        conn, lock, run_id=run_id, event_type=event_type, tool_name=tool_name,
+        conn,
+        lock,
+        run_id=run_id,
+        event_type=event_type,
+        tool_name=tool_name,
         data={"tool_name": tool_name, "ok": result.ok},
         policy_result=None if result.ok else "tool_failed",
         tool_call_kwargs={
-            "tool_name": tool_name, "args": args_json, "result": result.output or result.error or "",
-            "policy_allowed": True, "requires_approval": False, "exit_code": result.exit_code,
+            "tool_name": tool_name,
+            "args": args_json,
+            "result": result.output or result.error or "",
+            "policy_allowed": True,
+            "requires_approval": False,
+            "exit_code": result.exit_code,
         },
     )
     return result
@@ -315,7 +509,9 @@ def list_approvals(
 ) -> list[ToolApproval]:
     """List tool approvals, newest first. status=None returns every row."""
     if status is None:
-        cur = conn.execute(f"SELECT {_COLS} FROM tool_approvals ORDER BY requested_at DESC")
+        cur = conn.execute(
+            f"SELECT {_COLS} FROM tool_approvals ORDER BY requested_at DESC"
+        )
     else:
         cur = conn.execute(
             f"SELECT {_COLS} FROM tool_approvals WHERE status = ? ORDER BY requested_at DESC",
@@ -368,25 +564,44 @@ def approve(
         result_json = _redact(json.dumps({"error": str(exc)}))
         _set_terminal(conn, lock, approval_id, "failed", result_json, now)
         emit(
-            conn, lock, run_id=run_id, event_type="tool_failed", tool_name=approval.tool_name,
-            data={"approval_id": approval_id, "tool_name": approval.tool_name, "error": str(exc)},
+            conn,
+            lock,
+            run_id=run_id,
+            event_type="tool_failed",
+            tool_name=approval.tool_name,
+            data={
+                "approval_id": approval_id,
+                "tool_name": approval.tool_name,
+                "error": str(exc),
+            },
             policy_result="tool_failed",
         )
         return _load(conn, approval_id)
 
     status = "executed" if result.ok else "failed"
-    result_json = _redact(json.dumps({"ok": result.ok, "output": result.output, "error": result.error}))
+    result_json = _redact(
+        json.dumps({"ok": result.ok, "output": result.output, "error": result.error})
+    )
     _set_terminal(conn, lock, approval_id, status, result_json, now)
     emit(
-        conn, lock, run_id=run_id,
+        conn,
+        lock,
+        run_id=run_id,
         event_type="tool_completed" if result.ok else "tool_failed",
         tool_name=approval.tool_name,
-        data={"approval_id": approval_id, "tool_name": approval.tool_name, "ok": result.ok},
+        data={
+            "approval_id": approval_id,
+            "tool_name": approval.tool_name,
+            "ok": result.ok,
+        },
         policy_result=None if result.ok else "tool_failed",
         tool_call_kwargs={
-            "tool_name": approval.tool_name, "args": approval.args,
+            "tool_name": approval.tool_name,
+            "args": approval.args,
             "result": result.output or result.error or "",
-            "policy_allowed": True, "requires_approval": True, "exit_code": result.exit_code,
+            "policy_allowed": True,
+            "requires_approval": True,
+            "exit_code": result.exit_code,
         },
     )
     return _load(conn, approval_id)
@@ -417,8 +632,16 @@ def reject(
             f"approval {approval_id!r} is {current.status!r}, not pending"
         )
     emit(
-        conn, lock, run_id=run_id, event_type="approval", tool_name=approval.tool_name,
-        data={"approval_id": approval_id, "tool_name": approval.tool_name,
-              "status": "rejected", "reason": reason},
+        conn,
+        lock,
+        run_id=run_id,
+        event_type="approval",
+        tool_name=approval.tool_name,
+        data={
+            "approval_id": approval_id,
+            "tool_name": approval.tool_name,
+            "status": "rejected",
+            "reason": reason,
+        },
     )
     return _load(conn, approval_id)

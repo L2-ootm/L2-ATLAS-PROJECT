@@ -11,15 +11,23 @@ not a persisted entity.
 check_workspace_boundary_and_emit emits a failure AuditEvent on rejection per
 success criterion 6 (CONTEXT.md).
 """
+
 from __future__ import annotations
 
 import pathlib
 import sqlite3
 import threading
 from dataclasses import dataclass
-from typing import Optional
+from fnmatch import fnmatchcase
 
+from atlas_core.schemas.control_plane import (
+    PermissionConfig,
+    PermissionExplainReceipt,
+    PermissionPolicyProfile,
+    PermissionPolicyRule,
+)
 from atlas_runtime.audit_service import emit
+from atlas_runtime.hardline_policy import match_hardline
 
 
 @dataclass
@@ -38,26 +46,354 @@ class PolicyDecision:
     allowed: bool
     reason: str
     requires_approval: bool = False
+    receipt: PermissionExplainReceipt | None = None
 
 
-def decide(manifest, mode: str = "read_only") -> "PolicyDecision":
-    """Three-way tool authorization from a ToolManifest's risk_level (Phase 10.0.4).
+@dataclass(frozen=True)
+class PolicyFacts:
+    """Normalized trusted facts supplied by the runtime, never by surface UI."""
 
-    - risk_level "read"  -> allowed, no approval (the global read-only default).
-    - risk_level "write" -> not auto-allowed, requires_approval=True.
-    - risk_level "shell" -> not auto-allowed, requires_approval=True.
+    tool: str
+    risk: str
+    capability: str | None = None
+    command: str | None = None
+    target_paths: tuple[str, ...] = ()
+    workspace_root: str | None = None
+    workspace: str | None = None
+    project: str | None = None
+    surface: str | None = None
+    agent: str | None = None
+    channel: str | None = None
+    explicit_user_maintenance: bool = False
+    smart_recommendation: str | None = None
 
-    `mode` is accepted for forward-compatibility but v0 is always the read-only
-    posture: write/shell NEVER auto-run regardless of mode (a live config toggle
-    is deferred — RESEARCH Open Question 1). This is the single decision function;
-    adapters must not perform their own policy checks (the chokepoint owns policy).
-    """
-    if manifest.risk_level == "read":
-        return PolicyDecision(allowed=True, reason="read_class_allowed", requires_approval=False)
+
+def _receipt(
+    facts: PolicyFacts,
+    config: PermissionConfig,
+    *,
+    decision: str,
+    reason: str,
+    source: str,
+    profile: PermissionPolicyProfile | None = None,
+    matched_rule_id: str | None = None,
+    maintenance_scope_used: bool = False,
+) -> PermissionExplainReceipt:
+    return PermissionExplainReceipt(
+        decision=decision,
+        reason_code=reason,
+        matched_rule_id=matched_rule_id,
+        source_layer=source,
+        effective_preset=profile.preset if profile is not None else config.preset,
+        effective_profile_id=profile.id if profile is not None else None,
+        tool=facts.tool,
+        capability=facts.capability,
+        risk=facts.risk,
+        workspace_root=facts.workspace_root,
+        target_paths=facts.target_paths,
+        maintenance_scope_used=maintenance_scope_used,
+    )
+
+
+def _result(
+    facts: PolicyFacts,
+    config: PermissionConfig,
+    *,
+    decision: str,
+    reason: str,
+    source: str,
+    profile: PermissionPolicyProfile | None = None,
+    matched_rule_id: str | None = None,
+    maintenance_scope_used: bool = False,
+) -> PolicyDecision:
     return PolicyDecision(
-        allowed=False,
-        reason=f"{manifest.risk_level}_requires_approval",
-        requires_approval=True,
+        allowed=decision == "allow",
+        reason=reason,
+        requires_approval=decision == "ask",
+        receipt=_receipt(
+            facts,
+            config,
+            decision=decision,
+            reason=reason,
+            source=source,
+            profile=profile,
+            matched_rule_id=matched_rule_id,
+            maintenance_scope_used=maintenance_scope_used,
+        ),
+    )
+
+
+def _matches_values(patterns: tuple[str, ...], value: str | None) -> bool:
+    if not patterns:
+        return True
+    if value is None:
+        return False
+    normalized = value.casefold()
+    return any(fnmatchcase(normalized, pattern.casefold()) for pattern in patterns)
+
+
+def _rule_matches(rule: PermissionPolicyRule, facts: PolicyFacts) -> bool:
+    selector = rule.selector
+    if not rule.enabled:
+        return False
+    if not _matches_values(selector.tools, facts.tool):
+        return False
+    if not _matches_values(selector.capabilities, facts.capability):
+        return False
+    if selector.risks and facts.risk not in selector.risks:
+        return False
+    if not _matches_values(selector.surfaces, facts.surface):
+        return False
+    if not _matches_values(selector.agents, facts.agent):
+        return False
+    if not _matches_values(
+        selector.workspaces, facts.workspace or facts.workspace_root
+    ):
+        return False
+    if not _matches_values(selector.projects, facts.project):
+        return False
+    if not _matches_values(selector.channels, facts.channel):
+        return False
+    if not _matches_values(selector.command_patterns, facts.command):
+        return False
+    if selector.path_patterns:
+        if not facts.target_paths:
+            return False
+        if not any(
+            _matches_values(selector.path_patterns, target)
+            for target in facts.target_paths
+        ):
+            return False
+    return True
+
+
+def _profile_matches(profile: PermissionPolicyProfile, facts: PolicyFacts) -> bool:
+    return (
+        profile.enabled
+        and _matches_values(profile.surfaces, facts.surface)
+        and _matches_values(
+            profile.workspaces,
+            facts.workspace or facts.workspace_root,
+        )
+        and _matches_values(profile.projects, facts.project)
+        and _matches_values(profile.agents, facts.agent)
+        and _matches_values(profile.channels, facts.channel)
+    )
+
+
+def _within(path: str, root: str) -> bool:
+    try:
+        root_path = pathlib.Path(root).resolve()
+        target = pathlib.Path(path)
+        if not target.is_absolute():
+            target = root_path / target
+        target.resolve().relative_to(root_path)
+        return True
+    except (OSError, RuntimeError, ValueError):
+        return False
+
+
+_MAINTENANCE_CAPABILITIES = frozenset(
+    {
+        "atlas.config.write",
+        "atlas.install.write",
+        "atlas.self.modify",
+        "atlas.update",
+    }
+)
+
+
+def _maintenance_applies(
+    config: PermissionConfig,
+    facts: PolicyFacts,
+) -> bool:
+    return bool(
+        config.atlas_maintenance_enabled
+        and facts.explicit_user_maintenance
+        and facts.capability in _MAINTENANCE_CAPABILITIES
+        and facts.target_paths
+        and config.maintenance_roots
+        and all(
+            any(_within(target, root) for root in config.maintenance_roots)
+            for target in facts.target_paths
+        )
+    )
+
+
+def _default_decision(
+    preset: str,
+    facts: PolicyFacts,
+) -> tuple[str, str]:
+    if facts.risk == "read":
+        return "allow", "read_class_allowed"
+    if preset == "full_autonomy":
+        return "allow", "full_autonomy_allowed"
+    if preset == "smart":
+        if facts.smart_recommendation == "allow":
+            return "allow", "smart_advisor_allowed"
+        if facts.smart_recommendation == "deny":
+            return "deny", "smart_advisor_denied"
+        if facts.smart_recommendation == "unavailable":
+            return "deny", "smart_advisor_unavailable"
+        return "ask", "smart_review_required"
+    return "ask", "manual_approval_required"
+
+
+def decide(
+    manifest,
+    mode: str = "read_only",
+    *,
+    config: PermissionConfig | None = None,
+    facts: PolicyFacts | None = None,
+    scoped_allow_rule_id: str | None = None,
+) -> "PolicyDecision":
+    """Evaluate one action through the shared hardline/master/profile authority.
+
+    Precedence is immutable hardline, explicit master deny, master ceiling,
+    narrowing profile, scoped allow, then the effective default. A later stage
+    never overturns a deny.
+    """
+    legacy_default = config is None and facts is None and mode == "read_only"
+    if config is None:
+        if mode == "allow":
+            config = PermissionConfig(preset="full_autonomy")
+        else:
+            config = PermissionConfig()
+    permissions = getattr(manifest, "permissions", ())
+    capability = permissions[0] if permissions else None
+    facts = facts or PolicyFacts(
+        tool=manifest.name,
+        risk=manifest.risk_level,
+        capability=capability,
+    )
+
+    hardline = match_hardline(
+        command=facts.command,
+        target_paths=facts.target_paths,
+    )
+    if hardline is not None:
+        return _result(
+            facts,
+            config,
+            decision="deny",
+            reason=hardline.reason_code,
+            source="hardline",
+            matched_rule_id=hardline.rule_id,
+        )
+
+    if mode == "deny":
+        return _result(
+            facts,
+            config,
+            decision="deny",
+            reason="legacy_mode_denied",
+            source="master",
+        )
+
+    for rule in config.rules:
+        if rule.effect == "deny" and _rule_matches(rule, facts):
+            return _result(
+                facts,
+                config,
+                decision="deny",
+                reason="master_rule_denied",
+                source="master",
+                matched_rule_id=rule.id,
+            )
+
+    profile = next(
+        (
+            candidate
+            for candidate in config.profiles
+            if _profile_matches(candidate, facts)
+        ),
+        None,
+    )
+    workspace_only = config.workspace_only or bool(
+        profile is not None and profile.workspace_only
+    )
+    maintenance_used = _maintenance_applies(config, facts)
+    if workspace_only and facts.target_paths and not maintenance_used:
+        if not facts.workspace_root or not all(
+            _within(path, facts.workspace_root) for path in facts.target_paths
+        ):
+            return _result(
+                facts,
+                config,
+                decision="deny",
+                reason="path_outside_workspace",
+                source="profile" if profile is not None else "master",
+                profile=profile,
+            )
+
+    master_decision, master_reason = _default_decision(config.preset, facts)
+    master_rule: PermissionPolicyRule | None = None
+    for rule in config.rules:
+        if rule.effect != "deny" and _rule_matches(rule, facts):
+            master_rule = rule
+            master_decision = rule.effect
+            master_reason = (
+                "master_rule_allowed"
+                if rule.effect == "allow"
+                else "master_rule_approval_required"
+            )
+            break
+
+    decision = master_decision
+    reason = master_reason
+    source = "master" if master_rule is not None else "default"
+    matched_rule_id = master_rule.id if master_rule is not None else None
+
+    if profile is not None:
+        for rule in profile.rules:
+            if rule.effect == "deny" and _rule_matches(rule, facts):
+                return _result(
+                    facts,
+                    config,
+                    decision="deny",
+                    reason="profile_rule_denied",
+                    source="profile",
+                    profile=profile,
+                    matched_rule_id=rule.id,
+                    maintenance_scope_used=maintenance_used,
+                )
+        profile_decision, profile_reason = _default_decision(profile.preset, facts)
+        profile_rule: PermissionPolicyRule | None = None
+        for rule in profile.rules:
+            if rule.effect != "deny" and _rule_matches(rule, facts):
+                profile_rule = rule
+                profile_decision = rule.effect
+                profile_reason = (
+                    "profile_rule_allowed"
+                    if rule.effect == "allow"
+                    else "profile_rule_approval_required"
+                )
+                break
+        rank = {"deny": 0, "ask": 1, "allow": 2}
+        if rank[profile_decision] < rank[decision]:
+            decision = profile_decision
+            reason = profile_reason
+            source = "profile" if profile_rule is not None else "default"
+            matched_rule_id = profile_rule.id if profile_rule is not None else None
+
+    if decision == "ask" and scoped_allow_rule_id:
+        decision = "allow"
+        reason = "scoped_allow_matched"
+        source = "scoped_allow"
+        matched_rule_id = scoped_allow_rule_id
+
+    if legacy_default and decision == "ask" and reason == "manual_approval_required":
+        reason = f"{facts.risk}_requires_approval"
+
+    return _result(
+        facts,
+        config,
+        decision=decision,
+        reason=reason,
+        source=source,
+        profile=profile,
+        matched_rule_id=matched_rule_id,
+        maintenance_scope_used=maintenance_used,
     )
 
 

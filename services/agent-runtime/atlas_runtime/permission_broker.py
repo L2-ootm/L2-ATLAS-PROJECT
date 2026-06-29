@@ -37,6 +37,7 @@ phase. The nonce/expiry replay guard (SEC-02) and the PERM-05 fail-closed channe
 gate land in Plans 04/05; ``claim`` accepts the ``nonce`` param now and threads it
 through without enforcing a mismatch yet.
 """
+
 from __future__ import annotations
 
 import datetime
@@ -277,9 +278,7 @@ def list_outcomes(
     return [tool_service._row_to_approval(r) for r in cur.fetchall()]
 
 
-def get_outcome(
-    conn: sqlite3.Connection, approval_id: str
-) -> Optional[ToolApproval]:
+def get_outcome(conn: sqlite3.Connection, approval_id: str) -> Optional[ToolApproval]:
     """Read-only single terminal-outcome view for ``approval_id`` (AUD-02).
 
     Returns the terminal ToolApproval (executed | rejected | failed) for the id, or
@@ -458,6 +457,15 @@ def _consume_allow_once(
             )
 
 
+def consume_allow_once(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    rule_id: str,
+) -> None:
+    """Consume one exact allow-once rule before its authorized execution attempt."""
+    _consume_allow_once(conn, lock, rule_id)
+
+
 # ---------------------------------------------------------------------------
 # Authority-checked at-most-once claim (PERM-02 / PERM-06)
 # ---------------------------------------------------------------------------
@@ -530,7 +538,11 @@ def claim(
     # not match the caller's is rejected with NO row mutation (runs before the UPDATE).
     # Gating on ``approval.nonce is not None`` would let a NULL-nonce row (legacy / any
     # non-broker insert) accept ANY caller nonce — an opt-out-by-data-state hole (CR-02).
-    if approval.nonce is None or not str(approval.nonce).strip() or approval.nonce != nonce:
+    if (
+        approval.nonce is None
+        or not str(approval.nonce).strip()
+        or approval.nonce != nonce
+    ):
         raise StaleApprovalError(
             f"nonce mismatch for approval {approval_id!r} (replay/stale/missing)"
         )
@@ -702,14 +714,82 @@ def claim(
     return terminal
 
 
+def wait_for_terminal(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    *,
+    approval_id: str,
+    surface_session_id: str,
+    timeout_seconds: float,
+    heartbeat=None,
+    cancel_event=None,
+    poll_interval: float = 1.0,
+    monotonic=time.monotonic,
+    sleep=time.sleep,
+    require_open_channel: bool = False,
+) -> ToolApproval:
+    """Block an adapter in bounded intervals while the broker remains authoritative.
+
+    This is the non-visual Hermes-style adapter seam: surfaces may render however
+    they like, while silence, cancellation, channel loss, and timeout all resolve
+    through the same nonce-bound claim path. The interval is capped at one second
+    so heartbeat and cancellation checks remain responsive.
+    """
+    if timeout_seconds <= 0:
+        raise ValueError("timeout_seconds must be positive")
+    interval = min(1.0, max(0.01, float(poll_interval)))
+    started = monotonic()
+
+    def reject_with(cause: str) -> ToolApproval:
+        current = tool_service._load(conn, approval_id)
+        try:
+            terminal = claim(
+                conn,
+                lock,
+                approval_id=approval_id,
+                surface_session_id=surface_session_id,
+                decision="reject",
+                nonce=current.nonce or "",
+                reason=cause,
+            )
+        except AlreadyDecided:
+            terminal = tool_service._load(conn, approval_id)
+        # The immutable terminal row keeps decision="reject"; the specific adapter
+        # cause is preserved in its reason and the emitted approval audit event.
+        return terminal
+
+    while True:
+        current = tool_service._load(conn, approval_id)
+        if current.surface_session_id != surface_session_id:
+            raise WrongSessionError(
+                f"approval {approval_id!r} is not owned by {surface_session_id!r}"
+            )
+        if current.status in ("executed", "rejected", "failed"):
+            return current
+
+        if heartbeat is not None:
+            heartbeat()
+            current = tool_service._load(conn, approval_id)
+            if current.status in ("executed", "rejected", "failed"):
+                return current
+
+        if cancel_event is not None and cancel_event.is_set():
+            return reject_with("cancelled")
+        if require_open_channel and not has_open_channel(conn, surface_session_id):
+            return reject_with("channel_disconnected")
+
+        elapsed = monotonic() - started
+        if elapsed >= timeout_seconds:
+            return reject_with("timeout")
+        sleep(min(interval, timeout_seconds - elapsed))
+
+
 # ---------------------------------------------------------------------------
 # Restart reconciliation (PERM-06, fail-closed)
 # ---------------------------------------------------------------------------
 
 
-def reconcile_executing_orphans(
-    conn: sqlite3.Connection, lock: threading.Lock
-) -> int:
+def reconcile_executing_orphans(conn: sqlite3.Connection, lock: threading.Lock) -> int:
     """Fail-closed startup sweep: flip orphaned ``executing`` approvals to ``failed``.
 
     An ``executing`` row with a NULL ``result`` is an interrupted in-flight claim (the

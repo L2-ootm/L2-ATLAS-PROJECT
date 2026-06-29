@@ -1,4 +1,5 @@
 """Frozen contract tests for the Phase 10.7 permission policy schema."""
+
 from __future__ import annotations
 
 import json
@@ -185,4 +186,3 @@ def test_explain_receipt_is_json_stable_and_contains_no_prompt_field() -> None:
     assert payload["target_paths"] == ["C:/work/file"]
     assert "prompt" not in payload
     assert "chain_of_thought" not in payload
-

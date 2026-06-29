@@ -1,4 +1,5 @@
 """Versioned, locked owner of ``~/.atlas/config.yaml``."""
+
 from __future__ import annotations
 
 import os
@@ -58,10 +59,7 @@ def _field_from_validation(exc: ValidationError) -> str | None:
 
 def _validation_error(exc: ValidationError) -> ControlPlaneError:
     field = _field_from_validation(exc)
-    messages = " ".join(
-        str(error.get("msg", ""))
-        for error in exc.errors()
-    )
+    messages = " ".join(str(error.get("msg", "")) for error in exc.errors())
     if "may only narrow" in messages:
         return ControlPlaneError(
             "permission_profile_widening",
@@ -244,10 +242,7 @@ def replace_config(
     try:
         with file_lock(config_lock_path(config_path)):
             current = _load_unlocked(config_path)
-            if (
-                expected_revision is not None
-                and current.revision != expected_revision
-            ):
+            if expected_revision is not None and current.revision != expected_revision:
                 raise ControlPlaneError(
                     "config_revision_conflict",
                     (
