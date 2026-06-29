@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: in_progress
-last_updated: "2026-06-29T00:00:00.000Z"
+last_updated: "2026-06-29T12:00:00.000Z"
 last_activity: 2026-06-29
 progress:
   total_phases: 8
@@ -28,9 +28,13 @@ user-directed ATLAS self-update/configuration uses a protected, audited maintena
 Spec: `.planning/phases/10.7-web-agent-permission-queue-ux/10.7-SPEC.md`.
 Context: `.planning/phases/10.7-web-agent-permission-queue-ux/10.7-CONTEXT.md`.
 UI contract: `.planning/phases/10.7-web-agent-permission-queue-ux/10.7-UI-SPEC.md`.
+Research: `.planning/phases/10.7-web-agent-permission-queue-ux/10.7-RESEARCH.md`.
 Execution boundary: one Phase 10.7 with four gated waves (contract/policy → adapters → WebUI →
 conformance). Frontend migration waits for frozen Wave 1 contract fixtures.
-Next: technical research → plan → execute.
+Research confirmed that the existing surface-session service, permission broker, tool-service
+chokepoint, and revisioned config are sufficient; Hermes contributes guard semantics and adapter
+behavior, not a parallel runtime. Baselines and a seven-plan/four-wave decomposition are locked.
+Next: write and verify the seven executable plans, then execute Wave 1 test-first.
 Branch: `feat/go-tui-provider-mesh`.
 
 ## Prior Position — Go TUI + Provider Mesh (operator pivot, 2026-06-28)
