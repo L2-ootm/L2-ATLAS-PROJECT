@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "session_id": "fixture-web-session",
+  "terminal_outcome": "succeeded",
+  "events": [
+    {"session_id":"fixture-web-session","seq":0,"kind":"text","run_id":"fixture-run","occurred_at":"2026-06-29T00:00:00+00:00","payload_json":"{\"text\":\"Ready.\"}"},
+    {"session_id":"fixture-web-session","seq":1,"kind":"reasoning","run_id":"fixture-run","occurred_at":"2026-06-29T00:00:01+00:00","payload_json":"{\"summary\":\"Planning next action.\"}"},
+    {"session_id":"fixture-web-session","seq":2,"kind":"tool_call","run_id":"fixture-run","occurred_at":"2026-06-29T00:00:02+00:00","payload_json":"{\"call_id\":\"call-1\",\"tool\":\"read_file\",\"arguments\":{\"path\":\"README.md\"}}"},
+    {"session_id":"fixture-web-session","seq":3,"kind":"tool_result","run_id":"fixture-run","occurred_at":"2026-06-29T00:00:03+00:00","payload_json":"{\"call_id\":\"call-1\",\"status\":\"succeeded\",\"summary\":\"README loaded\"}"},
+    {"session_id":"fixture-web-session","seq":4,"kind":"task","run_id":"fixture-run","occurred_at":"2026-06-29T00:00:04+00:00","payload_json":"{\"task_id\":\"task-1\",\"status\":\"active\",\"label\":\"Inspect workspace\"}"},
+    {"session_id":"fixture-web-session","seq":5,"kind":"retry","run_id":"fixture-run","occurred_at":"2026-06-29T00:00:05+00:00","payload_json":"{\"attempt\":2,\"reason\":\"transient_provider_error\"}"},
+    {"session_id":"fixture-web-session","seq":6,"kind":"retrieval","run_id":"fixture-run","occurred_at":"2026-06-29T00:00:06+00:00","payload_json":"{\"source_id\":\"wiki:atlas\",\"title\":\"ATLAS architecture\",\"score\":0.92}"},
+    {"session_id":"fixture-web-session","seq":7,"kind":"approval","run_id":"fixture-run","occurred_at":"2026-06-29T00:00:07+00:00","payload_json":"{\"approval_id\":\"approval-1\",\"status\":\"approved\",\"scope\":\"once\"}"},
+    {"session_id":"fixture-web-session","seq":8,"kind":"error","run_id":"fixture-run","occurred_at":"2026-06-29T00:00:08+00:00","payload_json":"{\"code\":\"recoverable_tool_error\",\"message\":\"Tool recovered after retry\"}"},
+    {"session_id":"fixture-web-session","seq":9,"kind":"completion","run_id":"fixture-run","occurred_at":"2026-06-29T00:00:09+00:00","payload_json":"{\"status\":\"succeeded\",\"summary\":\"Fixture complete\",\"stop_reason\":\"completed\"}"}
+  ]
+}

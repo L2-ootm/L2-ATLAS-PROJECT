@@ -58,6 +58,17 @@ def _field_from_validation(exc: ValidationError) -> str | None:
 
 def _validation_error(exc: ValidationError) -> ControlPlaneError:
     field = _field_from_validation(exc)
+    messages = " ".join(
+        str(error.get("msg", ""))
+        for error in exc.errors()
+    )
+    if "may only narrow" in messages:
+        return ControlPlaneError(
+            "permission_profile_widening",
+            "permission profile would widen the master safety ceiling",
+            "make the profile preset and allow rules equal to or stricter than the master policy",
+            field=field or "permission.profiles",
+        )
     label = f" for {field}" if field else ""
     return ControlPlaneError(
         "config_invalid",

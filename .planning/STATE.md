@@ -35,7 +35,9 @@ Research confirmed that the existing surface-session service, permission broker,
 chokepoint, and revisioned config are sufficient; Hermes contributes guard semantics and adapter
 behavior, not a parallel runtime. Baselines and a seven-plan/four-wave decomposition are locked.
 Planning is complete: seven plans cover all WEB-01–WEB-06 requirements and all 25 locked
-decisions; the decision-coverage gate passed 25/25. Next: execute Wave 1 test-first.
+decisions; the decision-coverage gate passed 25/25. Plan 10.7-01 is complete: frozen policy,
+profile, explain-receipt, event, and matrix contracts are green (22 core + 55 runtime targeted
+tests). Phase progress: 1/7 plans. Next: implement the deterministic policy/hardline authority.
 Branch: `feat/go-tui-provider-mesh`.
 
 ## Prior Position — Go TUI + Provider Mesh (operator pivot, 2026-06-28)

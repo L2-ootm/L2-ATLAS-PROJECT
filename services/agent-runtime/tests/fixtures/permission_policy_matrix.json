@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "manual-read",
+      "config": {"preset":"manual"},
+      "facts": {"tool":"read_file","capability":"filesystem.read","risk":"read"},
+      "expected": {"decision":"allow","reason_code":"read_class_allowed","source_layer":"default"}
+    },
+    {
+      "id": "manual-write",
+      "config": {"preset":"manual"},
+      "facts": {"tool":"write_file","capability":"filesystem.write","risk":"write"},
+      "expected": {"decision":"ask","reason_code":"manual_approval_required","source_layer":"default"}
+    },
+    {
+      "id": "smart-shell",
+      "config": {"preset":"smart"},
+      "facts": {"tool":"shell","capability":"command.execute","risk":"shell","command":"git status"},
+      "expected": {"decision":"ask","reason_code":"smart_review_required","source_layer":"default"}
+    },
+    {
+      "id": "full-autonomy-write",
+      "config": {"preset":"full_autonomy"},
+      "facts": {"tool":"write_file","capability":"filesystem.write","risk":"write","target_paths":["docs/note.md"]},
+      "expected": {"decision":"allow","reason_code":"full_autonomy_allowed","source_layer":"default"}
+    },
+    {
+      "id": "allow-all-except-shell",
+      "config": {"preset":"full_autonomy","rules":[{"id":"deny-shell","effect":"deny","selector":{"risks":["shell"]}}]},
+      "facts": {"tool":"shell","capability":"command.execute","risk":"shell","command":"git status"},
+      "expected": {"decision":"deny","reason_code":"master_rule_denied","matched_rule_id":"deny-shell","source_layer":"master"}
+    },
+    {
+      "id": "profile-narrows-autonomy",
+      "config": {"preset":"full_autonomy","profiles":[{"id":"web-manual","preset":"manual","surfaces":["webui"]}]},
+      "facts": {"tool":"write_file","capability":"filesystem.write","risk":"write","surface":"webui"},
+      "expected": {"decision":"ask","reason_code":"manual_approval_required","source_layer":"default","effective_profile_id":"web-manual"}
+    },
+    {
+      "id": "workspace-escape",
+      "config": {"preset":"full_autonomy","workspace_only":true},
+      "facts": {"tool":"write_file","capability":"filesystem.write","risk":"write","workspace_root":"C:/work","target_paths":["C:/other/file.txt"]},
+      "expected": {"decision":"deny","reason_code":"path_outside_workspace","source_layer":"master"}
+    },
+    {
+      "id": "hardline-block-device",
+      "config": {"preset":"full_autonomy"},
+      "facts": {"tool":"shell","capability":"command.execute","risk":"shell","command":"format C: /Q"},
+      "expected": {"decision":"deny","reason_code":"hardline_block_device","source_layer":"hardline"}
+    },
+    {
+      "id": "explicit-maintenance",
+      "config": {"preset":"full_autonomy","workspace_only":true,"atlas_maintenance_enabled":true,"maintenance_roots":["C:/atlas"]},
+      "facts": {"tool":"write_file","capability":"atlas.config.write","risk":"write","workspace_root":"C:/work","target_paths":["C:/atlas/config.yaml"],"explicit_user_maintenance":true},
+      "expected": {"decision":"allow","reason_code":"full_autonomy_allowed","source_layer":"default","maintenance_scope_used":true}
+    }
+  ]
+}
