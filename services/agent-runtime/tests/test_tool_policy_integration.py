@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import sqlite3
+import threading
+from pathlib import Path
 
 from atlas_core.schemas.control_plane import PermissionConfig
 from atlas_core.schemas.tool import ToolManifest, ToolResult
@@ -83,6 +86,50 @@ def test_pre_migration_approval_row_loads_with_nullable_receipt(db) -> None:
     db.commit()
 
     assert tool_service.get_approval(db, legacy.id).policy_receipt is None
+
+
+def test_runtime_remains_safe_while_existing_db_is_pending_migration_0018(
+    monkeypatch,
+) -> None:
+    from atlas_runtime import db as db_service
+    from atlas_runtime.tools import registry
+
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    migrations = sorted(
+        path for path in db_service.MIGRATIONS_DIR.glob("*.sql") if path.name < "0018"
+    )
+    for path in migrations:
+        conn.executescript(Path(path).read_text(encoding="utf-8"))
+
+    manifest = ToolManifest(
+        name="legacy-writer",
+        risk_level="write",
+        permissions=["filesystem.write"],
+    )
+
+    def adapter(args, ctx):  # noqa: ANN001
+        return ToolResult(ok=True, tool_name="legacy-writer", output="done")
+
+    class _Registry:
+        def resolve(self, name):  # noqa: ANN001
+            return manifest, adapter
+
+    monkeypatch.setattr(registry, "get_registry", lambda: _Registry())
+    approval = tool_service.invoke(
+        conn,
+        threading.Lock(),
+        tool_name="legacy-writer",
+        args={"path": "note.md"},
+        ctx={"permission_config": PermissionConfig(preset="manual")},
+    )
+
+    assert approval.policy_receipt is not None
+    assert tool_service.get_approval(conn, approval.id).policy_receipt is None
+    audit = conn.execute(
+        "SELECT data FROM audit_events WHERE event_type='approval' ORDER BY rowid DESC LIMIT 1"
+    ).fetchone()[0]
+    assert '"policy_receipt"' in audit
+    conn.close()
 
 
 def test_full_autonomy_executes_non_hardline_action_inline(

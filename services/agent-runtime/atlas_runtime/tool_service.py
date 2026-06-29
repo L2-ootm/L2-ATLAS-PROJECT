@@ -36,15 +36,16 @@ from atlas_runtime import mission_service, policy
 from atlas_runtime.audit_service import _redact, emit
 from atlas_runtime.tools import registry
 
-_COLS = (
+_BASE_COLS = (
     "id, tool_name, risk_level, args, summary, status, reason, result, "
     "run_id, requested_at, decided_at, "
     # Phase 10.5 surface-scoped broker columns (migration 0017). MUST stay in the
     # SAME order as the ToolApproval model fields and the invoke() INSERT below
     # (Pitfall 2: _row_to_approval zips this list into kwargs by position).
     "surface_session_id, surface_kind, workspace_root, expiry_at, decision, "
-    "nonce, args_normalized, policy_receipt"
+    "nonce, args_normalized"
 )
+_COLS = f"{_BASE_COLS}, policy_receipt"
 
 
 class ToolApprovalError(ValueError):
@@ -61,9 +62,24 @@ def _row_to_approval(row: sqlite3.Row | tuple) -> ToolApproval:
     return ToolApproval(**dict(zip(keys, row)))
 
 
+def _has_policy_receipt_column(conn: sqlite3.Connection) -> bool:
+    """Compatibility gate while an existing DB is pending additive migration 0018."""
+    return any(
+        row[1] == "policy_receipt"
+        for row in conn.execute("PRAGMA table_info(tool_approvals)").fetchall()
+    )
+
+
+def _select_cols(conn: sqlite3.Connection) -> str:
+    if _has_policy_receipt_column(conn):
+        return _COLS
+    return f"{_BASE_COLS}, NULL AS policy_receipt"
+
+
 def _load(conn: sqlite3.Connection, approval_id: str) -> ToolApproval:
     cur = conn.execute(
-        f"SELECT {_COLS} FROM tool_approvals WHERE id = ?", (approval_id,)
+        f"SELECT {_select_cols(conn)} FROM tool_approvals WHERE id = ?",
+        (approval_id,),
     )
     row = cur.fetchone()
     if row is None:
@@ -408,18 +424,32 @@ def invoke(
         )
         with lock:
             with conn:
-                conn.execute(
-                    "INSERT INTO tool_approvals "
-                    "(id, tool_name, risk_level, args, summary, status, reason, result, "
-                    " run_id, requested_at, decided_at, "
-                    " surface_session_id, surface_kind, workspace_root, expiry_at, "
-                    " decision, nonce, args_normalized, policy_receipt) "
-                    "VALUES (:id, :tool_name, :risk_level, :args, :summary, :status, :reason, "
-                    ":result, :run_id, :requested_at, :decided_at, "
-                    ":surface_session_id, :surface_kind, :workspace_root, :expiry_at, "
-                    ":decision, :nonce, :args_normalized, :policy_receipt)",
-                    approval.model_dump(),
-                )
+                if _has_policy_receipt_column(conn):
+                    conn.execute(
+                        "INSERT INTO tool_approvals "
+                        "(id, tool_name, risk_level, args, summary, status, reason, result, "
+                        " run_id, requested_at, decided_at, "
+                        " surface_session_id, surface_kind, workspace_root, expiry_at, "
+                        " decision, nonce, args_normalized, policy_receipt) "
+                        "VALUES (:id, :tool_name, :risk_level, :args, :summary, :status, "
+                        ":reason, :result, :run_id, :requested_at, :decided_at, "
+                        ":surface_session_id, :surface_kind, :workspace_root, :expiry_at, "
+                        ":decision, :nonce, :args_normalized, :policy_receipt)",
+                        approval.model_dump(),
+                    )
+                else:
+                    conn.execute(
+                        "INSERT INTO tool_approvals "
+                        "(id, tool_name, risk_level, args, summary, status, reason, result, "
+                        " run_id, requested_at, decided_at, "
+                        " surface_session_id, surface_kind, workspace_root, expiry_at, "
+                        " decision, nonce, args_normalized) "
+                        "VALUES (:id, :tool_name, :risk_level, :args, :summary, :status, "
+                        ":reason, :result, :run_id, :requested_at, :decided_at, "
+                        ":surface_session_id, :surface_kind, :workspace_root, :expiry_at, "
+                        ":decision, :nonce, :args_normalized)",
+                        approval.model_dump(),
+                    )
         emit(
             conn,
             lock,
@@ -510,11 +540,12 @@ def list_approvals(
     """List tool approvals, newest first. status=None returns every row."""
     if status is None:
         cur = conn.execute(
-            f"SELECT {_COLS} FROM tool_approvals ORDER BY requested_at DESC"
+            f"SELECT {_select_cols(conn)} FROM tool_approvals ORDER BY requested_at DESC"
         )
     else:
         cur = conn.execute(
-            f"SELECT {_COLS} FROM tool_approvals WHERE status = ? ORDER BY requested_at DESC",
+            f"SELECT {_select_cols(conn)} FROM tool_approvals "
+            "WHERE status = ? ORDER BY requested_at DESC",
             (status,),
         )
     return [_row_to_approval(r) for r in cur.fetchall()]
