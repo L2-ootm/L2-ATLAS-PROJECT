@@ -112,6 +112,7 @@ app.add_typer(discord_app, name="discord")
 from atlas_runtime.cli.tools import tools_app
 app.add_typer(tools_app, name="tools")
 
+import atlas_runtime.cli.go_tui as _go_tui_mod
 import atlas_runtime.tui.app as _tui_app_mod
 from atlas_runtime.cli.tui import legacy_foundation_tui
 
@@ -124,14 +125,20 @@ _TUI_OPTION_GLOBAL = typer.Option(
 
 
 @app.callback(invoke_without_command=True)
-def _root(
-    ctx: typer.Context,
-    project: Optional[str] = _TUI_OPTION_PROJECT,
-    global_: bool = _TUI_OPTION_GLOBAL,
-) -> None:
+def _root(ctx: typer.Context) -> None:
     """ATLAS — bare invocation launches the terminal workbench."""
     if ctx.invoked_subcommand is None:
-        _tui_app_mod.run_workbench(project=project, global_=global_)
+        _launch_go_tui()
+
+
+def _launch_go_tui(gateway: Optional[str] = None) -> None:
+    try:
+        return_code = _go_tui_mod.launch(gateway)
+    except _go_tui_mod.TUILaunchError as exc:
+        typer.echo(f"terminal UI unavailable: {exc}", err=True)
+        raise typer.Exit(1)
+    if return_code:
+        raise typer.Exit(return_code)
 
 
 @app.command("version", help="Print the ATLAS runtime version.")
@@ -152,6 +159,21 @@ def _version_cmd(
 
 @app.command("tui", help="Launch the ATLAS terminal workbench.")
 def _tui_cmd(
+    gateway: Optional[str] = typer.Option(
+        None,
+        "--gateway",
+        help="ATLAS gateway base URL (default: ATLAS_GATEWAY_URL or loopback :8484).",
+    ),
+) -> None:
+    _launch_go_tui(gateway)
+
+
+@app.command(
+    "dev-rich-tui",
+    hidden=True,
+    help="Run the retired Python Rich workbench (temporary rollback through Phase 10.8).",
+)
+def _dev_rich_tui_cmd(
     project: Optional[str] = _TUI_OPTION_PROJECT,
     global_: bool = _TUI_OPTION_GLOBAL,
 ) -> None:

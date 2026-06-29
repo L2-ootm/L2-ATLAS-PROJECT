@@ -1,4 +1,4 @@
-# Go build artifacts
+# Go build artifacts (the source-checkout fallback resolved by the P8 launcher)
 /atlas-tui
 /atlas-tui.exe
 *.exe

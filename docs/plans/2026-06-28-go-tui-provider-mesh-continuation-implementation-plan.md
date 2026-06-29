@@ -46,16 +46,16 @@ audited, bounded by the gateway timeout, and secrets never enter argv/log/audit 
 - Modify: `.planning/ROADMAP.md`
 - Modify: `.planning/STATE.md`
 
-- [ ] Record the completed Hermes seam spike:
+- [x] Record the completed Hermes seam spike:
   `main=routed`, `curator=routed`, `auxiliary.<task>=routed`,
   `background-review=inherited`.
-- [ ] Correct the snapshot claim: `RunContractSnapshot` currently freezes prompt/tool/context,
+- [x] Correct the snapshot claim: `RunContractSnapshot` currently freezes prompt/tool/context,
   not provider/model bindings.
-- [ ] Add PM-07 for shared CLI/TUI/WebUI provider/model surfaces and update v1.2 dependencies and
+- [x] Add PM-07 for shared CLI/TUI/WebUI provider/model surfaces and update v1.2 dependencies and
   requirements.
-- [ ] Record the safe P8 sequencing: Go becomes default; Rich remains a hidden rollback until
+- [x] Record the safe P8 sequencing: Go becomes default; Rich remains a hidden rollback until
   10.8 rather than being deleted early.
-- [ ] Update STATE after this meaningful planning step.
+- [x] Update STATE after this meaningful planning step.
 
 ## Task 2: P6 rich transcript renderer (TDD)
 
@@ -67,7 +67,7 @@ audited, bounded by the gateway timeout, and secrets never enter argv/log/audit 
 - Modify: `services/atlas-tui/internal/tui/theme.go`
 - Modify: `services/atlas-tui/README.md`
 
-- [ ] Write failing table tests for audit rendering:
+- [x] Write failing table tests for audit rendering:
 
 ```go
 func TestRenderEventKinds(t *testing.T) {
@@ -82,17 +82,17 @@ func TestRenderEventKinds(t *testing.T) {
 }
 ```
 
-- [ ] Run `go test ./internal/tui -run TestRenderEventKinds -v` and confirm RED because the
+- [x] Run `go test ./internal/tui -run TestRenderEventKinds -v` and confirm RED because the
   specialized renderer does not exist.
-- [ ] Implement a small `auditFrame` decoder and deterministic renderers. Never render arbitrary
+- [x] Implement a small `auditFrame` decoder and deterministic renderers. Never render arbitrary
   secret-bearing maps wholesale; use an allowlist of display fields and fall back to event type +
   tool name.
-- [ ] Add failing render tests that force ASCII and Unicode glyph sets, strip ANSI, render at
+- [x] Add failing render tests that force ASCII and Unicode glyph sets, strip ANSI, render at
   80x24 and 140x40, and assert no replacement rune (`�`) or out-of-contract donor branding.
-- [ ] Add a test-only-safe glyph selector (`glyphsFor(ascii bool)`) while leaving environment
-  detection in production.
-- [ ] Run `go test ./...`, `go vet ./...`, `go build`, record binary size, and keep it below 15 MiB.
-- [ ] Commit P6 atomically and update STATE.
+- [x] Force glyph selection safely through the documented test environment overrides while leaving
+  automatic environment detection in production.
+- [x] Run `go test ./...`, `go vet ./...`, `go build`, record binary size, and keep it below 15 MiB.
+- [x] Commit P6 atomically and update STATE.
 
 ## Task 3: Secret-safe non-interactive auth contract (TDD)
 
@@ -102,7 +102,7 @@ func TestRenderEventKinds(t *testing.T) {
 - Modify: `native/atlas-core-rs/crates/atlas-gateway/src/lib.rs`
 - Modify: `native/atlas-core-rs/crates/atlas-gateway/tests/api.rs`
 
-- [ ] Add a failing Python CLI test:
+- [x] Add a failing Python CLI test:
 
 ```python
 def test_auth_add_stdin_reads_secret_without_prompt_or_argv(...):
@@ -117,17 +117,17 @@ def test_auth_add_stdin_reads_secret_without_prompt_or_argv(...):
     assert auth_service.resolve_secret("openrouter") == secret
 ```
 
-- [ ] Run the focused test and confirm RED because `--stdin` is absent.
-- [ ] Implement `--stdin` using `sys.stdin.readline()`; keep the default hidden prompt. Do not add
+- [x] Run the focused test and confirm RED because `--stdin` is absent.
+- [x] Implement `--stdin` using `sys.stdin.readline()`; keep the default hidden prompt. Do not add
   an API-key argv option. Restrict `--source` to stable values and keep audit output metadata-only.
-- [ ] Add a failing Rust route test for `POST /v1/auth/providers` whose stub asserts the secret is
+- [x] Add a failing Rust route test for `POST /v1/auth/providers` whose stub asserts the secret is
   present on stdin and absent from `sys.argv`, then emits masked JSON.
-- [ ] Run the focused cargo test and confirm RED because the route/helper is absent.
-- [ ] Implement `dispatch_atlas_raw_with_stdin` with piped stdin, timeout, killed-on-drop child,
+- [x] Run the focused cargo test and confirm RED because the route/helper is absent.
+- [x] Implement `dispatch_atlas_raw_with_stdin` with piped stdin, timeout, killed-on-drop child,
   bounded secret length, and structured error parsing. Dispatch:
   `atlas auth add <provider> --stdin --source gateway [--base-url ...]`.
-- [ ] Run focused Python and Rust tests, then the full agent-runtime and gateway suites.
-- [ ] Commit the auth/gateway contract atomically and update STATE.
+- [x] Run focused Python and Rust tests, then the full agent-runtime and gateway suites.
+- [x] Commit the auth/gateway contract atomically and update STATE.
 
 ## Task 4: P7 Go control-plane client (TDD)
 
@@ -136,12 +136,12 @@ def test_auth_add_stdin_reads_secret_without_prompt_or_argv(...):
 - Modify: `services/atlas-tui/internal/client/client.go`
 - Modify: `services/atlas-tui/internal/client/client_test.go`
 
-- [ ] Write failing httptest cases for:
+- [x] Write failing httptest cases for:
   `GET /v1/config`, `PATCH /v1/config`, `GET /v1/models`,
   `POST /v1/auth/providers`, `POST /v1/auth/codex/import`,
   and `POST /v1/missions/{id}/archive`.
-- [ ] Confirm RED for missing methods.
-- [ ] Implement only typed HTTP adapters:
+- [x] Confirm RED for missing methods.
+- [x] Implement only typed HTTP adapters:
 
 ```go
 func (c *Client) Config(ctx context.Context) (ConfigSnapshot, error)
@@ -152,9 +152,9 @@ func (c *Client) ImportCodex(ctx context.Context) (CodexImportResult, error)
 func (c *Client) ArchiveMission(ctx context.Context, missionID string) error
 ```
 
-- [ ] Keep validation and routing policy out of Go. Decode structured gateway errors into an error
+- [x] Keep validation and routing policy out of Go. Decode structured gateway errors into an error
   type with status/code/remediation for display.
-- [ ] Run `go test ./internal/client -v`, then `go test ./...` and `go vet ./...`.
+- [x] Run `go test ./internal/client -v`, then `go test ./...` and `go vet ./...`.
 
 ## Task 5: P7 provider/settings pane and probe (TDD)
 
@@ -165,23 +165,23 @@ func (c *Client) ArchiveMission(ctx context.Context, missionID string) error
 - Modify: `services/atlas-tui/internal/tui/theme.go`
 - Modify: `services/atlas-tui/README.md`
 
-- [ ] Write failing state-machine tests for opening settings (`s`), selecting all four modes,
+- [x] Write failing state-machine tests for opening settings (`s`), selecting all four modes,
   mode-specific required fields, masked API-key input, freellmapi privacy warning, optimistic config
   save, conflict remediation, and escape without mutation.
-- [ ] Confirm RED before implementation.
-- [ ] Implement the leanest form using the already-present Bubbles module (`textinput` adds no new
+- [x] Confirm RED before implementation.
+- [x] Implement the leanest form using the already-present Bubbles module (`textinput` adds no new
   dependency). Current-provider fields only:
   provider, model, base URL, optional API key. Named profiles and per-function bindings remain PM-04.
-- [ ] For `oauth_import`, invoke Codex import before config patch. For `api_key`, store the secret
+- [x] For `oauth_import`, invoke Codex import before config patch. For `api_key`, store the secret
   over the stdin-backed auth route and patch only references/non-secret fields. For
   `claude_code`/`freellmapi`, patch the current provider fields only.
-- [ ] Write failing tests for `ctrl+t` probe: create a clearly titled probe mission, start a native
+- [x] Write failing tests for `ctrl+t` probe: create a clearly titled probe mission, start a native
   run, stream it, report live/mock/failure from audit frames, then archive the terminal mission.
-- [ ] Implement the probe using existing mission/run/SSE/archive endpoints. Do not add a second
+- [x] Implement the probe using existing mission/run/SSE/archive endpoints. Do not add a second
   probe engine in Go; PM-05 will later centralize `POST /v1/provider/test`.
-- [ ] Add 80x24 and 140x40 settings render tests in ASCII and Unicode modes.
-- [ ] Run all Go tests/vet/build, record binary size, and perform one local mock-mode probe.
-- [ ] Commit P7 atomically and update STATE.
+- [x] Add 80x24 and 140x40 settings render tests in ASCII and Unicode modes.
+- [x] Run all Go tests/vet/build, record binary size, and perform one local mock-mode probe.
+- [x] Commit P7 atomically and update STATE.
 
 ## Task 6: P8 launcher, installer, and rollback (TDD)
 
@@ -195,20 +195,20 @@ func (c *Client) ArchiveMission(ctx context.Context, missionID string) error
 - Modify: `services/atlas-tui/.gitignore`
 - Modify: `services/atlas-tui/README.md`
 
-- [ ] Write failing launcher tests for resolution order:
+- [x] Write failing launcher tests for resolution order:
   `ATLAS_TUI_BIN` → `ATLAS_HOME/bin/atlas-tui[.exe]` → source-checkout build output → PATH.
-- [ ] Write failing tests that bare `atlas` and `atlas tui` call the Go launcher, while a hidden
+- [x] Write failing tests that bare `atlas` and `atlas tui` call the Go launcher, while a hidden
   `dev-rich-tui` command still calls `run_workbench` as a dated rollback.
-- [ ] Confirm RED.
-- [ ] Implement a subprocess launcher with argv arrays only, inherited TTY, forwarded gateway URL,
+- [x] Confirm RED.
+- [x] Implement a subprocess launcher with argv arrays only, inherited TTY, forwarded gateway URL,
   clean missing-binary remediation, and no shell.
-- [ ] Update PowerShell/bash installers to build Go into `ATLAS_HOME/bin`; replace the obsolete
+- [x] Update PowerShell/bash installers to build Go into `ATLAS_HOME/bin`; replace the obsolete
   foundation npm TUI build step. Gracefully skip only when Go is absent and print the exact
   remediation.
-- [ ] Verify PowerShell parses, `bash -n scripts/setup.sh`, Python launcher tests, Go tests/vet/build,
+- [x] Verify PowerShell parses, `bash -n scripts/setup.sh`, Python launcher tests, Go tests/vet/build,
   and a real TTY launch against the local gateway.
-- [ ] Measure cold launcher time, idle memory, and binary size; record the baseline in README/STATE.
-- [ ] Commit P8 atomically and update STATE. Do not delete the Rich implementation until 10.8.
+- [x] Measure cold launcher time, idle memory, and binary size; record the baseline in README/STATE.
+- [x] Commit P8 atomically and update STATE. Do not delete the Rich implementation until 10.8.
 
 ## Task 7: Return to the active milestone
 

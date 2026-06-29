@@ -88,7 +88,7 @@ Codex spike: `docs/plans/2026-06-28-codex-oauth-spike-findings.md`.
   Live-verified: `atlas doctor` → `claude_code: ok` + `provider: live (freellmapi)` in an isolated
   ATLAS_HOME. Full agent-runtime suite 643 passed / 1 skipped.
 
-**ACTIVE EXECUTION — P8 next:**
+**P6–P8 OPERATOR PIVOT COMPLETE — return to Phase 10.7 next:**
 - **P6 DONE (2026-06-28)** — extracted a safe audit-event renderer for assistant text, reasoning,
   tool calls/results, diffs, retrieval, and failures; unknown event payload maps are never dumped.
   Added forced-ASCII custom borders, responsive stacked panels/header/footer under 120 columns, and
@@ -113,8 +113,23 @@ Codex spike: `docs/plans/2026-06-28-codex-oauth-spike-findings.md`.
     and archives the ephemeral mission on both success and start failure.
   - Fresh Go verification: `go test ./...`, `go vet ./...`, and `go build ./...` all pass;
     settings render gates cover 80x24 ASCII and 140x40 Unicode without secret disclosure.
-- **P8** `atlas tui` launches the Go binary; the Rich workbench becomes a hidden rollback until
-  Phase 10.8 makes the final cross-surface retirement decision.
+- **P8 DONE (2026-06-28)** — bare `atlas` and `atlas tui` resolve and launch the Go binary via
+  `ATLAS_TUI_BIN` → `$ATLAS_HOME/bin` → source-checkout output → PATH. Dispatch is argv-only with
+  inherited TTY and an explicit gateway URL; missing binaries return exact installer remediation.
+  PowerShell/POSIX installers now build stripped Go output into `$ATLAS_HOME/bin` and no longer
+  build the obsolete foundation npm TUI. The Python Rich workbench remains hidden behind
+  `atlas dev-rich-tui` until the Phase 10.8 retirement gate; foundation fallback remains separately
+  hidden and unedited under D-001.
+  - Verification: focused launcher/installer/entry tests **10 passed**; PowerShell parser and
+    Git Bash `bash -n scripts/setup.sh` passed; a hidden real-process launch stayed alive against
+    a healthy local Rust gateway, which was then stopped back to its prior offline state.
+    Final suites: agent-runtime **651 passed / 1 skipped**; gateway **89 API + 3 contract passed**;
+    Go `test ./...`, `vet ./...`, and `build ./...` all passed.
+  - Runtime budget: stripped Windows/amd64 binary **8,198,144 bytes (7.82 MiB)**; cold launcher
+    observed the Go child in **839 ms**; settled working set was **63.17 MiB combined**
+    (Python 47.89 + Go 15.28). No dependency added.
+  - Real mock probe UAT completed through create → execute → SSE → archive: the audit stream
+    contained `tool_name=mock` and terminal `status=succeeded`; the ephemeral mission was archived.
 
 Continuation plan:
 `docs/plans/2026-06-28-go-tui-provider-mesh-continuation-implementation-plan.md`.
