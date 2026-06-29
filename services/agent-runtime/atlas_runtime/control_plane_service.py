@@ -40,6 +40,16 @@ _SETTING_METADATA: tuple[tuple[str, bool], ...] = (
     ("context.enable_semantic", False),
     ("context.enable_skills", False),
     ("permission.mode", False),
+    ("permission.preset", False),
+    ("permission.rules", False),
+    ("permission.profiles", False),
+    ("permission.workspace_only", False),
+    ("permission.atlas_maintenance_enabled", False),
+    ("permission.maintenance_roots", False),
+    ("permission.approval_ttl_seconds", False),
+    ("permission.decision_timeout_seconds", False),
+    ("permission.heartbeat_interval_seconds", False),
+    ("permission.fail_closed_on_disconnect", False),
     ("modules.wiki", False),
     ("modules.graph", False),
     ("modules.cashflow", False),
@@ -156,11 +166,30 @@ def patch(
 ) -> ControlPlaneSnapshot:
     """Commit one optimistic config patch, then emit its masked audit event."""
     before = config_service.load_config(path)
-    updated = config_service.patch_config(
-        expected_revision=expected_revision,
-        changes=changes,
-        path=path,
-    )
+    try:
+        updated = config_service.patch_config(
+            expected_revision=expected_revision,
+            changes=changes,
+            path=path,
+        )
+    except ControlPlaneError as exc:
+        if exc.code == "permission_profile_widening":
+            run_id = mission_service.ensure_operator_run(conn, audit_lock)
+            audit_service.emit(
+                conn,
+                audit_lock,
+                run_id=run_id,
+                event_type="failure",
+                session_id=source_session_id,
+                data={
+                    "reason": exc.code,
+                    "changed_paths": sorted(changes),
+                    "source_surface": source_surface or "service",
+                    "source_session_id": source_session_id,
+                },
+                policy_result=exc.code,
+            )
+        raise
     changed_paths = sorted(changes)
     before_values = {
         changed_path: config_service.get_value(before, changed_path)

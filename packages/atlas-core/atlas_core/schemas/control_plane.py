@@ -5,7 +5,7 @@ import json
 import re
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from atlas_core.schemas.agent_contract import PermissionMode
 
@@ -71,13 +71,155 @@ class ContextConfig(_FrozenControlPlaneModel):
     enable_skills: bool = True
 
 
+PermissionPreset = Literal["manual", "smart", "full_autonomy"]
+PermissionEffect = Literal["allow", "ask", "deny"]
+PermissionDecision = Literal["allow", "ask", "deny"]
+PermissionRuleScope = Literal["once", "session", "durable"]
+PermissionRisk = Literal["read", "write", "shell"]
+PermissionSourceLayer = Literal[
+    "hardline",
+    "master",
+    "profile",
+    "scoped_allow",
+    "default",
+]
+
+_POLICY_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._:-]{0,95}$")
+_PRESET_RANK: dict[str, int] = {
+    "manual": 0,
+    "smart": 1,
+    "full_autonomy": 2,
+}
+
+
+class PermissionRuleSelector(_FrozenControlPlaneModel):
+    """Typed, data-only facts used by one ordered permission rule."""
+
+    tools: tuple[str, ...] = ()
+    capabilities: tuple[str, ...] = ()
+    risks: tuple[PermissionRisk, ...] = ()
+    command_patterns: tuple[str, ...] = ()
+    path_patterns: tuple[str, ...] = ()
+    surfaces: tuple[str, ...] = ()
+    agents: tuple[str, ...] = ()
+    workspaces: tuple[str, ...] = ()
+    projects: tuple[str, ...] = ()
+    channels: tuple[str, ...] = ()
+
+
+class PermissionPolicyRule(_FrozenControlPlaneModel):
+    """One deterministic master/profile policy rule."""
+
+    id: str
+    effect: PermissionEffect
+    selector: PermissionRuleSelector = Field(default_factory=PermissionRuleSelector)
+    scope: PermissionRuleScope = "durable"
+    description: str = ""
+    enabled: bool = True
+
+    @field_validator("id")
+    @classmethod
+    def validate_rule_id(cls, value: str) -> str:
+        if not _POLICY_ID_RE.fullmatch(value):
+            raise ValueError(
+                "policy rule id must be lowercase and contain only letters, "
+                "digits, dot, underscore, colon, or hyphen"
+            )
+        return value
+
+
+class PermissionPolicyProfile(_FrozenControlPlaneModel):
+    """A context selector whose policy may only narrow the master ceiling."""
+
+    id: str
+    preset: PermissionPreset = "manual"
+    surfaces: tuple[str, ...] = ()
+    workspaces: tuple[str, ...] = ()
+    projects: tuple[str, ...] = ()
+    agents: tuple[str, ...] = ()
+    channels: tuple[str, ...] = ()
+    rules: tuple[PermissionPolicyRule, ...] = ()
+    workspace_only: bool | None = None
+    enabled: bool = True
+
+    @field_validator("id")
+    @classmethod
+    def validate_profile_id(cls, value: str) -> str:
+        if not _POLICY_ID_RE.fullmatch(value):
+            raise ValueError(
+                "policy profile id must be lowercase and contain only letters, "
+                "digits, dot, underscore, colon, or hyphen"
+            )
+        return value
+
+
+class PermissionExplainReceipt(_FrozenControlPlaneModel):
+    """Secret-safe deterministic explanation returned to every surface."""
+
+    schema_version: Literal[1] = 1
+    decision: PermissionDecision
+    reason_code: str
+    matched_rule_id: str | None = None
+    source_layer: PermissionSourceLayer
+    effective_preset: PermissionPreset
+    effective_profile_id: str | None = None
+    tool: str
+    capability: str | None = None
+    risk: PermissionRisk
+    workspace_root: str | None = None
+    target_paths: tuple[str, ...] = ()
+    maintenance_scope_used: bool = False
+
+
 class PermissionConfig(_FrozenControlPlaneModel):
     mode: PermissionMode = "ask"
-    # Phase 10.5 surface-scoped broker defaults (PERM-01/SEC-02). Bounded ints via
-    # Field(ge=...) matching the RuntimeConfig/GatewayConfig convention. Defaults
-    # apply to existing config.yaml automatically via model_validate.
+    preset: PermissionPreset = "manual"
+    rules: tuple[PermissionPolicyRule, ...] = ()
+    profiles: tuple[PermissionPolicyProfile, ...] = ()
+    workspace_only: bool = False
+    atlas_maintenance_enabled: bool = True
+    maintenance_roots: tuple[str, ...] = ()
+    hardline_version: Literal["2026-06-29"] = "2026-06-29"
     approval_ttl_seconds: int = Field(default=300, ge=1)
+    decision_timeout_seconds: int = Field(default=300, ge=1)
+    heartbeat_interval_seconds: int = Field(default=1, ge=1, le=30)
     fail_closed_on_disconnect: bool = True
+
+    @model_validator(mode="after")
+    def validate_profiles_only_narrow(self) -> "PermissionConfig":
+        master_rank = _PRESET_RANK[self.preset]
+        master_allow_keys = {
+            (
+                rule.selector,
+                rule.scope,
+            )
+            for rule in self.rules
+            if rule.enabled and rule.effect == "allow"
+        }
+        for profile in self.profiles:
+            if not profile.enabled:
+                continue
+            if _PRESET_RANK[profile.preset] > master_rank:
+                raise ValueError(
+                    f"profile {profile.id!r} may only narrow the master preset"
+                )
+            if profile.workspace_only is False and self.workspace_only:
+                raise ValueError(
+                    f"profile {profile.id!r} may only narrow workspace_only"
+                )
+            if self.preset == "full_autonomy":
+                continue
+            for rule in profile.rules:
+                if (
+                    rule.enabled
+                    and rule.effect == "allow"
+                    and (rule.selector, rule.scope) not in master_allow_keys
+                ):
+                    raise ValueError(
+                        f"profile {profile.id!r} allow rule {rule.id!r} "
+                        "may only narrow existing master authority"
+                    )
+        return self
 
 
 class ModulesConfig(_FrozenControlPlaneModel):
@@ -212,7 +354,17 @@ __all__ = [
     "ControlPlaneSnapshot",
     "GatewayConfig",
     "ModulesConfig",
+    "PermissionDecision",
+    "PermissionEffect",
+    "PermissionExplainReceipt",
     "PermissionConfig",
+    "PermissionPolicyProfile",
+    "PermissionPolicyRule",
+    "PermissionPreset",
+    "PermissionRisk",
+    "PermissionRuleScope",
+    "PermissionRuleSelector",
+    "PermissionSourceLayer",
     "ProviderConfig",
     "ProviderModelStatus",
     "RuntimeConfig",
