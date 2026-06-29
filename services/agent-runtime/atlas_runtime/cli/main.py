@@ -112,6 +112,9 @@ app.add_typer(discord_app, name="discord")
 from atlas_runtime.cli.tools import tools_app
 app.add_typer(tools_app, name="tools")
 
+from atlas_runtime.cli.surface import surface_app
+app.add_typer(surface_app, name="surface")
+
 import atlas_runtime.cli.go_tui as _go_tui_mod
 import atlas_runtime.tui.app as _tui_app_mod
 from atlas_runtime.cli.tui import legacy_foundation_tui

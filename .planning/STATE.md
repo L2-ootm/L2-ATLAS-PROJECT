@@ -9,7 +9,7 @@ progress:
   total_phases: 8
   completed_phases: 6
   total_plans: 48
-  completed_plans: 43
+  completed_plans: 44
   percent: 75
 ---
 
@@ -39,9 +39,11 @@ decisions; the decision-coverage gate passed 25/25. Wave 1 is complete (plans 10
 frozen contracts, narrowing validation, deterministic policy, immutable hardline floor,
 workspace/maintenance scopes, nullable persisted receipts, scoped allows, and bounded
 timeout-deny waits are green. Operator review was incorporated into migration, compatibility,
-React bootstrap, dependency-audit, and final-suite gates. Fresh verification: atlas-core 97
-passed; agent-runtime 708 passed / 2 skipped. Phase progress: 2/7 plans. Next: Wave 2 CLI service
-bridge.
+React bootstrap, dependency-audit, and final-suite gates. Plan 10.7-03 is complete: the CLI now
+exposes owner-token-bound global/project surface lifecycle and nonce-bound owned approval
+decisions through the existing services/broker; global approval visibility is read-only. Fresh
+verification: agent-runtime 722 passed / 2 skipped. Phase progress: 3/7 plans. Next: Rust gateway
+routes and Go TUI convergence.
 Branch: `feat/go-tui-provider-mesh`.
 
 ## Prior Position — Go TUI + Provider Mesh (operator pivot, 2026-06-28)
