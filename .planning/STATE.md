@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: in_progress
-last_updated: "2026-06-28T00:00:00.000Z"
-last_activity: 2026-06-28
+last_updated: "2026-06-29T00:00:00.000Z"
+last_activity: 2026-06-29
 progress:
   total_phases: 8
   completed_phases: 6
@@ -15,7 +15,21 @@ progress:
 
 # STATE — L2 ATLAS
 
-## Current Position — Go TUI + Provider Mesh (operator pivot, 2026-06-28)
+## Current Position — Phase 10.7 Web Agent Surface & Permission Queue UX
+
+Phase 10.7 specification is locked at ambiguity 0.12. The existing React Console will become
+the canonical WebUI surface over the shared surface-session/event contracts. One ATLAS-owned
+permission authority will serve CLI, Go TUI, WebUI, API/headless, messaging channels, and the
+future desktop adapter. The global master policy is a safety ceiling; surface profiles may only
+narrow it. Operators may select manual, smart, or full-autonomy behavior with expressive
+allow/deny exceptions, while a Hermes-quality hardline floor remains unbypassable. Explicit
+user-directed ATLAS self-update/configuration uses a protected, audited maintenance scope.
+
+Spec: `.planning/phases/10.7-web-agent-permission-queue-ux/10.7-SPEC.md`.
+Next: autonomous implementation discussion → UI contract → plan → execute.
+Branch: `feat/go-tui-provider-mesh`.
+
+## Prior Position — Go TUI + Provider Mesh (operator pivot, 2026-06-28)
 
 Operator directive (2026-06-28): replace the below-bar Rich/prompt_toolkit TUI with an
 opencode/MiMo-grade **Go/BubbleTea TUI sidecar** over the existing Rust gateway (runtime
