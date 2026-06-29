@@ -231,7 +231,7 @@ def list_actionable(
     fail-closed deny in ``claim()`` (WR-01/WR-02) — a row with no deadline is never
     surfaced as actionable."""
     cur = conn.execute(
-        f"SELECT {tool_service._COLS} FROM tool_approvals "
+        f"SELECT {tool_service._select_cols(conn)} FROM tool_approvals "
         "WHERE surface_session_id = ? AND status = 'pending' "
         "ORDER BY requested_at DESC",
         (surface_session_id,),
@@ -266,7 +266,7 @@ def list_outcomes(
     claimable queue. ``limit`` optionally caps the rows returned. Pure SELECT
     (T-10.5-05-OBSERVER)."""
     sql = (
-        f"SELECT {tool_service._COLS} FROM tool_approvals "
+        f"SELECT {tool_service._select_cols(conn)} FROM tool_approvals "
         "WHERE status IN ('executed', 'rejected', 'failed') "
         "ORDER BY decided_at DESC"
     )
@@ -289,7 +289,7 @@ def get_outcome(conn: sqlite3.Connection, approval_id: str) -> Optional[ToolAppr
     projection grants no claim handle, so possessing the view cannot resolve anything
     (the claim path enforces ownership + active session independently)."""
     row = conn.execute(
-        f"SELECT {tool_service._COLS} FROM tool_approvals "
+        f"SELECT {tool_service._select_cols(conn)} FROM tool_approvals "
         "WHERE id = ? AND status IN ('executed', 'rejected', 'failed')",
         (approval_id,),
     ).fetchone()
