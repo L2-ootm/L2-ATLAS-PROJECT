@@ -2,6 +2,57 @@ package client
 
 import "encoding/json"
 
+// ProviderConfig is the editable provider slice of GET /v1/config.
+type ProviderConfig struct {
+	Name     string  `json:"name"`
+	Model    string  `json:"model"`
+	AuthMode string  `json:"auth_mode"`
+	APIKey   string  `json:"api_key"`
+	BaseURL  *string `json:"base_url"`
+}
+
+// ConfigSnapshot carries the optimistic revision required by PATCH /v1/config.
+// Other config sections remain owned by the control plane and are intentionally
+// omitted from this focused TUI contract.
+type ConfigSnapshot struct {
+	SchemaVersion int            `json:"schema_version"`
+	Revision      int64          `json:"revision"`
+	Provider      ProviderConfig `json:"provider"`
+}
+
+// Model mirrors one row in the GET /v1/models envelope.
+type Model struct {
+	ModelID   string `json:"model_id"`
+	Provider  string `json:"provider"`
+	Source    string `json:"source"`
+	FirstSeen string `json:"first_seen"`
+	LastSeen  string `json:"last_seen"`
+	Active    bool   `json:"active"`
+}
+
+type modelsEnvelope struct {
+	Models []Model `json:"models"`
+	Count  int     `json:"count"`
+}
+
+// AuthStatus is a masked auth-store result. It never contains credential bytes.
+type AuthStatus struct {
+	Provider     string  `json:"provider"`
+	AuthType     string  `json:"auth_type"`
+	Status       string  `json:"status"`
+	Source       string  `json:"source"`
+	Health       string  `json:"health"`
+	UpdatedAt    *string `json:"updated_at"`
+	RedactedHint string  `json:"redacted_hint"`
+	Remediation  *string `json:"remediation"`
+}
+
+// CodexImportResult is the secret-free outcome from the delegated import.
+type CodexImportResult struct {
+	Imported bool   `json:"imported"`
+	Reason   string `json:"reason"`
+}
+
 // ProviderStatus mirrors GET /v1/provider/status (atlas provider status --json).
 type ProviderStatus struct {
 	Provider           string  `json:"provider"`

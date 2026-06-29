@@ -88,14 +88,15 @@ Codex spike: `docs/plans/2026-06-28-codex-oauth-spike-findings.md`.
   Live-verified: `atlas doctor` → `claude_code: ok` + `provider: live (freellmapi)` in an isolated
   ATLAS_HOME. Full agent-runtime suite 643 passed / 1 skipped.
 
-**ACTIVE EXECUTION — P7 next:**
+**ACTIVE EXECUTION — P8 next:**
 - **P6 DONE (2026-06-28)** — extracted a safe audit-event renderer for assistant text, reasoning,
   tool calls/results, diffs, retrieval, and failures; unknown event payload maps are never dumped.
   Added forced-ASCII custom borders, responsive stacked panels/header/footer under 120 columns, and
   80x24 ASCII + 140x40 Unicode render tests. Fresh verification: `go test ./...`, `go vet ./...`,
   `go build` all exit 0; Windows/amd64 binary 11,358,208 bytes (10.83 MiB), under the 15 MiB
   ceiling; no dependency added.
-- **P7** in-TUI provider/settings + "test-probe" (pick a mode, enter creds, fire a one-shot probe
+- **P7 DONE (2026-06-28)** — in-TUI provider/settings + "test-probe" (pick a mode, enter creds,
+  fire a one-shot probe
   run and stream it — the "wire any provider and test" deliverable). Substrate now complete for all
   four modes (api_key / oauth_import / claude_code / freellmapi).
   - **Secret-safe write boundary DONE (2026-06-28):** `atlas auth add --stdin` reads API keys
@@ -103,7 +104,15 @@ Codex spike: `docs/plans/2026-06-28-codex-oauth-spike-findings.md`.
     adapter that pipes the secret to Python over stdin. Provider/base URL stay ordinary metadata;
     responses are masked and failed child output cannot echo the secret. Fresh verification:
     agent-runtime **644 passed / 1 skipped**; gateway **89 API + 3 contract tests passed**.
-  - Next: add the typed Go control-plane client, then the settings editor and one-shot probe UX.
+  - Typed Go control-plane client now covers masked config + optimistic PATCH, model catalog,
+    stdin-safe API-key writes, Codex import, and probe mission archival. Structured 409
+    remediation survives into the UI.
+  - Settings editor supports mode/provider/model/base URL/API key, masks and clears secrets after
+    dispatch, refuses secret writes to non-loopback gateways, and surfaces the FreeLLMAPI privacy
+    cost. `ctrl+t` saves then executes a real mission/run/SSE probe, classifies LIVE/MOCK/FAILED,
+    and archives the ephemeral mission on both success and start failure.
+  - Fresh Go verification: `go test ./...`, `go vet ./...`, and `go build ./...` all pass;
+    settings render gates cover 80x24 ASCII and 140x40 Unicode without secret disclosure.
 - **P8** `atlas tui` launches the Go binary; the Rich workbench becomes a hidden rollback until
   Phase 10.8 makes the final cross-surface retirement decision.
 

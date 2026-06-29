@@ -67,6 +67,52 @@ func TestUnicodeViewUsesNativeGlyphsAndFitsWideTerminal(t *testing.T) {
 	assertLinesFit(t, view, 140)
 }
 
+func TestSettingsViewIsSecretSafeAndFitsASCIIAndUnicode(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		ascii  bool
+		width  int
+		height int
+	}{
+		{name: "ascii-narrow", ascii: true, width: 80, height: 24},
+		{name: "unicode-wide", width: 140, height: 40},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			original := gl
+			if tc.ascii {
+				t.Setenv("ATLAS_TUI_ASCII", "1")
+				t.Setenv("ATLAS_TUI_UNICODE", "")
+			} else {
+				t.Setenv("ATLAS_TUI_ASCII", "")
+				t.Setenv("ATLAS_TUI_UNICODE", "1")
+			}
+			gl = pickGlyphs()
+			t.Cleanup(func() { gl = original })
+
+			m := readyModel(tc.width, tc.height)
+			form := newSettingsForm(testConfig(), nil)
+			form.inputs[settingsAPIKey].SetValue("never-render-settings-secret")
+			m.settings = &form
+			m.focus = focusSettings
+			view := plain(m.View())
+			if strings.Contains(view, "never-render-settings-secret") {
+				t.Fatalf("settings leaked API key:\n%s", view)
+			}
+			if strings.ContainsRune(view, '�') {
+				t.Fatalf("settings view contains replacement rune:\n%s", view)
+			}
+			if tc.ascii {
+				for _, r := range view {
+					if r > utf8.RuneSelf {
+						t.Fatalf("ASCII settings contains non-ASCII rune %q:\n%s", r, view)
+					}
+				}
+			}
+			assertLinesFit(t, view, tc.width)
+		})
+	}
+}
+
 func assertLinesFit(t *testing.T, view string, width int) {
 	t.Helper()
 	for i, line := range strings.Split(view, "\n") {
