@@ -510,7 +510,7 @@ contracts, with unobtrusive controls that appear only when operationally relevan
 
 - [x] 10.7-05-PLAN.md — migrate the React Console from the ad-hoc stream to shared sessions,
   normalized events, and shell-level coordination (WEB-01, WEB-02, WEB-05)
-- [ ] 10.7-06-PLAN.md — deliver conditional agent chrome and the accessible responsive owned
+- [x] 10.7-06-PLAN.md — deliver conditional agent chrome and the accessible responsive owned
   permission queue (WEB-03, WEB-04, WEB-06)
 
 **Wave 4 *(blocked on Waves 2–3 completion)* — conformance and release evidence**
@@ -596,7 +596,7 @@ milestone is activated through the normal milestone workflow.
 | 10.4 Global Configuration, Auth & Model Control Plane | v1.1 | 5/5 | Complete   | 2026-06-26 |
 | 10.5 Surface-Scoped Permission Broker | v1.1 | 5/5 | Complete   | 2026-06-26 |
 | 10.6 ATLAS Terminal Workbench | v1.1 | 8/8 | Complete (human-verify deferred) | 2026-06-27 |
-| 10.7 Web Agent Surface & Permission Queue UX | v1.1 | 0/7 | Planned | — |
+| 10.7 Web Agent Surface & Permission Queue UX | v1.1 | 6/7 | Executing | — |
 | 10.8 Cross-Surface Conformance, UAT & Cutover | v1.1 | 0/? | Not planned | — |
 | 11. CRM via Twenty | v2.0 | 0/? | Not started | — |
 | 12. Basic Pulse Monitor | v2.0 | 0/? | Not started | — |

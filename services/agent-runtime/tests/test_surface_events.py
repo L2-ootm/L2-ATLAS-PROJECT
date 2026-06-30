@@ -48,6 +48,15 @@ def test_llm_call_splits_text_vs_reasoning() -> None:
     assert reasoning[0].kind == "reasoning"
 
 
+@pytest.mark.parametrize("transition", ["succeeded", "failed", "cancelled"])
+def test_terminal_transition_is_a_stable_completion_event(transition: str) -> None:
+    events = normalize_surface_events(
+        [_ae("tool_call", data=json.dumps({"transition": transition}))],
+        session_id="sess",
+    )
+    assert events[0].kind == "completion"
+
+
 def test_every_event_kind_is_reachable() -> None:
     inputs = [
         _ae("llm_call", data="{}"),  # text

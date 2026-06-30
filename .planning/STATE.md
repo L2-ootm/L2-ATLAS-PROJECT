@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
-last_updated: "2026-06-29T15:28:49.586Z"
-last_activity: 2026-06-29 -- Phase 10.7 Plan 05 complete
+last_updated: "2026-06-30T10:42:00-03:00"
+last_activity: 2026-06-30 -- Phase 10.7 Plan 06 complete
 progress:
   total_phases: 8
   completed_phases: 6
   total_plans: 48
-  completed_plans: 46
-  percent: 75
+  completed_plans: 47
+  percent: 86
 ---
 
 # STATE — L2 ATLAS
@@ -50,7 +50,11 @@ approval/clarify/confirm overlays follow the transformed Hermes interaction mode
 owns reconnect/resume/heartbeat/replay, Console starts surface-bound runs and renders every
 normalized event kind, the legacy NDJSON Console transport is gone from production React, and
 System approval history is read-only. React focused tests: 8 passed; production build passed.
-Phase progress: 5/7 plans. Next: conditional agent header and accessible owned queue chrome.
+Plan 10.7-06 is complete: conditional header and owned queue chrome now follow the locked state
+matrix, server receipts remain authoritative, and wide/narrow keyboard, focus, live-region, and
+reduced-motion behavior is covered. React 18 tests, production build, and a live terminal-event
+probe passed; Python surface event/CLI regressions passed 47 tests. Phase progress: 6/7 plans.
+Next: cross-surface conformance, dead-code cutover, full suites, and release evidence.
 Branch: `feat/go-tui-provider-mesh`.
 
 ## Prior Position — Go TUI + Provider Mesh (operator pivot, 2026-06-28)

@@ -11,6 +11,8 @@ import {
 	SIDEBAR_STORAGE_KEY
 } from '../lib/ui-state';
 import { AgentSurfaceProvider } from '../context/AgentSurfaceContext';
+import AgentSessionHeader from '../components/agent/AgentSessionHeader';
+import PermissionQueueSidebar from '../components/agent/PermissionQueueSidebar';
 
 // ── Shell layout — living terrain behind, fixed sidebar, offset content ──────
 export default function Layout() {
@@ -58,8 +60,10 @@ export default function Layout() {
 					}}
 				>
 					<MockModeBanner mockMode={mockMode} />
+					<AgentSessionHeader />
 					<Outlet />
 				</main>
+				<PermissionQueueSidebar />
 			</div>
 		</AgentSurfaceProvider>
 	);
