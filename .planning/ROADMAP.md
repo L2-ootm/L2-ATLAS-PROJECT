@@ -508,7 +508,7 @@ contracts, with unobtrusive controls that appear only when operationally relevan
 
 **Wave 3 *(blocked on Wave 2 completion)* — canonical React surface**
 
-- [ ] 10.7-05-PLAN.md — migrate the React Console from the ad-hoc stream to shared sessions,
+- [x] 10.7-05-PLAN.md — migrate the React Console from the ad-hoc stream to shared sessions,
   normalized events, and shell-level coordination (WEB-01, WEB-02, WEB-05)
 - [ ] 10.7-06-PLAN.md — deliver conditional agent chrome and the accessible responsive owned
   permission queue (WEB-03, WEB-04, WEB-06)

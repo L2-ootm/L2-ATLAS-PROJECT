@@ -10,6 +10,7 @@ import {
 	SIDEBAR_WIDTH_EXPANDED,
 	SIDEBAR_STORAGE_KEY
 } from '../lib/ui-state';
+import { AgentSurfaceProvider } from '../context/AgentSurfaceContext';
 
 // ── Shell layout — living terrain behind, fixed sidebar, offset content ──────
 export default function Layout() {
@@ -40,7 +41,7 @@ export default function Layout() {
 	const offset = expanded ? SIDEBAR_WIDTH_EXPANDED : SIDEBAR_WIDTH_COLLAPSED;
 
 	return (
-		<>
+		<AgentSurfaceProvider>
 			<TopoField />
 			<GlassFilter />
 			<div style={{ display: 'flex', minHeight: '100vh', position: 'relative', zIndex: 1 }}>
@@ -60,6 +61,6 @@ export default function Layout() {
 					<Outlet />
 				</main>
 			</div>
-		</>
+		</AgentSurfaceProvider>
 	);
 }

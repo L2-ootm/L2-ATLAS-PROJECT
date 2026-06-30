@@ -4,12 +4,12 @@ milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
 last_updated: "2026-06-29T15:28:49.586Z"
-last_activity: 2026-06-29 -- Phase 10.7 Plan 04 complete
+last_activity: 2026-06-29 -- Phase 10.7 Plan 05 complete
 progress:
   total_phases: 8
   completed_phases: 6
   total_plans: 48
-  completed_plans: 45
+  completed_plans: 46
   percent: 75
 ---
 
@@ -46,8 +46,11 @@ verification: agent-runtime 722 passed / 2 skipped. Plan 10.7-04 is complete: Ru
 session/scoped-permission/normalized-event contracts, the Go TUI owns and heartbeats one session,
 surface-started runs retain that id, approvals are nonce-bound with selectable scope, and blocking
 approval/clarify/confirm overlays follow the transformed Hermes interaction model. Gateway API
-95 passed, contract 4 passed, and Go tests are green. Phase progress: 4/7 plans. Next: React
-session coordinator and Console migration.
+95 passed, contract 4 passed, and Go tests are green. Plan 10.7-05 is complete: the React shell
+owns reconnect/resume/heartbeat/replay, Console starts surface-bound runs and renders every
+normalized event kind, the legacy NDJSON Console transport is gone from production React, and
+System approval history is read-only. React focused tests: 8 passed; production build passed.
+Phase progress: 5/7 plans. Next: conditional agent header and accessible owned queue chrome.
 Branch: `feat/go-tui-provider-mesh`.
 
 ## Prior Position — Go TUI + Provider Mesh (operator pivot, 2026-06-28)

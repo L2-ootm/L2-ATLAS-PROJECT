@@ -1,5 +1,10 @@
 // ATLAS Cockpit — API client targeting Phase 7 gateway
 // Base: http://127.0.0.1:8484
+import type {
+	SurfaceEventReplay,
+	SurfaceSession,
+	SurfaceToolApproval
+} from './surfaceContracts';
 
 export const GATEWAY = 'http://127.0.0.1:8484';
 
@@ -105,7 +110,10 @@ export interface WikiPage {
 export class ApiError extends Error {
 	constructor(
 		public readonly status: number,
-		message: string
+		message: string,
+		public readonly code?: string,
+		public readonly remediation?: string,
+		public readonly currentRevision?: number
 	) {
 		super(message);
 		this.name = 'ApiError';
@@ -121,7 +129,24 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 	const response = await fetch(`${GATEWAY}${path}`, { ...init, headers });
 	if (!response.ok) {
 		const text = await response.text().catch(() => response.statusText);
-		throw new ApiError(response.status, `GATEWAY ERROR ${response.status} — ${path}: ${text}`);
+		let detail:
+			| {
+					error?: { code?: string; message?: string; remediation?: string };
+					current_revision?: number;
+			  }
+			| undefined;
+		try {
+			detail = JSON.parse(text) as typeof detail;
+		} catch {
+			detail = undefined;
+		}
+		throw new ApiError(
+			response.status,
+			detail?.error?.message ?? `GATEWAY ERROR ${response.status} — ${path}: ${text}`,
+			detail?.error?.code,
+			detail?.error?.remediation,
+			detail?.current_revision
+		);
 	}
 	return response.json() as Promise<T>;
 }
@@ -380,78 +405,54 @@ export interface ConsoleChatEvent {
 	usage?: unknown;
 }
 
-export interface ConsoleChatResponse {
-	status: 'succeeded' | 'failed';
-	agent: AgentRuntime;
-	cwd: string | null;
-	text: string;
-	events: ConsoleChatEvent[];
-}
+// ── Shared surface-session contracts (Phase 10.7) ──────────────────────────
 
-export async function consoleChat(body: {
-	prompt: string;
-	agent: AgentRuntime;
-	cwd?: string | null;
-}): Promise<ConsoleChatResponse> {
-	return apiFetch('/v1/console/chat', {
+export async function createSurfaceSession(body: {
+	surface_kind: 'webui';
+	surface_id: string;
+	workspace_kind: 'global' | 'project';
+	project_id?: string;
+	agent?: string;
+	provider?: string;
+	model?: string;
+	permission_mode?: 'allow' | 'ask' | 'deny';
+}): Promise<SurfaceSession> {
+	return apiFetch('/v1/surface-sessions', {
 		method: 'POST',
 		body: JSON.stringify(body)
 	});
 }
 
-/**
- * Streaming console chat — reads the gateway's NDJSON body and calls `onEvent`
- * for each event as it arrives, so the cockpit tool-cards fill in real time.
- */
-export async function consoleChatStream(
-	body: { prompt: string; agent: AgentRuntime; cwd?: string | null },
-	onEvent: (event: ConsoleChatEvent) => void,
-	signal?: AbortSignal
-): Promise<void> {
-	const response = await fetch(`${GATEWAY}/v1/console/stream`, {
+export async function getSurfaceSession(id: string): Promise<SurfaceSession> {
+	return apiFetch(`/v1/surface-sessions/${encodeURIComponent(id)}`);
+}
+
+async function mutateSurfaceSession(
+	session: Pick<SurfaceSession, 'id' | 'owner_token'>,
+	action: 'heartbeat' | 'suspend' | 'resume' | 'cancel' | 'close'
+): Promise<SurfaceSession> {
+	return apiFetch(`/v1/surface-sessions/${encodeURIComponent(session.id)}/${action}`, {
 		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify(body),
-		signal
+		body: JSON.stringify({ owner_token: session.owner_token })
 	});
-	if (!response.ok || !response.body) {
-		const text = await response.text().catch(() => response.statusText);
-		throw new ApiError(response.status, `GATEWAY ERROR ${response.status} — /v1/console/stream: ${text}`);
-	}
-	const reader = response.body.getReader();
-	const decoder = new TextDecoder();
-	let buffer = '';
-	const drain = (flush: boolean) => {
-		let idx: number;
-		while ((idx = buffer.indexOf('\n')) >= 0) {
-			const line = buffer.slice(0, idx).trim();
-			buffer = buffer.slice(idx + 1);
-			if (line) {
-				try {
-					onEvent(JSON.parse(line) as ConsoleChatEvent);
-				} catch {
-					// ignore a malformed line
-				}
-			}
-		}
-		if (flush) {
-			const tail = buffer.trim();
-			if (tail) {
-				try {
-					onEvent(JSON.parse(tail) as ConsoleChatEvent);
-				} catch {
-					// ignore trailing partial
-				}
-			}
-		}
-	};
-	for (;;) {
-		const { value, done } = await reader.read();
-		if (done) break;
-		buffer += decoder.decode(value, { stream: true });
-		drain(false);
-	}
-	drain(true);
+}
+
+export const heartbeatSurfaceSession = (session: SurfaceSession) =>
+	mutateSurfaceSession(session, 'heartbeat');
+export const resumeSurfaceSession = (session: SurfaceSession) =>
+	mutateSurfaceSession(session, 'resume');
+export const cancelSurfaceSession = (session: SurfaceSession) =>
+	mutateSurfaceSession(session, 'cancel');
+export const closeSurfaceSession = (session: SurfaceSession) =>
+	mutateSurfaceSession(session, 'close');
+
+export async function getSurfaceEvents(
+	sessionId: string,
+	afterSeq = -1
+): Promise<SurfaceEventReplay> {
+	return apiFetch(
+		`/v1/surface-sessions/${encodeURIComponent(sessionId)}/events?after_seq=${afterSeq}`
+	);
 }
 
 // ── Knowledge graph (Graphify view) ─────────────────────────────────────────
@@ -675,13 +676,15 @@ export async function cashflowSummary(): Promise<CashflowSummary> {
 export async function startRun(
 	missionId: string,
 	agent?: AgentRuntime,
-	execute?: boolean
+	execute?: boolean,
+	surfaceSessionId?: string
 ): Promise<{ run: Run; executing?: boolean }> {
 	const init: RequestInit = { method: 'POST' };
-	const body: { agent?: AgentRuntime; execute?: boolean } = {};
+	const body: { agent?: AgentRuntime; execute?: boolean; surface_session_id?: string } = {};
 	if (agent) body.agent = agent;
 	if (execute) body.execute = true;
-	if (agent || execute) init.body = JSON.stringify(body);
+	if (surfaceSessionId) body.surface_session_id = surfaceSessionId;
+	if (agent || execute || surfaceSessionId) init.body = JSON.stringify(body);
 	return apiFetch(`/v1/missions/${encodeURIComponent(missionId)}/run`, init);
 }
 
@@ -1130,19 +1133,7 @@ export interface ToolManifest {
 	audit_events: string[];
 }
 
-export interface ToolApproval {
-	id: string;
-	tool_name: string;
-	risk_level: ToolRiskLevel;
-	args: string;
-	summary: string;
-	status: ToolApprovalStatus;
-	reason: string | null;
-	result: string | null;
-	run_id: string;
-	requested_at: string;
-	decided_at: string | null;
-}
+export type ToolApproval = SurfaceToolApproval;
 
 export interface ToolResult {
 	tool_name: string;
@@ -1178,6 +1169,20 @@ export async function listToolApprovals(): Promise<ToolApproval[]> {
 	}
 }
 
+/** Actionable queue owned by one live surface session. */
+export async function listOwnedToolApprovals(
+	surfaceSessionId: string
+): Promise<ToolApproval[]> {
+	const params = new URLSearchParams({
+		status: 'pending',
+		surface_session_id: surfaceSessionId
+	});
+	const data = await apiFetch<{ approvals: ToolApproval[] }>(
+		`/v1/tools/approvals?${params.toString()}`
+	);
+	return data.approvals ?? [];
+}
+
 /** Invoke a tool through the policy chokepoint. Read-class runs now; write/shell
  *  returns a pending approval (nothing executes inline). */
 export async function proposeToolCall(args: {
@@ -1198,14 +1203,31 @@ export async function proposeToolCall(args: {
 }
 
 /** Approve + execute a pending write/shell tool call. Returns the terminal row. */
-export async function approveToolCall(id: string): Promise<ToolApproval> {
-	return apiFetch(`/v1/tools/approvals/${encodeURIComponent(id)}/approve`, { method: 'POST' });
+export async function approveToolCall(
+	approval: Pick<ToolApproval, 'id' | 'surface_session_id' | 'nonce'>,
+	scope: 'once' | 'session' | 'durable'
+): Promise<ToolApproval> {
+	return apiFetch(`/v1/tools/approvals/${encodeURIComponent(approval.id)}/approve`, {
+		method: 'POST',
+		body: JSON.stringify({
+			surface_session_id: approval.surface_session_id,
+			nonce: approval.nonce,
+			scope
+		})
+	});
 }
 
 /** Reject a pending tool call (it will never execute). */
-export async function rejectToolCall(id: string, reason?: string): Promise<ToolApproval> {
-	return apiFetch(`/v1/tools/approvals/${encodeURIComponent(id)}/reject`, {
+export async function rejectToolCall(
+	approval: Pick<ToolApproval, 'id' | 'surface_session_id' | 'nonce'>,
+	reason?: string
+): Promise<ToolApproval> {
+	return apiFetch(`/v1/tools/approvals/${encodeURIComponent(approval.id)}/reject`, {
 		method: 'POST',
-		body: JSON.stringify({ reason: reason ?? null })
+		body: JSON.stringify({
+			surface_session_id: approval.surface_session_id,
+			nonce: approval.nonce,
+			reason: reason ?? null
+		})
 	});
 }
