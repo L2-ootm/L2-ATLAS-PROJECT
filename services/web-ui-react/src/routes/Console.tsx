@@ -36,12 +36,13 @@ import { GlassPanel } from '../components/GlassFx';
 import { TopoScroll } from '../components/TopoScroll';
 import {
 	agentRuntimeLabel,
-	consoleChatStream,
 	listProjects,
 	type AgentRuntime,
 	type ConsoleChatEvent,
 	type Project
 } from '../lib/api';
+import { useAgentSurface } from '../context/AgentSurfaceContext';
+import type { SurfaceEvent } from '../lib/surfaceContracts';
 import { selectFolder } from '../lib/host';
 import { computeDwindle, type Rect } from '../lib/bspLayout';
 
@@ -110,7 +111,58 @@ function bootMessage(project: Project | null, cwd: string | null): ConsoleMessag
 	return { id: `boot-${Date.now()}`, role: 'system', label: 'ATLAS', body, time: nowLabel() };
 }
 
+export function surfaceConsoleEvent(event: SurfaceEvent): ConsoleChatEvent {
+	let payload: Record<string, unknown>;
+	try {
+		const parsed = JSON.parse(event.payload_json) as unknown;
+		payload =
+			typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+				? (parsed as Record<string, unknown>)
+				: { value: parsed };
+	} catch {
+		throw new Error(`Malformed ${event.kind} event at sequence ${event.seq}`);
+	}
+	const text =
+		typeof payload.text === 'string'
+			? payload.text
+			: typeof payload.summary === 'string'
+				? payload.summary
+				: undefined;
+	if (event.kind === 'error') {
+		return {
+			type: 'failure',
+			error: text ?? (typeof payload.message === 'string' ? payload.message : 'Agent error')
+		};
+	}
+	if (event.kind === 'completion') {
+		return {
+			type: 'result',
+			content: payload,
+			is_error: payload.status !== 'succeeded'
+		};
+	}
+	return {
+		type: event.kind,
+		text,
+		tool_name:
+			typeof payload.tool === 'string'
+				? payload.tool
+				: typeof payload.tool_name === 'string'
+					? payload.tool_name
+					: null,
+		tool_call_id:
+			typeof payload.call_id === 'string'
+				? payload.call_id
+				: typeof payload.tool_call_id === 'string'
+					? payload.tool_call_id
+					: null,
+		input: payload.arguments ?? payload.input ?? payload,
+		content: payload
+	};
+}
+
 export default function Console() {
+	const agentSurface = useAgentSurface();
 	const [params, setParams] = useSearchParams();
 	const projectId = params.get('project') ?? '';
 	const [load, setLoad] = useState<Load>({ s: 'loading' });
@@ -133,6 +185,12 @@ export default function Console() {
 		{ id: string; pointerId?: number; startX: number; startY: number; x: number; y: number; homeX: number; homeY: number; didSwap: boolean } | null
 	>(null);
 	const windowsRef = useRef(windows);
+	const activeTurnRef = useRef<{
+		windowId: string;
+		turnId: string;
+		runId: string;
+	} | null>(null);
+	const processedSurfaceSeq = useRef(-1);
 	windowsRef.current = windows;
 
 	// BSP auto-tiling needs the live canvas size to compute window rects.
@@ -209,6 +267,52 @@ export default function Console() {
 			return next;
 		});
 	}, [activeProject, boundCwd, windows]);
+
+	useEffect(() => {
+		for (const surfaceEvent of agentSurface.events) {
+			if (surfaceEvent.seq <= processedSurfaceSeq.current) continue;
+			processedSurfaceSeq.current = surfaceEvent.seq;
+			const active = activeTurnRef.current;
+			if (!active || surfaceEvent.run_id !== active.runId) continue;
+			let event: ConsoleChatEvent;
+			try {
+				event = surfaceConsoleEvent(surfaceEvent);
+			} catch (cause) {
+				event = {
+					type: 'failure',
+					error: cause instanceof Error ? cause.message : String(cause)
+				};
+			}
+			setMessagesByWindow((prev) => ({
+				...prev,
+				[active.windowId]: (prev[active.windowId] ?? []).map((message) =>
+					message.id === active.turnId
+						? {
+								...message,
+								events: [...(message.events ?? []), event],
+								body:
+									event.type === 'text'
+										? `${message.body}${event.text ?? ''}`
+										: message.body,
+								status:
+									event.type === 'failure'
+										? 'failed'
+										: event.type === 'result'
+											? event.is_error
+												? 'failed'
+												: 'succeeded'
+											: message.status
+							}
+						: message
+				)
+			}));
+			setAuditEvents((prior) => [event, ...prior].slice(0, 80));
+			if (event.type === 'failure' || event.type === 'result') {
+				activeTurnRef.current = null;
+				setBusyWindow(null);
+			}
+		}
+	}, [agentSurface.events]);
 
 	function pickProject(project: Project) {
 		setBindingMode('project');
@@ -323,39 +427,13 @@ export default function Console() {
 		}));
 		setBusyWindow(windowId);
 
-		const appendEvent = (event: ConsoleChatEvent) => {
-			setMessagesByWindow((prev) => ({
-				...prev,
-				[windowId]: (prev[windowId] ?? []).map((m) =>
-					m.id === turnId
-						? {
-								...m,
-								events: [...(m.events ?? []), event],
-								body: event.type === 'text' ? `${m.body}${event.text ?? ''}` : m.body,
-								status:
-									event.type === 'failure'
-										? 'failed'
-										: event.type === 'result'
-											? event.is_error
-												? 'failed'
-												: 'succeeded'
-											: m.status
-							}
-						: m
-				)
-			}));
-			setAuditEvents((prev) => [event, ...prev].slice(0, 80));
-		};
-
 		try {
-			await consoleChatStream({ prompt: draft, agent: windowAgent, cwd: boundCwd }, appendEvent);
-			// If the stream ended without a terminal result event, settle the turn.
-			setMessagesByWindow((prev) => ({
-				...prev,
-				[windowId]: (prev[windowId] ?? []).map((m) =>
-					m.id === turnId && m.status === 'pending' ? { ...m, status: 'succeeded' } : m
-				)
-			}));
+			const workspace =
+				bindingMode === 'project' && projectId
+					? ({ kind: 'project', projectId } as const)
+					: ({ kind: 'global' } as const);
+			const runId = await agentSurface.submitPrompt(draft, windowAgent, workspace);
+			activeTurnRef.current = { windowId, turnId, runId };
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			setMessagesByWindow((prev) => ({
@@ -369,9 +447,8 @@ export default function Console() {
 								events: [...(m.events ?? []), { type: 'failure', error: msg }]
 							}
 						: m
-				)
+					)
 			}));
-		} finally {
 			setBusyWindow(null);
 		}
 	}
@@ -1314,7 +1391,13 @@ function AgentTurn({ message }: { message: ConsoleMessage }) {
 						</div>
 					);
 				}
-				return null;
+				if (event.type === 'result' || event.type === 'tool_result') return null;
+				return (
+					<div key={idx} style={activityEventStyle} data-event-kind={event.type}>
+						<span style={monoLabelStyle}>{event.type.replaceAll('_', ' ')}</span>
+						<span>{event.text ?? clip(resultToText(event.content), 600)}</span>
+					</div>
+				);
 			})}
 			{summary && (summary.num_turns != null || summary.total_cost_usd != null) && (
 				<div style={turnFooterStyle}>
@@ -1397,6 +1480,18 @@ function SegmentButton({ children, active, onClick, disabled, tone = 'blue' }: {
 		</button>
 	);
 }
+
+const activityEventStyle: React.CSSProperties = {
+	display: 'grid',
+	gridTemplateColumns: '112px minmax(0, 1fr)',
+	gap: 10,
+	padding: '8px 0',
+	borderTop: '1px solid rgba(237,234,224,0.06)',
+	color: 'var(--l2-fg-2)',
+	fontSize: 12,
+	lineHeight: 1.45,
+	overflowWrap: 'anywhere'
+};
 
 function MiniMenu({ onPick }: { onPick: (kind: WindowKind, agent?: AgentRuntime) => void }) {
 	const [open, setOpen] = useState(false);

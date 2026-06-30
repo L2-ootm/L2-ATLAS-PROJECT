@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Server, Database, Copy, Check, Power, Cpu, Radio, ShieldCheck, Wrench, Clock, X } from 'lucide-react';
+import { Server, Database, Copy, Check, Power, Cpu, Radio, ShieldCheck, Wrench, Clock } from 'lucide-react';
 import { Page } from '../components/Page';
 import { glassPanel } from '../lib/glass';
 import {
@@ -15,8 +15,6 @@ import {
 	toggleChannel,
 	getToolManifests,
 	listToolApprovals,
-	approveToolCall,
-	rejectToolCall,
 	type AtlasConfigView,
 	type ChannelSummary,
 	type MessagingGatewayStatus,
@@ -48,7 +46,6 @@ export default function System() {
 	const [models, setModels] = useState<ModelEntry[]>([]);
 	const [tools, setTools] = useState<ToolManifest[]>([]);
 	const [toolApprovals, setToolApprovals] = useState<ToolApproval[]>([]);
-	const [toolBusy, setToolBusy] = useState<string | null>(null);
 	const [msgGw, setMsgGw] = useState<MessagingGatewayStatus>({ running: false, pid: null });
 	const [msgGwBusy, setMsgGwBusy] = useState(false);
 	const [load, setLoad] = useState<Load>({ s: 'loading' });
@@ -84,32 +81,6 @@ export default function System() {
 		setToolApprovals(ta.status === 'fulfilled' ? ta.value : []);
 		setLoad({ s: h.status === 'rejected' && m.status === 'rejected' ? 'error' : 'ready' });
 	}, []);
-
-	async function approveTool(id: string) {
-		setToolBusy(id);
-		setErr(null);
-		try {
-			await approveToolCall(id);
-			await refresh();
-		} catch {
-			setErr('Could not approve the tool call — is the gateway running?');
-		} finally {
-			setToolBusy(null);
-		}
-	}
-
-	async function rejectTool(id: string) {
-		setToolBusy(id);
-		setErr(null);
-		try {
-			await rejectToolCall(id);
-			await refresh();
-		} catch {
-			setErr('Could not reject the tool call — is the gateway running?');
-		} finally {
-			setToolBusy(null);
-		}
-	}
 
 	async function toggleMsgGw() {
 		setMsgGwBusy(true);
@@ -184,13 +155,7 @@ export default function System() {
 
 			<ToolsPanel tools={tools} />
 
-			<ToolApprovalsPanel
-				approvals={toolApprovals}
-				offline={online === false}
-				busyId={toolBusy}
-				onApprove={approveTool}
-				onReject={rejectTool}
-			/>
+			<ToolApprovalsPanel approvals={toolApprovals} />
 
 			<ChannelsPanel
 				channels={channels}
@@ -953,17 +918,9 @@ function ToolsPanel({ tools }: { tools: ToolManifest[] }) {
 
 // ── tool approvals panel — clones the Discord ApprovalsPanel pattern ──────────
 function ToolApprovalsPanel({
-	approvals,
-	offline,
-	busyId,
-	onApprove,
-	onReject
+	approvals
 }: {
 	approvals: ToolApproval[];
-	offline: boolean;
-	busyId: string | null;
-	onApprove: (id: string) => void;
-	onReject: (id: string) => void;
 }) {
 	const statusTone = (s: string) =>
 		s === 'executed' ? 'var(--atlas-cyan)' : s === 'pending' ? 'var(--atlas-celestial)' : s === 'failed' || s === 'rejected' ? 'var(--l2-error)' : 'var(--l2-fg-3)';
@@ -1012,57 +969,23 @@ function ToolApprovalsPanel({
 							</span>
 						</div>
 						{a.status === 'pending' && (
-							<div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-								<IconBtn tone="var(--atlas-cyan)" disabled={offline || busyId === a.id} onClick={() => onApprove(a.id)} label="Approve">
-									<Check size={14} strokeWidth={2} />
-								</IconBtn>
-								<IconBtn tone="var(--l2-error)" disabled={offline || busyId === a.id} onClick={() => onReject(a.id)} label="Reject">
-									<X size={14} strokeWidth={2} />
-								</IconBtn>
-							</div>
+							<a
+								href="/console"
+								style={{
+									color: 'var(--atlas-celestial)',
+									fontFamily: 'var(--l2-font-mono)',
+									fontSize: 10,
+									letterSpacing: '0.1em',
+									textTransform: 'uppercase'
+								}}
+							>
+								Open owning session
+							</a>
 						)}
 					</div>
 				))
 			)}
 		</section>
-	);
-}
-
-function IconBtn({
-	tone,
-	disabled,
-	onClick,
-	label,
-	children
-}: {
-	tone: string;
-	disabled: boolean;
-	onClick: () => void;
-	label: string;
-	children: React.ReactNode;
-}) {
-	return (
-		<button
-			onClick={onClick}
-			disabled={disabled}
-			aria-label={label}
-			title={label}
-			style={{
-				display: 'inline-flex',
-				alignItems: 'center',
-				justifyContent: 'center',
-				width: 30,
-				height: 30,
-				borderRadius: 2,
-				border: `1px solid ${tone}`,
-				background: 'transparent',
-				color: tone,
-				cursor: disabled ? 'not-allowed' : 'pointer',
-				opacity: disabled ? 0.45 : 1
-			}}
-		>
-			{children}
-		</button>
 	);
 }
 
