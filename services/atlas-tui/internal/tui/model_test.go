@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -9,6 +11,41 @@ import (
 
 	"atlas-tui/internal/client"
 )
+
+func TestCreateSurfaceGatesOwnedApprovalPolling(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/v1/surface-sessions" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`{"id":"surface-1","surface":{"kind":"tui","session_id":"tui-1"},"workspace":{"kind":"global","root":"C:\\atlas"},"agent":"native","model":{"provider":"openrouter","model_id":"test"},"permission_mode":"ask","state":"active","owner_token":"owner-1"}`))
+	}))
+	defer srv.Close()
+
+	m := New(client.New(srv.URL), srv.URL)
+	msg := m.createSurface()()
+	updated, cmd := m.Update(msg)
+	got := updated.(model)
+	if got.surface.ID != "surface-1" || got.surface.OwnerToken != "owner-1" {
+		t.Fatalf("surface not retained: %+v", got.surface)
+	}
+	if cmd == nil {
+		t.Fatal("surface creation must start scoped approval polling")
+	}
+}
+
+func TestCreateSurfaceShowsGatewayUpgradeRemediation(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	defer srv.Close()
+
+	m := New(client.New(srv.URL), srv.URL)
+	updated, _ := m.Update(m.createSurface()())
+	got := updated.(model)
+	if !strings.Contains(got.errMsg, "upgrade") || !strings.Contains(got.errMsg, "gateway") {
+		t.Fatalf("missing gateway upgrade remediation: %q", got.errMsg)
+	}
+}
 
 func readyModel(width, height int) model {
 	m := New(nil, "http://127.0.0.1:8484")

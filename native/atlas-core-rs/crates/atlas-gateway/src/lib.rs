@@ -524,6 +524,52 @@ async fn dispatch_atlas_raw(
         .map_err(|e| ApiError::Internal(format!("failed to spawn atlas: {e}")))
 }
 
+fn structured_cli_status(body: &Value) -> StatusCode {
+    let code = body
+        .get("error")
+        .and_then(|error| error.get("code"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    match code {
+        "surface_not_found" | "approval_not_found" => StatusCode::NOT_FOUND,
+        "surface_owner_mismatch" | "approval_wrong_session" | "approval_session_inactive" => {
+            StatusCode::FORBIDDEN
+        }
+        "surface_transition_conflict"
+        | "surface_resume_conflict"
+        | "approval_already_decided"
+        | "config_revision_conflict"
+        | "permission_profile_widening" => StatusCode::CONFLICT,
+        "approval_stale" => StatusCode::GONE,
+        _ => StatusCode::BAD_REQUEST,
+    }
+}
+
+async fn dispatch_json_cli(
+    atlas_cmd: &[String],
+    args: &[&str],
+    label: &str,
+) -> Result<Value, ApiError> {
+    let output = dispatch_atlas_raw(atlas_cmd, args, DISPATCH_TIMEOUT).await?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if output.status.success() {
+        return serde_json::from_str(stdout.trim())
+            .map_err(|error| ApiError::Internal(format!("{label} parse failed: {error}")));
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let raw = if stdout.trim().is_empty() {
+        stderr.trim()
+    } else {
+        stdout.trim()
+    };
+    if let Ok(body) = serde_json::from_str::<Value>(raw) {
+        return Err(ApiError::Structured(structured_cli_status(&body), body));
+    }
+    Err(ApiError::Internal(format!(
+        "{label} failed without structured output"
+    )))
+}
+
 /// Dispatch an atlas CLI command while supplying sensitive input through the
 /// child's stdin. Secret bytes never enter argv, process listings, error
 /// messages, or audit metadata.
@@ -1052,6 +1098,9 @@ struct ToolCallBody {
     args: Option<Value>,
     mode: Option<String>,
     reason: Option<String>,
+    surface_session_id: Option<String>,
+    surface_kind: Option<String>,
+    workspace_root: Option<String>,
 }
 
 /// POST /v1/tools/calls — invoke a tool through the Python policy chokepoint.
@@ -1074,6 +1123,18 @@ async fn tool_call(State(state): State<AppState>, Json(body): Json<ToolCallBody>
         args.push("--reason".into());
         args.push(r.clone());
     }
+    if let Some(session_id) = &body.surface_session_id {
+        args.push("--surface-session-id".into());
+        args.push(session_id.clone());
+    }
+    if let Some(surface_kind) = &body.surface_kind {
+        args.push("--surface-kind".into());
+        args.push(surface_kind.clone());
+    }
+    if let Some(workspace_root) = &body.workspace_root {
+        args.push("--workspace-root".into());
+        args.push(workspace_root.clone());
+    }
     args.push("--".into());
     args.push(body.tool.clone());
 
@@ -1087,6 +1148,7 @@ async fn tool_call(State(state): State<AppState>, Json(body): Json<ToolCallBody>
 #[derive(Deserialize)]
 struct ToolApprovalsQuery {
     status: Option<String>,
+    surface_session_id: Option<String>,
 }
 
 /// GET /v1/tools/approvals?status= — tool approvals awaiting/with a decision.
@@ -1099,6 +1161,10 @@ async fn tool_approvals(
         args.push("--status".into());
         args.push(s.clone());
     }
+    if let Some(session_id) = &q.surface_session_id {
+        args.push("--surface-session-id".into());
+        args.push(session_id.clone());
+    }
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let out = dispatch_atlas(&state.atlas_cmd, &arg_refs).await?;
     let value: Value = serde_json::from_str(&out)
@@ -1109,41 +1175,235 @@ async fn tool_approvals(
 /// POST /v1/tools/approvals/{id}/approve — execute a pending write/shell tool.
 /// A failed-but-processed run returns 200 with status="failed" (CLI exits 0);
 /// only an unknown/non-pending id errors.
-async fn tool_approve(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
-    require_arg(&id, "approval id must be non-empty")?;
-    let out = dispatch_atlas(&state.atlas_cmd, &["tools", "approve", "--json", "--", &id]).await?;
-    let value: Value = serde_json::from_str(&out)
-        .map_err(|e| ApiError::Internal(format!("tools approve parse failed: {e}")))?;
-    Ok(Json(value))
+#[derive(Deserialize)]
+struct ToolDecisionBody {
+    surface_session_id: String,
+    nonce: String,
+    scope: Option<String>,
+    reason: Option<String>,
 }
 
-#[derive(Deserialize)]
-struct ToolRejectBody {
-    reason: Option<String>,
+async fn tool_approve(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    Json(body): Json<ToolDecisionBody>,
+) -> ApiResult {
+    require_arg(&id, "approval id must be non-empty")?;
+    require_arg(
+        &body.surface_session_id,
+        "surface_session_id must be non-empty",
+    )?;
+    require_arg(&body.nonce, "nonce must be non-empty")?;
+    let scope = body.scope.as_deref().unwrap_or("once");
+    let mut args = vec![
+        "tools",
+        "approve",
+        "--json",
+        "--surface-session-id",
+        body.surface_session_id.as_str(),
+        "--nonce",
+        body.nonce.as_str(),
+        "--scope",
+        scope,
+    ];
+    if let Some(value) = body.reason.as_deref() {
+        args.extend(["--reason", value]);
+    }
+    args.extend(["--", id.as_str()]);
+    let value = dispatch_json_cli(&state.atlas_cmd, &args, "tools approve").await?;
+    Ok(Json(value))
 }
 
 /// POST /v1/tools/approvals/{id}/reject — reject a pending tool call (never runs).
 async fn tool_reject(
     State(state): State<AppState>,
     AxPath(id): AxPath<String>,
-    body: Option<Json<ToolRejectBody>>,
+    Json(body): Json<ToolDecisionBody>,
 ) -> ApiResult {
     require_arg(&id, "approval id must be non-empty")?;
-    let mut args: Vec<String> = vec!["tools".into(), "reject".into(), "--json".into()];
-    if let Some(Json(b)) = &body {
-        if let Some(r) = &b.reason {
-            args.push("--reason".into());
-            args.push(r.clone());
-        }
+    require_arg(
+        &body.surface_session_id,
+        "surface_session_id must be non-empty",
+    )?;
+    require_arg(&body.nonce, "nonce must be non-empty")?;
+    let mut args = vec![
+        "tools",
+        "reject",
+        "--json",
+        "--surface-session-id",
+        body.surface_session_id.as_str(),
+        "--nonce",
+        body.nonce.as_str(),
+    ];
+    if let Some(value) = body.reason.as_deref() {
+        args.extend(["--reason", value]);
     }
-    args.push("--".into());
-    args.push(id.clone());
-    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let out = dispatch_atlas(&state.atlas_cmd, &arg_refs).await?;
-    let value: Value = serde_json::from_str(&out)
-        .map_err(|e| ApiError::Internal(format!("tools reject parse failed: {e}")))?;
+    args.extend(["--", id.as_str()]);
+    let value = dispatch_json_cli(&state.atlas_cmd, &args, "tools reject").await?;
     Ok(Json(value))
 }
+
+// ---------------------------------------------------------------------------
+// Shared surface sessions (Phase 10.7) — dispatch-only, owner-token bound.
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct SurfaceCreateBody {
+    surface_kind: String,
+    surface_id: Option<String>,
+    workspace_kind: String,
+    project_id: Option<String>,
+    agent: Option<String>,
+    provider: Option<String>,
+    model: Option<String>,
+    permission_mode: Option<String>,
+    approval_channel: Option<bool>,
+}
+
+async fn surface_create(
+    State(state): State<AppState>,
+    Json(body): Json<SurfaceCreateBody>,
+) -> ApiResult {
+    require_arg(&body.surface_kind, "surface_kind must be non-empty")?;
+    let mut args: Vec<String> = vec![
+        "surface".into(),
+        "create".into(),
+        "--json".into(),
+        "--surface-kind".into(),
+        body.surface_kind,
+    ];
+    if let Some(value) = body.surface_id {
+        args.extend(["--surface-id".into(), value]);
+    }
+    match body.workspace_kind.as_str() {
+        "global" => args.push("--global".into()),
+        "project" => {
+            let project = body
+                .project_id
+                .ok_or(ApiError::BadRequest("project_id is required"))?;
+            args.extend(["--project".into(), project]);
+        }
+        _ => {
+            return Err(ApiError::BadRequest(
+                "workspace_kind must be global or project",
+            ))
+        }
+    }
+    for (flag, value) in [
+        ("--agent", body.agent),
+        ("--provider", body.provider),
+        ("--model", body.model),
+        ("--permission-mode", body.permission_mode),
+    ] {
+        if let Some(value) = value {
+            args.extend([flag.into(), value]);
+        }
+    }
+    if body.approval_channel == Some(false) {
+        args.push("--no-approval-channel".into());
+    }
+    let refs = args.iter().map(String::as_str).collect::<Vec<_>>();
+    let value = dispatch_json_cli(&state.atlas_cmd, &refs, "surface create").await?;
+    Ok(Json(value))
+}
+
+async fn surface_list(State(state): State<AppState>) -> ApiResult {
+    let value = dispatch_json_cli(
+        &state.atlas_cmd,
+        &["surface", "list", "--json"],
+        "surface list",
+    )
+    .await?;
+    Ok(Json(value))
+}
+
+async fn surface_get(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
+    require_arg(&id, "surface session id must be non-empty")?;
+    let value = dispatch_json_cli(
+        &state.atlas_cmd,
+        &["surface", "get", "--json", "--", &id],
+        "surface get",
+    )
+    .await?;
+    Ok(Json(value))
+}
+
+#[derive(Deserialize)]
+struct SurfaceEventsQuery {
+    after_seq: Option<i64>,
+}
+
+async fn surface_events(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    Query(query): Query<SurfaceEventsQuery>,
+) -> ApiResult {
+    require_arg(&id, "surface session id must be non-empty")?;
+    let after_seq = query.after_seq.unwrap_or(-1).to_string();
+    let value = dispatch_json_cli(
+        &state.atlas_cmd,
+        &[
+            "surface",
+            "events",
+            "--json",
+            "--after-seq",
+            &after_seq,
+            "--",
+            &id,
+        ],
+        "surface events",
+    )
+    .await?;
+    Ok(Json(value))
+}
+
+#[derive(Deserialize)]
+struct SurfaceOwnerBody {
+    owner_token: String,
+}
+
+async fn surface_action(
+    state: AppState,
+    id: String,
+    action: &'static str,
+    owner_token: String,
+) -> ApiResult {
+    require_arg(&id, "surface session id must be non-empty")?;
+    require_arg(&owner_token, "owner_token must be non-empty")?;
+    let value = dispatch_json_cli(
+        &state.atlas_cmd,
+        &[
+            "surface",
+            action,
+            "--json",
+            "--owner-token",
+            &owner_token,
+            "--",
+            &id,
+        ],
+        action,
+    )
+    .await?;
+    Ok(Json(value))
+}
+
+macro_rules! surface_action_handler {
+    ($name:ident, $action:literal) => {
+        async fn $name(
+            State(state): State<AppState>,
+            AxPath(id): AxPath<String>,
+            Json(body): Json<SurfaceOwnerBody>,
+        ) -> ApiResult {
+            surface_action(state, id, $action, body.owner_token).await
+        }
+    };
+}
+
+surface_action_handler!(surface_heartbeat, "heartbeat");
+surface_action_handler!(surface_suspend, "suspend");
+surface_action_handler!(surface_resume, "resume");
+surface_action_handler!(surface_cancel, "cancel");
+surface_action_handler!(surface_close, "close");
 
 #[derive(Deserialize)]
 struct SelectFolderBody {
@@ -1399,6 +1659,9 @@ struct StartRunBody {
     /// the run, so it executes in the background (autonomous loop) while this
     /// endpoint returns the run_id immediately. Default false = record-only.
     execute: Option<bool>,
+    /// Attach the run to the shared surface that initiated it so normalized
+    /// events and approvals remain owned by that surface.
+    surface_session_id: Option<String>,
 }
 
 async fn start_run(
@@ -1408,9 +1671,9 @@ async fn start_run(
     body: Option<Json<StartRunBody>>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
     require_arg(&mission_id, "mission id must be non-empty")?;
-    let (agent_opt, execute) = match body {
-        Some(Json(b)) => (b.agent, b.execute.unwrap_or(false)),
-        None => (None, false),
+    let (agent_opt, execute, surface_session_id) = match body {
+        Some(Json(b)) => (b.agent, b.execute.unwrap_or(false), b.surface_session_id),
+        None => (None, false, None),
     };
     let agent = agent_opt
         .map(|a| a.trim().to_string())
@@ -1421,11 +1684,13 @@ async fn start_run(
             "agent must be 'native' or 'claude_code'",
         ));
     }
-    let run_id = dispatch_atlas(
-        &state.atlas_cmd,
-        &["mission", "run", "--agent", &agent, "--", &mission_id],
-    )
-    .await?;
+    let mut args = vec!["mission", "run", "--agent", agent.as_str()];
+    if let Some(session_id) = surface_session_id.as_deref() {
+        require_arg(session_id, "surface_session_id must be non-empty")?;
+        args.extend(["--session-id", session_id]);
+    }
+    args.extend(["--", mission_id.as_str()]);
+    let run_id = dispatch_atlas(&state.atlas_cmd, &args).await?;
     let path = state.db_path.clone();
     let run_id_clone = run_id.clone();
     let found = blocking(move || db::get_run(&path, &run_id_clone)).await?;
@@ -1462,9 +1727,9 @@ async fn retry_mission(
     body: Option<Json<StartRunBody>>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
     require_arg(&mission_id, "mission id must be non-empty")?;
-    let (agent_opt, execute) = match body {
-        Some(Json(b)) => (b.agent, b.execute.unwrap_or(false)),
-        None => (None, false),
+    let (agent_opt, execute, surface_session_id) = match body {
+        Some(Json(b)) => (b.agent, b.execute.unwrap_or(false), b.surface_session_id),
+        None => (None, false, None),
     };
     let agent = agent_opt
         .map(|a| a.trim().to_string())
@@ -1475,11 +1740,13 @@ async fn retry_mission(
             "agent must be 'native' or 'claude_code'",
         ));
     }
-    let run_id = dispatch_atlas(
-        &state.atlas_cmd,
-        &["mission", "retry", "--agent", &agent, "--", &mission_id],
-    )
-    .await?;
+    let mut args = vec!["mission", "retry", "--agent", agent.as_str()];
+    if let Some(session_id) = surface_session_id.as_deref() {
+        require_arg(session_id, "surface_session_id must be non-empty")?;
+        args.extend(["--session-id", session_id]);
+    }
+    args.extend(["--", mission_id.as_str()]);
+    let run_id = dispatch_atlas(&state.atlas_cmd, &args).await?;
     let path = state.db_path.clone();
     let run_id_clone = run_id.clone();
     let found = blocking(move || db::get_run(&path, &run_id_clone)).await?;
@@ -2217,6 +2484,20 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/tools/approvals", get(tool_approvals))
         .route("/v1/tools/approvals/{id}/approve", post(tool_approve))
         .route("/v1/tools/approvals/{id}/reject", post(tool_reject))
+        .route(
+            "/v1/surface-sessions",
+            get(surface_list).post(surface_create),
+        )
+        .route("/v1/surface-sessions/{id}", get(surface_get))
+        .route("/v1/surface-sessions/{id}/events", get(surface_events))
+        .route(
+            "/v1/surface-sessions/{id}/heartbeat",
+            post(surface_heartbeat),
+        )
+        .route("/v1/surface-sessions/{id}/suspend", post(surface_suspend))
+        .route("/v1/surface-sessions/{id}/resume", post(surface_resume))
+        .route("/v1/surface-sessions/{id}/cancel", post(surface_cancel))
+        .route("/v1/surface-sessions/{id}/close", post(surface_close))
         .route("/v1/console/chat", post(console_chat))
         .route("/v1/console/stream", post(console_stream))
         .route("/v1/graph", get(graph_view))

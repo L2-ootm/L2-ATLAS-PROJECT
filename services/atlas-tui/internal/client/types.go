@@ -87,18 +87,64 @@ type missionsEnvelope struct {
 	Count    int       `json:"count"`
 }
 
+// SurfaceSession is the owner-bound shared work-surface contract. OwnerToken
+// is returned only by create/resume and must accompany lifecycle mutations.
+type SurfaceSession struct {
+	ID             string `json:"id"`
+	Agent          string `json:"agent"`
+	PermissionMode string `json:"permission_mode"`
+	State          string `json:"state"`
+	OwnerToken     string `json:"owner_token"`
+	Surface        struct {
+		Kind      string `json:"kind"`
+		SessionID string `json:"session_id"`
+	} `json:"surface"`
+	Workspace struct {
+		Kind      string  `json:"kind"`
+		Root      string  `json:"root"`
+		ProjectID *string `json:"project_id"`
+	} `json:"workspace"`
+	Model struct {
+		Provider string `json:"provider"`
+		ModelID  string `json:"model_id"`
+	} `json:"model"`
+}
+
+// SurfaceEvent is the normalized, ordered event DTO shared by every surface.
+type SurfaceEvent struct {
+	SessionID   string `json:"session_id"`
+	Seq         int64  `json:"seq"`
+	Kind        string `json:"kind"`
+	RunID       string `json:"run_id"`
+	OccurredAt  string `json:"occurred_at"`
+	PayloadJSON string `json:"payload_json"`
+}
+
+type SurfaceEventReplay struct {
+	SessionID string         `json:"session_id"`
+	AfterSeq  int64          `json:"after_seq"`
+	Events    []SurfaceEvent `json:"events"`
+}
+
 // ToolApproval mirrors one row of GET /v1/tools/approvals ({approvals:[...]}) —
 // a gated write/shell tool request awaiting an operator decision (10.5 broker).
 type ToolApproval struct {
-	ID          string `json:"id"`
-	ToolName    string `json:"tool_name"`
-	RiskLevel   string `json:"risk_level"`
-	Summary     string `json:"summary"`
-	Status      string `json:"status"`
-	Reason      string `json:"reason"`
-	RunID       string `json:"run_id"`
-	SurfaceKind string `json:"surface_kind"`
-	RequestedAt string `json:"requested_at"`
+	ID               string          `json:"id"`
+	ToolName         string          `json:"tool_name"`
+	RiskLevel        string          `json:"risk_level"`
+	Args             string          `json:"args"`
+	ArgsNormalized   string          `json:"args_normalized"`
+	Summary          string          `json:"summary"`
+	Status           string          `json:"status"`
+	Reason           string          `json:"reason"`
+	RunID            string          `json:"run_id"`
+	SurfaceSessionID string          `json:"surface_session_id"`
+	SurfaceKind      string          `json:"surface_kind"`
+	WorkspaceRoot    string          `json:"workspace_root"`
+	ExpiryAt         string          `json:"expiry_at"`
+	Nonce            string          `json:"nonce"`
+	PolicyReceipt    json.RawMessage `json:"policy_receipt"`
+	RequestedAt      string          `json:"requested_at"`
 }
 
 type approvalsEnvelope struct {

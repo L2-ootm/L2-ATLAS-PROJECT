@@ -330,6 +330,11 @@ def run_mission(
     agent: str = typer.Option(
         "native", "--agent", help="Agent runtime to record/use: native | claude_code"
     ),
+    session_id: str | None = typer.Option(
+        None,
+        "--session-id",
+        help="Owning shared surface-session id.",
+    ),
     execute: bool = typer.Option(
         False,
         "--execute",
@@ -362,7 +367,11 @@ def run_mission(
 
     try:
         run = run_service.start_run(
-            conn, lock, mission_id=mission_id, agent_runtime=agent
+            conn,
+            lock,
+            mission_id=mission_id,
+            session_id=session_id,
+            agent_runtime=agent,
         )
     except ValueError as exc:
         typer.echo(f"Error: {exc}", err=True)
@@ -388,6 +397,11 @@ def retry_mission(
     agent: str = typer.Option(
         "native", "--agent", help="Agent runtime to record/use: native | claude_code"
     ),
+    session_id: str | None = typer.Option(
+        None,
+        "--session-id",
+        help="Owning shared surface-session id.",
+    ),
     execute: bool = typer.Option(
         False,
         "--execute",
@@ -412,7 +426,11 @@ def retry_mission(
     try:
         mission_service.retry_mission(conn, lock, mission_id=mission_id)
         run = run_service.start_run(
-            conn, lock, mission_id=mission_id, agent_runtime=agent
+            conn,
+            lock,
+            mission_id=mission_id,
+            session_id=session_id,
+            agent_runtime=agent,
         )
     except ValueError as exc:
         typer.echo(f"Error: {exc}", err=True)

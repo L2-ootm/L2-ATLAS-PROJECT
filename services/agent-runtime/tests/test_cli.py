@@ -13,7 +13,6 @@ Fixtures from conftest.py (injected by name — do NOT import):
 """
 import json
 
-import pytest
 from typer.testing import CliRunner
 
 from atlas_runtime.cli.main import app
@@ -41,6 +40,26 @@ def test_run_command_exits_zero(db, lock, monkeypatch):
     mission = mission_service.create_mission(db, lock, title="Run Test")
     result = runner.invoke(app, ["mission", "run", mission.id])
     assert result.exit_code == 0
+
+
+def test_run_command_attaches_surface_session(db, lock, monkeypatch):
+    """A surface-started run keeps the owning surface id on the run row."""
+    import atlas_runtime.cli.main as cli_main
+    from atlas_runtime import mission_service
+
+    monkeypatch.setattr(cli_main, "_get_connection", lambda: db)
+    monkeypatch.setattr(cli_main, "_get_lock", lambda: lock)
+    mission = mission_service.create_mission(db, lock, title="Surface Run")
+    result = runner.invoke(
+        app,
+        ["mission", "run", "--session-id", "surface-1", mission.id],
+    )
+    assert result.exit_code == 0, result.output
+    session_id = db.execute(
+        "SELECT session_id FROM runs WHERE id=?",
+        (result.output.strip(),),
+    ).fetchone()[0]
+    assert session_id == "surface-1"
 
 
 def test_cancel_command_exits_zero(db, lock, monkeypatch):

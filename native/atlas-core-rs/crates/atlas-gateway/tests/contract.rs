@@ -12,6 +12,7 @@ use atlas_gateway::{app, AppState};
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
+use serde::Deserialize;
 use serde_json::Value;
 use std::path::PathBuf;
 use tower::util::ServiceExt;
@@ -108,6 +109,39 @@ fn assert_fields_present(obj: &Value, required: &[String], context: &str) {
              (from Pydantic schema source of truth)"
         );
     }
+}
+
+#[derive(Deserialize)]
+struct SurfaceEventFixture {
+    session_id: String,
+    terminal_outcome: String,
+    events: Vec<SurfaceEventDto>,
+}
+
+#[derive(Deserialize)]
+struct SurfaceEventDto {
+    session_id: String,
+    seq: i64,
+    kind: String,
+    payload_json: String,
+}
+
+#[test]
+fn normalized_surface_event_fixture_is_contiguous_and_terminal() {
+    let fixture: SurfaceEventFixture = serde_json::from_str(include_str!(
+        "../../../../../services/agent-runtime/tests/fixtures/surface_event_parity.json"
+    ))
+    .expect("Rust must accept the frozen normalized-event fixture");
+
+    assert_eq!(fixture.events.len(), 10);
+    for (index, event) in fixture.events.iter().enumerate() {
+        assert_eq!(event.session_id, fixture.session_id);
+        assert_eq!(event.seq, index as i64);
+    }
+    let terminal = fixture.events.last().unwrap();
+    assert_eq!(terminal.kind, "completion");
+    let payload: Value = serde_json::from_str(&terminal.payload_json).unwrap();
+    assert_eq!(payload["status"], fixture.terminal_outcome);
 }
 
 // ---------------------------------------------------------------------------

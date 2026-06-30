@@ -223,7 +223,7 @@ func TestProbeCommandCreatesExecutesAndArchivesOnStartFailure(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	msg := startProbe(client.New(srv.URL))()
+	msg := startProbe(client.New(srv.URL), "surface-1")()
 	started, ok := msg.(probeStartedMsg)
 	if !ok {
 		t.Fatalf("want probeStartedMsg, got %T", msg)

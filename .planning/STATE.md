@@ -4,12 +4,12 @@ milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
 last_updated: "2026-06-29T15:28:49.586Z"
-last_activity: 2026-06-29 -- Phase 10.7 planning complete
+last_activity: 2026-06-29 -- Phase 10.7 Plan 04 complete
 progress:
   total_phases: 8
   completed_phases: 6
   total_plans: 48
-  completed_plans: 44
+  completed_plans: 45
   percent: 75
 ---
 
@@ -42,8 +42,12 @@ timeout-deny waits are green. Operator review was incorporated into migration, c
 React bootstrap, dependency-audit, and final-suite gates. Plan 10.7-03 is complete: the CLI now
 exposes owner-token-bound global/project surface lifecycle and nonce-bound owned approval
 decisions through the existing services/broker; global approval visibility is read-only. Fresh
-verification: agent-runtime 722 passed / 2 skipped. Phase progress: 3/7 plans. Next: Rust gateway
-routes and Go TUI convergence.
+verification: agent-runtime 722 passed / 2 skipped. Plan 10.7-04 is complete: Rust publishes the
+session/scoped-permission/normalized-event contracts, the Go TUI owns and heartbeats one session,
+surface-started runs retain that id, approvals are nonce-bound with selectable scope, and blocking
+approval/clarify/confirm overlays follow the transformed Hermes interaction model. Gateway API
+95 passed, contract 4 passed, and Go tests are green. Phase progress: 4/7 plans. Next: React
+session coordinator and Console migration.
 Branch: `feat/go-tui-provider-mesh`.
 
 ## Prior Position — Go TUI + Provider Mesh (operator pivot, 2026-06-28)

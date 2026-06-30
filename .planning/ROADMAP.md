@@ -503,7 +503,7 @@ contracts, with unobtrusive controls that appear only when operationally relevan
 
 - [x] 10.7-03-PLAN.md — expose session lifecycle and scoped permission decisions through stable
   JSON CLI contracts (WEB-01, WEB-04, WEB-05)
-- [ ] 10.7-04-PLAN.md — add thin Rust gateway routes and converge the Go TUI on session-owned,
+- [x] 10.7-04-PLAN.md — add thin Rust gateway routes and converge the Go TUI on session-owned,
   nonce-bound contracts (WEB-01, WEB-02, WEB-04, WEB-05)
 
 **Wave 3 *(blocked on Wave 2 completion)* — canonical React surface**

@@ -169,6 +169,116 @@ async fn auth_list_returns_dispatched_status() {
 }
 
 #[tokio::test]
+async fn surface_create_returns_shared_cli_contract() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"id":"surface-1","owner_token":"owner-1","state":"active","surface":{"kind":"webui","session_id":"tab-1"},"workspace":{"kind":"global","root":"C:/atlas","project_id":null}}"#,
+        &stub_dir,
+    );
+    let (status, body) = post_json(
+        &router,
+        "/v1/surface-sessions",
+        json!({
+            "surface_kind": "webui",
+            "surface_id": "tab-1",
+            "workspace_kind": "global"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["id"], "surface-1");
+    assert_eq!(body["owner_token"], "owner-1");
+    assert_eq!(body["surface"]["kind"], "webui");
+}
+
+#[tokio::test]
+async fn surface_owner_action_returns_terminal_contract() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"id":"surface-1","owner_token":"","state":"completed"}"#,
+        &stub_dir,
+    );
+    let (status, body) = post_json(
+        &router,
+        "/v1/surface-sessions/surface-1/cancel",
+        json!({"owner_token": "owner-1"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["state"], "completed");
+}
+
+#[tokio::test]
+async fn surface_events_replay_returns_normalized_sequence() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"session_id":"surface-1","after_seq":3,"events":[{"session_id":"surface-1","seq":4,"kind":"tool_result","run_id":"run-1","occurred_at":"2026-06-29T00:00:00+00:00","payload_json":"{}"}]}"#,
+        &stub_dir,
+    );
+    let (status, body) =
+        get_json(&router, "/v1/surface-sessions/surface-1/events?after_seq=3").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["session_id"], "surface-1");
+    assert_eq!(body["events"][0]["seq"], 4);
+    assert_eq!(body["events"][0]["kind"], "tool_result");
+}
+
+#[tokio::test]
+async fn surface_and_approval_errors_map_to_stable_http_statuses() {
+    for (code, expected) in [
+        ("surface_not_found", StatusCode::NOT_FOUND),
+        ("surface_owner_mismatch", StatusCode::FORBIDDEN),
+        ("surface_transition_conflict", StatusCode::CONFLICT),
+        ("approval_stale", StatusCode::GONE),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let stub_dir = tempfile::tempdir().unwrap();
+        let payload = json!({
+            "error": {
+                "code": code,
+                "message": "typed failure",
+                "remediation": "reload the scoped contract"
+            }
+        })
+        .to_string();
+        let router = test_app_with_failing_stub(seeded_db(&dir), &payload, 1, &stub_dir);
+        let (status, body) = get_json(&router, "/v1/surface-sessions/surface-1").await;
+        assert_eq!(status, expected, "wrong mapping for {code}");
+        assert_eq!(body["error"]["code"], code);
+    }
+}
+
+#[tokio::test]
+async fn scoped_tool_decision_requires_and_forwards_authority_body() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"id":"approval-1","surface_session_id":"surface-1","status":"rejected","decision":"reject"}"#,
+        &stub_dir,
+    );
+    let (status, body) = post_json(
+        &router,
+        "/v1/tools/approvals/approval-1/reject",
+        json!({
+            "surface_session_id": "surface-1",
+            "nonce": "nonce-1",
+            "reason": "operator denied"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["surface_session_id"], "surface-1");
+    assert_eq!(body["status"], "rejected");
+}
+
+#[tokio::test]
 async fn auth_codex_import_surfaces_not_imported_as_200() {
     // import-codex exits non-zero with a structured {imported:false} on stdout;
     // the route must surface that as 200, not collapse it to a 500.
@@ -803,6 +913,32 @@ async fn start_run_forwards_agent_claude_code() {
         .position(|a| *a == "--agent")
         .expect("--agent flag missing from dispatched args");
     assert_eq!(args.get(idx + 1).copied(), Some("claude_code"));
+}
+
+#[tokio::test]
+async fn start_run_forwards_surface_session_as_one_argv_value() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let argv_path = stub_dir.path().join("argv.txt");
+    let router = test_app_with_arg_capture(seeded_db(&dir), "r1", &argv_path, &stub_dir);
+    let (status, _) = post_json(
+        &router,
+        "/v1/missions/m1/run",
+        json!({
+            "agent": "native",
+            "execute": false,
+            "surface_session_id": "surface-1"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let args = std::fs::read_to_string(argv_path).unwrap();
+    let args = args.lines().collect::<Vec<_>>();
+    let index = args
+        .iter()
+        .position(|arg| *arg == "--session-id")
+        .expect("--session-id missing");
+    assert_eq!(args[index + 1], "surface-1");
 }
 
 #[tokio::test]
