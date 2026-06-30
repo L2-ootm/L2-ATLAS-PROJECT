@@ -25,9 +25,11 @@ from pydantic import ValidationError
 
 from atlas_runtime import (
     agent_contract_service,
+    audit_service,
     config_service,
     permission_broker,
     run_service,
+    surface_events,
     surface_session_service,
     tool_catalog,
     workspace_service,
@@ -236,6 +238,33 @@ def list_sessions(
         return
     for session in sessions:
         typer.echo(f"{session.id}\t{session.state}\t{session.surface.kind}")
+
+
+@surface_app.command("events")
+def events(
+    session_id: str,
+    after_seq: int = typer.Option(-1, "--after-seq", min=-1),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Replay normalized events strictly after one per-session sequence."""
+    conn = _get_connection()
+    _session_or_fail(conn, session_id)
+    audit_events = audit_service.get_events_for_session(conn, session_id)
+    normalized = surface_events.normalize_surface_events(
+        audit_events,
+        session_id=session_id,
+    )
+    replay = surface_events.replay_since(normalized, after_seq)
+    payload = {
+        "session_id": session_id,
+        "after_seq": after_seq,
+        "events": [event.model_dump(mode="json") for event in replay],
+    }
+    if json_out:
+        _echo(payload)
+        return
+    for event in replay:
+        typer.echo(f"{event.seq}\t{event.kind}\t{event.run_id or ''}")
 
 
 @surface_app.command("heartbeat")

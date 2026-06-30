@@ -144,6 +144,78 @@ def test_cancel_drives_active_session_to_clean_terminal(patched_surface_db) -> N
     assert terminal["state"] == "completed"
 
 
+def test_events_replay_is_normalized_and_strictly_after_sequence(
+    patched_surface_db,
+) -> None:
+    created = _invoke(
+        "create",
+        "--surface-kind",
+        "tui",
+        "--surface-id",
+        "event-reader",
+        "--global",
+    )
+    conn = sqlite3.connect(str(patched_surface_db["path"]))
+    conn.execute(
+        "INSERT INTO missions "
+        "(id,title,intent,status,project,created_at,updated_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (
+            "mission-events",
+            "Events",
+            "verify replay",
+            "completed",
+            "test",
+            "2026-06-29T00:00:00+00:00",
+            "2026-06-29T00:00:00+00:00",
+        ),
+    )
+    conn.execute(
+        "INSERT INTO runs "
+        "(id,mission_id,session_id,status,started_at,finished_at,summary,agent_runtime) "
+        "VALUES (?,?,?,?,?,?,?,?)",
+        (
+            "run-events",
+            "mission-events",
+            created["id"],
+            "succeeded",
+            "2026-06-29T00:00:00+00:00",
+            "2026-06-29T00:00:02+00:00",
+            "done",
+            "native",
+        ),
+    )
+    conn.execute(
+        "INSERT INTO audit_events "
+        "(id,run_id,event_type,tool_name,timestamp,duration_ms,data) "
+        "VALUES (?,?,?,?,?,?,?), (?,?,?,?,?,?,?)",
+        (
+            "event-1",
+            "run-events",
+            "llm_call",
+            None,
+            "2026-06-29T00:00:00+00:00",
+            None,
+            '{"text":"hello"}',
+            "event-2",
+            "run-events",
+            "tool_call",
+            "read_file",
+            "2026-06-29T00:00:01+00:00",
+            None,
+            '{"tool":"read_file"}',
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    payload = _invoke("events", created["id"], "--after-seq", "0")
+
+    assert [event["seq"] for event in payload["events"]] == [1]
+    assert payload["events"][0]["kind"] == "tool_call"
+    assert payload["session_id"] == created["id"]
+
+
 def test_unknown_project_returns_typed_json_error(patched_surface_db) -> None:
     result = runner.invoke(
         surface_cli.surface_app,

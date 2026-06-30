@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -100,6 +101,13 @@ func (c *Client) requestJSON(
 			CurrentRevision int64 `json:"current_revision"`
 		}
 		_ = json.NewDecoder(resp.Body).Decode(&payload)
+		if resp.StatusCode == http.StatusNotFound &&
+			strings.HasPrefix(path, "/v1/surface-sessions") &&
+			payload.Error.Code == "" {
+			payload.Error.Code = "gateway_upgrade_required"
+			payload.Error.Message = "the ATLAS gateway does not support shared surface sessions"
+			payload.Error.Remediation = "upgrade and restart the ATLAS gateway before using this TUI"
+		}
 		return &APIError{
 			Method:          method,
 			Path:            path,
@@ -114,6 +122,76 @@ func (c *Client) requestJSON(
 		return nil
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+// CreateSurface attaches this TUI to the shared session/permission contracts.
+// There is deliberately no legacy fallback: unscoped approval mutation is not
+// safe when the gateway lacks the surface-session endpoints.
+func (c *Client) CreateSurface(
+	ctx context.Context,
+	surfaceKind string,
+	workspaceKind string,
+	projectID string,
+) (SurfaceSession, error) {
+	var session SurfaceSession
+	body := map[string]any{
+		"surface_kind":   surfaceKind,
+		"workspace_kind": workspaceKind,
+	}
+	if projectID != "" {
+		body["project_id"] = projectID
+	}
+	err := c.postJSON(ctx, "/v1/surface-sessions", body, &session)
+	return session, err
+}
+
+func (c *Client) mutateSurface(
+	ctx context.Context,
+	session SurfaceSession,
+	action string,
+) (SurfaceSession, error) {
+	var updated SurfaceSession
+	if session.ID == "" || session.OwnerToken == "" {
+		return updated, errors.New("surface mutation requires session id and owner token")
+	}
+	path := "/v1/surface-sessions/" + url.PathEscape(session.ID) + "/" + action
+	err := c.postJSON(ctx, path, map[string]string{"owner_token": session.OwnerToken}, &updated)
+	return updated, err
+}
+
+// HeartbeatSurface keeps the approval channel and owner lease alive.
+func (c *Client) HeartbeatSurface(
+	ctx context.Context,
+	session SurfaceSession,
+) (SurfaceSession, error) {
+	return c.mutateSurface(ctx, session, "heartbeat")
+}
+
+// CloseSurface cleanly releases this TUI's owner-bound shared session.
+func (c *Client) CloseSurface(
+	ctx context.Context,
+	session SurfaceSession,
+) (SurfaceSession, error) {
+	return c.mutateSurface(ctx, session, "close")
+}
+
+// SurfaceEvents replays normalized events strictly after the supplied cursor.
+func (c *Client) SurfaceEvents(
+	ctx context.Context,
+	surfaceSessionID string,
+	afterSeq int64,
+) (SurfaceEventReplay, error) {
+	var replay SurfaceEventReplay
+	if surfaceSessionID == "" {
+		return replay, errors.New("event replay requires a surface session")
+	}
+	query := url.Values{
+		"after_seq": []string{strconv.FormatInt(afterSeq, 10)},
+	}
+	path := "/v1/surface-sessions/" + url.PathEscape(surfaceSessionID) +
+		"/events?" + query.Encode()
+	err := c.getJSON(ctx, path, &replay)
+	return replay, err
 }
 
 // Config returns the masked provider config and optimistic revision.
@@ -256,25 +334,42 @@ func (c *Client) CreateMission(ctx context.Context, title, intent string) (Missi
 // StartRun starts a run on a mission (POST /v1/missions/{id}/run) and returns
 // the new run id. With execute=true the gateway spawns a detached `run exec`
 // so the run drives to completion in the background and streams audit events.
-func (c *Client) StartRun(ctx context.Context, missionID, agent string, execute bool) (string, error) {
+func (c *Client) StartRun(
+	ctx context.Context,
+	missionID string,
+	agent string,
+	execute bool,
+	surfaceSessionID string,
+) (string, error) {
 	if agent == "" {
 		agent = "native"
 	}
 	var env startRunEnvelope
-	body := map[string]any{"agent": agent, "execute": execute}
+	body := map[string]any{
+		"agent":              agent,
+		"execute":            execute,
+		"surface_session_id": surfaceSessionID,
+	}
 	if err := c.postJSON(ctx, "/v1/missions/"+missionID+"/run", body, &env); err != nil {
 		return "", err
 	}
 	return env.Run.ID, nil
 }
 
-// ToolApprovals lists tool approvals (GET /v1/tools/approvals). status filters
-// by lifecycle ("pending" by default at the CLI; "all" for every row).
-func (c *Client) ToolApprovals(ctx context.Context, status string) ([]ToolApproval, error) {
-	path := "/v1/tools/approvals"
-	if status != "" {
-		path += "?status=" + status
+// ToolApprovals lists only approvals owned by one shared surface session.
+func (c *Client) ToolApprovals(
+	ctx context.Context,
+	status string,
+	surfaceSessionID string,
+) ([]ToolApproval, error) {
+	if surfaceSessionID == "" {
+		return nil, errors.New("approval queue requires a surface session")
 	}
+	query := url.Values{"surface_session_id": []string{surfaceSessionID}}
+	if status != "" {
+		query.Set("status", status)
+	}
+	path := "/v1/tools/approvals?" + query.Encode()
 	var env approvalsEnvelope
 	if err := c.getJSON(ctx, path, &env); err != nil {
 		return nil, err
@@ -282,23 +377,61 @@ func (c *Client) ToolApprovals(ctx context.Context, status string) ([]ToolApprov
 	return env.Approvals, nil
 }
 
-// ApproveTool approves + executes a pending tool call (POST .../approve). A
-// processed-but-failed tool returns status="failed" (still a 200, not an error).
-func (c *Client) ApproveTool(ctx context.Context, id string) (ToolApproval, error) {
-	var a ToolApproval
-	err := c.postJSON(ctx, "/v1/tools/approvals/"+id+"/approve", nil, &a)
-	return a, err
+func approvalDecisionBody(approval ToolApproval) (map[string]string, error) {
+	if approval.ID == "" || approval.SurfaceSessionID == "" || approval.Nonce == "" {
+		return nil, errors.New("approval decision requires id, surface session, and nonce")
+	}
+	return map[string]string{
+		"surface_session_id": approval.SurfaceSessionID,
+		"nonce":              approval.Nonce,
+	}, nil
 }
 
-// RejectTool rejects a pending tool call (POST .../reject); it never executes.
-func (c *Client) RejectTool(ctx context.Context, id, reason string) (ToolApproval, error) {
-	var a ToolApproval
-	var body any
-	if reason != "" {
-		body = map[string]string{"reason": reason}
+// ApproveTool claims and executes a pending request using its replay nonce.
+func (c *Client) ApproveTool(
+	ctx context.Context,
+	approval ToolApproval,
+	scope string,
+) (ToolApproval, error) {
+	var decided ToolApproval
+	body, err := approvalDecisionBody(approval)
+	if err != nil {
+		return decided, err
 	}
-	err := c.postJSON(ctx, "/v1/tools/approvals/"+id+"/reject", body, &a)
-	return a, err
+	if scope == "" {
+		scope = "once"
+	}
+	body["scope"] = scope
+	err = c.postJSON(
+		ctx,
+		"/v1/tools/approvals/"+url.PathEscape(approval.ID)+"/approve",
+		body,
+		&decided,
+	)
+	return decided, err
+}
+
+// RejectTool rejects a nonce-bound pending request; it never executes.
+func (c *Client) RejectTool(
+	ctx context.Context,
+	approval ToolApproval,
+	reason string,
+) (ToolApproval, error) {
+	var decided ToolApproval
+	body, err := approvalDecisionBody(approval)
+	if err != nil {
+		return decided, err
+	}
+	if reason != "" {
+		body["reason"] = reason
+	}
+	err = c.postJSON(
+		ctx,
+		"/v1/tools/approvals/"+url.PathEscape(approval.ID)+"/reject",
+		body,
+		&decided,
+	)
+	return decided, err
 }
 
 // StreamRun consumes GET /v1/runs/{id}/stream (text/event-stream) and delivers

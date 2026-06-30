@@ -263,7 +263,7 @@ func (m model) saveSettings(probeAfter bool) (model, tea.Cmd) {
 	}
 }
 
-func startProbe(c *client.Client) tea.Cmd {
+func startProbe(c *client.Client, surfaceSessionID string) tea.Cmd {
 	return func() tea.Msg {
 		mission, err := c.CreateMission(
 			context.Background(),
@@ -273,7 +273,13 @@ func startProbe(c *client.Client) tea.Cmd {
 		if err != nil {
 			return probeStartedMsg{err: err}
 		}
-		runID, err := c.StartRun(context.Background(), mission.ID, "native", true)
+		runID, err := c.StartRun(
+			context.Background(),
+			mission.ID,
+			"native",
+			true,
+			surfaceSessionID,
+		)
 		if err != nil {
 			archiveErr := c.ArchiveMission(context.Background(), mission.ID)
 			if archiveErr != nil {
