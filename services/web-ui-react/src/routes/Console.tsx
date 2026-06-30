@@ -135,10 +135,11 @@ export function surfaceConsoleEvent(event: SurfaceEvent): ConsoleChatEvent {
 		};
 	}
 	if (event.kind === 'completion') {
+		const terminalStatus = payload.status ?? payload.transition;
 		return {
 			type: 'result',
 			content: payload,
-			is_error: payload.status !== 'succeeded'
+			is_error: terminalStatus !== 'succeeded'
 		};
 	}
 	return {

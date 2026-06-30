@@ -73,6 +73,8 @@ def _kind_for(event_type: str, payload: dict) -> EventKind:
     hint = payload.get("surface_kind")
     if hint in _EVENT_KINDS:  # explicit producer hint wins (makes every kind reachable)
         return hint  # type: ignore[return-value]
+    if payload.get("transition") in {"succeeded", "failed", "cancelled"}:
+        return "completion"
     if event_type == "llm_call":
         return "reasoning" if payload.get("reasoning") else "text"
     return _KIND_MAP.get(event_type, "task")

@@ -56,15 +56,17 @@ export interface AgentSurfaceValue {
 		workspace: WorkspaceRequest
 	) => Promise<string>;
 	cancel: () => Promise<void>;
+	resume: () => Promise<void>;
 	refresh: () => Promise<void>;
 	decide: (
 		approval: ToolApproval,
 		decision: 'deny' | 'once' | 'session' | 'durable'
 	) => Promise<void>;
 	setPinned: (pinned: boolean) => void;
+	setQueueOpen: (open: boolean) => void;
 }
 
-const AgentSurfaceContext = createContext<AgentSurfaceValue | null>(null);
+export const AgentSurfaceContext = createContext<AgentSurfaceValue | null>(null);
 
 function surfaceId(): string {
 	return globalThis.crypto?.randomUUID?.() ?? `web-${Date.now()}`;
@@ -82,6 +84,7 @@ export function AgentSurfaceProvider({ children }: { children: ReactNode }) {
 	const [error, setError] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [pinned, setPinned] = useState(false);
+	const [queueDismissed, setQueueDismissed] = useState(false);
 	const cursor = useRef(-1);
 	const sessionRef = useRef<SurfaceSession | null>(null);
 
@@ -117,7 +120,12 @@ export function AgentSurfaceProvider({ children }: { children: ReactNode }) {
 					approval.surface_session_id === current.id && approval.status === 'pending'
 			)
 		);
+		setError(null);
 	}, []);
+
+	useEffect(() => {
+		if (approvals.length > 0) setQueueDismissed(false);
+	}, [approvals.length]);
 
 	const openSurface = useCallback(
 		async (workspace: WorkspaceRequest) => {
@@ -177,6 +185,13 @@ export function AgentSurfaceProvider({ children }: { children: ReactNode }) {
 		retainSession(next);
 	}, [retainSession]);
 
+	const resume = useCallback(async () => {
+		const current = sessionRef.current;
+		if (!current) return;
+		const next = withOwnerToken(await resumeSurfaceSession(current), current);
+		retainSession(next);
+	}, [retainSession]);
+
 	const decide = useCallback(
 		async (
 			approval: ToolApproval,
@@ -202,6 +217,7 @@ export function AgentSurfaceProvider({ children }: { children: ReactNode }) {
 				setApprovals((prior) => prior.filter((item) => item.id !== approval.id));
 				setOutcomes((prior) => [outcome, ...prior].slice(0, 20));
 			} catch (cause) {
+				setError(cause instanceof Error ? cause.message : String(cause));
 				await refresh();
 				throw cause;
 			}
@@ -234,8 +250,12 @@ export function AgentSurfaceProvider({ children }: { children: ReactNode }) {
 			.catch(() => retainSession(null));
 	}, [retainSession]);
 
+	const sessionIsLive =
+		session !== null &&
+		['active', 'suspended', 'resuming', 'cancelling'].includes(session.state);
+
 	useEffect(() => {
-		if (!session || !['active', 'suspended', 'resuming', 'cancelling'].includes(session.state)) {
+		if (!sessionIsLive) {
 			return;
 		}
 		void refresh().catch(cause => setError(cause instanceof Error ? cause.message : String(cause)));
@@ -247,7 +267,7 @@ export function AgentSurfaceProvider({ children }: { children: ReactNode }) {
 				.catch(cause => setError(cause instanceof Error ? cause.message : String(cause)));
 		}, 2000);
 		return () => window.clearInterval(timer);
-	}, [refresh, retainSession, session?.id, session?.state]);
+	}, [refresh, retainSession, sessionIsLive]);
 
 	const value = useMemo<AgentSurfaceValue>(
 		() => ({
@@ -258,13 +278,19 @@ export function AgentSurfaceProvider({ children }: { children: ReactNode }) {
 			error,
 			busy,
 			pinned,
-			queueOpen: approvals.length > 0 || pinned,
+			queueOpen: pinned || (approvals.length > 0 && !queueDismissed),
 			openSurface,
 			submitPrompt,
 			cancel,
+			resume,
 			refresh,
 			decide,
-			setPinned
+			setPinned,
+			setQueueOpen: open => {
+				setQueueDismissed(!open);
+				if (!open) setPinned(false);
+				else if (approvals.length === 0) setPinned(true);
+			}
 		}),
 		[
 			session,
@@ -274,9 +300,11 @@ export function AgentSurfaceProvider({ children }: { children: ReactNode }) {
 			error,
 			busy,
 			pinned,
+			queueDismissed,
 			openSurface,
 			submitPrompt,
 			cancel,
+			resume,
 			refresh,
 			decide
 		]
