@@ -7,14 +7,14 @@ export default function PolicyReceipt({ approval }: { approval: ToolApproval }) 
 		try {
 			return parsePolicyReceipt(approval.policy_receipt);
 		} catch {
-			return { source: 'invalid receipt', decision: 'deny' };
+			return { source_layer: 'hardline', reason_code: 'invalid_receipt', decision: 'deny' };
 		}
 	})();
-	const hardline = receipt?.hardline === true;
+	const hardline = receipt?.source_layer === 'hardline';
 	const decision = approval.status === 'executed' ? 'ALLOWED' : 'DENIED';
 	const source = hardline
 		? 'HARDLINE SAFETY FLOOR'
-		: String(receipt?.source ?? approval.decision ?? 'AUTHORITY');
+		: String(receipt?.source_layer ?? approval.decision ?? 'AUTHORITY');
 	return (
 		<div className="policy-receipt" data-outcome={approval.status}>
 			<ShieldCheck size={13} aria-hidden="true" />

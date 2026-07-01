@@ -106,8 +106,8 @@ export function AgentSurfaceProvider({ children }: { children: ReactNode }) {
 		const current = sessionRef.current;
 		if (!current) return;
 		const [replayValue, owned] = await Promise.all([
-			getSurfaceEvents(current.id, cursor.current),
-			listOwnedToolApprovals(current.id)
+			getSurfaceEvents(current, cursor.current),
+			listOwnedToolApprovals(current)
 		]);
 		const replay = parseSurfaceReplay(replayValue);
 		if (replay.events.length > 0) {
@@ -212,8 +212,16 @@ export function AgentSurfaceProvider({ children }: { children: ReactNode }) {
 			try {
 				const outcome =
 					decision === 'deny'
-						? await rejectToolCall(approval, 'rejected from WebUI')
-						: await approveToolCall(approval, decision);
+						? await rejectToolCall(
+								approval,
+								sessionRef.current.owner_token,
+								'rejected from WebUI'
+							)
+						: await approveToolCall(
+								approval,
+								sessionRef.current.owner_token,
+								decision
+							);
 				setApprovals((prior) => prior.filter((item) => item.id !== approval.id));
 				setOutcomes((prior) => [outcome, ...prior].slice(0, 20));
 			} catch (cause) {
@@ -235,7 +243,7 @@ export function AgentSurfaceProvider({ children }: { children: ReactNode }) {
 			localStorage.removeItem(RECONNECT_KEY);
 			return;
 		}
-		void getSurfaceSession(identity.id)
+		void getSurfaceSession(identity.id, identity.ownerToken)
 			.then(async projected => {
 				let restored = { ...projected, owner_token: identity.ownerToken };
 				if (projected.state === 'suspended') {

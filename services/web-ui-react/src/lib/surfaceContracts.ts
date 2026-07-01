@@ -53,9 +53,12 @@ export interface SurfaceEventReplay {
 
 export interface PermissionPolicyReceipt {
 	decision?: 'allow' | 'ask' | 'deny';
-	source?: string;
-	rule_id?: string | null;
-	hardline?: boolean;
+	reason_code?: string;
+	source_layer?: 'hardline' | 'master' | 'profile' | 'scoped_allow' | 'default';
+	matched_rule_id?: string | null;
+	effective_preset?: string;
+	effective_profile_id?: string | null;
+	maintenance_scope_used?: boolean;
 	[key: string]: unknown;
 }
 

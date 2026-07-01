@@ -126,7 +126,7 @@ type SurfaceEventReplay struct {
 	Events    []SurfaceEvent `json:"events"`
 }
 
-// ToolApproval mirrors one row of GET /v1/tools/approvals ({approvals:[...]}) —
+// ToolApproval mirrors one row of a surface-owned approval queue —
 // a gated write/shell tool request awaiting an operator decision (10.5 broker).
 type ToolApproval struct {
 	ID               string          `json:"id"`

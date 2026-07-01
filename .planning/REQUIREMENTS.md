@@ -147,14 +147,14 @@ surfaces over the same projects, context, configuration, permissions, tools, and
 
 ### WEB — Web Agent and Queue UX
 
-- [ ] **WEB-01**: WebUI starts global/project agent sessions through the shared session protocol.
-- [ ] **WEB-02**: WebUI renders event parity with TUI, including retrieval and subagents.
-- [ ] **WEB-03**: A minimal conditional header appears only for active/relevant agent state.
-- [ ] **WEB-04**: A right permission/queue sidebar appears only for matching WebUI-owned pending
+- [x] **WEB-01**: WebUI starts global/project agent sessions through the shared session protocol.
+- [x] **WEB-02**: WebUI renders event parity with TUI, including retrieval and subagents.
+- [x] **WEB-03**: A minimal conditional header appears only for active/relevant agent state.
+- [x] **WEB-04**: A right permission/queue sidebar appears only for matching WebUI-owned pending
   work or when explicitly pinned.
-- [ ] **WEB-05**: Config, project, model, permission, cancel, reconnect, and resume controls use the
+- [x] **WEB-05**: Config, project, model, permission, cancel, reconnect, and resume controls use the
   shared contracts.
-- [ ] **WEB-06**: Queue UX is responsive, keyboard-operable, focus-safe, and screen-reader announced.
+- [x] **WEB-06**: Queue UX is responsive, keyboard-operable, focus-safe, and screen-reader announced.
 
 ### AUDIT / SECURITY
 
@@ -215,4 +215,4 @@ surfaces over the same projects, context, configuration, permissions, tools, and
 | 10.8 | TEST, DOC |
 
 ---
-*Last updated: 2026-06-23 — v1.1 resumed and re-scoped by D-023.*
+*Last updated: 2026-06-30 — Phase 10.7 WEB-01–WEB-06 verified complete.*

@@ -69,6 +69,17 @@ func (c *Client) requestJSON(
 	body any,
 	out any,
 ) error {
+	return c.requestJSONWithOwner(ctx, method, path, body, out, "")
+}
+
+func (c *Client) requestJSONWithOwner(
+	ctx context.Context,
+	method string,
+	path string,
+	body any,
+	out any,
+	ownerToken string,
+) error {
 	var rdr *bytes.Reader
 	if body != nil {
 		raw, err := json.Marshal(body)
@@ -85,6 +96,9 @@ func (c *Client) requestJSON(
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	if ownerToken != "" {
+		req.Header.Set("X-Atlas-Surface-Owner", ownerToken)
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -178,19 +192,21 @@ func (c *Client) CloseSurface(
 // SurfaceEvents replays normalized events strictly after the supplied cursor.
 func (c *Client) SurfaceEvents(
 	ctx context.Context,
-	surfaceSessionID string,
+	session SurfaceSession,
 	afterSeq int64,
 ) (SurfaceEventReplay, error) {
 	var replay SurfaceEventReplay
-	if surfaceSessionID == "" {
-		return replay, errors.New("event replay requires a surface session")
+	if session.ID == "" || session.OwnerToken == "" {
+		return replay, errors.New("event replay requires session id and owner token")
 	}
 	query := url.Values{
 		"after_seq": []string{strconv.FormatInt(afterSeq, 10)},
 	}
-	path := "/v1/surface-sessions/" + url.PathEscape(surfaceSessionID) +
+	path := "/v1/surface-sessions/" + url.PathEscape(session.ID) +
 		"/events?" + query.Encode()
-	err := c.getJSON(ctx, path, &replay)
+	err := c.requestJSONWithOwner(
+		ctx, http.MethodGet, path, nil, &replay, session.OwnerToken,
+	)
 	return replay, err
 }
 
@@ -360,41 +376,50 @@ func (c *Client) StartRun(
 func (c *Client) ToolApprovals(
 	ctx context.Context,
 	status string,
-	surfaceSessionID string,
+	session SurfaceSession,
 ) ([]ToolApproval, error) {
-	if surfaceSessionID == "" {
-		return nil, errors.New("approval queue requires a surface session")
+	if session.ID == "" || session.OwnerToken == "" {
+		return nil, errors.New("approval queue requires session id and owner token")
 	}
-	query := url.Values{"surface_session_id": []string{surfaceSessionID}}
+	query := url.Values{}
 	if status != "" {
 		query.Set("status", status)
 	}
-	path := "/v1/tools/approvals?" + query.Encode()
+	path := "/v1/surface-sessions/" + url.PathEscape(session.ID) + "/approvals"
+	if encoded := query.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
 	var env approvalsEnvelope
-	if err := c.getJSON(ctx, path, &env); err != nil {
+	if err := c.requestJSONWithOwner(
+		ctx, http.MethodGet, path, nil, &env, session.OwnerToken,
+	); err != nil {
 		return nil, err
 	}
 	return env.Approvals, nil
 }
 
-func approvalDecisionBody(approval ToolApproval) (map[string]string, error) {
-	if approval.ID == "" || approval.SurfaceSessionID == "" || approval.Nonce == "" {
-		return nil, errors.New("approval decision requires id, surface session, and nonce")
+func approvalDecisionBody(
+	session SurfaceSession,
+	approval ToolApproval,
+) (map[string]string, error) {
+	if session.ID == "" || session.OwnerToken == "" || approval.ID == "" ||
+		approval.SurfaceSessionID != session.ID || approval.Nonce == "" {
+		return nil, errors.New("approval decision requires matching owner, id, and nonce")
 	}
 	return map[string]string{
-		"surface_session_id": approval.SurfaceSessionID,
-		"nonce":              approval.Nonce,
+		"nonce": approval.Nonce,
 	}, nil
 }
 
 // ApproveTool claims and executes a pending request using its replay nonce.
 func (c *Client) ApproveTool(
 	ctx context.Context,
+	session SurfaceSession,
 	approval ToolApproval,
 	scope string,
 ) (ToolApproval, error) {
 	var decided ToolApproval
-	body, err := approvalDecisionBody(approval)
+	body, err := approvalDecisionBody(session, approval)
 	if err != nil {
 		return decided, err
 	}
@@ -402,11 +427,13 @@ func (c *Client) ApproveTool(
 		scope = "once"
 	}
 	body["scope"] = scope
-	err = c.postJSON(
-		ctx,
-		"/v1/tools/approvals/"+url.PathEscape(approval.ID)+"/approve",
+	err = c.requestJSONWithOwner(
+		ctx, http.MethodPost,
+		"/v1/surface-sessions/"+url.PathEscape(approval.SurfaceSessionID)+
+			"/approvals/"+url.PathEscape(approval.ID)+"/approve",
 		body,
 		&decided,
+		session.OwnerToken,
 	)
 	return decided, err
 }
@@ -414,22 +441,25 @@ func (c *Client) ApproveTool(
 // RejectTool rejects a nonce-bound pending request; it never executes.
 func (c *Client) RejectTool(
 	ctx context.Context,
+	session SurfaceSession,
 	approval ToolApproval,
 	reason string,
 ) (ToolApproval, error) {
 	var decided ToolApproval
-	body, err := approvalDecisionBody(approval)
+	body, err := approvalDecisionBody(session, approval)
 	if err != nil {
 		return decided, err
 	}
 	if reason != "" {
 		body["reason"] = reason
 	}
-	err = c.postJSON(
-		ctx,
-		"/v1/tools/approvals/"+url.PathEscape(approval.ID)+"/reject",
+	err = c.requestJSONWithOwner(
+		ctx, http.MethodPost,
+		"/v1/surface-sessions/"+url.PathEscape(approval.SurfaceSessionID)+
+			"/approvals/"+url.PathEscape(approval.ID)+"/reject",
 		body,
 		&decided,
+		session.OwnerToken,
 	)
 	return decided, err
 }

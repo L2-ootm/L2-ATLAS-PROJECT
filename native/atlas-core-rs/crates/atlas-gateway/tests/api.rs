@@ -16,12 +16,15 @@ const MIGRATION_0001: &str = include_str!("../../../../../infra/migrations/0001_
 const MIGRATION_0006: &str = include_str!("../../../../../infra/migrations/0006_agent_runtime.sql");
 // 0007 adds the optional-modules table (seeds the cashflow module inactive).
 const MIGRATION_0007: &str = include_str!("../../../../../infra/migrations/0007_modules.sql");
+const MIGRATION_0016: &str =
+    include_str!("../../../../../infra/migrations/0016_surface_sessions.sql");
 
 fn seeded_db(dir: &tempfile::TempDir) -> PathBuf {
     let path = dir.path().join("atlas.db");
     let conn = rusqlite::Connection::open(&path).unwrap();
     conn.execute_batch(MIGRATION_0001).unwrap();
     conn.execute_batch(MIGRATION_0006).unwrap();
+    conn.execute_batch(MIGRATION_0016).unwrap();
     conn.execute_batch(
         "INSERT INTO missions VALUES
             ('m1', 'First mission', 'ship it', 'completed', 'atlas',
@@ -41,7 +44,17 @@ fn seeded_db(dir: &tempfile::TempDir) -> PathBuf {
          VALUES
             ('w1', 'atlas-gateway', 'ATLAS Gateway',
              'The rust gateway serves read endpoints over sqlite.',
-             '2026-06-01T10:00:00Z', '2026-06-01T10:00:00Z');",
+             '2026-06-01T10:00:00Z', '2026-06-01T10:00:00Z');
+         INSERT INTO surface_sessions
+            (id, surface_kind, surface_session_id, workspace_kind, workspace_root,
+             agent, model_provider, model_id, permission_mode, prompt_version,
+             tool_catalog_version, context_policy_version, state, owner_token,
+             heartbeat_at, created_at, updated_at)
+         VALUES
+            ('surface-1', 'webui', 'browser-1', 'global', 'C:/atlas',
+             'native', 'mock', 'mock', 'ask', '1', '1', '1', 'active', 'owner-1',
+             '2026-06-29T00:00:00Z', '2026-06-29T00:00:00Z',
+             '2026-06-29T00:00:00Z');",
     )
     .unwrap();
     path
@@ -88,6 +101,7 @@ async fn post_json(router: &axum::Router, uri: &str, body: Value) -> (StatusCode
                 .method("POST")
                 .uri(uri)
                 .header("content-type", "application/json")
+                .header("x-atlas-surface-owner", "owner-1")
                 .body(Body::from(bytes))
                 .unwrap(),
         )
@@ -102,7 +116,13 @@ async fn post_json(router: &axum::Router, uri: &str, body: Value) -> (StatusCode
 async fn get_json(router: &axum::Router, uri: &str) -> (StatusCode, Value) {
     let resp = router
         .clone()
-        .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri(uri)
+                .header("x-atlas-surface-owner", "owner-1")
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
     let status = resp.status();
@@ -194,6 +214,21 @@ async fn surface_create_returns_shared_cli_contract() {
 }
 
 #[tokio::test]
+async fn surface_list_never_exposes_owner_tokens() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"[{"id":"surface-1","owner_token":"owner-1","state":"active"}]"#,
+        &stub_dir,
+    );
+    let (status, body) = get_json(&router, "/v1/surface-sessions").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body[0]["id"], "surface-1");
+    assert!(body[0].get("owner_token").is_none());
+}
+
+#[tokio::test]
 async fn surface_owner_action_returns_terminal_contract() {
     let dir = tempfile::tempdir().unwrap();
     let stub_dir = tempfile::tempdir().unwrap();
@@ -255,7 +290,7 @@ async fn surface_and_approval_errors_map_to_stable_http_statuses() {
 }
 
 #[tokio::test]
-async fn scoped_tool_decision_requires_and_forwards_authority_body() {
+async fn scoped_tool_decision_requires_and_forwards_authority_path() {
     let dir = tempfile::tempdir().unwrap();
     let stub_dir = tempfile::tempdir().unwrap();
     let router = test_app_with_stub(
@@ -265,9 +300,8 @@ async fn scoped_tool_decision_requires_and_forwards_authority_body() {
     );
     let (status, body) = post_json(
         &router,
-        "/v1/tools/approvals/approval-1/reject",
+        "/v1/surface-sessions/surface-1/approvals/approval-1/reject",
         json!({
-            "surface_session_id": "surface-1",
             "nonce": "nonce-1",
             "reason": "operator denied"
         }),
@@ -276,6 +310,36 @@ async fn scoped_tool_decision_requires_and_forwards_authority_body() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["surface_session_id"], "surface-1");
     assert_eq!(body["status"], "rejected");
+}
+
+#[tokio::test]
+async fn surface_reads_and_decisions_require_owner_token() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(seeded_db(&dir), r#"{"approvals":[]}"#, &stub_dir);
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/v1/surface-sessions/surface-1/approvals?status=pending")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri("/v1/surface-sessions/surface-1/events")
+                .header("x-atlas-surface-owner", "wrong-owner")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]
@@ -1013,42 +1077,6 @@ async fn retry_mission_dispatches_mission_retry_and_returns_201() {
         .expect("--agent flag missing from dispatched args");
     assert_eq!(args.get(idx + 1).copied(), Some("claude_code"));
     assert!(args.contains(&"m1"));
-}
-
-#[tokio::test]
-async fn console_chat_forwards_agent_prompt_and_cwd() {
-    let dir = tempfile::tempdir().unwrap();
-    let stub_dir = tempfile::tempdir().unwrap();
-    let db_path = seeded_db(&dir);
-    let argv_path = stub_dir.path().join("argv.txt");
-    let router = test_app_with_arg_capture(
-        db_path,
-        r#"{"status":"succeeded","agent":"claude_code","text":"ok","events":[]}"#,
-        &argv_path,
-        &stub_dir,
-    );
-    let (status, body) = post_json(
-        &router,
-        "/v1/console/chat",
-        json!({
-            "agent": "claude_code",
-            "cwd": "C:\\Work\\Atlas",
-            "prompt": "inspect project"
-        }),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["agent"], "claude_code");
-    assert_eq!(body["text"], "ok");
-
-    let argv = std::fs::read_to_string(&argv_path).unwrap();
-    let args: Vec<&str> = argv.lines().collect();
-    assert_eq!(args.first().copied(), Some("console"));
-    assert!(args.windows(2).any(|w| w == ["--agent", "claude_code"]));
-    assert!(args.windows(2).any(|w| w == ["--cwd", "C:\\Work\\Atlas"]));
-    assert!(args
-        .windows(2)
-        .any(|w| w == ["--prompt", "inspect project"]));
 }
 
 #[tokio::test]
@@ -1870,7 +1898,7 @@ async fn config_patch_revision_conflict_maps_to_409() {
     assert_eq!(status, StatusCode::CONFLICT);
     assert_eq!(body["error"]["code"], "config_revision_conflict");
     assert_eq!(body["current_revision"], 3);
-    assert!(body["error"]["remediation"].as_str().unwrap().len() > 0);
+    assert!(!body["error"]["remediation"].as_str().unwrap().is_empty());
 }
 
 #[tokio::test]

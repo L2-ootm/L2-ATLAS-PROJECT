@@ -3,59 +3,41 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
-last_updated: "2026-06-30T10:42:00-03:00"
-last_activity: 2026-06-30 -- Phase 10.7 Plan 06 complete
+last_updated: "2026-06-30T23:24:00-03:00"
+last_activity: 2026-06-30 -- Phase 10.7 complete
 progress:
   total_phases: 8
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 48
-  completed_plans: 47
-  percent: 86
+  completed_plans: 48
+  percent: 88
 ---
 
 # STATE — L2 ATLAS
 
-## Current Position — Phase 10.7 Web Agent Surface & Permission Queue UX
+## Current Position — Phase 10.7 Complete; Phase 10.8 Next
 
-Phase 10.7 specification is locked at ambiguity 0.12. The existing React Console will become
-the canonical WebUI surface over the shared surface-session/event contracts. One ATLAS-owned
-permission authority will serve CLI, Go TUI, WebUI, API/headless, messaging channels, and the
-future desktop adapter. The global master policy is a safety ceiling; surface profiles may only
-narrow it. Operators may select manual, smart, or full-autonomy behavior with expressive
-allow/deny exceptions, while a Hermes-quality hardline floor remains unbypassable. Explicit
-user-directed ATLAS self-update/configuration uses a protected, audited maintenance scope.
+Phase 10.7 Web Agent Surface & Permission Queue UX is complete (7/7 plans; WEB-01–WEB-06).
+The shared master policy, narrowing profiles, immutable hardline floor, workspace/maintenance
+scopes, broker receipts, CLI/Rust/Go adapters, React session surface, conditional header, and
+accessible owned queue are implemented. Owner-token checks protect session reads, event replay,
+queue access, and decisions; global session lists redact those tokens and the global approval
+view is read-only.
 
-Spec: `.planning/phases/10.7-web-agent-permission-queue-ux/10.7-SPEC.md`.
-Context: `.planning/phases/10.7-web-agent-permission-queue-ux/10.7-CONTEXT.md`.
-UI contract: `.planning/phases/10.7-web-agent-permission-queue-ux/10.7-UI-SPEC.md`.
-Research: `.planning/phases/10.7-web-agent-permission-queue-ux/10.7-RESEARCH.md`.
-Execution boundary: one Phase 10.7 with four gated waves (contract/policy → adapters → WebUI →
-conformance). Frontend migration waits for frozen Wave 1 contract fixtures.
-Research confirmed that the existing surface-session service, permission broker, tool-service
-chokepoint, and revisioned config are sufficient; Hermes contributes guard semantics and adapter
-behavior, not a parallel runtime. Baselines and a seven-plan/four-wave decomposition are locked.
-Planning is complete: seven plans cover all WEB-01–WEB-06 requirements and all 25 locked
-decisions; the decision-coverage gate passed 25/25. Wave 1 is complete (plans 10.7-01/02):
-frozen contracts, narrowing validation, deterministic policy, immutable hardline floor,
-workspace/maintenance scopes, nullable persisted receipts, scoped allows, and bounded
-timeout-deny waits are green. Operator review was incorporated into migration, compatibility,
-React bootstrap, dependency-audit, and final-suite gates. Plan 10.7-03 is complete: the CLI now
-exposes owner-token-bound global/project surface lifecycle and nonce-bound owned approval
-decisions through the existing services/broker; global approval visibility is read-only. Fresh
-verification: agent-runtime 722 passed / 2 skipped. Plan 10.7-04 is complete: Rust publishes the
-session/scoped-permission/normalized-event contracts, the Go TUI owns and heartbeats one session,
-surface-started runs retain that id, approvals are nonce-bound with selectable scope, and blocking
-approval/clarify/confirm overlays follow the transformed Hermes interaction model. Gateway API
-95 passed, contract 4 passed, and Go tests are green. Plan 10.7-05 is complete: the React shell
-owns reconnect/resume/heartbeat/replay, Console starts surface-bound runs and renders every
-normalized event kind, the legacy NDJSON Console transport is gone from production React, and
-System approval history is read-only. React focused tests: 8 passed; production build passed.
-Plan 10.7-06 is complete: conditional header and owned queue chrome now follow the locked state
-matrix, server receipts remain authoritative, and wide/narrow keyboard, focus, live-region, and
-reduced-motion behavior is covered. React 18 tests, production build, and a live terminal-event
-probe passed; Python surface event/CLI regressions passed 47 tests. Phase progress: 6/7 plans.
-Next: cross-surface conformance, dead-code cutover, full suites, and release evidence.
-Branch: `feat/go-tui-provider-mesh`.
+Plan 07 closed cross-surface fixtures, provenance/security checks, architecture documentation,
+and the terminal/Console cutover. The dead OpenTUI and Rich generations, legacy Console
+chat/stream, global approval mutations, and orphaned dependencies/tests/scripts are removed.
+Fresh evidence: atlas-core 97 passed; agent-runtime 692 passed / 1 skipped; Rust fmt/clippy and
+workspace tests passed (96 API + 5 contract); Go fmt/vet/test/build/module verification passed;
+React 21 tests/build passed with 0 lint errors. A rebuilt release gateway returned 403 without
+surface ownership and 200 for owned queue/events/close. Total Web bundle growth is +0.30%;
+gateway startup p50 is +1.69%; idle memory improved 2.95%.
+
+Verification:
+`.planning/phases/10.7-web-agent-permission-queue-ux/10.7-VERIFICATION.md`.
+Architecture: `docs/architecture/PERMISSION_POLICY_AND_SURFACE_ADAPTERS.md`.
+Next: Phase 10.8 discuss/spec/plan for cross-surface UAT, deferred environment checks, release
+runbooks, and final cutover acceptance. Branch: `feat/go-tui-provider-mesh`.
 
 ## Prior Position — Go TUI + Provider Mesh (operator pivot, 2026-06-28)
 

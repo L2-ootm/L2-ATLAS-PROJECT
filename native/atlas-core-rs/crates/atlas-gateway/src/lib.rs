@@ -7,7 +7,7 @@
 pub mod db;
 
 use axum::extract::{Path as AxPath, Query, Request, State};
-use axum::http::{header, HeaderValue, Method, StatusCode};
+use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
@@ -22,7 +22,7 @@ use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::time::Duration;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -143,6 +143,7 @@ impl IntoResponse for ApiError {
 }
 
 type ApiResult = Result<Json<Value>, ApiError>;
+const SURFACE_OWNER_HEADER: &str = "x-atlas-surface-owner";
 
 /// Run a blocking rusqlite call off the async runtime.
 async fn blocking<T, F>(f: F) -> Result<T, ApiError>
@@ -154,6 +155,33 @@ where
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .map_err(ApiError::from)
+}
+
+async fn require_surface_owner(
+    state: &AppState,
+    headers: &HeaderMap,
+    session_id: &str,
+) -> Result<(), ApiError> {
+    let token = headers
+        .get(SURFACE_OWNER_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_owned();
+    let path = state.db_path.clone();
+    let id = session_id.to_owned();
+    if blocking(move || db::surface_owner_matches(&path, &id, &token)).await? {
+        return Ok(());
+    }
+    Err(ApiError::Structured(
+        StatusCode::FORBIDDEN,
+        json!({
+            "error": {
+                "code": "surface_owner_mismatch",
+                "message": "surface owner token is missing or stale",
+                "remediation": "use the token returned by create/resume or create a new session"
+            }
+        }),
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -1148,23 +1176,39 @@ async fn tool_call(State(state): State<AppState>, Json(body): Json<ToolCallBody>
 #[derive(Deserialize)]
 struct ToolApprovalsQuery {
     status: Option<String>,
-    surface_session_id: Option<String>,
 }
 
-/// GET /v1/tools/approvals?status= — tool approvals awaiting/with a decision.
-async fn tool_approvals(
+/// GET /v1/tools/approvals — read-only compatibility/audit projection.
+///
+/// Actionable queues live below a surface-session path; this route never accepts
+/// surface authority and therefore cannot be used to claim a decision.
+async fn tool_approval_outcomes(State(state): State<AppState>) -> ApiResult {
+    let out = dispatch_atlas(
+        &state.atlas_cmd,
+        &["tools", "approvals", "--json", "--status", "all"],
+    )
+    .await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("tools approvals parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+/// GET /v1/surface-sessions/{session_id}/approvals — one owned actionable queue.
+async fn surface_tool_approvals(
     State(state): State<AppState>,
+    AxPath(session_id): AxPath<String>,
     Query(q): Query<ToolApprovalsQuery>,
+    headers: HeaderMap,
 ) -> ApiResult {
+    require_arg(&session_id, "surface session id must be non-empty")?;
+    require_surface_owner(&state, &headers, &session_id).await?;
     let mut args: Vec<String> = vec!["tools".into(), "approvals".into(), "--json".into()];
     if let Some(s) = &q.status {
         args.push("--status".into());
         args.push(s.clone());
     }
-    if let Some(session_id) = &q.surface_session_id {
-        args.push("--surface-session-id".into());
-        args.push(session_id.clone());
-    }
+    args.push("--surface-session-id".into());
+    args.push(session_id);
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let out = dispatch_atlas(&state.atlas_cmd, &arg_refs).await?;
     let value: Value = serde_json::from_str(&out)
@@ -1172,12 +1216,11 @@ async fn tool_approvals(
     Ok(Json(value))
 }
 
-/// POST /v1/tools/approvals/{id}/approve — execute a pending write/shell tool.
+/// POST /v1/surface-sessions/{session_id}/approvals/{id}/approve.
 /// A failed-but-processed run returns 200 with status="failed" (CLI exits 0);
 /// only an unknown/non-pending id errors.
 #[derive(Deserialize)]
 struct ToolDecisionBody {
-    surface_session_id: String,
     nonce: String,
     scope: Option<String>,
     reason: Option<String>,
@@ -1185,14 +1228,13 @@ struct ToolDecisionBody {
 
 async fn tool_approve(
     State(state): State<AppState>,
-    AxPath(id): AxPath<String>,
+    AxPath((session_id, id)): AxPath<(String, String)>,
+    headers: HeaderMap,
     Json(body): Json<ToolDecisionBody>,
 ) -> ApiResult {
     require_arg(&id, "approval id must be non-empty")?;
-    require_arg(
-        &body.surface_session_id,
-        "surface_session_id must be non-empty",
-    )?;
+    require_arg(&session_id, "surface session id must be non-empty")?;
+    require_surface_owner(&state, &headers, &session_id).await?;
     require_arg(&body.nonce, "nonce must be non-empty")?;
     let scope = body.scope.as_deref().unwrap_or("once");
     let mut args = vec![
@@ -1200,7 +1242,7 @@ async fn tool_approve(
         "approve",
         "--json",
         "--surface-session-id",
-        body.surface_session_id.as_str(),
+        session_id.as_str(),
         "--nonce",
         body.nonce.as_str(),
         "--scope",
@@ -1214,24 +1256,23 @@ async fn tool_approve(
     Ok(Json(value))
 }
 
-/// POST /v1/tools/approvals/{id}/reject — reject a pending tool call (never runs).
+/// POST /v1/surface-sessions/{session_id}/approvals/{id}/reject.
 async fn tool_reject(
     State(state): State<AppState>,
-    AxPath(id): AxPath<String>,
+    AxPath((session_id, id)): AxPath<(String, String)>,
+    headers: HeaderMap,
     Json(body): Json<ToolDecisionBody>,
 ) -> ApiResult {
     require_arg(&id, "approval id must be non-empty")?;
-    require_arg(
-        &body.surface_session_id,
-        "surface_session_id must be non-empty",
-    )?;
+    require_arg(&session_id, "surface session id must be non-empty")?;
+    require_surface_owner(&state, &headers, &session_id).await?;
     require_arg(&body.nonce, "nonce must be non-empty")?;
     let mut args = vec![
         "tools",
         "reject",
         "--json",
         "--surface-session-id",
-        body.surface_session_id.as_str(),
+        session_id.as_str(),
         "--nonce",
         body.nonce.as_str(),
     ];
@@ -1308,17 +1349,40 @@ async fn surface_create(
 }
 
 async fn surface_list(State(state): State<AppState>) -> ApiResult {
-    let value = dispatch_json_cli(
+    let mut value = dispatch_json_cli(
         &state.atlas_cmd,
         &["surface", "list", "--json"],
         "surface list",
     )
     .await?;
+    redact_owner_tokens(&mut value);
     Ok(Json(value))
 }
 
-async fn surface_get(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
+fn redact_owner_tokens(value: &mut Value) {
+    match value {
+        Value::Object(object) => {
+            object.remove("owner_token");
+            for child in object.values_mut() {
+                redact_owner_tokens(child);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                redact_owner_tokens(item);
+            }
+        }
+        _ => {}
+    }
+}
+
+async fn surface_get(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    headers: HeaderMap,
+) -> ApiResult {
     require_arg(&id, "surface session id must be non-empty")?;
+    require_surface_owner(&state, &headers, &id).await?;
     let value = dispatch_json_cli(
         &state.atlas_cmd,
         &["surface", "get", "--json", "--", &id],
@@ -1337,8 +1401,10 @@ async fn surface_events(
     State(state): State<AppState>,
     AxPath(id): AxPath<String>,
     Query(query): Query<SurfaceEventsQuery>,
+    headers: HeaderMap,
 ) -> ApiResult {
     require_arg(&id, "surface session id must be non-empty")?;
+    require_surface_owner(&state, &headers, &id).await?;
     let after_seq = query.after_seq.unwrap_or(-1).to_string();
     let value = dispatch_json_cli(
         &state.atlas_cmd,
@@ -1461,127 +1527,6 @@ async fn select_folder(_body: Option<Json<SelectFolderBody>>) -> ApiResult {
         "folder picker is only available on Windows in browser mode",
     ))
 }
-#[derive(Deserialize)]
-struct ConsoleChatBody {
-    prompt: String,
-    agent: Option<String>,
-    cwd: Option<String>,
-}
-
-async fn console_chat(
-    State(state): State<AppState>,
-    Json(body): Json<ConsoleChatBody>,
-) -> ApiResult {
-    let prompt = body.prompt.trim().to_string();
-    require_arg(&prompt, "prompt must be non-empty")?;
-    let agent = body
-        .agent
-        .map(|a| a.trim().to_string())
-        .filter(|a| !a.is_empty())
-        .unwrap_or_else(|| "native".to_string());
-    if agent != "native" && agent != "claude_code" {
-        return Err(ApiError::BadRequest(
-            "agent must be 'native' or 'claude_code'",
-        ));
-    }
-
-    let mut owned_args = vec![
-        "console".to_string(),
-        "chat".to_string(),
-        "--agent".to_string(),
-        agent,
-        "--prompt".to_string(),
-        prompt,
-    ];
-    if let Some(cwd) = body
-        .cwd
-        .map(|c| c.trim().to_string())
-        .filter(|c| !c.is_empty())
-    {
-        owned_args.push("--cwd".to_string());
-        owned_args.push(cwd);
-    }
-    let args: Vec<&str> = owned_args.iter().map(String::as_str).collect();
-    let out =
-        dispatch_atlas_with_timeout(&state.atlas_cmd, &args, CONSOLE_DISPATCH_TIMEOUT).await?;
-    let value: Value = serde_json::from_str(&out).map_err(|e| {
-        ApiError::Internal(format!("atlas console chat returned invalid JSON: {e}"))
-    })?;
-    Ok(Json(value))
-}
-
-/// Streaming console chat: spawns the CLI with `--stream` and forwards its
-/// NDJSON stdout (one JSON event per line) to the client as a chunked body, so
-/// the cockpit tool-cards fill in real time instead of all-at-once on completion.
-async fn console_stream(
-    State(state): State<AppState>,
-    Json(body): Json<ConsoleChatBody>,
-) -> Result<Response, ApiError> {
-    let prompt = body.prompt.trim().to_string();
-    require_arg(&prompt, "prompt must be non-empty")?;
-    let agent = body
-        .agent
-        .map(|a| a.trim().to_string())
-        .filter(|a| !a.is_empty())
-        .unwrap_or_else(|| "native".to_string());
-    if agent != "native" && agent != "claude_code" {
-        return Err(ApiError::BadRequest(
-            "agent must be 'native' or 'claude_code'",
-        ));
-    }
-    if state.atlas_cmd.is_empty() {
-        return Err(ApiError::Internal("atlas_cmd is empty".into()));
-    }
-
-    let mut cmd = tokio::process::Command::new(&state.atlas_cmd[0]);
-    hide_console_tokio(&mut cmd);
-    for pre in &state.atlas_cmd[1..] {
-        cmd.arg(pre);
-    }
-    cmd.args(["console", "chat", "--agent", &agent, "--prompt", &prompt]);
-    if let Some(cwd) = body
-        .cwd
-        .map(|c| c.trim().to_string())
-        .filter(|c| !c.is_empty())
-    {
-        cmd.args(["--cwd", &cwd]);
-    }
-    cmd.arg("--stream");
-    cmd.stdout(std::process::Stdio::piped());
-    cmd.stderr(std::process::Stdio::null());
-    cmd.kill_on_drop(true);
-
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| ApiError::Internal(format!("failed to spawn atlas console stream: {e}")))?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| ApiError::Internal("console stream stdout unavailable".into()))?;
-    let lines = tokio::io::BufReader::new(stdout).lines();
-
-    // Hold the child in the stream state so kill_on_drop fires if the client disconnects.
-    let stream =
-        futures_util::stream::unfold((lines, child), |(mut lines, mut child)| async move {
-            match lines.next_line().await {
-                Ok(Some(line)) => {
-                    let chunk = axum::body::Bytes::from(format!("{line}\n"));
-                    Some((Ok::<_, std::io::Error>(chunk), (lines, child)))
-                }
-                _ => {
-                    let _ = child.wait().await;
-                    None
-                }
-            }
-        });
-
-    Response::builder()
-        .header(header::CONTENT_TYPE, "application/x-ndjson")
-        .header(header::CACHE_CONTROL, "no-cache")
-        .body(axum::body::Body::from_stream(stream))
-        .map_err(|e| ApiError::Internal(format!("failed to build stream response: {e}")))
-}
-
 #[derive(Deserialize)]
 struct GraphParams {
     /// atlas | global | projects | obsidian (defaults to atlas).
@@ -2421,7 +2366,7 @@ async fn cors(req: Request, next: Next) -> Response {
         );
         headers.insert(
             header::ACCESS_CONTROL_ALLOW_HEADERS,
-            HeaderValue::from_static("content-type"),
+            HeaderValue::from_static("content-type, x-atlas-surface-owner"),
         );
         headers.insert(
             header::ACCESS_CONTROL_MAX_AGE,
@@ -2481,15 +2426,25 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/discord/approvals/{id}/reject", post(discord_reject))
         .route("/v1/tools/manifests", get(tool_manifests))
         .route("/v1/tools/calls", post(tool_call))
-        .route("/v1/tools/approvals", get(tool_approvals))
-        .route("/v1/tools/approvals/{id}/approve", post(tool_approve))
-        .route("/v1/tools/approvals/{id}/reject", post(tool_reject))
+        .route("/v1/tools/approvals", get(tool_approval_outcomes))
         .route(
             "/v1/surface-sessions",
             get(surface_list).post(surface_create),
         )
         .route("/v1/surface-sessions/{id}", get(surface_get))
         .route("/v1/surface-sessions/{id}/events", get(surface_events))
+        .route(
+            "/v1/surface-sessions/{session_id}/approvals",
+            get(surface_tool_approvals),
+        )
+        .route(
+            "/v1/surface-sessions/{session_id}/approvals/{id}/approve",
+            post(tool_approve),
+        )
+        .route(
+            "/v1/surface-sessions/{session_id}/approvals/{id}/reject",
+            post(tool_reject),
+        )
         .route(
             "/v1/surface-sessions/{id}/heartbeat",
             post(surface_heartbeat),
@@ -2498,8 +2453,6 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/surface-sessions/{id}/resume", post(surface_resume))
         .route("/v1/surface-sessions/{id}/cancel", post(surface_cancel))
         .route("/v1/surface-sessions/{id}/close", post(surface_close))
-        .route("/v1/console/chat", post(console_chat))
-        .route("/v1/console/stream", post(console_stream))
         .route("/v1/graph", get(graph_view))
         .route("/v1/host/select-folder", post(select_folder))
         .route("/v1/projects", get(projects_list).post(projects_create))

@@ -515,7 +515,7 @@ contracts, with unobtrusive controls that appear only when operationally relevan
 
 **Wave 4 *(blocked on Waves 2–3 completion)* — conformance and release evidence**
 
-- [ ] 10.7-07-PLAN.md — prove cross-surface conformance, provenance, dependency discipline,
+- [x] 10.7-07-PLAN.md — prove cross-surface conformance, provenance, dependency discipline,
   security invariants, and performance budgets (WEB-01–WEB-06)
 
 **Cross-cutting constraints:** one ATLAS-owned policy/broker authority; hardline and explicit
@@ -596,7 +596,7 @@ milestone is activated through the normal milestone workflow.
 | 10.4 Global Configuration, Auth & Model Control Plane | v1.1 | 5/5 | Complete   | 2026-06-26 |
 | 10.5 Surface-Scoped Permission Broker | v1.1 | 5/5 | Complete   | 2026-06-26 |
 | 10.6 ATLAS Terminal Workbench | v1.1 | 8/8 | Complete (human-verify deferred) | 2026-06-27 |
-| 10.7 Web Agent Surface & Permission Queue UX | v1.1 | 6/7 | Executing | — |
+| 10.7 Web Agent Surface & Permission Queue UX | v1.1 | 7/7 | Complete | 2026-06-30 |
 | 10.8 Cross-Surface Conformance, UAT & Cutover | v1.1 | 0/? | Not planned | — |
 | 11. CRM via Twenty | v2.0 | 0/? | Not started | — |
 | 12. Basic Pulse Monitor | v2.0 | 0/? | Not started | — |

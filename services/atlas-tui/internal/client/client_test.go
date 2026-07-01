@@ -84,17 +84,21 @@ func TestLatestRunID(t *testing.T) {
 
 func TestToolApprovals(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Atlas-Surface-Owner") != "owner-1" {
+			t.Errorf("missing owner token header")
+		}
+		if r.URL.Path != "/v1/surface-sessions/surface-1/approvals" {
+			t.Errorf("unexpected scoped queue path: %s", r.URL.Path)
+		}
 		if got := r.URL.Query().Get("status"); got != "pending" {
 			t.Errorf("want status=pending, got %q", got)
-		}
-		if got := r.URL.Query().Get("surface_session_id"); got != "surface-1" {
-			t.Errorf("want surface_session_id=surface-1, got %q", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"approvals":[{"id":"a1","tool_name":"golden_review_write","risk_level":"high","summary":"write x","status":"pending","surface_session_id":"surface-1","nonce":"nonce-1","policy_receipt":"{\"decision\":\"ask\"}"}]}`))
 	}))
 	defer srv.Close()
-	as, err := New(srv.URL).ToolApprovals(context.Background(), "pending", "surface-1")
+	session := SurfaceSession{ID: "surface-1", OwnerToken: "owner-1"}
+	as, err := New(srv.URL).ToolApprovals(context.Background(), "pending", session)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,6 +180,9 @@ func TestSurface404RequiresGatewayUpgrade(t *testing.T) {
 
 func TestSurfaceEventsUsesReplayCursor(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Atlas-Surface-Owner") != "owner-1" {
+			t.Fatalf("missing owner token header")
+		}
 		if r.URL.Path != "/v1/surface-sessions/surface-1/events" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
@@ -187,7 +194,8 @@ func TestSurfaceEventsUsesReplayCursor(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	replay, err := New(srv.URL).SurfaceEvents(context.Background(), "surface-1", 7)
+	session := SurfaceSession{ID: "surface-1", OwnerToken: "owner-1"}
+	replay, err := New(srv.URL).SurfaceEvents(context.Background(), session, 7)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,6 +236,41 @@ func TestNormalizedEventFixtureParity(t *testing.T) {
 	}
 	if terminal["status"] != fixture.TerminalOutcome {
 		t.Fatalf("terminal mismatch: fixture=%q payload=%q", fixture.TerminalOutcome, terminal["status"])
+	}
+}
+
+func TestPermissionReceiptFixtureParity(t *testing.T) {
+	path := filepath.Join(
+		"..", "..", "..", "agent-runtime", "tests", "fixtures",
+		"permission_policy_matrix.json",
+	)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		Cases []struct {
+			ID       string         `json:"id"`
+			Expected map[string]any `json:"expected"`
+		} `json:"cases"`
+	}
+	if err := json.Unmarshal(raw, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	if len(fixture.Cases) != 9 {
+		t.Fatalf("want 9 policy cases, got %d", len(fixture.Cases))
+	}
+	validDecision := map[string]bool{"allow": true, "ask": true, "deny": true}
+	validLayer := map[string]bool{
+		"hardline": true, "master": true, "profile": true,
+		"scoped_allow": true, "default": true,
+	}
+	for _, testCase := range fixture.Cases {
+		decision, _ := testCase.Expected["decision"].(string)
+		layer, _ := testCase.Expected["source_layer"].(string)
+		if !validDecision[decision] || !validLayer[layer] {
+			t.Fatalf("invalid canonical receipt for %s: %+v", testCase.ID, testCase.Expected)
+		}
 	}
 }
 
@@ -288,21 +331,24 @@ func TestStartRunReturnsRunID(t *testing.T) {
 
 func TestApproveAndRejectTool(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Atlas-Surface-Owner") != "owner-1" {
+			t.Fatalf("missing owner token header")
+		}
 		w.Header().Set("Content-Type", "application/json")
 		var body map[string]string
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatal(err)
 		}
-		if body["surface_session_id"] != "surface-1" || body["nonce"] != "nonce-1" {
+		if _, leaked := body["surface_session_id"]; leaked || body["nonce"] != "nonce-1" {
 			t.Fatalf("missing scoped decision identity: %+v", body)
 		}
 		switch r.URL.Path {
-		case "/v1/tools/approvals/a1/approve":
+		case "/v1/surface-sessions/surface-1/approvals/a1/approve":
 			if body["scope"] != "session" {
 				t.Errorf("want session scope, got %+v", body)
 			}
 			_, _ = w.Write([]byte(`{"id":"a1","tool_name":"t","status":"executed"}`))
-		case "/v1/tools/approvals/a1/reject":
+		case "/v1/surface-sessions/surface-1/approvals/a1/reject":
 			if body["reason"] == "" {
 				t.Errorf("expected reason in reject body, got %+v", body)
 			}
@@ -316,11 +362,12 @@ func TestApproveAndRejectTool(t *testing.T) {
 	approval := ToolApproval{
 		ID: "a1", SurfaceSessionID: "surface-1", Nonce: "nonce-1",
 	}
-	ok, err := c.ApproveTool(context.Background(), approval, "session")
+	session := SurfaceSession{ID: "surface-1", OwnerToken: "owner-1"}
+	ok, err := c.ApproveTool(context.Background(), session, approval, "session")
 	if err != nil || ok.Status != "executed" {
 		t.Fatalf("approve: %+v err=%v", ok, err)
 	}
-	rej, err := c.RejectTool(context.Background(), approval, "nope")
+	rej, err := c.RejectTool(context.Background(), session, approval, "nope")
 	if err != nil || rej.Status != "rejected" {
 		t.Fatalf("reject: %+v err=%v", rej, err)
 	}

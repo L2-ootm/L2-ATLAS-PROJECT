@@ -423,8 +423,15 @@ export async function createSurfaceSession(body: {
 	});
 }
 
-export async function getSurfaceSession(id: string): Promise<SurfaceSession> {
-	return apiFetch(`/v1/surface-sessions/${encodeURIComponent(id)}`);
+function surfaceOwnerHeaders(ownerToken: string): HeadersInit {
+	if (!ownerToken) throw new Error('surface owner token is required');
+	return { 'X-Atlas-Surface-Owner': ownerToken };
+}
+
+export async function getSurfaceSession(id: string, ownerToken: string): Promise<SurfaceSession> {
+	return apiFetch(`/v1/surface-sessions/${encodeURIComponent(id)}`, {
+		headers: surfaceOwnerHeaders(ownerToken)
+	});
 }
 
 async function mutateSurfaceSession(
@@ -447,11 +454,12 @@ export const closeSurfaceSession = (session: SurfaceSession) =>
 	mutateSurfaceSession(session, 'close');
 
 export async function getSurfaceEvents(
-	sessionId: string,
+	session: Pick<SurfaceSession, 'id' | 'owner_token'>,
 	afterSeq = -1
 ): Promise<SurfaceEventReplay> {
 	return apiFetch(
-		`/v1/surface-sessions/${encodeURIComponent(sessionId)}/events?after_seq=${afterSeq}`
+		`/v1/surface-sessions/${encodeURIComponent(session.id)}/events?after_seq=${afterSeq}`,
+		{ headers: surfaceOwnerHeaders(session.owner_token) }
 	);
 }
 
@@ -1171,14 +1179,12 @@ export async function listToolApprovals(): Promise<ToolApproval[]> {
 
 /** Actionable queue owned by one live surface session. */
 export async function listOwnedToolApprovals(
-	surfaceSessionId: string
+	session: Pick<SurfaceSession, 'id' | 'owner_token'>
 ): Promise<ToolApproval[]> {
-	const params = new URLSearchParams({
-		status: 'pending',
-		surface_session_id: surfaceSessionId
-	});
+	const params = new URLSearchParams({ status: 'pending' });
 	const data = await apiFetch<{ approvals: ToolApproval[] }>(
-		`/v1/tools/approvals?${params.toString()}`
+		`/v1/surface-sessions/${encodeURIComponent(session.id)}/approvals?${params.toString()}`,
+		{ headers: surfaceOwnerHeaders(session.owner_token) }
 	);
 	return data.approvals ?? [];
 }
@@ -1205,12 +1211,16 @@ export async function proposeToolCall(args: {
 /** Approve + execute a pending write/shell tool call. Returns the terminal row. */
 export async function approveToolCall(
 	approval: Pick<ToolApproval, 'id' | 'surface_session_id' | 'nonce'>,
+	ownerToken: string,
 	scope: 'once' | 'session' | 'durable'
 ): Promise<ToolApproval> {
-	return apiFetch(`/v1/tools/approvals/${encodeURIComponent(approval.id)}/approve`, {
+	if (!approval.surface_session_id || !approval.nonce) {
+		throw new Error('approval decision requires surface ownership and nonce');
+	}
+	return apiFetch(`/v1/surface-sessions/${encodeURIComponent(approval.surface_session_id)}/approvals/${encodeURIComponent(approval.id)}/approve`, {
 		method: 'POST',
+		headers: surfaceOwnerHeaders(ownerToken),
 		body: JSON.stringify({
-			surface_session_id: approval.surface_session_id,
 			nonce: approval.nonce,
 			scope
 		})
@@ -1220,12 +1230,16 @@ export async function approveToolCall(
 /** Reject a pending tool call (it will never execute). */
 export async function rejectToolCall(
 	approval: Pick<ToolApproval, 'id' | 'surface_session_id' | 'nonce'>,
+	ownerToken: string,
 	reason?: string
 ): Promise<ToolApproval> {
-	return apiFetch(`/v1/tools/approvals/${encodeURIComponent(approval.id)}/reject`, {
+	if (!approval.surface_session_id || !approval.nonce) {
+		throw new Error('approval decision requires surface ownership and nonce');
+	}
+	return apiFetch(`/v1/surface-sessions/${encodeURIComponent(approval.surface_session_id)}/approvals/${encodeURIComponent(approval.id)}/reject`, {
 		method: 'POST',
+		headers: surfaceOwnerHeaders(ownerToken),
 		body: JSON.stringify({
-			surface_session_id: approval.surface_session_id,
 			nonce: approval.nonce,
 			reason: reason ?? null
 		})

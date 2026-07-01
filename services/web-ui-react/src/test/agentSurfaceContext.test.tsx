@@ -143,7 +143,11 @@ describe('AgentSurfaceProvider', () => {
 		);
 		await waitFor(() => expect(screen.getByTestId('session')).toHaveTextContent('surface-1'));
 		await waitFor(() => expect(screen.getByTestId('approvals')).toHaveTextContent('1'));
-		expect(api.getSurfaceEvents).toHaveBeenCalledWith('surface-1', -1);
+		expect(api.getSurfaceSession).toHaveBeenCalledWith('surface-1', 'owner-1');
+		expect(api.getSurfaceEvents).toHaveBeenCalledWith(
+			expect.objectContaining({ id: 'surface-1', owner_token: 'owner-1' }),
+			-1
+		);
 	});
 
 	it('resumes suspended sessions and preserves the rotated owner token', async () => {

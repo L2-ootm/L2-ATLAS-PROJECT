@@ -14,11 +14,6 @@ dependencies = [
     # declaration makes the `import yaml` in tools/registry.py explicit and
     # supply-chain-honest. No new package is installed.
     "pyyaml>=6,<7",
-    # ATLAS Terminal Workbench (Phase 10.6). Already resolved transitively
-    # (rich 14.3.3 via typer; prompt_toolkit 3.0.52 via hermes-agent) — declared
-    # directly per supply-chain honesty. No new package is installed.
-    "rich>=13.7,<15",
-    "prompt_toolkit>=3.0,<4",
 ]
 
 [project.scripts]
