@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
-last_updated: "2026-06-30T23:24:00-03:00"
-last_activity: 2026-06-30 -- Phase 10.7 complete
+last_updated: "2026-07-01T00:50:43-03:00"
+last_activity: 2026-07-01 -- Go TUI human UAT failed; chat-first corrective intent accepted
 progress:
   total_phases: 8
   completed_phases: 7
@@ -15,7 +15,22 @@ progress:
 
 # STATE — L2 ATLAS
 
-## Current Position — Phase 10.7 Complete; Phase 10.8 Next
+## Current Position — Phase 10.7 Complete; TUI Corrective Intent Locked Before 10.8
+
+First operator UAT of the Go TUI failed product acceptance on 2026-07-01. The launched
+source-checkout executable was stale (built 2026-06-28 versus source changed 2026-06-30), still
+contained the retired global approval route, and rendered a dashboard-first surface. The active
+provider was unavailable `api_key`, so the header correctly showed mock mode but the product
+offered no adequate onboarding or real-agent path. Contract/test completion had been mistaken
+for product completion.
+
+The accepted correction is a MiMo-quality, ATLAS-native chat-first experience: focused composer
+at launch, explicit provider readiness/onboarding, persistent visible conversation, transcript
+as the primary surface, contextual sidebar, inline tool/permission flow, and operational
+dashboards moved to overlays. No implementation was authorized in this step. Intent and future
+acceptance gates are locked in
+`docs/plans/2026-07-01-atlas-tui-chat-first-redesign-intent.md`. Phase 10.8 planning must include
+this corrective slice and executable-level release integrity before cross-surface cutover/UAT.
 
 Phase 10.7 Web Agent Surface & Permission Queue UX is complete (7/7 plans; WEB-01–WEB-06).
 The shared master policy, narrowing profiles, immutable hardline floor, workspace/maintenance
