@@ -1,4 +1,4 @@
-"""Bare `atlas` / `atlas tui` launch Go; Rich remains a hidden rollback (P8).
+"""Bare `atlas` / `atlas tui` launch the sole canonical Go terminal surface.
 
 The vendored Hermes wrapper remains separate behind dev-foundation-tui (D-001).
 """
@@ -35,29 +35,12 @@ def test_atlas_tui_subcommand_invokes_same_go_workbench(monkeypatch):
     launch.assert_called_once_with("http://127.0.0.1:9494")
 
 
-def test_dev_rich_tui_invokes_dated_rollback(monkeypatch):
-    """P8: the Python Rich workbench remains available only as a hidden rollback."""
-    import atlas_runtime.tui.app as tui_app_mod
-
-    run_workbench = MagicMock()
-    monkeypatch.setattr(tui_app_mod, "run_workbench", run_workbench)
-    result = runner.invoke(app, ["dev-rich-tui", "--project", "atlas"])
-    assert result.exit_code == 0, result.output
-    run_workbench.assert_called_once_with(project="atlas", global_=False)
-
-
 def test_no_rich_or_hermes_launcher_on_default_path(monkeypatch):
     """Neither default Go entry point reaches the Python or Hermes clients."""
     import atlas_runtime.cli.go_tui as go_tui_mod
-    import atlas_runtime.tui.app as tui_app_mod
     from atlas_runtime.cli import tui as tui_mod
 
     monkeypatch.setattr(go_tui_mod, "launch", MagicMock(return_value=0))
-    monkeypatch.setattr(
-        tui_app_mod,
-        "run_workbench",
-        MagicMock(side_effect=AssertionError("Rich launcher reached")),
-    )
     monkeypatch.setattr(
         tui_mod,
         "_resolve_launcher",
@@ -66,3 +49,8 @@ def test_no_rich_or_hermes_launcher_on_default_path(monkeypatch):
 
     assert runner.invoke(app, []).exit_code == 0
     assert runner.invoke(app, ["tui"]).exit_code == 0
+
+
+def test_retired_rich_command_is_absent():
+    result = runner.invoke(app, ["dev-rich-tui"])
+    assert result.exit_code != 0

@@ -28,6 +28,27 @@ fn open_ro(path: &Path) -> Result<Connection, DbError> {
         .map_err(|e| DbError::Failed(e.to_string()))
 }
 
+/// Validate a surface owner token without returning or logging it.
+pub fn surface_owner_matches(
+    path: &Path,
+    session_id: &str,
+    owner_token: &str,
+) -> Result<bool, DbError> {
+    if owner_token.is_empty() {
+        return Ok(false);
+    }
+    let conn = open_ro(path)?;
+    match conn.query_row(
+        "SELECT owner_token FROM surface_sessions WHERE id=?1",
+        [session_id],
+        |row| row.get::<_, String>(0),
+    ) {
+        Ok(stored) => Ok(stored == owner_token),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
+        Err(error) => Err(error.into()),
+    }
+}
+
 fn mission_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
     Ok(json!({
         "id": row.get::<_, String>(0)?,
@@ -479,7 +500,7 @@ pub fn get_module(path: &Path, id: &str) -> Result<Option<Value>, DbError> {
         Err(rusqlite::Error::SqliteFailure(_, Some(ref msg))) if msg.contains("no such table") => {
             Ok(None)
         }
-        Err(e) => return Err(e.into()),
+        Err(e) => Err(e.into()),
     }
 }
 

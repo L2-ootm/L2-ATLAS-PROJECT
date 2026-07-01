@@ -144,6 +144,35 @@ fn normalized_surface_event_fixture_is_contiguous_and_terminal() {
     assert_eq!(payload["status"], fixture.terminal_outcome);
 }
 
+#[test]
+fn permission_receipt_fixture_remains_gateway_transparent() {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../../services/agent-runtime/tests/fixtures/permission_policy_matrix.json"
+    ))
+    .expect("Rust must accept the frozen permission fixture");
+    let cases = fixture["cases"].as_array().expect("fixture cases");
+    assert_eq!(cases.len(), 9);
+    for case in cases {
+        let expected = case["expected"]
+            .as_object()
+            .expect("expected receipt projection");
+        assert!(matches!(
+            expected["decision"].as_str(),
+            Some("allow" | "ask" | "deny")
+        ));
+        assert!(matches!(
+            expected["source_layer"].as_str(),
+            Some("hardline" | "master" | "profile" | "scoped_allow" | "default")
+        ));
+    }
+    let hardline = cases
+        .iter()
+        .find(|case| case["id"] == "hardline-block-device")
+        .expect("hardline fixture");
+    assert_eq!(hardline["expected"]["decision"], "deny");
+    assert_eq!(hardline["expected"]["source_layer"], "hardline");
+}
+
 // ---------------------------------------------------------------------------
 // Contract test: Mission fields
 // ---------------------------------------------------------------------------

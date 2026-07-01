@@ -250,25 +250,3 @@ def test_run_exec_unknown_run_exits_one(db, monkeypatch):
     monkeypatch.setattr(cli_main, "_get_connection", lambda: db)
     result = runner.invoke(app, ["run", "exec", "no-such-run"])
     assert result.exit_code == 1
-
-
-def test_console_chat_command_prints_json(tmp_path):
-    result = runner.invoke(
-        app,
-        [
-            "console",
-            "chat",
-            "--agent",
-            "native",
-            "--cwd",
-            str(tmp_path),
-            "--prompt",
-            "inspect this folder",
-        ],
-    )
-
-    assert result.exit_code == 0
-    body = json.loads(result.output)
-    assert body["status"] == "succeeded"
-    assert body["agent"] == "native"
-    assert body["cwd"] == str(tmp_path.resolve())

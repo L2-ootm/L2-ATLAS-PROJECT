@@ -17,7 +17,6 @@ from typing import Optional
 import typer
 
 from atlas_runtime import (
-    console_service,
     context_service,
     db,
     focus_service,
@@ -60,8 +59,6 @@ module_app = typer.Typer(name="module", help="Optional modules: list, activate, 
 app.add_typer(module_app, name="module")
 cashflow_app = typer.Typer(name="cashflow", help="Cashflow module process: start, status, stop.")
 app.add_typer(cashflow_app, name="cashflow")
-console_app = typer.Typer(name="console", help="Cockpit console chat and workbench operations.")
-app.add_typer(console_app, name="console")
 graph_app = typer.Typer(name="graph", help="Project knowledge graph for the cockpit Graphify view.")
 app.add_typer(graph_app, name="graph")
 run_app = typer.Typer(name="run", help="Execute an already-started run (background-safe).")
@@ -116,15 +113,7 @@ from atlas_runtime.cli.surface import surface_app
 app.add_typer(surface_app, name="surface")
 
 import atlas_runtime.cli.go_tui as _go_tui_mod
-import atlas_runtime.tui.app as _tui_app_mod
 from atlas_runtime.cli.tui import legacy_foundation_tui
-
-_TUI_OPTION_PROJECT = typer.Option(
-    None, "--project", help="Registered Project id to open (skips the interactive picker)."
-)
-_TUI_OPTION_GLOBAL = typer.Option(
-    False, "--global", help="Open the global workspace (skips the interactive picker)."
-)
 
 
 @app.callback(invoke_without_command=True)
@@ -171,18 +160,6 @@ def _tui_cmd(
     _launch_go_tui(gateway)
 
 
-@app.command(
-    "dev-rich-tui",
-    hidden=True,
-    help="Run the retired Python Rich workbench (temporary rollback through Phase 10.8).",
-)
-def _dev_rich_tui_cmd(
-    project: Optional[str] = _TUI_OPTION_PROJECT,
-    global_: bool = _TUI_OPTION_GLOBAL,
-) -> None:
-    _tui_app_mod.run_workbench(project=project, global_=global_)
-
-
 app.command(
     "dev-foundation-tui",
     hidden=True,
@@ -218,53 +195,6 @@ def _get_connection() -> sqlite3.Connection:
 def _get_lock() -> threading.Lock:
     """Return the module-level threading.Lock singleton."""
     return _LOCK
-
-
-# ---------------------------------------------------------------------------
-# console subcommands
-# ---------------------------------------------------------------------------
-
-
-@console_app.command("chat")
-def console_chat(
-    prompt: str = typer.Option(..., "--prompt", help="Prompt to send to the console agent"),
-    agent: str = typer.Option(
-        "native", "--agent", help="Console agent: native | claude_code"
-    ),
-    cwd: str | None = typer.Option(
-        None, "--cwd", help="Folder binding for the console agent"
-    ),
-    stream: bool = typer.Option(
-        False, "--stream", help="Emit one JSON event per line (NDJSON) as they happen"
-    ),
-) -> None:
-    """Run one folder-aware console chat turn and print JSON.
-
-    Default: print the full result as a single JSON object. With ``--stream``,
-    print one ASCII-safe JSON event per line as it is produced (NDJSON) — the
-    gateway forwards these so the cockpit tool-cards fill in real time.
-    """
-    if stream:
-        import sys
-
-        def on_event(event: dict) -> None:
-            sys.stdout.write(json.dumps(event) + "\n")
-            sys.stdout.flush()
-
-        try:
-            console_service.run_chat(prompt=prompt, agent=agent, cwd=cwd, on_event=on_event)
-        except ValueError as exc:
-            sys.stdout.write(json.dumps({"type": "failure", "error": str(exc)}) + "\n")
-            sys.stdout.flush()
-            raise typer.Exit(1)
-        return
-
-    try:
-        result = console_service.run_chat(prompt=prompt, agent=agent, cwd=cwd)
-    except ValueError as exc:
-        typer.echo(f"Error: {exc}", err=True)
-        raise typer.Exit(1)
-    typer.echo(json.dumps(result, ensure_ascii=False))
 
 
 # ---------------------------------------------------------------------------

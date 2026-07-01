@@ -8,8 +8,8 @@ contract the cockpit uses. The Rust runtime and Python services stay authoritati
 
 ## Status
 
-Phase P8 complete: `atlas` and `atlas tui` now launch this Go sidecar; the Python Rich client is
-retained only as hidden `atlas dev-rich-tui` rollback through Phase 10.8. Working today:
+Phase P8 complete: `atlas` and `atlas tui` launch this Go sidecar. Phase 10.7 retired the rejected
+OpenTUI and Python Rich prototypes, making this the sole supported terminal surface. Working today:
 
 - Connects to the gateway and renders the **provider mesh** (`/v1/provider/status`,
   `/v1/provider/modes`) — which ways you can wire a model and what's active.

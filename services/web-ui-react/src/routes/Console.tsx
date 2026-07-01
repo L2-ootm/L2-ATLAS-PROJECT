@@ -1347,7 +1347,7 @@ function ToolCallCard({ event, result }: { event: ConsoleChatEvent; result?: Con
 }
 
 function AgentTurn({ message }: { message: ConsoleMessage }) {
-	const events = message.events ?? [];
+	const events = useMemo(() => message.events ?? [], [message.events]);
 	const resultsByCall = useMemo(() => {
 		const map: Record<string, ConsoleChatEvent> = {};
 		for (const e of events) {

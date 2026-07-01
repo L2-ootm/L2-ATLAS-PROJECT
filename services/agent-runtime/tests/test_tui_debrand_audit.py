@@ -1,4 +1,4 @@
-"""De-brand audit: no imported product identity (Hermes/Ink) leaks into source or output (TUI-11).
+"""De-brand audit for the canonical Go terminal surface (TUI-11).
 
 Grep-style smoke test, not a fixture-based unit test. This is the final
 phase-wide enforcement point for TUI-11/criterion 5 (Wave 4): atlas_runtime/tui/
@@ -85,28 +85,8 @@ def test_help_output_contains_no_hermes_identity():
         assert token not in combined, f"forbidden identity token {token!r} leaked into --help output"
 
 
-def test_tui_package_source_contains_no_hermes_identity():
-    """TUI-11: no source file under atlas_runtime/tui/ leaks Hermes/Ink identity
-    (excluding documented `# provenance:` comments).
-
-    LOAD-BEARING (Wave 4): atlas_runtime/tui/ now exists (landed in Waves 1+);
-    this is the real positive scan, no longer the pre-Wave-1 directory-absence
-    placeholder.
-    """
-    # Locate the atlas_runtime package root (this test file is at
-    # services/agent-runtime/tests/test_tui_debrand_audit.py).
+def test_retired_python_tui_package_is_absent():
+    """The rejected Rich/prompt_toolkit generation cannot leak identity or behavior."""
     package_root = pathlib.Path(__file__).resolve().parent.parent / "atlas_runtime"
     tui_dir = package_root / "tui"
-
-    assert tui_dir.is_dir(), "atlas_runtime/tui/ must exist by Wave 4"
-
-    offending: list[str] = []
-    for py_file in tui_dir.rglob("*.py"):
-        for lineno, line in enumerate(py_file.read_text(encoding="utf-8").splitlines(), start=1):
-            if "provenance:" in line.lower():
-                continue
-            lowered = line.lower()
-            for token in _FORBIDDEN_IDENTITY_TOKENS:
-                if token in lowered:
-                    offending.append(f"{py_file}:{lineno}: {token!r} in {line!r}")
-    assert not offending, "Hermes/Ink identity leaked into atlas_runtime/tui source:\n" + "\n".join(offending)
+    assert not tui_dir.exists()

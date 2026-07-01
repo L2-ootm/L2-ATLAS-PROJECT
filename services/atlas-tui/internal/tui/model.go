@@ -183,7 +183,7 @@ func (m model) fetchSurfaceEvents() tea.Cmd {
 	return func() tea.Msg {
 		replay, err := m.c.SurfaceEvents(
 			context.Background(),
-			m.surface.ID,
+			m.surface,
 			m.lastSurfaceSeq,
 		)
 		return surfaceEventsMsg{replay: replay, err: err}
@@ -213,7 +213,7 @@ func (m model) fetchMissions() tea.Cmd {
 
 func (m model) fetchApprovals() tea.Cmd {
 	return func() tea.Msg {
-		as, err := m.c.ToolApprovals(context.Background(), "pending", m.surface.ID)
+		as, err := m.c.ToolApprovals(context.Background(), "pending", m.surface)
 		return approvalsMsg{approvals: as, err: err}
 	}
 }
@@ -251,14 +251,16 @@ func (m model) startRun(missionID string) tea.Cmd {
 
 func (m model) approveTool(approval client.ToolApproval, scope string) tea.Cmd {
 	return func() tea.Msg {
-		a, err := m.c.ApproveTool(context.Background(), approval, scope)
+		a, err := m.c.ApproveTool(context.Background(), m.surface, approval, scope)
 		return approvalActionMsg{verb: "approved", approval: a, err: err}
 	}
 }
 
 func (m model) rejectTool(approval client.ToolApproval) tea.Cmd {
 	return func() tea.Msg {
-		a, err := m.c.RejectTool(context.Background(), approval, "rejected from atlas-tui")
+		a, err := m.c.RejectTool(
+			context.Background(), m.surface, approval, "rejected from atlas-tui",
+		)
 		return approvalActionMsg{verb: "rejected", approval: a, err: err}
 	}
 }

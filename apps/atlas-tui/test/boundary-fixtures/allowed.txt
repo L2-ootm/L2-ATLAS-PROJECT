@@ -1,3 +1,0 @@
-ATLAS terminal presentation fixture.
-Workspace: not connected.
-Agent: not connected.
