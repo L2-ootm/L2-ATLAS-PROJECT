@@ -17,8 +17,9 @@ func (m model) chatView() string {
 	return m.activeChatView()
 }
 
-// idleChatView is the MiMo-grade opening state: identity, one focused
-// composer, readiness or onboarding — no dashboard chrome.
+// idleChatView is the MiMo-grade opening state: identity over the animated
+// starfield, one focused composer, readiness or onboarding — no dashboard
+// chrome.
 func (m model) idleChatView() string {
 	width := max(40, m.width)
 	height := max(18, m.height-2)
@@ -26,7 +27,7 @@ func (m model) idleChatView() string {
 	readiness := readinessFor(m.status, mockAllowed())
 
 	var body strings.Builder
-	for _, row := range logoRows() {
+	for _, row := range pulseLogoRows(m.animFrame) {
 		body.WriteString(row + "\n")
 	}
 	body.WriteString(styleHUD.Render("L2 // ATLAS "+gl.dash+" AGENT WORKBENCH") + "\n\n")
@@ -37,17 +38,30 @@ func (m model) idleChatView() string {
 		body.WriteString(menu + "\n")
 	}
 	if readiness.CanRun {
-		body.WriteString(styleVal.Render(readinessLine(m)))
-		body.WriteString("\n")
-		body.WriteString(styleMuted.Render("enter submit  / commands"))
+		body.WriteString(styleVal.Render(readiness.Label) +
+			styleMuted.Render("  "+orDash(m.surface.PermissionMode)) + "\n")
+		body.WriteString(styleMuted.Render("enter submit  tab mode  / commands"))
 	} else {
 		body.WriteString(onboardingNotice(m))
 	}
+	body.WriteString("\n\n" + m.tipLine())
 	if m.errMsg != "" {
 		body.WriteString("\n\n" + styleBad.Render(m.errMsg))
 	}
-	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, body.String()) +
+	hero := body.String()
+	if len(m.stars) == 0 {
+		return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, hero) +
+			"\n" + m.statusBar()
+	}
+	return starfieldCanvas(width, height, hero, m.stars, m.animFrame) +
 		"\n" + m.statusBar()
+}
+
+// tipLine renders the rotating hint under the idle hero: mode-colored dot,
+// Tip label, muted text.
+func (m model) tipLine() string {
+	dot := lipgloss.NewStyle().Foreground(m.mode.color()).Render(gl.live)
+	return dot + styleHUD.Render(" Tip ") + styleMuted.Render(idleTip(m.animFrame))
 }
 
 func onboardingNotice(m model) string {
@@ -186,10 +200,11 @@ func contextRow(b *strings.Builder, label, value string) {
 }
 
 // composerSurface draws the single strong input surface: a full border that
-// carries state color (violet ready, yellow blocked) around the textarea,
-// with a busy line replacing the input while a turn is in flight.
+// carries the active mode's color (yellow when blocked) around the textarea
+// plus a MiMo-style mode/model status line, with a busy line replacing the
+// input while a turn is in flight.
 func (m model) composerSurface(width int, readiness executionReadiness) string {
-	borderColor := colViolet
+	borderColor := m.mode.color()
 	if !readiness.CanRun {
 		borderColor = colWarn
 	}
@@ -197,7 +212,7 @@ func (m model) composerSurface(width int, readiness executionReadiness) string {
 	if gl.ascii {
 		border = asciiBorder
 	}
-	content := m.composer.View()
+	content := m.composer.View() + "\n" + m.modeStatusLine()
 	if m.busy() {
 		content = styleKey.Render(m.spinnerFrame()) + " " +
 			styleMuted.Render("ATLAS is working "+gl.ellipsis+"  ctrl+c cancel")
@@ -208,6 +223,14 @@ func (m model) composerSurface(width int, readiness executionReadiness) string {
 		Border(border).
 		BorderForeground(borderColor).
 		Render(content)
+}
+
+// modeStatusLine is the composer's identity row: active mode in its color,
+// then auth mode / model, MiMo-style.
+func (m model) modeStatusLine() string {
+	mode := lipgloss.NewStyle().Foreground(m.mode.color()).Bold(true).Render(m.mode.label())
+	meta := orDash(m.status.AuthMode) + " / " + orDash(m.status.Model)
+	return mode + styleMuted.Render(" "+gl.bullet+" "+meta+"  "+m.mode.hint())
 }
 
 // commandMenuView renders the slash-command autocomplete under the composer.
@@ -230,22 +253,12 @@ func (m model) commandMenuView(width int) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-func readinessLine(m model) string {
-	readiness := readinessFor(m.status, mockAllowed())
-	return fmt.Sprintf("%s  %s / %s  %s",
-		readiness.Label,
-		orDash(m.status.AuthMode),
-		orDash(m.status.Model),
-		orDash(m.surface.PermissionMode),
-	)
-}
-
 // statusBar is the persistent bottom line: identity, connection, and key
 // hints, truncated to terminal width.
 func (m model) statusBar() string {
-	hints := "enter send  alt+enter newline  ctrl+p settings  ctrl+o context  / commands  ctrl+c cancel"
+	hints := "enter send  alt+enter newline  tab mode  ctrl+p settings  ctrl+o context  / commands  ctrl+c cancel"
 	if m.width > 0 && m.width < 100 {
-		hints = "enter send | ctrl+p settings | / commands | ctrl+c cancel"
+		hints = "enter send | tab mode | ctrl+p settings | / commands | ctrl+c cancel"
 	}
 	return styleMuted.Render(truncate(hints, max(20, m.width-1)))
 }

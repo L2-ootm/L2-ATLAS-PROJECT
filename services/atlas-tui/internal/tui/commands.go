@@ -18,12 +18,70 @@ type slashCommand struct {
 
 var slashCommands = []slashCommand{
 	{"/settings", "provider, model, and auth configuration"},
+	{"/mode", "switch agent mode: build, plan, or compose"},
+	{"/dream", "consolidate project memory into durable wiki knowledge"},
+	{"/distill", "mine recent work for reusable workflows and skills"},
+	{"/deep-research", "deep multi-source research brief on a topic"},
+	{"/review", "review uncommitted changes in the workspace"},
 	{"/permissions", "review owned pending approvals"},
 	{"/history", "recent missions on this gateway"},
 	{"/sidebar", "toggle the context sidebar"},
 	{"/new", "clear the visible conversation"},
 	{"/help", "list commands"},
 	{"/quit", "close the session and exit"},
+}
+
+// builtinWorkflow is a MiMo-style named workflow shipped as a first-class
+// slash command: a curated intent template dispatched as a real mission.
+type builtinWorkflow struct {
+	title    string
+	usage    string
+	needArgs bool
+	intent   func(args string) string
+}
+
+var builtinWorkflows = map[string]builtinWorkflow{
+	"/dream": {
+		title: "Dream: consolidate project memory",
+		intent: func(string) string {
+			return "DREAM — consolidate project memory. Review recent missions, runs, " +
+				"observations, and wiki entries; distill durable knowledge, decisions, and " +
+				"gotchas; propose (and where the permission broker allows, draft) wiki " +
+				"updates capturing them. Report what was consolidated and what was skipped."
+		},
+	},
+	"/distill": {
+		title: "Distill: package repeated workflows",
+		intent: func(string) string {
+			return "DISTILL — analyze recent missions and runs for repeated workflows or " +
+				"patterns. Package each as a reusable proposal: name, trigger, steps, " +
+				"expected output, and whether it fits a skill, command, or checklist. " +
+				"Report the top 3 candidates ranked by leverage."
+		},
+	},
+	"/deep-research": {
+		title:    "Deep research",
+		usage:    "/deep-research <topic>",
+		needArgs: true,
+		intent: func(args string) string {
+			return "DEEP RESEARCH — produce a structured, fact-checked research brief on: " +
+				args + "\n\nSections: landscape overview, key options with tradeoffs, risks " +
+				"and unknowns, recommendation, and what to verify next. Cite sources where " +
+				"possible and mark unverified claims explicitly."
+		},
+	},
+	"/review": {
+		title: "Review workspace changes",
+		intent: func(args string) string {
+			scope := strings.TrimSpace(args)
+			if scope == "" {
+				scope = "the uncommitted changes"
+			}
+			return "REVIEW — review " + scope + " in this workspace: correctness bugs, " +
+				"risky edge cases, security issues, and simplification opportunities. Be " +
+				"specific with file and line references and rank findings by severity."
+		},
+	},
 }
 
 // commandMatches returns registry entries whose name starts with the typed
@@ -96,7 +154,17 @@ func (m model) executeSlashCommand(input string) (bool, model, tea.Cmd) {
 	if len(fields) == 0 || !strings.HasPrefix(fields[0], "/") {
 		return false, m, nil
 	}
-	switch strings.ToLower(fields[0]) {
+	name := strings.ToLower(fields[0])
+	if wf, ok := builtinWorkflows[name]; ok {
+		args := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(input), fields[0]))
+		if wf.needArgs && args == "" {
+			m.appendSystem("usage: " + wf.usage)
+			return true, m, nil
+		}
+		updated, cmd := m.dispatchMission(wf.title, wf.intent(args), strings.TrimSpace(input))
+		return true, updated, cmd
+	}
+	switch name {
 	case "/settings", "/provider":
 		m.focus = focusSettings
 		m.settingsLoading = true
@@ -106,6 +174,19 @@ func (m model) executeSlashCommand(input string) (bool, model, tea.Cmd) {
 	case "/sidebar", "/context":
 		m.showSidebar = !m.showSidebar
 		m.layout()
+		return true, m, nil
+	case "/mode":
+		if len(fields) > 1 {
+			mode, ok := modeByName(strings.ToLower(fields[1]))
+			if !ok {
+				m.appendSystem("usage: /mode build|plan|compose (or tab to cycle)")
+				return true, m, nil
+			}
+			m.mode = mode
+		} else {
+			m.mode = m.mode.next()
+		}
+		m.appendSystem("MODE " + m.mode.label() + "  " + gl.bullet + "  " + m.mode.hint())
 		return true, m, nil
 	case "/permissions":
 		if len(m.approvals) == 0 {

@@ -11,20 +11,23 @@ import (
 // the opencode-grade Unicode set; legacy Windows consoles (no WT_SESSION) get an
 // ASCII fallback so the TUI never renders mojibake on cmd.exe/conhost.
 type glyphSet struct {
-	live     string   // streaming indicator
-	ellipsis string   // truncation / "more" marker
-	prompt   string   // composer line prefix
-	paneBar  string   // active-pane marker
-	submit   string   // mission-submit marker
-	bullet   string   // audit-event bullet
-	dash     string   // run-boundary rule
-	toolRun  string   // tool in flight
-	toolOK   string   // tool completed
-	toolBad  string   // tool failed
-	diffMark string   // diff line marker
-	codeBar  string   // code-block gutter
-	spinner  []string // busy animation frames
-	ascii    bool
+	live       string   // streaming indicator
+	ellipsis   string   // truncation / "more" marker
+	prompt     string   // composer line prefix
+	paneBar    string   // active-pane marker
+	submit     string   // mission-submit marker
+	bullet     string   // audit-event bullet
+	dash       string   // run-boundary rule
+	toolRun    string   // tool in flight
+	toolOK     string   // tool completed
+	toolBad    string   // tool failed
+	diffMark   string   // diff line marker
+	codeBar    string   // code-block gutter
+	starDim    string   // idle starfield: resting particle
+	starSoft   string   // idle starfield: mid twinkle
+	starBright string   // idle starfield: peak twinkle
+	spinner    []string // busy animation frames
+	ascii      bool
 }
 
 var gl = pickGlyphs()
@@ -47,6 +50,7 @@ func pickGlyphs() glyphSet {
 			live: "*", ellipsis: "...", prompt: "| ", paneBar: "|", submit: ">>",
 			bullet: "-", dash: "--", toolRun: "~", toolOK: "+", toolBad: "x",
 			diffMark: "+-", codeBar: "| ",
+			starDim: ".", starSoft: "+", starBright: "*",
 			spinner: []string{"|", "/", "-", "\\"},
 			ascii:   true,
 		}
@@ -55,6 +59,7 @@ func pickGlyphs() glyphSet {
 		live: "●", ellipsis: "…", prompt: "┃ ", paneBar: "▌", submit: "»",
 		bullet: "•", dash: "—", toolRun: "◐", toolOK: "✓", toolBad: "✗",
 		diffMark: "±", codeBar: "│ ",
+		starDim: "·", starSoft: "✧", starBright: "✦",
 		spinner: []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"},
 	}
 }
@@ -77,26 +82,15 @@ var unicodeLogoRows = []string{
 	"╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝╚══════╝",
 }
 
-// logoRows picks the glyph-safe logo and applies the violet->blue ramp.
-func logoRows() []string {
-	rows := unicodeLogoRows
-	if gl.ascii {
-		rows = asciiLogoRows
-	}
-	ramp := []lipgloss.Color{colViolet, colViolet, colVioletSoft, colVioletSoft, colBlue, colBlue}
-	out := make([]string, len(rows))
-	for i, row := range rows {
-		color := ramp[min(i, len(ramp)-1)]
-		out[i] = lipgloss.NewStyle().Foreground(color).Render(row)
-	}
-	return out
-}
-
 // L2 design-system palette (Electric Violet / Cyber Blue / Titanium White, HUD voice).
 var (
 	colViolet     = lipgloss.Color("#7F00FF")
 	colVioletSoft = lipgloss.Color("#9B4DFF")
+	colVioletDim  = lipgloss.Color("#5A00B5")
+	colVioletGlow = lipgloss.Color("#B380FF")
 	colBlue       = lipgloss.Color("#00F0FF")
+	colBlueDim    = lipgloss.Color("#00A8B3")
+	colBlueGlow   = lipgloss.Color("#7DF9FF")
 	colWhite      = lipgloss.Color("#E0E0E0")
 	colMuted      = lipgloss.Color("#85858F")
 	colDim        = lipgloss.Color("#3A3A44")
@@ -104,6 +98,7 @@ var (
 	colWarn       = lipgloss.Color("#FFD600")
 	colBad        = lipgloss.Color("#FF0055")
 
+	styleDim         = lipgloss.NewStyle().Foreground(colDim)
 	styleTitle       = lipgloss.NewStyle().Bold(true).Foreground(colViolet)
 	styleVioletStyle = lipgloss.NewStyle().Foreground(colViolet)
 	styleKey         = lipgloss.NewStyle().Foreground(colBlue)
