@@ -11,13 +11,19 @@ import (
 // the opencode-grade Unicode set; legacy Windows consoles (no WT_SESSION) get an
 // ASCII fallback so the TUI never renders mojibake on cmd.exe/conhost.
 type glyphSet struct {
-	live     string // streaming indicator
-	ellipsis string // truncation / "more" marker
-	prompt   string // composer line prefix
-	paneBar  string // active-pane marker
-	submit   string // mission-submit marker
-	bullet   string // audit-event bullet
-	dash     string // run-boundary rule
+	live     string   // streaming indicator
+	ellipsis string   // truncation / "more" marker
+	prompt   string   // composer line prefix
+	paneBar  string   // active-pane marker
+	submit   string   // mission-submit marker
+	bullet   string   // audit-event bullet
+	dash     string   // run-boundary rule
+	toolRun  string   // tool in flight
+	toolOK   string   // tool completed
+	toolBad  string   // tool failed
+	diffMark string   // diff line marker
+	codeBar  string   // code-block gutter
+	spinner  []string // busy animation frames
 	ascii    bool
 }
 
@@ -37,20 +43,66 @@ func pickGlyphs() glyphSet {
 		ascii = false
 	}
 	if ascii {
-		return glyphSet{live: "*", ellipsis: "...", prompt: "| ", paneBar: "|", submit: ">>", bullet: "-", dash: "--", ascii: true}
+		return glyphSet{
+			live: "*", ellipsis: "...", prompt: "| ", paneBar: "|", submit: ">>",
+			bullet: "-", dash: "--", toolRun: "~", toolOK: "+", toolBad: "x",
+			diffMark: "+-", codeBar: "| ",
+			spinner: []string{"|", "/", "-", "\\"},
+			ascii:   true,
+		}
 	}
-	return glyphSet{live: "●", ellipsis: "…", prompt: "┃ ", paneBar: "▌", submit: "»", bullet: "•", dash: "—"}
+	return glyphSet{
+		live: "●", ellipsis: "…", prompt: "┃ ", paneBar: "▌", submit: "»",
+		bullet: "•", dash: "—", toolRun: "◐", toolOK: "✓", toolBad: "✗",
+		diffMark: "±", codeBar: "│ ",
+		spinner: []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"},
+	}
+}
+
+// asciiLogo / unicodeLogo render the idle-screen ATLAS identity. Rows are
+// colored violet->blue at render time for the L2 gradient voice.
+var asciiLogoRows = []string{
+	`    _  _____ _      _   ___ `,
+	`   / \|_   _| |    / \ / __|`,
+	`  / _ \ | | | |__ / _ \\__ \`,
+	` /_/ \_\|_| |____/_/ \_|___/`,
+}
+
+var unicodeLogoRows = []string{
+	" █████╗ ████████╗██╗      █████╗ ███████╗",
+	"██╔══██╗╚══██╔══╝██║     ██╔══██╗██╔════╝",
+	"███████║   ██║   ██║     ███████║███████╗",
+	"██╔══██║   ██║   ██║     ██╔══██║╚════██║",
+	"██║  ██║   ██║   ███████╗██║  ██║███████║",
+	"╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝╚══════╝",
+}
+
+// logoRows picks the glyph-safe logo and applies the violet->blue ramp.
+func logoRows() []string {
+	rows := unicodeLogoRows
+	if gl.ascii {
+		rows = asciiLogoRows
+	}
+	ramp := []lipgloss.Color{colViolet, colViolet, colVioletSoft, colVioletSoft, colBlue, colBlue}
+	out := make([]string, len(rows))
+	for i, row := range rows {
+		color := ramp[min(i, len(ramp)-1)]
+		out[i] = lipgloss.NewStyle().Foreground(color).Render(row)
+	}
+	return out
 }
 
 // L2 design-system palette (Electric Violet / Cyber Blue / Titanium White, HUD voice).
 var (
-	colViolet = lipgloss.Color("#7F00FF")
-	colBlue   = lipgloss.Color("#00F0FF")
-	colWhite  = lipgloss.Color("#E0E0E0")
-	colMuted  = lipgloss.Color("#85858F")
-	colGood   = lipgloss.Color("#00FF94")
-	colWarn   = lipgloss.Color("#FFD600")
-	colBad    = lipgloss.Color("#FF0055")
+	colViolet     = lipgloss.Color("#7F00FF")
+	colVioletSoft = lipgloss.Color("#9B4DFF")
+	colBlue       = lipgloss.Color("#00F0FF")
+	colWhite      = lipgloss.Color("#E0E0E0")
+	colMuted      = lipgloss.Color("#85858F")
+	colDim        = lipgloss.Color("#3A3A44")
+	colGood       = lipgloss.Color("#00FF94")
+	colWarn       = lipgloss.Color("#FFD600")
+	colBad        = lipgloss.Color("#FF0055")
 
 	styleTitle       = lipgloss.NewStyle().Bold(true).Foreground(colViolet)
 	styleVioletStyle = lipgloss.NewStyle().Foreground(colViolet)
@@ -60,6 +112,8 @@ var (
 	styleWarn        = lipgloss.NewStyle().Foreground(colWarn)
 	styleBad         = lipgloss.NewStyle().Foreground(colBad)
 	styleVal         = lipgloss.NewStyle().Foreground(colWhite)
+	styleCode        = lipgloss.NewStyle().Foreground(colBlue)
+	styleCodeBlock   = lipgloss.NewStyle().Foreground(colVioletSoft)
 
 	styleSelected = lipgloss.NewStyle().Foreground(colWhite).Background(colViolet).Bold(true)
 	styleHUD      = lipgloss.NewStyle().Foreground(colMuted).Bold(true)

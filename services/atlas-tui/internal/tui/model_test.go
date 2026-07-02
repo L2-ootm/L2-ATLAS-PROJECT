@@ -91,7 +91,10 @@ func readyModel(width, height int) model {
 	m.approvals = []client.ToolApproval{
 		{ID: "approval-1", ToolName: "terminal", RiskLevel: "high", Summary: "run tests"},
 	}
-	m.log = []string{"assistant hello", "tool terminal go test ./..."}
+	m.items = []transcriptItem{
+		{kind: itemAssistant, text: "assistant hello"},
+		{kind: itemTool, label: "terminal", text: "go test ./...", status: "done"},
+	}
 	m.width, m.height = width, height
 	m.layout()
 	return m
@@ -127,7 +130,7 @@ func TestUnicodeViewUsesNativeGlyphsAndFitsWideTerminal(t *testing.T) {
 	if strings.ContainsRune(view, '�') {
 		t.Fatalf("Unicode view contains replacement rune:\n%s", view)
 	}
-	if !strings.Contains(view, "MESSAGE ATLAS") || !strings.Contains(view, "CONTEXT") {
+	if !strings.Contains(view, "TRANSCRIPT") || !strings.Contains(view, "CONTEXT") {
 		t.Fatalf("Unicode chat-first chrome missing:\n%s", view)
 	}
 	assertLinesFit(t, view, 140)

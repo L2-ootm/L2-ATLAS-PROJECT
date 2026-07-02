@@ -77,8 +77,8 @@ func TestEnterSubmitsFromFocusedComposer(t *testing.T) {
 	if cmd == nil || !got.submitting {
 		t.Fatalf("enter did not submit: cmd=%v submitting=%v", cmd, got.submitting)
 	}
-	if len(got.log) == 0 || !strings.Contains(plain(got.log[0]), "analyse the codebase") {
-		t.Fatalf("user turn not appended immediately: %#v", got.log)
+	if len(got.items) == 0 || !strings.Contains(plain(renderTranscript(got.items, 100)), "analyse the codebase") {
+		t.Fatalf("user turn not appended immediately: %#v", got.items)
 	}
 }
 
@@ -98,12 +98,16 @@ func TestAltEnterInsertsNewlineWithoutSubmitting(t *testing.T) {
 
 func TestActiveConversationUsesTranscriptComposerAndContext(t *testing.T) {
 	m := chatReadyModel(140, 40)
-	m.log = []string{"YOU  analyse the codebase", "ATLAS  Reading project structure"}
+	m.items = []transcriptItem{
+		{kind: itemUser, text: "analyse the codebase"},
+		{kind: itemAssistant, text: "Reading project structure"},
+	}
 	m.showSidebar = true
 	m.layout()
 	view := plain(m.View())
 	for _, required := range []string{
-		"SESSION", "YOU", "ATLAS", "MESSAGE ATLAS", "CONTEXT", "surface-chat",
+		"SESSION", "analyse the codebase", "ATLAS", "Reading project structure",
+		"CONTEXT", "surface-chat",
 	} {
 		if !strings.Contains(view, required) {
 			t.Fatalf("active view missing %q:\n%s", required, view)
@@ -125,7 +129,7 @@ func TestCtrlCCancelsActiveWorkBeforeExit(t *testing.T) {
 	if cmd == nil || !got.cancelRequested {
 		t.Fatalf("ctrl+c did not request cancellation: cmd=%v requested=%v", cmd, got.cancelRequested)
 	}
-	if !strings.Contains(plain(strings.Join(got.log, "\n")), "CANCEL REQUESTED") {
-		t.Fatalf("cancellation is not visible: %#v", got.log)
+	if !strings.Contains(plain(renderTranscript(got.items, 100)), "CANCEL REQUESTED") {
+		t.Fatalf("cancellation is not visible: %#v", got.items)
 	}
 }

@@ -1,10 +1,10 @@
 // Package tui is the ATLAS terminal workbench (BubbleTea).
 //
 // Reimplements opencode/MiMo terminal patterns ATLAS-native (no donor runtime
-// imported). It is a thin client of the ATLAS gateway: it renders the provider
-// mesh, missions, a live run-event stream, the tool-approval queue, and a
-// composer that submits a mission + drives a real run end-to-end. It holds no
-// business logic — render + input + HTTP only (D-022).
+// imported). It is a thin client of the ATLAS gateway: a chat-first surface
+// whose composer submits a mission + drives a real run end-to-end, with the
+// provider mesh, approvals, and settings behind overlays and slash commands.
+// It holds no business logic — render + input + HTTP only (D-022).
 package tui
 
 import (
@@ -40,6 +40,7 @@ const (
 )
 
 const approvalPollInterval = 4 * time.Second
+const spinnerInterval = 120 * time.Millisecond
 
 // --- messages --------------------------------------------------------------
 
@@ -78,6 +79,7 @@ type approvalActionMsg struct {
 	err      error
 }
 type pollTickMsg struct{}
+type spinnerTickMsg struct{}
 type latestRunMsg struct {
 	runID string
 	err   error
@@ -113,16 +115,23 @@ type model struct {
 	approvals  []client.ToolApproval
 	approvalIx int
 
-	log             []string
-	viewport        viewport.Model
-	vpReady         bool
-	streaming       bool
-	streamRun       string
-	eventCh         chan client.RunEvent
-	cancelRequested bool
+	items             []transcriptItem
+	viewport          viewport.Model
+	vpReady           bool
+	streaming         bool
+	streamRun         string
+	eventCh           chan client.RunEvent
+	cancelRequested   bool
+	lastAssistantText string
 
 	composer   textarea.Model
 	submitting bool
+
+	menuMatches []slashCommand
+	menuIx      int
+
+	spinFrame   int
+	turnStarted time.Time
 
 	settings        *settingsForm
 	settingsLoading bool
@@ -138,9 +147,9 @@ type model struct {
 // New builds the workbench model for a gateway base URL.
 func New(c *client.Client, gateway string) model {
 	ta := textarea.New()
-	ta.Placeholder = "Type your message" + gl.ellipsis
+	ta.Placeholder = "Describe a mission or ask anything " + gl.ellipsis
 	ta.Prompt = " "
-	ta.CharLimit = 4000
+	ta.CharLimit = 8000
 	ta.ShowLineNumbers = false
 	ta.SetHeight(3)
 	ta.Focus()
@@ -157,6 +166,11 @@ func New(c *client.Client, gateway string) model {
 
 func (m model) Init() tea.Cmd {
 	return tea.Batch(m.fetchStatus(), m.fetchModes(), m.fetchMissions(), m.createSurface())
+}
+
+// busy reports whether agent work is in flight (spinner + cancel semantics).
+func (m model) busy() bool {
+	return m.submitting || m.streaming
 }
 
 // --- commands --------------------------------------------------------------
@@ -232,6 +246,10 @@ func schedulePoll() tea.Cmd {
 	return tea.Tick(approvalPollInterval, func(time.Time) tea.Msg { return pollTickMsg{} })
 }
 
+func scheduleSpinner() tea.Cmd {
+	return tea.Tick(spinnerInterval, func(time.Time) tea.Msg { return spinnerTickMsg{} })
+}
+
 func (m model) resolveLatestRun(missionID string) tea.Cmd {
 	return func() tea.Msg {
 		id, err := m.c.LatestRunID(context.Background(), missionID)
@@ -304,6 +322,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 
+	case spinnerTickMsg:
+		if !m.busy() && !m.probing {
+			return m, nil
+		}
+		m.spinFrame++
+		return m, scheduleSpinner()
+
 	case statusMsg:
 		m.phase = phaseReady
 		if msg.err != nil {
@@ -357,7 +382,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.submitting = false
 				m.focus = focusComposer
 				m.composer.Focus()
-				m.appendLog(styleHUD.Render("SYSTEM") + "  " + styleMuted.Render("Cancellation acknowledged."))
+				m.appendSystem("Cancellation acknowledged.")
 			}
 		}
 
@@ -401,34 +426,39 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case approvalActionMsg:
 		if msg.err != nil {
-			m.appendLog(styleBad.Render("approval " + msg.verb + " failed: " + msg.err.Error()))
+			m.appendItem(transcriptItem{
+				kind: itemError, label: "approval",
+				text: msg.verb + " failed: " + msg.err.Error(),
+			})
 		} else {
-			m.appendLog(styleGood.Render(fmt.Sprintf("%s %s [%s]", msg.verb, msg.approval.ToolName, msg.approval.Status)))
+			m.appendItem(transcriptItem{
+				kind: itemNotice,
+				text: fmt.Sprintf("%s %s [%s]", msg.verb, msg.approval.ToolName, msg.approval.Status),
+			})
 		}
 		return m, m.fetchApprovals()
 
 	case missionCreatedMsg:
 		if msg.err != nil {
 			m.submitting = false
-			m.appendLog(styleBad.Render("mission create failed: " + msg.err.Error()))
+			m.appendItem(transcriptItem{kind: itemError, label: "dispatch", text: msg.err.Error()})
 		} else {
-			m.appendLog(styleGood.Render("mission created " + short(msg.mission.ID) + " " + gl.dash + " starting run" + gl.ellipsis))
 			return m, tea.Batch(m.fetchMissions(), m.startRun(msg.mission.ID))
 		}
 
 	case runStartedMsg:
-		m.submitting = false
 		if msg.err != nil {
-			m.appendLog(styleBad.Render("run start failed: " + msg.err.Error()))
+			m.submitting = false
+			m.appendItem(transcriptItem{kind: itemError, label: "run start", text: msg.err.Error()})
 		} else {
 			return m.beginStream(msg.runID)
 		}
 
 	case latestRunMsg:
 		if msg.err != nil {
-			m.appendLog(styleBad.Render("run lookup failed: " + msg.err.Error()))
+			m.appendItem(transcriptItem{kind: itemError, label: "run lookup", text: msg.err.Error()})
 		} else if msg.runID == "" {
-			m.appendLog(styleWarn.Render("no runs on this mission yet"))
+			m.appendSystem("no runs on this mission yet")
 		} else {
 			return m.beginStream(msg.runID)
 		}
@@ -440,14 +470,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.probeOutcome = outcome
 			}
 		}
-		m.appendLog(renderEvent(event))
+		m.applyRunEvent(event)
 		return m, waitForEvent(m.eventCh)
 
 	case streamDoneMsg:
 		m.streaming = false
+		m.submitting = false
 		m.focus = focusComposer
 		m.composer.Focus()
-		m.appendLog(styleMuted.Render("stream ended (" + short(m.streamRun) + ")"))
 		if m.probeMissionID != "" {
 			m.probing = false
 			if msg.err != nil {
@@ -455,7 +485,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.probeOutcome == "" {
 				m.probeOutcome = "live"
 			}
-			m.appendLog(probeVerdict(m.probeOutcome))
+			m.appendItem(probeVerdictItem(m.probeOutcome))
 			missionID := m.probeMissionID
 			m.probeMissionID = ""
 			return m, archiveProbe(m.c, missionID)
@@ -492,12 +522,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		form := newSettingsForm(msg.snapshot, models)
 		form.message = msg.message
 		m.settings = &form
-		m.appendLog(styleGood.Render(msg.message))
+		m.appendItem(transcriptItem{kind: itemNotice, text: msg.message})
 		if msg.probeAfter {
 			m.probing = true
 			m.probeOutcome = ""
-			m.appendLog(styleKey.Render("starting provider probe" + gl.ellipsis))
-			return m, startProbe(m.c, m.surface.ID)
+			m.appendSystem("starting provider probe" + gl.ellipsis)
+			return m, tea.Batch(startProbe(m.c, m.surface.ID), scheduleSpinner())
 		}
 		return m, tea.Batch(m.fetchStatus(), m.fetchModes())
 
@@ -505,17 +535,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.probing = false
 			m.probeOutcome = "failed"
-			m.appendLog(styleBad.Render("provider probe failed: " + msg.err.Error()))
+			m.appendItem(transcriptItem{kind: itemError, label: "probe", text: msg.err.Error()})
 		} else {
 			m.probeMissionID = msg.missionID
 			m.probeOutcome = ""
-			m.appendLog(styleGood.Render("provider probe running " + short(msg.runID) + " " + gl.ellipsis))
 			return m.beginStream(msg.runID)
 		}
 
 	case probeArchivedMsg:
 		if msg.err != nil {
-			m.appendLog(styleWarn.Render("probe cleanup failed: " + msg.err.Error()))
+			m.appendSystem("probe cleanup failed: " + msg.err.Error())
 		}
 		return m, m.fetchMissions()
 	}
@@ -560,14 +589,60 @@ func overlayFromSurfaceEvent(event client.SurfaceEvent) *overlayModel {
 	}
 }
 
+// applyRunEvent folds one SSE event into the transcript: tools complete in
+// place via tool_call_id, and terminal-transition summaries that duplicate the
+// already-rendered assistant text are dropped.
+func (m *model) applyRunEvent(event client.RunEvent) {
+	for _, item := range itemsFromEvent(event) {
+		switch item.kind {
+		case itemAssistant:
+			text := strings.TrimSpace(item.text)
+			if text == "" || text == m.lastAssistantText {
+				continue
+			}
+			m.lastAssistantText = text
+			m.submitting = false
+		case itemTool:
+			if item.status != "running" && item.callID != "" && m.completeTool(item) {
+				continue
+			}
+		case itemError:
+			if item.callID != "" {
+				m.completeTool(transcriptItem{
+					kind: itemTool, status: "failed", callID: item.callID, label: item.label,
+				})
+			}
+		}
+		m.appendItem(item)
+	}
+}
+
+// completeTool updates the newest matching in-flight tool row; returns true
+// when an in-place update happened (no separate line needed).
+func (m *model) completeTool(update transcriptItem) bool {
+	for i := len(m.items) - 1; i >= 0; i-- {
+		it := m.items[i]
+		if it.kind == itemTool && it.callID == update.callID && it.status == "running" {
+			it.status = update.status
+			if update.text != "" {
+				it.detail = update.text
+			}
+			m.items[i] = it
+			m.refreshViewport()
+			return true
+		}
+	}
+	return false
+}
+
 // beginStream wires the SSE consumer for a run id and starts pumping events.
 func (m model) beginStream(runID string) (tea.Model, tea.Cmd) {
 	m.streaming = true
 	m.streamRun = runID
+	m.lastAssistantText = ""
 	m.eventCh = make(chan client.RunEvent, 64)
 	ch := m.eventCh
 	c := m.c
-	m.appendLog(styleGood.Render("streaming run " + short(runID) + " " + gl.ellipsis))
 	go func() {
 		err := c.StreamRun(context.Background(), runID, func(ev client.RunEvent) {
 			ch <- ev
@@ -577,7 +652,7 @@ func (m model) beginStream(runID string) (tea.Model, tea.Cmd) {
 		}
 		close(ch)
 	}()
-	return m, waitForEvent(ch)
+	return m, tea.Batch(waitForEvent(ch), scheduleSpinner())
 }
 
 func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -589,11 +664,16 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	// Composer owns most keys while focused; only the explicit verbs escape it.
 	if m.focus == focusComposer {
+		if m.menuOpen() {
+			if handled, updated, cmd := m.handleMenuKey(msg); handled {
+				return updated, cmd
+			}
+		}
 		switch msg.String() {
 		case "ctrl+c":
-			if (m.streaming || m.submitting) && m.surface.ID != "" && m.surface.OwnerToken != "" {
+			if m.busy() && m.surface.ID != "" && m.surface.OwnerToken != "" {
 				m.cancelRequested = true
-				m.appendLog(styleWarn.Render("CANCEL REQUESTED"))
+				m.appendSystem("CANCEL REQUESTED")
 				return m, m.cancelSurface()
 			}
 			return m.quit()
@@ -603,6 +683,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			msg.Alt = false
 			var cmd tea.Cmd
 			m.composer, cmd = m.composer.Update(msg)
+			m.syncMenu()
 			return m, cmd
 		case "ctrl+p":
 			m.focus = focusSettings
@@ -619,6 +700,7 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		var cmd tea.Cmd
 		m.composer, cmd = m.composer.Update(msg)
+		m.syncMenu()
 		return m, cmd
 	}
 
@@ -674,9 +756,9 @@ func (m model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.approveTool(result.approval, result.value)
 	case overlayClarify:
-		m.appendLog(styleGood.Render("clarification captured: " + result.value))
+		m.appendItem(transcriptItem{kind: itemNotice, text: "clarification captured: " + result.value})
 	case overlayConfirm:
-		m.appendLog(styleGood.Render("confirmation captured: " + result.value))
+		m.appendItem(transcriptItem{kind: itemNotice, text: "confirmation captured: " + result.value})
 	}
 	return m, nil
 }
@@ -712,7 +794,7 @@ func (m model) handleMissionsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "enter":
 		if len(m.missions) > 0 && !m.streaming {
-			m.appendLog(styleMuted.Render("resolving latest run" + gl.ellipsis))
+			m.appendSystem("resolving latest run" + gl.ellipsis)
 			return m, m.resolveLatestRun(m.missions[m.cursor].ID)
 		}
 	}
@@ -759,6 +841,7 @@ func (m model) submitComposer() (tea.Model, tea.Cmd) {
 	}
 	if handled, updated, cmd := m.executeSlashCommand(text); handled {
 		updated.composer.Reset()
+		updated.menuMatches = nil
 		if updated.focus == focusComposer {
 			updated.composer.Focus()
 		}
@@ -776,28 +859,50 @@ func (m model) submitComposer() (tea.Model, tea.Cmd) {
 		return m, m.fetchSettings()
 	}
 	title := firstLine(text)
-	m.appendLog(renderUserTurn(text))
+	m.appendItem(transcriptItem{kind: itemUser, text: text})
 	m.composer.Reset()
+	m.menuMatches = nil
 	m.composer.Focus()
 	m.focus = focusComposer
 	m.submitting = true
-	return m, m.submitMission(truncate(title, 120), text)
+	m.turnStarted = time.Now()
+	return m, tea.Batch(m.submitMission(truncate(title, 120), text), scheduleSpinner())
 }
 
-func (m *model) appendLog(line string) {
-	m.log = append(m.log, line)
-	if len(m.log) > 500 {
-		m.log = m.log[len(m.log)-500:]
+func (m *model) appendItem(item transcriptItem) {
+	m.items = append(m.items, item)
+	if len(m.items) > 500 {
+		m.items = m.items[len(m.items)-500:]
 	}
+	m.refreshViewport()
+}
+
+func (m *model) appendSystem(text string) {
+	m.appendItem(transcriptItem{kind: itemSystem, text: text})
+}
+
+func (m *model) refreshViewport() {
 	if m.vpReady {
-		m.viewport.SetContent(strings.Join(m.log, "\n"))
+		m.viewport.SetContent(renderTranscript(m.items, m.viewport.Width))
 		m.viewport.GotoBottom()
+	}
+}
+
+func probeVerdictItem(outcome string) transcriptItem {
+	switch outcome {
+	case "live":
+		return transcriptItem{kind: itemNotice, text: "provider probe: LIVE"}
+	case "mock":
+		return transcriptItem{kind: itemSystem, text: "provider probe: MOCK MODE"}
+	default:
+		return transcriptItem{kind: itemError, label: "probe", text: "provider probe failed"}
 	}
 }
 
 // layout sizes the scrollback viewport from the current terminal dimensions.
 func (m *model) layout() {
-	// Reserve rows for compact header, composer, and footer.
+	// Reserve rows: header (2), composer surface (5), footer + hints (3),
+	// breathing room (1).
 	h := m.height - 11
 	if h < 4 {
 		h = 4
@@ -816,7 +921,7 @@ func (m *model) layout() {
 		m.viewport.Width = w
 		m.viewport.Height = h
 	}
-	m.viewport.SetContent(strings.Join(m.log, "\n"))
+	m.viewport.SetContent(renderTranscript(m.items, w))
 	m.viewport.GotoBottom()
 	m.composer.SetWidth(w)
 }
@@ -845,104 +950,6 @@ func (m model) View() string {
 	return m.chatView()
 }
 
-func (m model) header() string {
-	mode := styleGood.Render("live")
-	if m.status.MockMode {
-		mode = styleWarn.Render("MOCK MODE")
-	}
-	title := styleTitle.Render("ATLAS workbench")
-	line := fmt.Sprintf("%s  %s  %s/%s  auth=%s  [%s]",
-		title,
-		styleMuted.Render(m.gateway),
-		styleVal.Render(orDash(m.status.Provider)),
-		styleVal.Render(orDash(m.status.Model)),
-		styleKey.Render(orDash(m.status.AuthMode)),
-		mode,
-	)
-	if m.width > 0 && m.width < 100 {
-		line = fmt.Sprintf("%s  [%s]\n%s  %s/%s  auth=%s",
-			title,
-			mode,
-			styleMuted.Render(m.gateway),
-			styleVal.Render(orDash(m.status.Provider)),
-			styleVal.Render(orDash(m.status.Model)),
-			styleKey.Render(orDash(m.status.AuthMode)),
-		)
-	}
-	if m.errMsg != "" {
-		line += "\n" + styleBad.Render("! "+m.errMsg)
-	}
-	return line
-}
-
-func (m model) modesPanel() string {
-	var b strings.Builder
-	b.WriteString(styleKey.Render("provider modes") + "\n")
-	for _, md := range m.modes {
-		mark := styleBad.Render("[--]")
-		if md.Available {
-			mark = styleGood.Render("[ok]")
-		}
-		active := ""
-		if md.Active {
-			active = styleViolet(" <- active")
-		}
-		b.WriteString(fmt.Sprintf("%s %-13s%s\n", mark, md.Mode, active))
-	}
-	if len(m.modes) == 0 {
-		b.WriteString(styleMuted.Render("(none)\n"))
-	}
-	return panelStyle(30).Render(strings.TrimRight(b.String(), "\n"))
-}
-
-func (m model) missionsPanel() string {
-	var b strings.Builder
-	b.WriteString(paneTitle("missions", m.focus == focusMissions) + "\n")
-	if len(m.missions) == 0 {
-		b.WriteString(styleMuted.Render("(none)"))
-	}
-	for i, ms := range m.missions {
-		if i >= 8 {
-			b.WriteString(styleMuted.Render(fmt.Sprintf("%s +%d more", gl.ellipsis, len(m.missions)-8)))
-			break
-		}
-		row := fmt.Sprintf("%-8s %s", ms.Status, truncate(ms.Title, 24))
-		if i == m.cursor && m.focus == focusMissions {
-			row = styleSelected.Render("> " + row)
-		} else {
-			row = "  " + styleVal.Render(row)
-		}
-		b.WriteString(row + "\n")
-	}
-	return panelStyle(40).Render(strings.TrimRight(b.String(), "\n"))
-}
-
-func (m model) permissionsPanel() string {
-	var b strings.Builder
-	hdr := paneTitle("permissions", m.focus == focusPermissions)
-	if len(m.approvals) > 0 {
-		hdr += styleWarn.Render(fmt.Sprintf(" (%d)", len(m.approvals)))
-	}
-	b.WriteString(hdr + "\n")
-	if len(m.approvals) == 0 {
-		b.WriteString(styleMuted.Render("no pending approvals"))
-	}
-	for i, a := range m.approvals {
-		if i >= 8 {
-			b.WriteString(styleMuted.Render(fmt.Sprintf("%s +%d more", gl.ellipsis, len(m.approvals)-8)))
-			break
-		}
-		label := fmt.Sprintf("%-5s %s", riskTag(a.RiskLevel), truncate(approvalLabel(a), 26))
-		if i == m.approvalIx && m.focus == focusPermissions {
-			label = styleSelected.Render("> " + label)
-		} else {
-			label = "  " + styleVal.Render(label)
-		}
-		b.WriteString(label + "\n")
-	}
-	return panelStyle(40).Render(strings.TrimRight(b.String(), "\n"))
-}
-
 func (m model) logPanel() string {
 	title := styleKey.Render("run stream")
 	if m.streaming {
@@ -952,28 +959,21 @@ func (m model) logPanel() string {
 	}
 	body := m.viewport.View()
 	if !m.vpReady {
-		body = panelStyle(max(20, m.width-2)).Render(styleMuted.Render("select a mission and press enter, or n to compose a new one"))
+		body = styleMuted.Render("no activity yet")
 	}
 	return title + "\n" + body
 }
 
-func (m model) composerPanel() string {
-	if m.focus == focusComposer {
-		return styleKey.Render("compose mission") + styleMuted.Render("  ctrl+s run · esc cancel") + "\n" + m.composer.View()
-	}
-	return styleMuted.Render("n compose new mission")
-}
-
 func (m model) footer() string {
 	if m.overlay != nil {
-		return styleMuted.Render("overlay active · background input paused")
+		return styleMuted.Render("overlay active " + gl.bullet + " background input paused")
 	}
 	if m.width > 0 && m.width < 100 && m.focus != focusComposer {
 		return styleMuted.Render("j/k move | enter action | tab panes | n compose | r refresh | q quit")
 	}
 	switch m.focus {
 	case focusComposer:
-		return styleMuted.Render("ctrl+s run · esc cancel · ctrl+c quit")
+		return m.chatFooter()
 	case focusSettings:
 		return styleMuted.Render("tab fields · left/right mode · ctrl+s save · ctrl+t save + probe · esc close")
 	case focusPermissions:
@@ -981,42 +981,6 @@ func (m model) footer() string {
 	default:
 		return styleMuted.Render("j/k move · enter stream · tab permissions · n compose · s settings · p perms · r refresh · q quit")
 	}
-}
-
-func probeVerdict(outcome string) string {
-	switch outcome {
-	case "live":
-		return styleGood.Render("provider probe: LIVE")
-	case "mock":
-		return styleWarn.Render("provider probe: MOCK MODE")
-	default:
-		return styleBad.Render("provider probe: FAILED")
-	}
-}
-
-func paneTitle(name string, active bool) string {
-	if active {
-		return styleVioletStyle.Bold(true).Render(gl.paneBar + name)
-	}
-	return styleKey.Render(" " + name)
-}
-
-func riskTag(level string) string {
-	switch level {
-	case "high", "critical":
-		return styleBad.Render(strings.ToUpper(level[:min(4, len(level))]))
-	case "medium":
-		return styleWarn.Render("MED")
-	default:
-		return styleMuted.Render("LOW")
-	}
-}
-
-func approvalLabel(a client.ToolApproval) string {
-	if a.Summary != "" {
-		return a.Summary
-	}
-	return a.ToolName
 }
 
 func firstLine(s string) string {

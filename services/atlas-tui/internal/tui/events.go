@@ -9,86 +9,147 @@ import (
 )
 
 type auditFrame struct {
-	EventType string         `json:"event_type"`
-	ToolName  string         `json:"tool_name"`
-	Data      map[string]any `json:"data"`
+	EventType  string         `json:"event_type"`
+	ToolName   string         `json:"tool_name"`
+	ToolCallID string         `json:"tool_call_id"`
+	Data       map[string]any `json:"data"`
 }
 
-func renderEvent(ev client.RunEvent) string {
+// itemsFromEvent maps one SSE run event onto zero or more transcript items.
+// Unknown payload maps are never dumped: the audit ledger is redacted at
+// write time, but the display allowlist here keeps a future producer from
+// accidentally rendering opaque credentials.
+func itemsFromEvent(ev client.RunEvent) []transcriptItem {
 	switch ev.Name {
 	case "end":
 		var d struct {
 			Status string `json:"status"`
 		}
 		_ = json.Unmarshal(ev.Data, &d)
-		return styleMuted.Render(gl.dash + " run " + orDash(d.Status) + " " + gl.dash)
+		return []transcriptItem{runFinishedRule(d.Status)}
 	case "stream_error":
 		var d struct {
 			Error string `json:"error"`
 		}
 		if json.Unmarshal(ev.Data, &d) == nil && d.Error != "" {
-			return styleBad.Render("stream error: " + safeInline(d.Error, 160))
+			return []transcriptItem{{kind: itemError, label: "stream", text: d.Error}}
 		}
-		return styleBad.Render("stream error")
+		return []transcriptItem{{kind: itemError, label: "stream", text: "stream error"}}
 	case "audit":
 		var frame auditFrame
 		if json.Unmarshal(ev.Data, &frame) != nil {
-			return styleMuted.Render(gl.bullet + " audit")
+			return nil
 		}
-		return renderAuditFrame(frame)
+		return itemsFromAuditFrame(frame)
 	default:
-		return styleMuted.Render(gl.bullet + " " + orDash(ev.Name))
+		return []transcriptItem{{kind: itemSystem, text: orDash(ev.Name)}}
 	}
 }
 
-func renderAuditFrame(frame auditFrame) string {
+func itemsFromAuditFrame(frame auditFrame) []transcriptItem {
 	data := frame.Data
 	kind, _ := data["surface_kind"].(string)
+
+	// Mission lifecycle transitions ride on tool_call events without a tool
+	// name. "started" is spinner territory (no line); terminal transitions
+	// carry the run summary, which the model dedupes against llm_call text.
+	if transition := firstString(data, "transition"); transition != "" {
+		switch transition {
+		case "failed":
+			return []transcriptItem{{
+				kind: itemError, label: "run",
+				text: firstString(data, "summary", "error"),
+			}}
+		case "succeeded":
+			if summary := firstString(data, "summary"); summary != "" {
+				return []transcriptItem{{kind: itemAssistant, text: summary}}
+			}
+		}
+		return nil
+	}
+
 	switch {
 	case kind == "reasoning" || (frame.EventType == "llm_call" && boolField(data, "reasoning")):
-		return eventLine(styleVioletStyle, "reasoning", firstString(data, "text", "summary"))
+		if text := firstString(data, "text", "summary"); text != "" {
+			return []transcriptItem{{kind: itemReasoning, text: text}}
+		}
+		return nil
 	case frame.EventType == "llm_call" || frame.EventType == "model_call_end":
-		return eventLine(styleVal, "ATLAS", firstString(data, "text", "summary"))
+		if text := firstString(data, "text", "summary"); text != "" {
+			return []transcriptItem{{kind: itemAssistant, text: text}}
+		}
+		return nil
 	case frame.EventType == "model_call_start":
-		return eventLine(styleMuted, "model", firstString(data, "model", "provider"))
+		return []transcriptItem{{
+			kind: itemSystem, text: "model " + firstString(data, "model", "provider"),
+		}}
 	case kind == "diff":
-		return renderDiff(data)
+		return []transcriptItem{diffItem(data)}
 	case kind == "retrieval" || frame.EventType == "wiki_update" ||
 		frame.EventType == "memory_change":
-		return renderRetrieval(data)
+		return []transcriptItem{retrievalItem(data)}
 	case frame.EventType == "artifact":
 		if firstString(data, "path") != "" {
-			return renderDiff(data)
+			return []transcriptItem{diffItem(data)}
 		}
-		return renderRetrieval(data)
+		return []transcriptItem{retrievalItem(data)}
 	case frame.EventType == "tool_call" || frame.EventType == "tool_requested":
-		detail := firstString(data, "summary", "command", "cmd", "path")
-		if detail == "" {
-			detail = nestedDisplay(data["input"])
-		}
-		return eventLine(styleKey, "tool "+orDash(frame.ToolName), detail)
+		return toolCallItems(frame)
 	case frame.EventType == "tool_completed" || frame.EventType == "discord_action":
-		return eventLine(styleGood, "tool done "+orDash(frame.ToolName), firstString(data, "summary", "result"))
+		return []transcriptItem{{
+			kind: itemTool, status: "done",
+			label:  orDash(frame.ToolName),
+			callID: frame.ToolCallID,
+			text:   firstString(data, "summary", "result"),
+		}}
 	case frame.EventType == "failure" || frame.EventType == "tool_failed" ||
 		frame.EventType == "provider_fallback" || strings.HasSuffix(frame.EventType, "_failed"):
 		detail := joinNonEmpty(
 			firstString(data, "error", "message"),
 			firstString(data, "stop_reason", "reason"),
 		)
-		return eventLine(styleBad, "error "+orDash(frame.ToolName), detail)
+		return []transcriptItem{{
+			kind: itemError, label: frame.ToolName, text: detail, callID: frame.ToolCallID,
+		}}
+	case frame.EventType == "run_cancelled":
+		return []transcriptItem{{kind: itemSystem, text: "run cancelled"}}
 	default:
 		label := orDash(frame.EventType)
 		if frame.ToolName != "" {
 			label += " " + frame.ToolName
 		}
-		// Unknown event payloads are intentionally not rendered. The audit
-		// ledger is redacted at write time, but an allowlist here prevents a
-		// future producer from accidentally displaying opaque credentials.
-		return styleMuted.Render(gl.bullet + " " + label)
+		return []transcriptItem{{kind: itemSystem, text: label}}
 	}
 }
 
-func renderDiff(data map[string]any) string {
+// toolCallItems maps a tool_call frame. Runtime markers stay quiet or become
+// honest one-line notices; real tools become in-flight rows the model can
+// complete in place via tool_call_id.
+func toolCallItems(frame auditFrame) []transcriptItem {
+	data := frame.Data
+	switch frame.ToolName {
+	case "native_runtime":
+		return nil // engagement marker; the spinner already communicates it
+	case "mock":
+		return []transcriptItem{{kind: itemSystem, text: "MOCK MODE run (deterministic, no provider)"}}
+	case "freellmapi":
+		if warning := firstString(data, "privacy_warning"); warning != "" {
+			return []transcriptItem{{kind: itemSystem, text: warning}}
+		}
+	}
+	detail := firstString(data, "summary", "command", "cmd", "path")
+	if detail == "" {
+		detail = nestedDisplay(data["input"])
+	}
+	return []transcriptItem{{
+		kind: itemTool, status: "running",
+		label:  orDash(frame.ToolName),
+		callID: frame.ToolCallID,
+		text:   detail,
+	}}
+}
+
+func diffItem(data map[string]any) transcriptItem {
 	path := firstString(data, "path", "file")
 	delta := ""
 	if n, ok := numberField(data, "additions"); ok {
@@ -97,23 +158,17 @@ func renderDiff(data map[string]any) string {
 	if n, ok := numberField(data, "deletions"); ok {
 		delta = joinNonEmpty(delta, fmt.Sprintf("-%d", n))
 	}
-	return eventLine(styleWarn, "diff", joinNonEmpty(path, delta))
+	return transcriptItem{kind: itemDiff, text: joinNonEmpty(path, delta)}
 }
 
-func renderRetrieval(data map[string]any) string {
-	detail := joinNonEmpty(
-		firstString(data, "title", "path", "query"),
-		firstString(data, "source"),
-	)
-	return eventLine(styleVioletStyle, "retrieval", detail)
-}
-
-func eventLine(style interface{ Render(...string) string }, label, detail string) string {
-	line := gl.bullet + " " + label
-	if detail != "" {
-		line += " " + safeInline(detail, 240)
+func retrievalItem(data map[string]any) transcriptItem {
+	return transcriptItem{
+		kind: itemRetrieval,
+		text: joinNonEmpty(
+			firstString(data, "title", "path", "query"),
+			firstString(data, "source"),
+		),
 	}
-	return style.Render(line)
 }
 
 func firstString(data map[string]any, keys ...string) string {

@@ -29,6 +29,14 @@ func readinessFor(status client.ProviderStatus, allowMock bool) executionReadine
 		remediation = strings.TrimSpace(*status.Remediation)
 	}
 	if !status.MockMode {
+		// A zero-value projection (gateway hiccup, fetch not yet resolved)
+		// must never read as LIVE — fail closed to onboarding.
+		if strings.TrimSpace(status.Provider) == "" && strings.TrimSpace(status.Model) == "" {
+			return executionReadiness{
+				Kind: readinessUnconfigured, Label: "PROVIDER SETUP REQUIRED",
+				Remediation: remediation,
+			}
+		}
 		return executionReadiness{Kind: readinessLive, CanRun: true, Label: "LIVE"}
 	}
 	if allowMock {

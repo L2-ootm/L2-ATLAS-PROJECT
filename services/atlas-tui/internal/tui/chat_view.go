@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -10,12 +11,14 @@ import (
 const contextSidebarWidth = 32
 
 func (m model) chatView() string {
-	if len(m.log) == 0 && !m.submitting && !m.streaming {
+	if len(m.items) == 0 && !m.busy() {
 		return m.idleChatView()
 	}
 	return m.activeChatView()
 }
 
+// idleChatView is the MiMo-grade opening state: identity, one focused
+// composer, readiness or onboarding — no dashboard chrome.
 func (m model) idleChatView() string {
 	width := max(40, m.width)
 	height := max(18, m.height-2)
@@ -23,53 +26,72 @@ func (m model) idleChatView() string {
 	readiness := readinessFor(m.status, mockAllowed())
 
 	var body strings.Builder
-	body.WriteString(styleTitle.Bold(true).Render("L2 // ATLAS"))
-	body.WriteString("\n" + styleHUD.Render("AGENT WORKBENCH"))
-	body.WriteString("\n\n")
-	body.WriteString(styleMuted.Render("MESSAGE ATLAS"))
+	for _, row := range logoRows() {
+		body.WriteString(row + "\n")
+	}
+	body.WriteString(styleHUD.Render("L2 // ATLAS "+gl.dash+" AGENT WORKBENCH") + "\n\n")
+	body.WriteString(styleMuted.Render("MESSAGE ATLAS") + "\n")
+	body.WriteString(m.composerSurface(cardWidth, readiness))
 	body.WriteString("\n")
-	body.WriteString(composerSurface(m.composer.View(), cardWidth, readiness))
-	body.WriteString("\n")
+	if menu := m.commandMenuView(cardWidth); menu != "" {
+		body.WriteString(menu + "\n")
+	}
 	if readiness.CanRun {
 		body.WriteString(styleVal.Render(readinessLine(m)))
 		body.WriteString("\n")
-		body.WriteString(styleMuted.Render("enter submit  alt+enter newline  ctrl+p settings  / commands"))
+		body.WriteString(styleMuted.Render("enter submit  / commands"))
 	} else {
 		body.WriteString(onboardingNotice(m))
 	}
 	if m.errMsg != "" {
 		body.WriteString("\n\n" + styleBad.Render(m.errMsg))
 	}
-	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, body.String())
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, body.String()) +
+		"\n" + m.statusBar()
 }
 
 func onboardingNotice(m model) string {
-	var b strings.Builder
-	b.WriteString(styleWarn.Render("CONFIGURE PROVIDER") + "\n")
+	rows := []string{styleWarn.Render("CONFIGURE PROVIDER")}
 	for _, mode := range m.modes {
 		label := strings.ToUpper(strings.TrimSpace(mode.Label))
 		if label == "" {
 			label = strings.ToUpper(strings.ReplaceAll(mode.Mode, "_", " "))
 		}
-		state := "MISSING"
+		state := styleMuted.Render("MISSING")
 		if mode.Available {
-			state = "READY"
+			state = styleGood.Render("READY")
 		}
 		if mode.Active {
-			state = "ACTIVE / " + state
+			state = styleKey.Render("ACTIVE / ") + state
 		}
-		b.WriteString(styleMuted.Render(fmt.Sprintf("%-18s %s", label, state)) + "\n")
+		rows = append(rows, styleMuted.Render(fmt.Sprintf("%-18s", label))+" "+state)
 	}
-	b.WriteString(styleVal.Render("ctrl+p configure") + styleMuted.Render("  mock requires ATLAS_TUI_ALLOW_MOCK=1"))
-	return strings.TrimRight(b.String(), "\n")
+	rows = append(rows,
+		styleVal.Render("ctrl+p configure")+styleMuted.Render("  mock requires ATLAS_TUI_ALLOW_MOCK=1"))
+	// Pad every row to the block width so centered placement keeps the rows
+	// left-aligned with each other instead of centering each line separately.
+	widest := 0
+	for _, row := range rows {
+		widest = max(widest, lipgloss.Width(row))
+	}
+	for i, row := range rows {
+		if pad := widest - lipgloss.Width(row); pad > 0 {
+			rows[i] = row + strings.Repeat(" ", pad)
+		}
+	}
+	return strings.Join(rows, "\n")
 }
 
 func (m model) activeChatView() string {
 	header := m.compactHeader()
 	transcript := m.transcriptView()
-	composer := styleMuted.Render("MESSAGE ATLAS") + "\n" +
-		composerSurface(m.composer.View(), max(30, m.viewport.Width), readinessFor(m.status, mockAllowed()))
-	main := strings.Join([]string{header, "", transcript, "", composer}, "\n")
+	composerWidth := max(30, m.viewport.Width)
+	composer := m.composerSurface(composerWidth, readinessFor(m.status, mockAllowed()))
+	sections := []string{header, "", transcript, "", composer}
+	if menu := m.commandMenuView(composerWidth); menu != "" {
+		sections = append(sections, menu)
+	}
+	main := strings.Join(sections, "\n")
 	if m.showSidebar && m.width >= 110 {
 		main = lipgloss.JoinHorizontal(
 			lipgloss.Top,
@@ -78,16 +100,20 @@ func (m model) activeChatView() string {
 			m.contextSidebar(),
 		)
 	}
-	return main + "\n" + m.chatFooter()
+	return main + "\n" + m.statusBar()
 }
 
 func (m model) chatOverlayView() string {
 	var b strings.Builder
 	b.WriteString(m.compactHeader() + "\n\n")
 	b.WriteString(styleHUD.Render("TRANSCRIPT") + "\n")
-	start := max(0, len(m.log)-5)
-	for _, line := range m.log[start:] {
-		b.WriteString(line + "\n")
+	tail := m.items
+	if len(tail) > 5 {
+		tail = tail[len(tail)-5:]
+	}
+	width := max(40, m.width-4)
+	if rendered := renderTranscript(tail, width); rendered != "" {
+		b.WriteString(rendered + "\n")
 	}
 	b.WriteString("\n" + m.overlay.view(m.width))
 	b.WriteString("\n" + styleMuted.Render("decision active  arrows move  enter select  esc deny"))
@@ -103,21 +129,32 @@ func (m model) compactHeader() string {
 	line := styleTitle.Render("L2 // ATLAS") + "  " +
 		styleHUD.Render("SESSION") + " " + styleVal.Render(short(m.surface.ID)) + "  " +
 		styleVal.Render(orDash(m.status.Model)) + "  " + state
-	if m.streaming {
-		line += "  " + styleBlue("STREAMING")
+	if m.busy() {
+		line += "  " + styleKey.Render(m.spinnerFrame()+" WORKING")
 	}
 	if m.errMsg != "" {
-		line += "\n" + styleBad.Render(m.errMsg)
+		line += "\n" + styleBad.Render("! "+m.errMsg)
 	}
 	return line
+}
+
+func (m model) spinnerFrame() string {
+	frames := gl.spinner
+	if len(frames) == 0 {
+		return ""
+	}
+	return frames[m.spinFrame%len(frames)]
 }
 
 func (m model) transcriptView() string {
 	title := styleHUD.Render("TRANSCRIPT")
 	if m.streaming {
-		title += "  " + styleBlue(gl.live+" LIVE")
+		title += "  " + styleKey.Render(gl.live+" LIVE")
 	} else if m.submitting {
 		title += "  " + styleWarn.Render("DISPATCHING")
+	}
+	if m.busy() && !m.turnStarted.IsZero() {
+		title += "  " + styleMuted.Render(elapsedLabel(int(time.Since(m.turnStarted).Seconds())))
 	}
 	body := m.viewport.View()
 	if strings.TrimSpace(body) == "" {
@@ -148,25 +185,49 @@ func contextRow(b *strings.Builder, label, value string) {
 	b.WriteString(styleVal.Render("  "+value) + "\n")
 }
 
-func composerSurface(content string, width int, readiness executionReadiness) string {
+// composerSurface draws the single strong input surface: a full border that
+// carries state color (violet ready, yellow blocked) around the textarea,
+// with a busy line replacing the input while a turn is in flight.
+func (m model) composerSurface(width int, readiness executionReadiness) string {
 	borderColor := colViolet
 	if !readiness.CanRun {
 		borderColor = colWarn
 	}
-	border := lipgloss.NormalBorder()
+	border := lipgloss.RoundedBorder()
 	if gl.ascii {
 		border = asciiBorder
+	}
+	content := m.composer.View()
+	if m.busy() {
+		content = styleKey.Render(m.spinnerFrame()) + " " +
+			styleMuted.Render("ATLAS is working "+gl.ellipsis+"  ctrl+c cancel")
 	}
 	return lipgloss.NewStyle().
 		Width(max(30, width)).
 		Padding(0, 1).
 		Border(border).
-		BorderLeft(true).
-		BorderRight(false).
-		BorderTop(false).
-		BorderBottom(false).
 		BorderForeground(borderColor).
 		Render(content)
+}
+
+// commandMenuView renders the slash-command autocomplete under the composer.
+func (m model) commandMenuView(width int) string {
+	if !m.menuOpen() {
+		return ""
+	}
+	var b strings.Builder
+	for i, cmd := range m.menuMatches {
+		name := fmt.Sprintf("%-14s", cmd.name)
+		line := styleKey.Render(name) + styleMuted.Render(truncate(cmd.desc, max(10, width-16)))
+		if i == m.menuIx {
+			line = styleSelected.Render(">"+name) + " " + styleMuted.Render(truncate(cmd.desc, max(10, width-17)))
+		} else {
+			line = " " + line
+		}
+		b.WriteString(line + "\n")
+	}
+	b.WriteString(styleMuted.Render(" tab complete  enter run  esc dismiss"))
+	return strings.TrimRight(b.String(), "\n")
 }
 
 func readinessLine(m model) string {
@@ -179,17 +240,16 @@ func readinessLine(m model) string {
 	)
 }
 
-func (m model) chatFooter() string {
+// statusBar is the persistent bottom line: identity, connection, and key
+// hints, truncated to terminal width.
+func (m model) statusBar() string {
+	hints := "enter send  alt+enter newline  ctrl+p settings  ctrl+o context  / commands  ctrl+c cancel"
 	if m.width > 0 && m.width < 100 {
-		return styleMuted.Render("enter send | alt+enter newline | ctrl+p settings | ctrl+c cancel")
+		hints = "enter send | ctrl+p settings | / commands | ctrl+c cancel"
 	}
-	return styleMuted.Render("enter send  alt+enter newline  ctrl+p settings  ctrl+o context  / commands  ctrl+c cancel")
+	return styleMuted.Render(truncate(hints, max(20, m.width-1)))
 }
 
-func renderUserTurn(text string) string {
-	return styleHUD.Render("YOU") + "  " + styleVal.Render(strings.TrimSpace(text))
-}
-
-func styleBlue(value string) string {
-	return styleKey.Render(value)
+func (m model) chatFooter() string {
+	return m.statusBar()
 }
