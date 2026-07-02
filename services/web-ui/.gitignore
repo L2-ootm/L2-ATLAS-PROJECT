@@ -1,7 +1,0 @@
-.svelte-kit/
-build/
-node_modules/
-.env
-.env.*
-!.env.example
-vite-env.d.ts
