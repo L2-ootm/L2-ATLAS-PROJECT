@@ -7,10 +7,13 @@ from __future__ import annotations
 
 import datetime
 import sqlite3
-import threading
 import uuid
 
+import pytest
+from pydantic import ValidationError
+
 from atlas_runtime import config_service
+from atlas_runtime.audit_service import get_events_for_run
 from atlas_runtime.agents import native
 from atlas_runtime.agents.native import NativeAtlasAgent
 
@@ -202,10 +205,6 @@ def test_native_explicit_model_beats_config(db, lock, monkeypatch, tmp_path):
 # the field, keeps full back-compat (default api_key), and surfaces it through
 # resolve_provider; the per-mode credential resolution lands in P2/P3.
 
-import pytest
-from pydantic import ValidationError
-
-
 def test_provider_config_default_auth_mode_is_api_key():
     assert config_service.ProviderConfig().auth_mode == "api_key"
 
@@ -248,9 +247,6 @@ def test_resolve_provider_surfaces_auth_mode(monkeypatch, tmp_path):
 # OpenAI-compatible endpoints need a base_url, not a key), so execute() must
 # route it to the real _default_factory — NOT the zero-credential mock branch
 # (which exists for api_key mode's honest-failure contract).
-
-from atlas_runtime.audit_service import get_events_for_run
-
 
 def test_native_execute_freellmapi_routes_to_real_factory(db, lock, monkeypatch, tmp_path):
     monkeypatch.setenv("ATLAS_HOME", str(tmp_path))

@@ -14,7 +14,6 @@ from atlas_core.schemas.surface_session import EventKind
 from typing import get_args
 
 from atlas_runtime import audit_service
-from atlas_runtime import surface_events
 from atlas_runtime.agents.base import RunOutcome
 from atlas_runtime.surface_events import _KIND_MAP, normalize_surface_events, replay_since
 

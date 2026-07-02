@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
-last_updated: "2026-07-02T13:45:00-03:00"
-last_activity: 2026-07-02 -- TUI /new is now a conversation-local reset that preserves the owned surface cursor and prompts
+last_updated: "2026-07-02T13:51:00-03:00"
+last_activity: 2026-07-02 -- Ruff and ESLint warning burn-down complete with component-only providers and zero active legacy-UI references
 progress:
   total_phases: 8
   completed_phases: 7
@@ -14,6 +14,21 @@ progress:
 ---
 
 # STATE — L2 ATLAS
+
+## Stability burn-down checkpoint — zero-warning source
+
+All 31 runtime Ruff findings are resolved at source. Typer's intentional registration ordering
+is documented with a file-scoped `E402` suppression; ordinary late imports and unused bindings
+were corrected. `ruff>=0.15,<1` is now an approved development-only dependency with no runtime
+dependency change.
+
+The React surface and console providers are component-only modules, while contexts/hooks/types
+live in exact context-only modules covered by a narrow ESLint override. `App.tsx` now exports
+only `App`, lint enforces `--max-warnings=0`, and active source/build files contain no retired
+UI references.
+
+Fresh evidence: Ruff passed with zero findings; agent runtime **707 passed / 1 skipped**; React
+**27 passed**, TypeScript check passed, and ESLint passed with zero warnings.
 
 ## Stability burn-down checkpoint — safe TUI `/new`
 

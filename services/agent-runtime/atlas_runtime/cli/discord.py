@@ -9,7 +9,6 @@ follow-up.
 from __future__ import annotations
 
 import json
-import pathlib
 import sqlite3
 import threading
 from typing import Optional

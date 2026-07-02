@@ -1,7 +1,5 @@
 import {
-	createContext,
 	useCallback,
-	useContext,
 	useEffect,
 	useMemo,
 	useRef,
@@ -28,46 +26,19 @@ import {
 	type SurfaceEvent,
 	type SurfaceSession
 } from '../lib/surfaceContracts';
+import {
+	AgentSurfaceContext,
+	RECONNECT_KEY,
+	type AgentSurfaceValue,
+	type WorkspaceRequest
+} from './AgentSurfaceContext';
 
-const RECONNECT_KEY = 'atlas.agent-surface.reconnect.v1';
 const EVENT_BUFFER_CAP = 500;
-
-type WorkspaceRequest =
-	| { kind: 'global' }
-	| { kind: 'project'; projectId: string };
 
 interface ReconnectIdentity {
 	id: string;
 	ownerToken: string;
 }
-
-export interface AgentSurfaceValue {
-	session: SurfaceSession | null;
-	events: SurfaceEvent[];
-	approvals: ToolApproval[];
-	outcomes: ToolApproval[];
-	error: string | null;
-	busy: boolean;
-	pinned: boolean;
-	queueOpen: boolean;
-	openSurface: (workspace: WorkspaceRequest) => Promise<SurfaceSession>;
-	submitPrompt: (
-		prompt: string,
-		agent: AgentRuntime,
-		workspace: WorkspaceRequest
-	) => Promise<string>;
-	cancel: () => Promise<void>;
-	resume: () => Promise<void>;
-	refresh: () => Promise<void>;
-	decide: (
-		approval: ToolApproval,
-		decision: 'deny' | 'once' | 'session' | 'durable'
-	) => Promise<void>;
-	setPinned: (pinned: boolean) => void;
-	setQueueOpen: (open: boolean) => void;
-}
-
-export const AgentSurfaceContext = createContext<AgentSurfaceValue | null>(null);
 
 function surfaceId(): string {
 	return globalThis.crypto?.randomUUID?.() ?? `web-${Date.now()}`;
@@ -341,11 +312,3 @@ export function AgentSurfaceProvider({ children }: { children: ReactNode }) {
 		</AgentSurfaceContext.Provider>
 	);
 }
-
-export function useAgentSurface(): AgentSurfaceValue {
-	const value = useContext(AgentSurfaceContext);
-	if (!value) throw new Error('useAgentSurface must be used inside AgentSurfaceProvider');
-	return value;
-}
-
-export { RECONNECT_KEY };

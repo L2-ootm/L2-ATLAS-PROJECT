@@ -10,7 +10,7 @@ import {
 	SIDEBAR_WIDTH_EXPANDED,
 	SIDEBAR_STORAGE_KEY
 } from '../lib/ui-state';
-import { AgentSurfaceProvider } from '../context/AgentSurfaceContext';
+import { AgentSurfaceProvider } from '../context/AgentSurfaceProvider';
 import { ConsoleSessionProvider } from '../context/ConsoleSessionProvider';
 import AgentSessionHeader from '../components/agent/AgentSessionHeader';
 import PermissionQueueSidebar from '../components/agent/PermissionQueueSidebar';

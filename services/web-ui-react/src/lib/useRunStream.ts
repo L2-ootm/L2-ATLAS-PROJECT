@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getRun, getRunEvents, openRunStream, type AuditEvent, type Run } from './api';
 
-// useRunStream — the Run-detail data engine. Ported from the Svelte cockpit
-// (services/web-ui/src/routes/runs/[id]/+page.svelte). Live runs consume the SSE
-// stream; finished runs page their full audit history. Guarantees:
+// useRunStream — the Run-detail data engine. Live runs consume the SSE stream;
+// finished runs page their full audit history. Guarantees:
 //   - lastCursor dedupe: a reconnect/replay never produces duplicate cursors
 //   - single transport retry per disconnection, resuming from lastCursor
 //   - 500-row DOM cap

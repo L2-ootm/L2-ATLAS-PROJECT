@@ -8,8 +8,6 @@ import datetime
 import threading
 import uuid
 
-import pytest
-
 from atlas_runtime import run_executor
 from atlas_runtime import tool_service
 from atlas_runtime.agents.native import NativeAtlasAgent

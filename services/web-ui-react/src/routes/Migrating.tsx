@@ -2,9 +2,7 @@ import { Page } from '../components/Page';
 import { GlassPanel } from '../components/hud';
 import sealMark from '../brand/assets/seal.webp';
 
-// Placeholder — surfaces still being ported from the Svelte cockpit into the new
-// React shell. Uses the shared Page scaffold so every route already shares the
-// header rhythm and brand frame before its real content lands.
+// Branded fallback for routes that do not yet have a dedicated cockpit surface.
 export default function Migrating({ name, pillar }: { name: string; pillar?: string }) {
 	return (
 		<Page eyebrow={pillar ?? 'ATLAS'} title={name}>

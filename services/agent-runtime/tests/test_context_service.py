@@ -84,7 +84,7 @@ def test_assemble_synthesizes_goal_tree_and_contract(db, lock):
     root = goal_service.create_goal(
         db, lock, title="Wire execution", description="harness + safety", focus_id=focus.id
     )
-    sub = goal_service.create_goal(
+    goal_service.create_goal(
         db, lock, title="Stop conditions", focus_id=focus.id, parent_goal_id=root.id
     )
     goal_service.create_task(db, lock, goal_id=root.id, title="map result dict")
@@ -160,7 +160,7 @@ def test_assemble_injects_relevant_wiki_knowledge(db, lock):
 
 
 def test_relevant_knowledge_redacts_secrets(db, lock):
-    focus = focus_service.create_focus(db, lock, title="executor work")
+    focus_service.create_focus(db, lock, title="executor work")
     _wiki_page(
         db, lock,
         slug="creds",
@@ -174,7 +174,7 @@ def test_relevant_knowledge_redacts_secrets(db, lock):
 
 
 def test_relevant_knowledge_respects_page_budget(db, lock):
-    focus = focus_service.create_focus(db, lock, title="executor")
+    focus_service.create_focus(db, lock, title="executor")
     for i in range(8):
         _wiki_page(
             db, lock,
@@ -188,7 +188,7 @@ def test_relevant_knowledge_respects_page_budget(db, lock):
 
 
 def test_relevant_knowledge_truncates_long_body(db, lock):
-    focus = focus_service.create_focus(db, lock, title="executor")
+    focus_service.create_focus(db, lock, title="executor")
     _wiki_page(
         db, lock,
         slug="long",

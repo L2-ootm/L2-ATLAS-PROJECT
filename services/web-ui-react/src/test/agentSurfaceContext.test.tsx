@@ -2,10 +2,10 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-	AgentSurfaceProvider,
 	RECONNECT_KEY,
 	useAgentSurface
 } from '../context/AgentSurfaceContext';
+import { AgentSurfaceProvider } from '../context/AgentSurfaceProvider';
 import type { SurfaceSession } from '../lib/surfaceContracts';
 
 const api = vi.hoisted(() => ({

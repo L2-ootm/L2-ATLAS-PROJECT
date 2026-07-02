@@ -6,8 +6,6 @@ Fixtures from conftest.py (injected by name — do NOT import):
 """
 import pytest
 
-from atlas_runtime import mission_service
-
 
 def test_create_mission_persists_row(db, lock):
     """create_mission() inserts exactly one row in the missions table."""

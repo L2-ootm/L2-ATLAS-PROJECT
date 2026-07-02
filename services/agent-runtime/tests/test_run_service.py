@@ -54,7 +54,7 @@ def test_start_run_emits_audit_event(db, lock, mission_id):
 
 def test_start_run_updates_mission_status_to_running(db, lock, mission_id):
     """start_run() transitions the parent mission from pending to running."""
-    run = run_service.start_run(db, lock, mission_id=mission_id)
+    run_service.start_run(db, lock, mission_id=mission_id)
     status = db.execute(
         "SELECT status FROM missions WHERE id=?", (mission_id,)
     ).fetchone()[0]

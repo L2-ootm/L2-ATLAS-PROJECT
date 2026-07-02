@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { type RouteObject } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import Layout from './shell/Layout';
 import Dashboard from './routes/Dashboard';
 import Missions from './routes/Missions';
@@ -21,9 +21,7 @@ import Migrating from './routes/Migrating';
 // Lazy — pulls three.js, kept out of the main bundle.
 const Graph = lazy(() => import('./routes/Graph'));
 
-// Route manifest. Surfaces marked <Migrating> are still served by the Svelte
-// cockpit and are being ported into the React shell route-by-route.
-export const routes: RouteObject[] = [
+const router = createBrowserRouter([
 	{
 		path: '/',
 		element: <Layout />,
@@ -47,4 +45,8 @@ export const routes: RouteObject[] = [
 			{ path: '*', element: <Migrating pillar="ATLAS" name="Not Found" /> }
 		]
 	}
-];
+]);
+
+export default function App() {
+	return <RouterProvider router={router} />;
+}

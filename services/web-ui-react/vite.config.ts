@@ -3,8 +3,8 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
 // Static SPA — WebView2-safe for the Tauri native shell (no SSR, no Node APIs
-// at runtime). Mirrors the Svelte cockpit's adapter-static posture. The gateway
-// serves `dist/` and falls back to index.html for client-side routes.
+// at runtime). The gateway serves `dist/` and falls back to index.html for
+// client-side routes.
 export default defineConfig({
 	plugins: [react(), tailwindcss()],
 	// Pre-bundle the heavy 3D graph stack up front. Without this, Vite discovers

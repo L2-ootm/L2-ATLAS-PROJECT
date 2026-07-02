@@ -7,6 +7,9 @@ Design:
   - All business logic goes through the service layer (mission_service, run_service).
   - _get_connection() and _get_lock() are module-level factories; monkeypatch in tests.
 """
+# Typer command registration intentionally interleaves imports with app construction.
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 import sqlite3
