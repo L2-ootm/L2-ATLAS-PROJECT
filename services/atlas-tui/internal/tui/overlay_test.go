@@ -89,7 +89,10 @@ func TestSurfacePromptEventsCreateClarifyAndConfirmOverlays(t *testing.T) {
 
 func TestApprovalOverlayKeepsConversationContextVisible(t *testing.T) {
 	m := chatReadyModel(120, 36)
-	m.log = []string{"YOU  update the file", "ATLAS  requesting write access"}
+	m.items = []transcriptItem{
+		{kind: itemUser, text: "update the file"},
+		{kind: itemAssistant, text: "requesting write access"},
+	}
 	m.overlay = newApprovalOverlay(client.ToolApproval{
 		ID:       "approval-1",
 		ToolName: "write_file",
