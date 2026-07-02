@@ -27,9 +27,26 @@ export default function Layout() {
 	useEffect(() => {
 		// Gateway-offline / pre-mock_mode gateway both degrade to no banner —
 		// the absence of a live signal must never read as "mock mode on".
-		getConfig()
-			.then((cfg) => setMockMode(cfg.mock_mode ?? false))
-			.catch(() => setMockMode(false));
+		// Re-check periodically and on tab focus so wiring a provider (or a
+		// provider going away) is reflected without a manual reload.
+		let alive = true;
+		const check = () => {
+			getConfig()
+				.then((cfg) => {
+					if (alive) setMockMode(cfg.mock_mode ?? false);
+				})
+				.catch(() => {
+					if (alive) setMockMode(false);
+				});
+		};
+		check();
+		const timer = window.setInterval(check, 30_000);
+		window.addEventListener('focus', check);
+		return () => {
+			alive = false;
+			window.clearInterval(timer);
+			window.removeEventListener('focus', check);
+		};
 	}, []);
 
 	const toggle = useCallback(() => {

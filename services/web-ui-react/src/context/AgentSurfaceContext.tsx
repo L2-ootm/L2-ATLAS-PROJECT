@@ -30,6 +30,7 @@ import {
 } from '../lib/surfaceContracts';
 
 const RECONNECT_KEY = 'atlas.agent-surface.reconnect.v1';
+const EVENT_BUFFER_CAP = 500;
 
 type WorkspaceRequest =
 	| { kind: 'global' }
@@ -87,6 +88,7 @@ export function AgentSurfaceProvider({ children }: { children: ReactNode }) {
 	const [queueDismissed, setQueueDismissed] = useState(false);
 	const cursor = useRef(-1);
 	const sessionRef = useRef<SurfaceSession | null>(null);
+	const refreshInFlight = useRef(false);
 
 	const retainSession = useCallback((next: SurfaceSession | null) => {
 		sessionRef.current = next;
@@ -105,22 +107,37 @@ export function AgentSurfaceProvider({ children }: { children: ReactNode }) {
 	const refresh = useCallback(async () => {
 		const current = sessionRef.current;
 		if (!current) return;
-		const [replayValue, owned] = await Promise.all([
-			getSurfaceEvents(current, cursor.current),
-			listOwnedToolApprovals(current)
-		]);
-		const replay = parseSurfaceReplay(replayValue);
-		if (replay.events.length > 0) {
-			cursor.current = replay.events.at(-1)!.seq;
-			setEvents((prior) => [...prior, ...replay.events]);
+		// Single-flight: a slow gateway must not stack overlapping polls that
+		// replay from the same cursor and duplicate events.
+		if (refreshInFlight.current) return;
+		refreshInFlight.current = true;
+		try {
+			const [replayValue, owned] = await Promise.all([
+				getSurfaceEvents(current, cursor.current),
+				listOwnedToolApprovals(current)
+			]);
+			const replay = parseSurfaceReplay(replayValue);
+			if (replay.events.length > 0) {
+				cursor.current = replay.events.at(-1)!.seq;
+				setEvents((prior) => {
+					// Dedupe on seq (idempotent under replays) and cap the buffer
+					// so week-long sessions cannot grow memory without bound.
+					const seen = new Set(prior.map((event) => event.seq));
+					const fresh = replay.events.filter((event) => !seen.has(event.seq));
+					if (fresh.length === 0) return prior;
+					return [...prior, ...fresh].slice(-EVENT_BUFFER_CAP);
+				});
+			}
+			setApprovals(
+				owned.filter(
+					approval =>
+						approval.surface_session_id === current.id && approval.status === 'pending'
+				)
+			);
+			setError(null);
+		} finally {
+			refreshInFlight.current = false;
 		}
-		setApprovals(
-			owned.filter(
-				approval =>
-					approval.surface_session_id === current.id && approval.status === 'pending'
-			)
-		);
-		setError(null);
 	}, []);
 
 	useEffect(() => {

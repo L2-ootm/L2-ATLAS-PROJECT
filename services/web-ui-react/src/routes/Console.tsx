@@ -36,6 +36,7 @@ import { GlassPanel } from '../components/GlassFx';
 import { TopoScroll } from '../components/TopoScroll';
 import {
 	agentRuntimeLabel,
+	getRun,
 	listProjects,
 	type AgentRuntime,
 	type ConsoleChatEvent,
@@ -81,6 +82,25 @@ const INITIAL_WINDOWS: ConsoleWindow[] = [
 	{ id: 'context-1', kind: 'context', title: 'context.graph', x: 840, y: 282, w: 300, h: 202 },
 	{ id: 'tools-1', kind: 'tools', title: 'tool.dock', x: 20, y: 54, w: 220, h: 430 }
 ];
+
+// Module-scoped continuation state: navigating away from /console unmounts the
+// component, and losing an in-progress conversation to a route change is a
+// worse failure than holding a small cache for the SPA session's lifetime.
+const consoleCache: {
+	windows: ConsoleWindow[];
+	activeWindow: string;
+	messagesByWindow: Record<string, ConsoleMessage[]>;
+	auditEvents: ConsoleChatEvent[];
+	draftByWindow: Record<string, string>;
+	layout: LayoutMode;
+} = {
+	windows: INITIAL_WINDOWS,
+	activeWindow: 'chat-1',
+	messagesByWindow: {},
+	auditEvents: [],
+	draftByWindow: { 'chat-1': '' },
+	layout: 'tile'
+};
 
 const KIND_ICON: Record<WindowKind, React.ElementType> = {
 	chat: MessageSquare,
@@ -142,15 +162,33 @@ export function surfaceConsoleEvent(event: SurfaceEvent): ConsoleChatEvent {
 			is_error: terminalStatus !== 'succeeded'
 		};
 	}
+	const toolName =
+		typeof payload.tool === 'string'
+			? payload.tool
+			: typeof payload.tool_name === 'string'
+				? payload.tool_name
+				: null;
+	if (event.kind === 'tool_call' && !toolName) {
+		// Runtime lifecycle markers ride the tool_call audit type without a
+		// tool identity ({transition:"started"}, {runtime:"native"}, mock and
+		// privacy notices). They are status, not tool cards — a card would sit
+		// at RUNNING forever with no result to pair against.
+		const statusText =
+			typeof payload.transition === 'string'
+				? `run ${payload.transition}`
+				: typeof payload.privacy_warning === 'string'
+					? payload.privacy_warning
+					: payload.mock_mode === true
+						? 'MOCK MODE run (deterministic, no provider)'
+						: typeof payload.runtime === 'string'
+							? `runtime ${payload.runtime}`
+							: 'runtime event';
+		return { type: 'status', text: statusText, content: payload };
+	}
 	return {
 		type: event.kind,
 		text,
-		tool_name:
-			typeof payload.tool === 'string'
-				? payload.tool
-				: typeof payload.tool_name === 'string'
-					? payload.tool_name
-					: null,
+		tool_name: toolName,
 		tool_call_id:
 			typeof payload.call_id === 'string'
 				? payload.call_id
@@ -167,15 +205,19 @@ export default function Console() {
 	const [params, setParams] = useSearchParams();
 	const projectId = params.get('project') ?? '';
 	const [load, setLoad] = useState<Load>({ s: 'loading' });
-	const [layout, setLayout] = useState<LayoutMode>('tile');
+	const [layout, setLayout] = useState<LayoutMode>(consoleCache.layout);
 	const [bindingMode, setBindingMode] = useState<BindingMode>(projectId ? 'project' : 'folder');
 	const [folderPath, setFolderPath] = useState('');
 	const [folderErr, setFolderErr] = useState<string | null>(null);
-	const [windows, setWindows] = useState<ConsoleWindow[]>(INITIAL_WINDOWS);
-	const [activeWindow, setActiveWindow] = useState('chat-1');
-	const [messagesByWindow, setMessagesByWindow] = useState<Record<string, ConsoleMessage[]>>({});
-	const [auditEvents, setAuditEvents] = useState<ConsoleChatEvent[]>([]);
-	const [draftByWindow, setDraftByWindow] = useState<Record<string, string>>({ 'chat-1': '' });
+	const [windows, setWindows] = useState<ConsoleWindow[]>(consoleCache.windows);
+	const [activeWindow, setActiveWindow] = useState(consoleCache.activeWindow);
+	const [messagesByWindow, setMessagesByWindow] = useState<Record<string, ConsoleMessage[]>>(
+		consoleCache.messagesByWindow
+	);
+	const [auditEvents, setAuditEvents] = useState<ConsoleChatEvent[]>(consoleCache.auditEvents);
+	const [draftByWindow, setDraftByWindow] = useState<Record<string, string>>(
+		consoleCache.draftByWindow
+	);
 	const [busyWindow, setBusyWindow] = useState<string | null>(null);
 	const [drag, setDrag] = useState<DragState>(null);
 	const [resize, setResize] = useState<ResizeState>(null);
@@ -314,6 +356,50 @@ export default function Console() {
 			}
 		}
 	}, [agentSurface.events]);
+
+	// Keep the module cache current so a route change never loses the session.
+	useEffect(() => {
+		consoleCache.windows = windows;
+		consoleCache.activeWindow = activeWindow;
+		consoleCache.messagesByWindow = messagesByWindow;
+		consoleCache.auditEvents = auditEvents;
+		consoleCache.draftByWindow = draftByWindow;
+		consoleCache.layout = layout;
+	}, [windows, activeWindow, messagesByWindow, auditEvents, draftByWindow, layout]);
+
+	// Stuck-turn watchdog: if the surface event stream never delivers the
+	// terminal frame (reconnect gap, dropped poll), the run record is still the
+	// truth. Poll it while a turn is pending so the composer can never stay
+	// locked on a finished run.
+	useEffect(() => {
+		if (!busyWindow) return;
+		const timer = window.setInterval(async () => {
+			const active = activeTurnRef.current;
+			if (!active) return;
+			try {
+				const { run } = await getRun(active.runId);
+				if (!['succeeded', 'failed', 'cancelled'].includes(run.status)) return;
+				const failed = run.status !== 'succeeded';
+				setMessagesByWindow((prev) => ({
+					...prev,
+					[active.windowId]: (prev[active.windowId] ?? []).map((message) =>
+						message.id === active.turnId && message.status === 'pending'
+							? {
+									...message,
+									status: failed ? 'failed' : 'succeeded',
+									body: message.body || run.summary || (failed ? 'Run failed.' : 'Run completed.')
+								}
+							: message
+					)
+				}));
+				activeTurnRef.current = null;
+				setBusyWindow(null);
+			} catch {
+				// Gateway blip — keep waiting; the next tick retries.
+			}
+		}, 8000);
+		return () => window.clearInterval(timer);
+	}, [busyWindow]);
 
 	function pickProject(project: Project) {
 		setBindingMode('project');
@@ -1011,6 +1097,7 @@ function ChatPane({
 			</TopoScroll>
 			<div style={composerWrapStyle}>
 				<textarea
+					className="atlas-console-composer"
 					value={draft}
 					onChange={(e) => onDraft(e.target.value)}
 					onKeyDown={(e) => {
@@ -1393,6 +1480,13 @@ function AgentTurn({ message }: { message: ConsoleMessage }) {
 					);
 				}
 				if (event.type === 'result' || event.type === 'tool_result') return null;
+				if (event.type === 'status') {
+					return (
+						<div key={idx} style={statusLineStyle}>
+							{event.text}
+						</div>
+					);
+				}
 				return (
 					<div key={idx} style={activityEventStyle} data-event-kind={event.type}>
 						<span style={monoLabelStyle}>{event.type.replaceAll('_', ' ')}</span>
@@ -1481,6 +1575,16 @@ function SegmentButton({ children, active, onClick, disabled, tone = 'blue' }: {
 		</button>
 	);
 }
+
+const statusLineStyle: React.CSSProperties = {
+	padding: '3px 0',
+	color: 'var(--l2-fg-3)',
+	fontFamily: 'var(--l2-font-mono)',
+	fontSize: 10.5,
+	letterSpacing: '0.08em',
+	textTransform: 'uppercase',
+	opacity: 0.8
+};
 
 const activityEventStyle: React.CSSProperties = {
 	display: 'grid',
@@ -1791,7 +1895,8 @@ const liveBadgeStyle: React.CSSProperties = {
 	...tinyBadgeStyle,
 	color: 'var(--atlas-emerald)',
 	border: '1px solid rgba(70,240,160,0.32)',
-	background: 'rgba(70,240,160,0.08)'
+	background: 'rgba(70,240,160,0.08)',
+	animation: 'atlas-pulse-soft 1.8s var(--l2-ease) infinite'
 };
 
 const miniIconButtonStyle: React.CSSProperties = {
