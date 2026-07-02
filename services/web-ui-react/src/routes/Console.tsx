@@ -42,65 +42,26 @@ import {
 	type ConsoleChatEvent,
 	type Project
 } from '../lib/api';
-import { isRunTerminalEvent, surfaceConsoleEvent } from '../lib/consoleEvents';
+import {
+	isRunTerminalEvent,
+	surfaceConsoleEvent,
+	surfaceEventsForTurn
+} from '../lib/consoleEvents';
 import { useAgentSurface } from '../context/AgentSurfaceContext';
+import {
+	type ConsoleMessage,
+	type ConsoleWindow,
+	type LayoutMode,
+	type WindowKind,
+	useConsoleSession
+} from '../context/ConsoleSessionContext';
 import { selectFolder } from '../lib/host';
 import { computeDwindle, type Rect } from '../lib/bspLayout';
 
 type Load = { s: 'loading' } | { s: 'ready'; projects: Project[] } | { s: 'error' };
-type LayoutMode = 'tile' | 'free' | 'tabs' | 'bsp';
 type BindingMode = 'project' | 'folder';
-type WindowKind = 'chat' | 'audit' | 'tools' | 'context';
 type DragState = { id: string; pointerId?: number; startX: number; startY: number; x: number; y: number } | null;
 type ResizeState = { id: string; pointerId?: number; startX: number; startY: number; w: number; h: number } | null;
-
-type ConsoleWindow = {
-	id: string;
-	kind: WindowKind;
-	title: string;
-	agent?: AgentRuntime;
-	x: number;
-	y: number;
-	w: number;
-	h: number;
-};
-
-type ConsoleMessage = {
-	id: string;
-	role: 'system' | 'operator' | 'agent';
-	label: string;
-	body: string;
-	time: string;
-	status?: 'pending' | 'failed' | 'succeeded';
-	/** Ordered SDK events for an agent turn — text blocks + tool calls rendered inline. */
-	events?: ConsoleChatEvent[];
-};
-
-const INITIAL_WINDOWS: ConsoleWindow[] = [
-	{ id: 'chat-1', kind: 'chat', title: 'atlas.chat', agent: 'native', x: 260, y: 54, w: 540, h: 430 },
-	{ id: 'audit-1', kind: 'audit', title: 'audit.stream', x: 840, y: 54, w: 300, h: 210 },
-	{ id: 'context-1', kind: 'context', title: 'context.graph', x: 840, y: 282, w: 300, h: 202 },
-	{ id: 'tools-1', kind: 'tools', title: 'tool.dock', x: 20, y: 54, w: 220, h: 430 }
-];
-
-// Module-scoped continuation state: navigating away from /console unmounts the
-// component, and losing an in-progress conversation to a route change is a
-// worse failure than holding a small cache for the SPA session's lifetime.
-const consoleCache: {
-	windows: ConsoleWindow[];
-	activeWindow: string;
-	messagesByWindow: Record<string, ConsoleMessage[]>;
-	auditEvents: ConsoleChatEvent[];
-	draftByWindow: Record<string, string>;
-	layout: LayoutMode;
-} = {
-	windows: INITIAL_WINDOWS,
-	activeWindow: 'chat-1',
-	messagesByWindow: {},
-	auditEvents: [],
-	draftByWindow: { 'chat-1': '' },
-	layout: 'tile'
-};
 
 const KIND_ICON: Record<WindowKind, React.ElementType> = {
 	chat: MessageSquare,
@@ -133,23 +94,28 @@ function bootMessage(project: Project | null, cwd: string | null): ConsoleMessag
 
 export default function Console() {
 	const agentSurface = useAgentSurface();
+	const {
+		windows,
+		setWindows,
+		activeWindow,
+		setActiveWindow,
+		messagesByWindow,
+		setMessagesByWindow,
+		auditEvents,
+		setAuditEvents,
+		draftByWindow,
+		setDraftByWindow,
+		layout,
+		setLayout,
+		activeTurn,
+		setActiveTurn
+	} = useConsoleSession();
 	const [params, setParams] = useSearchParams();
 	const projectId = params.get('project') ?? '';
 	const [load, setLoad] = useState<Load>({ s: 'loading' });
-	const [layout, setLayout] = useState<LayoutMode>(consoleCache.layout);
 	const [bindingMode, setBindingMode] = useState<BindingMode>(projectId ? 'project' : 'folder');
 	const [folderPath, setFolderPath] = useState('');
 	const [folderErr, setFolderErr] = useState<string | null>(null);
-	const [windows, setWindows] = useState<ConsoleWindow[]>(consoleCache.windows);
-	const [activeWindow, setActiveWindow] = useState(consoleCache.activeWindow);
-	const [messagesByWindow, setMessagesByWindow] = useState<Record<string, ConsoleMessage[]>>(
-		consoleCache.messagesByWindow
-	);
-	const [auditEvents, setAuditEvents] = useState<ConsoleChatEvent[]>(consoleCache.auditEvents);
-	const [draftByWindow, setDraftByWindow] = useState<Record<string, string>>(
-		consoleCache.draftByWindow
-	);
-	const [busyWindow, setBusyWindow] = useState<string | null>(null);
 	const [drag, setDrag] = useState<DragState>(null);
 	const [resize, setResize] = useState<ResizeState>(null);
 	const [tileDragId, setTileDragId] = useState<string | null>(null);
@@ -159,13 +125,8 @@ export default function Console() {
 		{ id: string; pointerId?: number; startX: number; startY: number; x: number; y: number; homeX: number; homeY: number; didSwap: boolean } | null
 	>(null);
 	const windowsRef = useRef(windows);
-	const activeTurnRef = useRef<{
-		windowId: string;
-		turnId: string;
-		runId: string;
-	} | null>(null);
-	const processedSurfaceSeq = useRef(-1);
 	windowsRef.current = windows;
+	const busyWindow = activeTurn?.windowId ?? null;
 
 	// BSP auto-tiling needs the live canvas size to compute window rects.
 	const canvasRef = useRef<HTMLDivElement>(null);
@@ -243,24 +204,28 @@ export default function Console() {
 	}, [activeProject, boundCwd, windows]);
 
 	useEffect(() => {
-		for (const surfaceEvent of agentSurface.events) {
-			if (surfaceEvent.seq <= processedSurfaceSeq.current) continue;
-			processedSurfaceSeq.current = surfaceEvent.seq;
-			const active = activeTurnRef.current;
-			if (!active || surfaceEvent.run_id !== active.runId) continue;
-			let event: ConsoleChatEvent;
+		const pendingSurfaceEvents = surfaceEventsForTurn(agentSurface.events, activeTurn);
+		if (!activeTurn || pendingSurfaceEvents.length === 0) return;
+
+		const projectedEvents = pendingSurfaceEvents.map((surfaceEvent): ConsoleChatEvent => {
 			try {
-				event = surfaceConsoleEvent(surfaceEvent);
+				return surfaceConsoleEvent(surfaceEvent);
 			} catch (cause) {
-				event = {
+				return {
 					type: 'failure',
 					error: cause instanceof Error ? cause.message : String(cause)
 				};
 			}
-			setMessagesByWindow((prev) => ({
-				...prev,
-				[active.windowId]: (prev[active.windowId] ?? []).map((message) =>
-					message.id === active.turnId
+		});
+		const terminal = projectedEvents.some(isRunTerminalEvent);
+		const afterSeq = Math.max(...pendingSurfaceEvents.map((event) => event.seq));
+		const { windowId, turnId, runId } = activeTurn;
+
+		setMessagesByWindow((prev) => {
+			let messages = prev[windowId] ?? [];
+			for (const event of projectedEvents) {
+				messages = messages.map((message) =>
+					message.id === turnId
 						? {
 								...message,
 								events: [...(message.events ?? []), event],
@@ -278,59 +243,56 @@ export default function Console() {
 											: message.status
 							}
 						: message
-				)
-			}));
-			setAuditEvents((prior) => [event, ...prior].slice(0, 80));
-			if (isRunTerminalEvent(event)) {
-				activeTurnRef.current = null;
-				setBusyWindow(null);
+				);
 			}
-		}
-	}, [agentSurface.events]);
-
-	// Keep the module cache current so a route change never loses the session.
-	useEffect(() => {
-		consoleCache.windows = windows;
-		consoleCache.activeWindow = activeWindow;
-		consoleCache.messagesByWindow = messagesByWindow;
-		consoleCache.auditEvents = auditEvents;
-		consoleCache.draftByWindow = draftByWindow;
-		consoleCache.layout = layout;
-	}, [windows, activeWindow, messagesByWindow, auditEvents, draftByWindow, layout]);
+			return { ...prev, [windowId]: messages };
+		});
+		setAuditEvents((prior) => [...projectedEvents].reverse().concat(prior).slice(0, 80));
+		setActiveTurn((current) => {
+			if (!current || current.turnId !== turnId || current.runId !== runId) return current;
+			return terminal ? null : { ...current, afterSeq };
+		});
+	}, [activeTurn, agentSurface.events, setActiveTurn, setAuditEvents, setMessagesByWindow]);
 
 	// Stuck-turn watchdog: if the surface event stream never delivers the
 	// terminal frame (reconnect gap, dropped poll), the run record is still the
 	// truth. Poll it while a turn is pending so the composer can never stay
 	// locked on a finished run.
 	useEffect(() => {
-		if (!busyWindow) return;
+		if (!activeTurn?.runId) return;
+		const watchedTurn = activeTurn;
 		const timer = window.setInterval(async () => {
-			const active = activeTurnRef.current;
-			if (!active) return;
 			try {
-				const { run } = await getRun(active.runId);
+				const { run } = await getRun(watchedTurn.runId!);
 				if (!['succeeded', 'failed', 'cancelled'].includes(run.status)) return;
 				const failed = run.status !== 'succeeded';
 				setMessagesByWindow((prev) => ({
 					...prev,
-					[active.windowId]: (prev[active.windowId] ?? []).map((message) =>
-						message.id === active.turnId && message.status === 'pending'
+					[watchedTurn.windowId]: (prev[watchedTurn.windowId] ?? []).map((message) =>
+						message.id === watchedTurn.turnId && message.status === 'pending'
 							? {
 									...message,
 									status: failed ? 'failed' : 'succeeded',
 									body: message.body || run.summary || (failed ? 'Run failed.' : 'Run completed.')
 								}
-							: message
+						: message
 					)
 				}));
-				activeTurnRef.current = null;
-				setBusyWindow(null);
+				setActiveTurn((current) =>
+					current?.runId === watchedTurn.runId ? null : current
+				);
 			} catch {
 				// Gateway blip — keep waiting; the next tick retries.
 			}
 		}, 8000);
 		return () => window.clearInterval(timer);
-	}, [busyWindow]);
+	}, [
+		activeTurn?.runId,
+		activeTurn?.turnId,
+		activeTurn?.windowId,
+		setActiveTurn,
+		setMessagesByWindow
+	]);
 
 	function pickProject(project: Project) {
 		setBindingMode('project');
@@ -381,7 +343,7 @@ export default function Console() {
 	}
 
 	function closeWindow(id: string) {
-		if (windows.length <= 1) return;
+		if (windows.length <= 1 || activeTurn?.windowId === id) return;
 		setWindows((prev) => prev.filter((w) => w.id !== id));
 		if (activeWindow === id) {
 			const fallback = windows.find((w) => w.id !== id)?.id ?? '';
@@ -417,7 +379,7 @@ export default function Console() {
 
 	async function send(windowId: string) {
 		const draft = (draftByWindow[windowId] ?? '').trim();
-		if (!draft || busyWindow) return;
+		if (!draft || activeTurn) return;
 		const win = windows.find((item) => item.id === windowId);
 		const windowAgent = win?.kind === 'chat' ? win.agent ?? 'native' : 'native';
 		const operator: ConsoleMessage = {
@@ -443,7 +405,11 @@ export default function Console() {
 			...prev,
 			[windowId]: [...(prev[windowId] ?? []), operator, liveTurn]
 		}));
-		setBusyWindow(windowId);
+		const afterSeq = agentSurface.events.reduce(
+			(highest, event) => Math.max(highest, event.seq),
+			-1
+		);
+		setActiveTurn({ windowId, turnId, runId: null, afterSeq });
 
 		try {
 			const workspace =
@@ -451,7 +417,9 @@ export default function Console() {
 					? ({ kind: 'project', projectId } as const)
 					: ({ kind: 'global' } as const);
 			const runId = await agentSurface.submitPrompt(draft, windowAgent, workspace);
-			activeTurnRef.current = { windowId, turnId, runId };
+			setActiveTurn((current) =>
+				current?.turnId === turnId ? { ...current, runId } : current
+			);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			setMessagesByWindow((prev) => ({
@@ -467,7 +435,7 @@ export default function Console() {
 						: m
 					)
 			}));
-			setBusyWindow(null);
+			setActiveTurn((current) => (current?.turnId === turnId ? null : current));
 		}
 	}
 
@@ -745,7 +713,7 @@ export default function Console() {
 									projectName={activeProject?.name ?? projectState.detail}
 									messages={messagesByWindow[win.id] ?? []}
 									draft={draftByWindow[win.id] ?? ''}
-									busy={busyWindow === win.id}
+									busy={!!activeTurn}
 									onDraft={(value) => setDraftByWindow((prev) => ({ ...prev, [win.id]: value }))}
 									onSend={() => void send(win.id)}
 								/>
@@ -959,14 +927,19 @@ function WorkbenchWindow({
 				<span style={busy ? liveBadgeStyle : tinyBadgeStyle}>{busy ? 'LIVE' : win.kind.toUpperCase()}</span>
 				<button
 					type="button"
+					disabled={busy}
 					// Stop pointer/mouse-down from reaching the header drag handler:
 					// in free mode it calls setPointerCapture, which redirects the
 					// pointerup and suppresses this button's click (window wouldn't close).
 					onPointerDown={(e) => e.stopPropagation()}
 					onMouseDown={(e) => e.stopPropagation()}
 					onClick={(e) => { e.stopPropagation(); onClose(); }}
-					style={miniIconButtonStyle}
-					title="Close window"
+					style={{
+						...miniIconButtonStyle,
+						cursor: busy ? 'not-allowed' : miniIconButtonStyle.cursor,
+						opacity: busy ? 0.45 : 1
+					}}
+					title={busy ? 'Cannot close the window owning the active run' : 'Close window'}
 				>
 					<X size={13} strokeWidth={1.7} />
 				</button>
@@ -1030,6 +1003,7 @@ function ChatPane({
 				<textarea
 					className="atlas-console-composer"
 					value={draft}
+					disabled={busy}
 					onChange={(e) => onDraft(e.target.value)}
 					onKeyDown={(e) => {
 						if (e.key === 'Enter' && !e.shiftKey) {

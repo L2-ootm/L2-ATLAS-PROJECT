@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
-last_updated: "2026-07-02T13:35:00-03:00"
-last_activity: 2026-07-02 -- Honest tool-failure lifecycle implemented across Claude harness, TUI, and React console
+last_updated: "2026-07-02T13:42:00-03:00"
+last_activity: 2026-07-02 -- React console continuation moved to a route-persistent provider with buffered-event and watchdog coverage
 progress:
   total_phases: 8
   completed_phases: 7
@@ -14,6 +14,19 @@ progress:
 ---
 
 # STATE — L2 ATLAS
+
+## Stability burn-down checkpoint — route-safe Web continuation
+
+The React console's module cache has been replaced by a shell-owned
+`ConsoleSessionProvider`. Windows, transcript, drafts, layout, audit history, and the active
+turn now survive child-route unmounts. The active turn exists before submission awaits,
+attaches its run id afterward, replays buffered matching events by sequence, keeps tool failures
+non-terminal, restarts watchdog recovery on remount, locks all composers during the one active
+run, and prevents its owning window from closing.
+
+Fresh evidence: focused continuation/session tests **9 passed**, including buffered events before
+run-id resolution, route unmount/remount through terminal completion, and watchdog recovery;
+TypeScript project check passed.
 
 ## Stability burn-down checkpoint — honest tool failures
 
