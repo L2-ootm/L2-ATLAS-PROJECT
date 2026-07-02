@@ -74,3 +74,11 @@ export function surfaceConsoleEvent(event: SurfaceEvent): ConsoleChatEvent {
 export function isRunTerminalEvent(event: ConsoleChatEvent): boolean {
 	return event.type === 'result' || (event.type === 'failure' && !event.tool_call_id);
 }
+
+export function surfaceEventsForTurn(
+	events: SurfaceEvent[],
+	turn: { runId: string | null; afterSeq: number } | null
+): SurfaceEvent[] {
+	if (!turn?.runId) return [];
+	return events.filter((event) => event.run_id === turn.runId && event.seq > turn.afterSeq);
+}

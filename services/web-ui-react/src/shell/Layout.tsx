@@ -11,6 +11,7 @@ import {
 	SIDEBAR_STORAGE_KEY
 } from '../lib/ui-state';
 import { AgentSurfaceProvider } from '../context/AgentSurfaceContext';
+import { ConsoleSessionProvider } from '../context/ConsoleSessionProvider';
 import AgentSessionHeader from '../components/agent/AgentSessionHeader';
 import PermissionQueueSidebar from '../components/agent/PermissionQueueSidebar';
 
@@ -61,27 +62,29 @@ export default function Layout() {
 
 	return (
 		<AgentSurfaceProvider>
-			<TopoField />
-			<GlassFilter />
-			<div style={{ display: 'flex', minHeight: '100vh', position: 'relative', zIndex: 1 }}>
-				<Sidebar expanded={expanded} onToggle={toggle} />
-				<main
-					id="main-content"
-					style={{
-						flex: 1,
-						marginLeft: offset,
-						overflowY: 'auto',
-						padding: '24px 32px',
-						minHeight: '100vh',
-						transition: 'margin-left 150ms var(--l2-ease)'
-					}}
-				>
-					<MockModeBanner mockMode={mockMode} />
-					<AgentSessionHeader />
-					<Outlet />
-				</main>
-				<PermissionQueueSidebar />
-			</div>
+			<ConsoleSessionProvider>
+				<TopoField />
+				<GlassFilter />
+				<div style={{ display: 'flex', minHeight: '100vh', position: 'relative', zIndex: 1 }}>
+					<Sidebar expanded={expanded} onToggle={toggle} />
+					<main
+						id="main-content"
+						style={{
+							flex: 1,
+							marginLeft: offset,
+							overflowY: 'auto',
+							padding: '24px 32px',
+							minHeight: '100vh',
+							transition: 'margin-left 150ms var(--l2-ease)'
+						}}
+					>
+						<MockModeBanner mockMode={mockMode} />
+						<AgentSessionHeader />
+						<Outlet />
+					</main>
+					<PermissionQueueSidebar />
+				</div>
+			</ConsoleSessionProvider>
 		</AgentSurfaceProvider>
 	);
 }

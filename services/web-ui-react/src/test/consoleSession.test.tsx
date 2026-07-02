@@ -2,7 +2,11 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { isRunTerminalEvent, surfaceConsoleEvent } from '../lib/consoleEvents';
+import {
+	isRunTerminalEvent,
+	surfaceConsoleEvent,
+	surfaceEventsForTurn
+} from '../lib/consoleEvents';
 import { ToolCallCard } from '../routes/Console';
 import {
 	SURFACE_EVENT_KINDS,
@@ -97,6 +101,21 @@ describe('Console shared session transport', () => {
 		expect(screen.queryByText('DONE')).not.toBeInTheDocument();
 		expect(isRunTerminalEvent(failure)).toBe(false);
 		expect(isRunTerminalEvent({ type: 'failure', error: 'provider unavailable' })).toBe(true);
+	});
+
+	it('consumes buffered events after the active turn receives its run ID', () => {
+		const buffered = [
+			{ ...event('text', { text: 'before submit resolved' }), seq: 13, run_id: 'run-2' }
+		];
+		const unresolved = {
+			windowId: 'chat-1',
+			turnId: 'turn-1',
+			runId: null,
+			afterSeq: 12
+		};
+
+		expect(surfaceEventsForTurn(buffered, unresolved)).toEqual([]);
+		expect(surfaceEventsForTurn(buffered, { ...unresolved, runId: 'run-2' })).toEqual(buffered);
 	});
 
 	it('contains no production dependency on the legacy console stream', () => {
