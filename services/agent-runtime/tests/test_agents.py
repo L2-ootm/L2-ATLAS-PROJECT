@@ -4,6 +4,7 @@ ClaudeCodeAgent (SDK injected/mocked), and start_run agent_runtime recording.
 from __future__ import annotations
 
 import datetime
+import json
 import sqlite3
 import sys
 import threading
@@ -226,8 +227,6 @@ def test_claude_code_tool_results_pair_with_calls(db: sqlite3.Connection, lock: 
     """Tool results must emit tool_completed with the pairing id inside data —
     the surface projection only carries the data payload, so web/TUI tool cards
     need tool_call_id there to flip RUNNING -> DONE."""
-    import json
-
     mid = _pending_mission(db)
     rid = _running_run(db, mid)
     msgs = [
@@ -248,6 +247,32 @@ def test_claude_code_tool_results_pair_with_calls(db: sqlite3.Connection, lock: 
     assert call_data["tool_call_id"] == "tu1"
     assert result_data["tool_call_id"] == "tu1"
     assert "3 matches" in result_data["summary"]
+
+
+def test_claude_code_failed_tool_result_emits_tool_failed(
+    db: sqlite3.Connection,
+    lock: threading.Lock,
+) -> None:
+    mid = _pending_mission(db)
+    rid = _running_run(db, mid)
+    msgs = [
+        AssistantMessage([ToolUseBlock("grep", "tu1", {"q": "x"})]),
+        UserMessage([ToolResultBlock("tu1", "permission denied", is_error=True)]),
+        ResultMessage(is_error=False),
+    ]
+    agent = ClaudeCodeAgent(query_fn=_make_query(msgs))
+
+    outcome = agent.execute(db, lock, mission_id=mid, run_id=rid, prompt="do x")
+
+    assert outcome.status == "succeeded"
+    events = get_events_for_run(db, rid)
+    failures = [event for event in events if event.event_type == "tool_failed"]
+    assert len(failures) == 1
+    assert not [event for event in events if event.event_type == "tool_completed"]
+    failure_data = json.loads(failures[0].data)
+    assert failure_data["tool_call_id"] == "tu1"
+    assert failure_data["is_error"] is True
+    assert failure_data["summary"] == "permission denied"
 
 
 def test_claude_code_result_error_marks_failed(db: sqlite3.Connection, lock: threading.Lock) -> None:
