@@ -48,7 +48,7 @@ func renderAuditFrame(frame auditFrame) string {
 	case kind == "reasoning" || (frame.EventType == "llm_call" && boolField(data, "reasoning")):
 		return eventLine(styleVioletStyle, "reasoning", firstString(data, "text", "summary"))
 	case frame.EventType == "llm_call" || frame.EventType == "model_call_end":
-		return eventLine(styleVal, "assistant", firstString(data, "text", "summary"))
+		return eventLine(styleVal, "ATLAS", firstString(data, "text", "summary"))
 	case frame.EventType == "model_call_start":
 		return eventLine(styleMuted, "model", firstString(data, "model", "provider"))
 	case kind == "diff":

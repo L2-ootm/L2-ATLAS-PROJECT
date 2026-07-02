@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import pathlib
+import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -23,8 +24,11 @@ def test_resolution_order_env_then_atlas_home_then_checkout_then_path(
     override = _touch_binary(tmp_path / "override" / go_tui.binary_name())
     owned = _touch_binary(tmp_path / "atlas-home" / "bin" / go_tui.binary_name())
     repo = tmp_path / "repo"
+    tui = repo / "services" / "atlas-tui"
+    tui.mkdir(parents=True)
+    (tui / "go.mod").write_text("module atlas-tui\n", encoding="utf-8")
     checkout = _touch_binary(
-        repo / "services" / "atlas-tui" / go_tui.binary_name()
+        tui / go_tui.binary_name()
     )
     on_path = _touch_binary(tmp_path / "path" / go_tui.binary_name())
     monkeypatch.setattr(go_tui, "_repo_root", lambda: repo)
@@ -38,6 +42,7 @@ def test_resolution_order_env_then_atlas_home_then_checkout_then_path(
     owned.unlink()
     assert go_tui.resolve_binary() == checkout
     checkout.unlink()
+    (tui / "go.mod").unlink()
     assert go_tui.resolve_binary() == on_path
 
 
@@ -80,7 +85,9 @@ def test_missing_binary_has_exact_install_remediation(
     monkeypatch.delenv("ATLAS_TUI_BIN", raising=False)
     monkeypatch.setenv("ATLAS_HOME", str(tmp_path / "missing-home"))
     monkeypatch.setattr(go_tui, "_repo_root", lambda: tmp_path / "missing-repo")
-    monkeypatch.setattr(go_tui.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(
+        go_tui.shutil, "which", lambda name: "go" if name == "go" else None
+    )
 
     with pytest.raises(go_tui.TUILaunchError) as caught:
         go_tui.resolve_binary()
@@ -89,3 +96,77 @@ def test_missing_binary_has_exact_install_remediation(
     assert "atlas-tui binary not found" in message
     assert "scripts/install-atlas-cli.ps1" in message
     assert "scripts/setup.sh" in message
+
+
+def test_stale_checkout_binary_is_rebuilt_before_resolution(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    tui = repo / "services" / "atlas-tui"
+    tui.mkdir(parents=True)
+    source = tui / "main.go"
+    source.write_text("package main\n", encoding="utf-8")
+    (tui / "go.mod").write_text("module atlas-tui\n", encoding="utf-8")
+    binary = _touch_binary(tui / go_tui.binary_name())
+    old = time.time() - 60
+    os.utime(binary, (old, old))
+
+    def build(argv: list[str], **kwargs: object) -> SimpleNamespace:
+        assert argv[:3] == ["go", "build", "-trimpath"]
+        assert kwargs["cwd"] == tui
+        binary.write_bytes(b"rebuilt")
+        return SimpleNamespace(returncode=0, stderr="")
+
+    run = MagicMock(side_effect=build)
+    monkeypatch.delenv("ATLAS_TUI_BIN", raising=False)
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path / "missing-home"))
+    monkeypatch.setattr(go_tui, "_repo_root", lambda: repo)
+    monkeypatch.setattr(go_tui.subprocess, "run", run)
+    monkeypatch.setattr(
+        go_tui.shutil, "which", lambda name: "go" if name == "go" else None
+    )
+
+    assert go_tui.resolve_binary() == binary
+    assert binary.read_bytes() == b"rebuilt"
+    run.assert_called_once()
+
+
+def test_fresh_checkout_binary_does_not_rebuild(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    tui = repo / "services" / "atlas-tui"
+    tui.mkdir(parents=True)
+    (tui / "main.go").write_text("package main\n", encoding="utf-8")
+    (tui / "go.mod").write_text("module atlas-tui\n", encoding="utf-8")
+    binary = _touch_binary(tui / go_tui.binary_name())
+    future = time.time() + 60
+    os.utime(binary, (future, future))
+
+    run = MagicMock()
+    monkeypatch.delenv("ATLAS_TUI_BIN", raising=False)
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path / "missing-home"))
+    monkeypatch.setattr(go_tui, "_repo_root", lambda: repo)
+    monkeypatch.setattr(go_tui.subprocess, "run", run)
+    monkeypatch.setattr(go_tui.shutil, "which", lambda _name: None)
+
+    assert go_tui.resolve_binary() == binary
+    run.assert_not_called()
+
+
+def test_source_commit_uses_repository_head(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    run = MagicMock(
+        return_value=SimpleNamespace(returncode=0, stdout="abc1234\n", stderr="")
+    )
+    monkeypatch.setattr(go_tui.shutil, "which", lambda name: name)
+    monkeypatch.setattr(go_tui.subprocess, "run", run)
+
+    assert go_tui._source_commit(repo) == "abc1234"
+    run.assert_called_once()

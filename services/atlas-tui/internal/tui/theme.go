@@ -44,13 +44,13 @@ func pickGlyphs() glyphSet {
 
 // L2 design-system palette (Electric Violet / Cyber Blue / Titanium White, HUD voice).
 var (
-	colViolet = lipgloss.Color("#7C5CFF")
-	colBlue   = lipgloss.Color("#4F8BFF")
-	colWhite  = lipgloss.Color("#EDEAE0")
-	colMuted  = lipgloss.Color("#8A8FA3")
-	colGood   = lipgloss.Color("#3DD68C")
-	colWarn   = lipgloss.Color("#F2B65A")
-	colBad    = lipgloss.Color("#FF6B6B")
+	colViolet = lipgloss.Color("#7F00FF")
+	colBlue   = lipgloss.Color("#00F0FF")
+	colWhite  = lipgloss.Color("#E0E0E0")
+	colMuted  = lipgloss.Color("#85858F")
+	colGood   = lipgloss.Color("#00FF94")
+	colWarn   = lipgloss.Color("#FFD600")
+	colBad    = lipgloss.Color("#FF0055")
 
 	styleTitle       = lipgloss.NewStyle().Bold(true).Foreground(colViolet)
 	styleVioletStyle = lipgloss.NewStyle().Foreground(colViolet)
@@ -62,6 +62,7 @@ var (
 	styleVal         = lipgloss.NewStyle().Foreground(colWhite)
 
 	styleSelected = lipgloss.NewStyle().Foreground(colWhite).Background(colViolet).Bold(true)
+	styleHUD      = lipgloss.NewStyle().Foreground(colMuted).Bold(true)
 )
 
 var asciiBorder = lipgloss.Border{

@@ -47,10 +47,14 @@ type overlayModel struct {
 }
 
 func newApprovalOverlay(approval client.ToolApproval) *overlayModel {
+	prompt := approvalLabel(approval)
+	if approval.ToolName != "" && !strings.Contains(prompt, approval.ToolName) {
+		prompt = approval.ToolName + " :: " + prompt
+	}
 	return &overlayModel{
 		kind:     overlayApproval,
 		title:    "Permission required",
-		prompt:   approvalLabel(approval),
+		prompt:   prompt,
 		approval: approval,
 		options: []overlayOption{
 			{label: "Allow once", value: "once"},

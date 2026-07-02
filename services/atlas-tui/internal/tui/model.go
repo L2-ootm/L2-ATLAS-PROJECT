@@ -17,7 +17,6 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
 	"atlas-tui/internal/client"
 )
@@ -114,12 +113,13 @@ type model struct {
 	approvals  []client.ToolApproval
 	approvalIx int
 
-	log       []string
-	viewport  viewport.Model
-	vpReady   bool
-	streaming bool
-	streamRun string
-	eventCh   chan client.RunEvent
+	log             []string
+	viewport        viewport.Model
+	vpReady         bool
+	streaming       bool
+	streamRun       string
+	eventCh         chan client.RunEvent
+	cancelRequested bool
 
 	composer   textarea.Model
 	submitting bool
@@ -132,23 +132,26 @@ type model struct {
 
 	width, height int
 	errMsg        string
+	showSidebar   bool
 }
 
 // New builds the workbench model for a gateway base URL.
 func New(c *client.Client, gateway string) model {
 	ta := textarea.New()
-	ta.Placeholder = "Describe a mission, then ctrl+s to run it" + gl.ellipsis
-	ta.Prompt = styleVioletStyle.Render(gl.prompt)
+	ta.Placeholder = "Type your message" + gl.ellipsis
+	ta.Prompt = " "
 	ta.CharLimit = 4000
 	ta.ShowLineNumbers = false
 	ta.SetHeight(3)
+	ta.Focus()
 	return model{
 		c:              c,
 		gateway:        gateway,
 		phase:          phaseLoading,
-		focus:          focusMissions,
+		focus:          focusComposer,
 		composer:       ta,
 		lastSurfaceSeq: -1,
+		showSidebar:    true,
 	}
 }
 
@@ -176,6 +179,13 @@ func (m model) closeSurface() tea.Cmd {
 	return func() tea.Msg {
 		session, err := m.c.CloseSurface(context.Background(), m.surface)
 		return surfaceLifecycleMsg{action: "close", session: session, err: err}
+	}
+}
+
+func (m model) cancelSurface() tea.Cmd {
+	return func() tea.Msg {
+		session, err := m.c.CancelSurface(context.Background(), m.surface)
+		return surfaceLifecycleMsg{action: "cancel", session: session, err: err}
 	}
 }
 
@@ -241,12 +251,19 @@ func (m model) startRun(missionID string) tea.Cmd {
 		id, err := m.c.StartRun(
 			context.Background(),
 			missionID,
-			"native",
+			m.selectedAgent(),
 			true,
 			m.surface.ID,
 		)
 		return runStartedMsg{runID: id, err: err}
 	}
+}
+
+func (m model) selectedAgent() string {
+	if m.status.AuthMode == "claude_code" {
+		return "claude_code"
+	}
+	return "native"
 }
 
 func (m model) approveTool(approval client.ToolApproval, scope string) tea.Cmd {
@@ -333,6 +350,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.surface = msg.session
 		}
+		if msg.action == "cancel" {
+			m.cancelRequested = false
+			if msg.err == nil {
+				m.streaming = false
+				m.submitting = false
+				m.focus = focusComposer
+				m.composer.Focus()
+				m.appendLog(styleHUD.Render("SYSTEM") + "  " + styleMuted.Render("Cancellation acknowledged."))
+			}
+		}
 
 	case approvalsMsg:
 		if msg.err != nil {
@@ -418,6 +445,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case streamDoneMsg:
 		m.streaming = false
+		m.focus = focusComposer
+		m.composer.Focus()
 		m.appendLog(styleMuted.Render("stream ended (" + short(m.streamRun) + ")"))
 		if m.probeMissionID != "" {
 			m.probing = false
@@ -562,13 +591,31 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.focus == focusComposer {
 		switch msg.String() {
 		case "ctrl+c":
+			if (m.streaming || m.submitting) && m.surface.ID != "" && m.surface.OwnerToken != "" {
+				m.cancelRequested = true
+				m.appendLog(styleWarn.Render("CANCEL REQUESTED"))
+				return m, m.cancelSurface()
+			}
 			return m.quit()
-		case "esc":
-			m.composer.Blur()
-			m.focus = focusMissions
-			return m, nil
-		case "ctrl+s":
+		case "enter", "ctrl+s":
 			return m.submitComposer()
+		case "alt+enter":
+			msg.Alt = false
+			var cmd tea.Cmd
+			m.composer, cmd = m.composer.Update(msg)
+			return m, cmd
+		case "ctrl+p":
+			m.focus = focusSettings
+			m.settingsLoading = true
+			m.settings = nil
+			m.errMsg = ""
+			return m, m.fetchSettings()
+		case "ctrl+o":
+			m.showSidebar = !m.showSidebar
+			m.layout()
+			return m, nil
+		case "esc":
+			return m, nil
 		}
 		var cmd tea.Cmd
 		m.composer, cmd = m.composer.Update(msg)
@@ -639,7 +686,8 @@ func (m model) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+c":
 		return m.quit()
 	case "esc":
-		m.focus = focusMissions
+		m.focus = focusComposer
+		m.composer.Focus()
 		return m, nil
 	case "ctrl+s":
 		return m.saveSettings(false)
@@ -709,12 +757,30 @@ func (m model) submitComposer() (tea.Model, tea.Cmd) {
 	if text == "" {
 		return m, nil
 	}
+	if handled, updated, cmd := m.executeSlashCommand(text); handled {
+		updated.composer.Reset()
+		if updated.focus == focusComposer {
+			updated.composer.Focus()
+		}
+		return updated, cmd
+	}
+	readiness := readinessFor(m.status, mockAllowed())
+	if !readiness.CanRun {
+		m.focus = focusSettings
+		m.settingsLoading = true
+		m.settings = nil
+		m.errMsg = "LIVE PROVIDER REQUIRED"
+		if readiness.Remediation != "" {
+			m.errMsg += " - " + readiness.Remediation
+		}
+		return m, m.fetchSettings()
+	}
 	title := firstLine(text)
+	m.appendLog(renderUserTurn(text))
 	m.composer.Reset()
-	m.composer.Blur()
-	m.focus = focusMissions
+	m.composer.Focus()
+	m.focus = focusComposer
 	m.submitting = true
-	m.appendLog(styleKey.Render("» submitting mission: ") + styleVal.Render(truncate(title, 60)))
 	return m, m.submitMission(truncate(title, 120), text)
 }
 
@@ -731,12 +797,15 @@ func (m *model) appendLog(line string) {
 
 // layout sizes the scrollback viewport from the current terminal dimensions.
 func (m *model) layout() {
-	// Reserve rows for header(3) + panels(11) + composer(5) + footer(2).
-	h := m.height - 21
+	// Reserve rows for compact header, composer, and footer.
+	h := m.height - 11
 	if h < 4 {
 		h = 4
 	}
-	w := m.width - 2
+	w := m.width - 4
+	if m.showSidebar && m.width >= 110 {
+		w -= 36
+	}
 	if w < 20 {
 		w = 20
 	}
@@ -759,13 +828,11 @@ func (m model) View() string {
 		return "\n  " + styleMuted.Render("connecting to ATLAS gateway "+m.gateway+" "+gl.ellipsis)
 	}
 	var b strings.Builder
-	b.WriteString(m.header() + "\n\n")
 	if m.overlay != nil {
-		b.WriteString(m.overlay.view(m.width))
-		b.WriteString("\n" + m.footer())
-		return b.String()
+		return m.chatOverlayView()
 	}
 	if m.focus == focusSettings {
+		b.WriteString(m.compactHeader() + "\n\n")
 		if m.settingsLoading || m.settings == nil {
 			b.WriteString(styleMuted.Render("loading provider settings " + gl.ellipsis))
 		} else {
@@ -775,20 +842,7 @@ func (m model) View() string {
 		b.WriteString("\n" + m.footer())
 		return b.String()
 	}
-	if m.width > 0 && m.width < 120 {
-		b.WriteString(lipgloss.JoinVertical(
-			lipgloss.Left,
-			m.modesPanel(),
-			m.missionsPanel(),
-			m.permissionsPanel(),
-		))
-	} else {
-		b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, m.modesPanel(), "  ", m.missionsPanel(), "  ", m.permissionsPanel()))
-	}
-	b.WriteString("\n\n" + m.logPanel())
-	b.WriteString("\n" + m.composerPanel())
-	b.WriteString("\n" + m.footer())
-	return b.String()
+	return m.chatView()
 }
 
 func (m model) header() string {

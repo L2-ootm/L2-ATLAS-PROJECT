@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -47,6 +48,31 @@ func TestCreateSurfaceShowsGatewayUpgradeRemediation(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeModeDispatchesClaudeCodeAgent(t *testing.T) {
+	var agent string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		agent, _ = body["agent"].(string)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"run":{"id":"run-1"},"executing":true}`))
+	}))
+	defer srv.Close()
+
+	m := New(client.New(srv.URL), srv.URL)
+	m.status.AuthMode = "claude_code"
+	m.surface.ID = "surface-1"
+	msg := m.startRun("mission-1")()
+	if started, ok := msg.(runStartedMsg); !ok || started.err != nil {
+		t.Fatalf("unexpected start message: %#v", msg)
+	}
+	if agent != "claude_code" {
+		t.Fatalf("agent = %q, want claude_code", agent)
+	}
+}
+
 func readyModel(width, height int) model {
 	m := New(nil, "http://127.0.0.1:8484")
 	m.phase = phaseReady
@@ -79,6 +105,9 @@ func TestASCIIViewContainsOnlyASCIIAndFitsNarrowTerminal(t *testing.T) {
 	t.Cleanup(func() { gl = original })
 
 	view := plain(readyModel(80, 24).View())
+	if strings.Contains(view, "| |") {
+		t.Fatalf("composer renders duplicate prompt rails:\n%s", view)
+	}
 	for _, r := range view {
 		if r > utf8.RuneSelf {
 			t.Fatalf("ASCII view contains non-ASCII rune %q in:\n%s", r, view)
@@ -98,8 +127,8 @@ func TestUnicodeViewUsesNativeGlyphsAndFitsWideTerminal(t *testing.T) {
 	if strings.ContainsRune(view, '�') {
 		t.Fatalf("Unicode view contains replacement rune:\n%s", view)
 	}
-	if !strings.Contains(view, "▌missions") {
-		t.Fatalf("Unicode active-pane marker missing:\n%s", view)
+	if !strings.Contains(view, "MESSAGE ATLAS") || !strings.Contains(view, "CONTEXT") {
+		t.Fatalf("Unicode chat-first chrome missing:\n%s", view)
 	}
 	assertLinesFit(t, view, 140)
 }

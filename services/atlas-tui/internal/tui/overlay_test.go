@@ -86,3 +86,23 @@ func TestSurfacePromptEventsCreateClarifyAndConfirmOverlays(t *testing.T) {
 		t.Fatalf("confirm event not routed: %+v", confirm)
 	}
 }
+
+func TestApprovalOverlayKeepsConversationContextVisible(t *testing.T) {
+	m := chatReadyModel(120, 36)
+	m.log = []string{"YOU  update the file", "ATLAS  requesting write access"}
+	m.overlay = newApprovalOverlay(client.ToolApproval{
+		ID:       "approval-1",
+		ToolName: "write_file",
+		Summary:  "write internal/tui/model.go",
+	})
+	m.layout()
+
+	view := plain(m.View())
+	for _, expected := range []string{
+		"update the file", "requesting write access", "Permission required", "write_file",
+	} {
+		if !strings.Contains(view, expected) {
+			t.Fatalf("approval view lost %q:\n%s", expected, view)
+		}
+	}
+}

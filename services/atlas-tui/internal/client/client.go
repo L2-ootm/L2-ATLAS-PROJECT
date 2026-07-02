@@ -181,6 +181,14 @@ func (c *Client) HeartbeatSurface(
 	return c.mutateSurface(ctx, session, "heartbeat")
 }
 
+// CancelSurface requests cooperative cancellation of active work owned by this session.
+func (c *Client) CancelSurface(
+	ctx context.Context,
+	session SurfaceSession,
+) (SurfaceSession, error) {
+	return c.mutateSurface(ctx, session, "cancel")
+}
+
 // CloseSurface cleanly releases this TUI's owner-bound shared session.
 func (c *Client) CloseSurface(
 	ctx context.Context,

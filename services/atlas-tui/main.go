@@ -16,10 +16,24 @@ import (
 	"atlas-tui/internal/tui"
 )
 
+var (
+	version = "dev"
+	commit  = "unknown"
+)
+
+func versionString() string {
+	return fmt.Sprintf("atlas-tui %s (%s)", version, commit)
+}
+
 func main() {
 	gateway := flag.String("gateway", envOr("ATLAS_GATEWAY_URL", "http://127.0.0.1:8484"),
 		"ATLAS gateway base URL")
+	showVersion := flag.Bool("version", false, "print atlas-tui build identity")
 	flag.Parse()
+	if *showVersion {
+		fmt.Println(versionString())
+		return
+	}
 
 	c := client.New(*gateway)
 	prog := tea.NewProgram(tui.New(c, *gateway), tea.WithAltScreen())

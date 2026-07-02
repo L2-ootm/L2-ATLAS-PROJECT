@@ -38,7 +38,7 @@ func TestRenderEventKinds(t *testing.T) {
 		{
 			name:    "assistant text",
 			payload: `{"event_type":"llm_call","data":{"text":"hello from atlas"}}`,
-			wants:   []string{"assistant", "hello from atlas"},
+			wants:   []string{"ATLAS", "hello from atlas"},
 		},
 		{
 			name:    "reasoning",
