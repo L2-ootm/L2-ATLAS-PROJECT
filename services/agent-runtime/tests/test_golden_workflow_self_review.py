@@ -8,8 +8,6 @@ approve (executes) / reject (never executes).
 """
 from __future__ import annotations
 
-import pathlib
-
 from atlas_runtime import tool_service
 from atlas_runtime.golden_workflows import self_review
 from atlas_runtime.tools.adapters import golden_review_write

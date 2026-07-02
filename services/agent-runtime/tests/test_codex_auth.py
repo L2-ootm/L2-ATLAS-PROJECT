@@ -12,7 +12,6 @@ import base64
 import datetime
 import json
 import sqlite3
-import threading
 import time
 import uuid
 

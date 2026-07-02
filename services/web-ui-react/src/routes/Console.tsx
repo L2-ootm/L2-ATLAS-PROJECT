@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type * as React from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -201,7 +201,7 @@ export default function Console() {
 			}
 			return next;
 		});
-	}, [activeProject, boundCwd, windows]);
+	}, [activeProject, boundCwd, setMessagesByWindow, windows]);
 
 	useEffect(() => {
 		const pendingSurfaceEvents = surfaceEventsForTurn(agentSurface.events, activeTurn);
@@ -258,18 +258,20 @@ export default function Console() {
 	// terminal frame (reconnect gap, dropped poll), the run record is still the
 	// truth. Poll it while a turn is pending so the composer can never stay
 	// locked on a finished run.
+	const watchedRunId = activeTurn?.runId ?? null;
+	const watchedTurnId = activeTurn?.turnId ?? null;
+	const watchedWindowId = activeTurn?.windowId ?? null;
 	useEffect(() => {
-		if (!activeTurn?.runId) return;
-		const watchedTurn = activeTurn;
+		if (!watchedRunId || !watchedTurnId || !watchedWindowId) return;
 		const timer = window.setInterval(async () => {
 			try {
-				const { run } = await getRun(watchedTurn.runId!);
+				const { run } = await getRun(watchedRunId);
 				if (!['succeeded', 'failed', 'cancelled'].includes(run.status)) return;
 				const failed = run.status !== 'succeeded';
 				setMessagesByWindow((prev) => ({
 					...prev,
-					[watchedTurn.windowId]: (prev[watchedTurn.windowId] ?? []).map((message) =>
-						message.id === watchedTurn.turnId && message.status === 'pending'
+					[watchedWindowId]: (prev[watchedWindowId] ?? []).map((message) =>
+						message.id === watchedTurnId && message.status === 'pending'
 							? {
 									...message,
 									status: failed ? 'failed' : 'succeeded',
@@ -279,7 +281,7 @@ export default function Console() {
 					)
 				}));
 				setActiveTurn((current) =>
-					current?.runId === watchedTurn.runId ? null : current
+					current?.runId === watchedRunId ? null : current
 				);
 			} catch {
 				// Gateway blip — keep waiting; the next tick retries.
@@ -287,9 +289,9 @@ export default function Console() {
 		}, 8000);
 		return () => window.clearInterval(timer);
 	}, [
-		activeTurn?.runId,
-		activeTurn?.turnId,
-		activeTurn?.windowId,
+		watchedRunId,
+		watchedTurnId,
+		watchedWindowId,
 		setActiveTurn,
 		setMessagesByWindow
 	]);
@@ -351,7 +353,7 @@ export default function Console() {
 		}
 	}
 
-	function resizeWindow(id: string, w: number, h: number) {
+	const resizeWindow = useCallback((id: string, w: number, h: number) => {
 		setWindows((prev) =>
 			prev.map((win) =>
 				win.id === id
@@ -363,7 +365,7 @@ export default function Console() {
 					: win
 			)
 		);
-	}
+	}, [setWindows]);
 
 	function reorderWindow(sourceId: string, targetId: string) {
 		if (sourceId === targetId) return;
@@ -442,7 +444,7 @@ export default function Console() {
 	// Move the dragged window to follow the cursor, and if its center crosses
 	// another window, swap that window into the dragged window's reserved slot —
 	// live, while dragging. The dragged window keeps tracking the cursor 1:1.
-	function dragMoveAndSwap(clientX: number, clientY: number) {
+	const dragMoveAndSwap = useCallback((clientX: number, clientY: number) => {
 		const d = dragRef.current;
 		if (!d) return;
 		const nx = Math.max(0, d.x + clientX - d.startX);
@@ -473,18 +475,18 @@ export default function Console() {
 		} else {
 			setWindows((prev) => prev.map((w) => (w.id === d.id ? { ...w, x: nx, y: ny } : w)));
 		}
-	}
+	}, [setWindows]);
 
 	// On release, if any swap happened, snap the dragged window into its reserved
 	// slot for a clean reorder. If nothing was swapped, it stays where it was dropped.
-	function finishFreeDrag() {
+	const finishFreeDrag = useCallback(() => {
 		const d = dragRef.current;
 		if (d && d.didSwap) {
 			const { id, homeX, homeY } = d;
 			setWindows((prev) => prev.map((w) => (w.id === id ? { ...w, x: homeX, y: homeY } : w)));
 		}
 		dragRef.current = null;
-	}
+	}, [setWindows]);
 
 	function resizeTo(clientX: number, clientY: number) {
 		if (!resize) return;
@@ -606,7 +608,7 @@ export default function Console() {
 			window.removeEventListener('mousemove', onMouseMove);
 			window.removeEventListener('mouseup', onMouseEnd);
 		};
-	}, [drag, resize]);
+	}, [drag, dragMoveAndSwap, finishFreeDrag, resize, resizeWindow]);
 
 	function cycleLayout() {
 		setLayout((current) =>

@@ -11,8 +11,6 @@ Fixtures from conftest.py (injected by name — do NOT import):
   lock    — threading.Lock()
   run_id  — pre-seeded mission + run rows for FK-safe tests
 """
-import pathlib
-
 import pytest
 
 from atlas_runtime.policy import (

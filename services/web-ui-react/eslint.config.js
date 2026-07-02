@@ -23,6 +23,15 @@ export default tseslint.config(
 			'react-refresh/only-export-components': ['warn', { allowConstantExport: true }]
 		}
 	},
+	{
+		files: [
+			'src/context/AgentSurfaceContext.ts',
+			'src/context/ConsoleSessionContext.ts'
+		],
+		rules: {
+			'react-refresh/only-export-components': 'off'
+		}
+	},
 	// topoEngine is a verbatim framework-agnostic port; allow its terser idioms.
 	{
 		files: ['src/topo/topoEngine.ts'],

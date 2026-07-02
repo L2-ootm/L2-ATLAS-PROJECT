@@ -13,8 +13,6 @@ import threading
 import uuid
 import datetime
 
-import pytest
-
 from atlas_runtime.agents.mock import MockAtlasAgent, mock_factory
 from atlas_runtime.agents.native import NativeAtlasAgent
 
