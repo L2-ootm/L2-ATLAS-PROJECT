@@ -104,19 +104,25 @@ def resolve_binary() -> pathlib.Path:
         if _usable(candidate):
             return candidate
 
+    repo = _repo_root()
+    tui_dir = repo / "services" / "atlas-tui" if repo is not None else None
+    have_checkout = tui_dir is not None and (tui_dir / "go.mod").is_file()
+
     owned = atlas_home() / "bin" / binary_name()
     if _usable(owned):
-        return owned
+        # Release-path integrity: an installed binary that predates the local
+        # source checkout must not shadow it — the 2026-07-01 UAT failure was
+        # exactly a stale executable resolving ahead of tested source. Pure
+        # installs (no checkout) keep the owned binary unconditionally.
+        if not (have_checkout and _checkout_binary_stale(tui_dir, owned)):
+            return owned
 
-    repo = _repo_root()
-    if repo is not None:
-        tui_dir = repo / "services" / "atlas-tui"
+    if have_checkout:
         checkout = tui_dir / binary_name()
-        if (tui_dir / "go.mod").is_file():
-            if _checkout_binary_stale(tui_dir, checkout):
-                return _build_checkout(tui_dir, checkout)
-            if _usable(checkout):
-                return checkout
+        if _checkout_binary_stale(tui_dir, checkout):
+            return _build_checkout(tui_dir, checkout)
+        if _usable(checkout):
+            return checkout
 
     found = shutil.which("atlas-tui")
     if found:
