@@ -326,10 +326,18 @@ def _offline_native_harness(monkeypatch) -> None:
     that inject their own `agent_factory` bypass this entirely; lifecycle tests
     that resolve 'native' from the registry get the deterministic offline harness.
     """
+    from atlas_runtime import function_router
     from atlas_runtime.agents import native
 
     monkeypatch.setattr(
         native,
         "_default_factory",
         lambda session_id, max_iterations, **_kw: _OfflineHarness(session_id),
+    )
+    # The run-boundary side-task autoconfig writes into the operator's real
+    # foundation config store; tests must never touch it.
+    monkeypatch.setattr(
+        function_router,
+        "apply_autoconfig",
+        lambda *_a, **_kw: {"applied": False, "tasks": {}, "reason": "test-offline"},
     )
