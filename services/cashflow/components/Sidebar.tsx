@@ -32,117 +32,186 @@ export default function Sidebar() {
             {/* Mobile toggle */}
             <button
                 onClick={() => setMobileOpen(!mobileOpen)}
+                className="mobile-menu-btn"
                 style={{
                     position: "fixed", top: 16, left: 16, zIndex: 50,
-                    padding: 10, borderRadius: 8, background: "#1A1D26", color: "#F1F3F6",
-                    border: "1px solid #2E3340", cursor: "pointer",
+                    padding: 10, borderRadius: 2,
+                    background: "rgba(5,8,22,0.85)", color: "#EDEAE0",
+                    border: "1px solid rgba(36,255,186,0.15)",
+                    cursor: "pointer",
+                    backdropFilter: "blur(16px) saturate(140%)",
+                    boxShadow: "0 0 12px rgba(36,255,186,0.08)",
                     display: "none",
+                    transition: "box-shadow 0.25s cubic-bezier(0.22, 1, 0.36, 1)",
                 }}
-                className="mobile-menu-btn"
             >
-                {mobileOpen ? <X size={22} /> : <Menu size={22} />}
+                {mobileOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
 
-            {/* Sidebar */}
-            <aside
-                style={{
-                    width: 256,
-                    flexShrink: 0,
-                    background: "#141720",
-                    borderRight: "1px solid #2E3340",
-                    display: "flex",
-                    flexDirection: "column",
-                    position: "relative",
-                }}
-                className="sidebar-wrapper"
-            >
-                {/* Logo */}
+            {/* Sidebar — Topographic glassmorphism */}
+            <aside className={`sidebar-wrapper ${mobileOpen ? "open" : ""}`}>
+                {/* Header — Atlas brand */}
                 <div style={{
-                    height: 64, display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
-                    borderBottom: "1px solid #2E3340",
+                    height: 72, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+                    padding: "0 18px",
+                    borderBottom: "1px solid rgba(36,255,186,0.06)",
                 }}>
-                    <div style={{
-                        width: 36, height: 36, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
-                        background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.2)",
-                    }}>
-                        <span style={{ color: "#6366F1", fontWeight: 700, fontSize: 14 }}>L2</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                            <path d="M16 2L2 28H10L16 16L22 28H30L16 2Z" fill="#4F8BFF" opacity="0.9" />
+                        </svg>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+                            <h1 style={{
+                                fontSize: "1.1875rem", fontWeight: 700, margin: 0, color: "#EDEAE0",
+                                lineHeight: 1, letterSpacing: "0.3em", textTransform: "uppercase",
+                                fontFamily: "var(--font-sans)",
+                            }}>
+                                L2
+                            </h1>
+                            <span style={{ color: "oklch(0.50 0.02 200)", fontWeight: 400, fontSize: "0.5rem", letterSpacing: "0.3em", textTransform: "uppercase", fontFamily: "var(--font-mono)" }}>
+                                FINANCEIRO
+                            </span>
+                        </div>
                     </div>
-                    <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "#F1F3F6" }}>
-                        <span style={{ color: "#9CA3B4", fontWeight: 400 }}>Financeiro</span>
-                    </h1>
+                    <a
+                        href="http://localhost:5174/cashflow"
+                        target="_top"
+                        className="topo-btn topo-btn--muted"
+                        style={{
+                            padding: "4px 8px",
+                            fontSize: 8,
+                            letterSpacing: "0.14em",
+                            textDecoration: "none",
+                            whiteSpace: "nowrap",
+                        }}
+                    >
+                        ← Atlas
+                    </a>
                 </div>
 
-                {/* Navigation */}
-                <nav style={{ padding: 16, display: "flex", flexDirection: "column", gap: 2, flex: 1 }}>
+                {/* Navigation — topo-glow links */}
+                <nav style={{
+                    padding: "8px 0",
+                    display: "flex", flexDirection: "column", gap: 0, flex: 1,
+                    overflowY: "auto", overflowX: "hidden",
+                }}>
+                    <ul role="list" style={{ listStyle: "none", margin: 0, padding: 0 }}>
                     {navigation.map((item) => {
                         const isActive = pathname === item.href || pathname?.startsWith(item.href + "/");
                         return (
+                            <li key={item.name}>
                             <Link
-                                key={item.name}
                                 href={item.href}
                                 onClick={() => setMobileOpen(false)}
+                                className={isActive ? "topo-nav-active" : "topo-nav-link"}
                                 style={{
-                                    display: "flex", alignItems: "center", gap: 12,
-                                    padding: "10px 14px", borderRadius: 8,
+                                    position: "relative",
+                                    display: "flex", alignItems: "center", gap: 14,
+                                    padding: "0 12px",
+                                    height: 46,
+                                    margin: "2px 8px",
+                                    borderRadius: "var(--topo-r-sys)",
                                     textDecoration: "none",
-                                    color: isActive ? "#6366F1" : "#9CA3B4",
-                                    background: isActive ? "rgba(99,102,241,0.1)" : "transparent",
-                                    border: isActive ? "1px solid rgba(99,102,241,0.18)" : "1px solid transparent",
-                                    fontSize: 14, fontWeight: isActive ? 600 : 500,
-                                    transition: "background 150ms, color 150ms",
+                                    transition: "all 0.25s cubic-bezier(0.22, 1, 0.36, 1)",
+                                    whiteSpace: "nowrap",
+                                    ...(isActive
+                                        ? {
+                                            background: "oklch(0.50 0.22 280 / 12%)",
+                                            color: "oklch(0.82 0.24 230)",
+                                            boxShadow: "inset 2px 0 0 0 oklch(0.82 0.24 230 / 70%), 0 0 16px oklch(0.50 0.22 280 / 15%)",
+                                          }
+                                        : {
+                                            background: "transparent",
+                                            color: "oklch(0.50 0.02 200)",
+                                          }),
                                 }}
                                 onMouseEnter={(e) => {
                                     if (!isActive) {
-                                        e.currentTarget.style.background = "#1F2230";
-                                        e.currentTarget.style.color = "#F1F3F6";
+                                        e.currentTarget.style.background = "oklch(1 0 0 / 3%)";
+                                        e.currentTarget.style.color = "oklch(0.95 0.01 200)";
                                     }
                                 }}
                                 onMouseLeave={(e) => {
                                     if (!isActive) {
                                         e.currentTarget.style.background = "transparent";
-                                        e.currentTarget.style.color = "#9CA3B4";
+                                        e.currentTarget.style.color = "oklch(0.50 0.02 200)";
                                     }
                                 }}
                             >
-                                <item.icon style={{ width: 20, height: 20, flexShrink: 0 }} />
-                                <span>{item.name}</span>
+                                {/* Active left accent bar — emerald glow */}
+                                {isActive && (
+                                    <span
+                                        aria-hidden
+                                        style={{
+                                            position: "absolute",
+                                            left: -8,
+                                            top: "50%",
+                                            transform: "translateY(-50%)",
+                                            width: 3,
+                                            height: 22,
+                                            borderRadius: "0 2px 2px 0",
+                                            background: "var(--emerald-core)",
+                                            boxShadow: "0 0 12px var(--emerald-glow)",
+                                        }}
+                                    />
+                                )}
+                                <item.icon size={17} strokeWidth={1.5} color="currentColor" style={{ flexShrink: 0 }} />
+                                <span style={{
+                                    fontFamily: "var(--font-mono)",
+                                    fontSize: 12,
+                                    fontWeight: 500,
+                                    textTransform: "uppercase",
+                                    letterSpacing: "0.16em",
+                                }}>
+                                    {item.name}
+                                </span>
                             </Link>
+                            </li>
                         );
                     })}
+                    </ul>
                 </nav>
 
-                {/* Footer */}
+                {/* Footer — topo system status */}
                 <div style={{
-                    padding: 16, borderTop: "1px solid #2E3340",
-                    textAlign: "center",
+                    padding: "14px 18px",
+                    borderTop: "1px solid rgba(36,255,186,0.06)",
+                    display: "flex", flexDirection: "column", gap: 10,
                 }}>
-                    <p style={{ fontSize: 11, color: "#5C6478", letterSpacing: "0.05em", textTransform: "uppercase" }} className="font-mono">
-                        © 2026 L2 Systems
-                    </p>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span aria-hidden style={{
+                            width: 7, height: 7, borderRadius: "50%",
+                            background: "var(--emerald-core)",
+                            boxShadow: "0 0 8px var(--emerald-glow)",
+                            animation: "topo-glow-pulse 3s ease-in-out infinite",
+                        }} />
+                        <span style={{
+                            fontFamily: "var(--font-mono)", fontSize: 10, textTransform: "uppercase",
+                            letterSpacing: "0.16em", color: "var(--emerald-core)"
+                        }}>
+                            SERVER · ONLINE
+                        </span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: "oklch(0.50 0.02 200)" }}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="oklch(0.72 0.02 200)" strokeWidth="3" strokeLinecap="square">
+                            <path d="M5 5 V19 H13 M15 5 H19 V11 H15 V19 H19" />
+                        </svg>
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.22em", textTransform: "uppercase" }}>
+                            BY L2 SYSTEMS
+                        </span>
+                    </div>
                 </div>
             </aside>
 
             {/* Mobile overlay */}
             {mobileOpen && (
                 <div
-                    style={{ position: "fixed", inset: 0, zIndex: 30, background: "rgba(0,0,0,0.6)" }}
+                    style={{ position: "fixed", inset: 0, zIndex: 30, background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
                     onClick={() => setMobileOpen(false)}
                 />
             )}
 
-            {/* Responsive: hide sidebar on mobile, show menu btn */}
-            <style>{`
-        @media (max-width: 1023px) {
-          .sidebar-wrapper {
-            position: fixed !important;
-            top: 0; left: 0; bottom: 0;
-            z-index: 40;
-            transform: ${mobileOpen ? "translateX(0)" : "translateX(-100%)"};
-            transition: transform 200ms ease-out;
-          }
-          .mobile-menu-btn { display: block !important; }
-        }
-      `}</style>
+            {/* Responsive styles handled by globals.css media query */}
         </>
     );
 }

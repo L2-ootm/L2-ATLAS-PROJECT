@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0F1117",
+  themeColor: "#050816",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -30,13 +30,14 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body
         suppressHydrationWarning
         className={`${inter.variable} ${jetbrains.variable} antialiased`}
-        style={{ background: "#0F1117", color: "#F1F3F6", margin: 0, overflowX: "hidden" }}
       >
-        <div style={{ display: "flex", minHeight: "100vh" }}>
-          <Sidebar />
-          <main style={{ flex: 1, padding: "32px", minWidth: 0 }}>
-            {children}
-          </main>
+        <div className="topo-field topo-lattice" style={{ minHeight: "100vh" }}>
+          <div style={{ display: "flex", minHeight: "100vh" }}>
+            <Sidebar />
+            <main style={{ flex: 1, padding: "32px", minWidth: 0 }}>
+              {children}
+            </main>
+          </div>
         </div>
         <NeuralCommandOverlay />
       </body>

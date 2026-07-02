@@ -1,46 +1,148 @@
 @import "tailwindcss";
 
 @theme inline {
-  /* ── Backgrounds ── */
-  --color-bg-base: #0F1117;
-  --color-bg-surface: #1A1D26;
-  --color-bg-card: #1F2230;
-  --color-bg-muted: #252937;
-  --color-bg-hover: #2A2E3D;
-  --color-bg-elevated: #2E3340;
+  /* ── Atlas Void — blue-temperature near-black ── */
+  --color-bg-base: #0B0D12;
+  --color-bg-surface: #151820;
+  --color-bg-card: #181C26;
+  --color-bg-muted: #1E2230;
+  --color-bg-hover: #222838;
+  --color-bg-elevated: #282E3E;
 
-  /* ── Borders ── */
-  --color-border-default: #2E3340;
-  --color-border-subtle: #252937;
-  --color-border-strong: #3D4255;
+  /* ── Borders — glass hairlines ── */
+  --color-border-default: rgba(237, 234, 224, 0.08);
+  --color-border-subtle: rgba(237, 234, 224, 0.05);
+  --color-border-strong: rgba(237, 234, 224, 0.15);
 
-  /* ── Text ── */
-  --color-text-primary: #F1F3F6;
-  --color-text-secondary: #9CA3B4;
-  --color-text-muted: #5C6478;
+  /* ── Text — ivory family ── */
+  --color-text-primary: #EDEAE0;
+  --color-text-secondary: #9BA0AD;
+  --color-text-muted: #565C6B;
 
-  /* ── Primary (Indigo) ── */
-  --color-primary: #6366F1;
-  --color-primary-hover: #818CF8;
-  --color-primary-subtle: rgba(99, 102, 241, 0.12);
-  --color-primary-muted: rgba(99, 102, 241, 0.06);
+  /* ── Primary — Electric Violet ── */
+  --color-primary: #7F00FF;
+  --color-primary-hover: #9B33FF;
+  --color-primary-subtle: rgba(127, 0, 255, 0.15);
+  --color-primary-muted: rgba(127, 0, 255, 0.06);
 
-  /* ── Semantic ── */
-  --color-success: #34D399;
-  --color-success-subtle: rgba(52, 211, 153, 0.12);
-  --color-warning: #FBBF24;
-  --color-warning-subtle: rgba(251, 191, 36, 0.12);
-  --color-danger: #F87171;
-  --color-danger-subtle: rgba(248, 113, 113, 0.12);
+  /* ── Atlas Celestial Blue ── */
+  --color-celestial: #4F8BFF;
+  --color-celestial-subtle: rgba(79, 139, 255, 0.12);
 
-  /* ── Fonts ── */
-  --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
-  --font-mono: var(--font-jetbrains), 'SF Mono', 'Fira Code', monospace;
+  /* ── Atlas Bronze ── */
+  --color-bronze: #B08A57;
+  --color-bronze-subtle: rgba(176, 138, 87, 0.12);
+
+  /* ── Semantic — Atlas neon ── */
+  --color-success: #00FF94;
+  --color-success-subtle: rgba(0, 255, 148, 0.10);
+  --color-warning: #FFD600;
+  --color-warning-subtle: rgba(255, 214, 0, 0.10);
+  --color-danger: #FF0055;
+  --color-danger-subtle: rgba(255, 0, 85, 0.10);
+
+  /* ── Fonts — matching Atlas system ── */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+  --font-display: 'Orbitron', 'Inter', sans-serif;
 }
 
 :root {
-  --background: #0F1117;
-  --foreground: #F1F3F6;
+  /* ── TOPOGRAPHIC PLASMA — deep navy field ── */
+  --topo-field-1:  #050816;
+  --topo-field-2:  #0b1020;
+  --topo-field-3:  #0a0d18;
+
+  /* ── Atlas Void tokens ── */
+  --l2-void-page:      #0B0D12;
+  --l2-void-deep:      #07080C;
+  --l2-void-base:      #0E1118;
+  --l2-void-surface:   #151820;
+  --l2-void-card:      #181C26;
+
+  /* ── Glass system ── */
+  --glass-bg:        rgba(20, 20, 20, 0.60);
+  --glass-bg-lo:     rgba(255, 255, 255, 0.02);
+  --glass-bg-med:    rgba(255, 255, 255, 0.05);
+  --glass-bg-hi:     rgba(255, 255, 255, 0.08);
+  --glass-border:    rgba(255, 255, 255, 0.08);
+  --glass-border-lo: rgba(255, 255, 255, 0.05);
+  --glass-border-hi: rgba(255, 255, 255, 0.30);
+  --glass-blur:      12px;
+
+  /* ── Atlas glass ── */
+  --l2-glass-border:   rgba(237, 234, 224, 0.10);
+  --l2-hairline:       rgba(237, 234, 224, 0.08);
+  --l2-hairline-bronze: rgba(176, 138, 87, 0.32);
+
+  /* ── Atlas signals ── */
+  --l2-electric-violet: #7F00FF;
+  --l2-cyber-blue:      #00F0FF;
+  --l2-signal-teal:     #00E5C8;
+
+  /* ── Emerald core (topo system) ── */
+  --emerald-core:   oklch(0.60 0.18 160);
+  --emerald-glow:   rgba(36, 255, 186, 0.18);
+  --emerald-quiet:  rgba(36, 255, 186, 0.08);
+  --emerald-edge:   rgba(110, 255, 220, 0.80);
+  --emerald-ring:   rgba(52, 211, 153, 0.50);
+
+  /* ── Signal channels ── */
+  --sig-violet: oklch(0.50 0.22 280);
+  --sig-violet-tint: oklch(0.55 0.22 280 / 40%);
+  --sig-violet-bg:   oklch(0.14 0.02 280 / 30%);
+  --sig-violet-edge: oklch(0.65 0.20 280 / 60%);
+  --sig-blue:   oklch(0.65 0.16 220);
+  --sig-teal:   oklch(0.65 0.13 185);
+  --sig-amber:  oklch(0.78 0.16 85);
+  --sig-crimson: oklch(0.58 0.22 20);
+
+  /* ── Topo text ── */
+  --topo-fg-1: oklch(0.95 0.01 200);
+  --topo-fg-2: oklch(0.72 0.02 200);
+  --topo-fg-3: oklch(0.50 0.02 200);
+  --topo-fg-4: oklch(0.35 0.02 200);
+
+  /* ── Topo ring ── */
+  --topo-ring-neutral: oklch(1 0 0 / 10%);
+  --topo-ring-good:   oklch(0.85 0.28 145 / 20%);
+  --topo-ring-info:   oklch(0.82 0.24 230 / 20%);
+  --topo-ring-warn:   oklch(0.88 0.22 85 / 20%);
+  --topo-ring-bad:    oklch(0.68 0.32 25 / 25%);
+  --topo-ring-brand:  oklch(0.72 0.30 290 / 25%);
+
+  /* ── Topo geometry ── */
+  --topo-r-sys:    2px;
+  --topo-r-surf:   8px;
+  --topo-r-pill:   9999px;
+  --topo-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* ── Atlas status ── */
+  --l2-success: #00FF94;
+  --l2-warning: #FFD600;
+  --l2-error:   #FF0055;
+
+  /* ── Atlas foreground ── */
+  --l2-fg-1:    #EDEAE0;
+  --l2-fg-2:    #9BA0AD;
+  --l2-fg-3:    #565C6B;
+
+  /* ── Atlas brand ── */
+  --atlas-celestial:  #4F8BFF;
+  --atlas-bronze:     #B08A57;
+  --atlas-violet:     #A17BFF;
+  --atlas-cyan:       #46F0E0;
+
+  /* ── Atlas geometry ── */
+  --l2-radius:    2px;
+  --l2-radius-md: 4px;
+  --l2-radius-lg: 8px;
+
+  /* ── Grid texture ── */
+  --grid-line: rgba(255, 255, 255, 0.03);
+
+  --background: #0B0D12;
+  --foreground: #EDEAE0;
 }
 
 * {
@@ -57,10 +159,235 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ── Scrollbar ── */
+/* ==========================================================================
+   TOPOGRAPHIC PLASMA FIELD — the living background
+   ========================================================================== */
+.topo-field {
+  position: relative;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(36,255,186,0.08) 0%, transparent 45%),
+    radial-gradient(circle at 75% 65%, rgba(45,212,191,0.06) 0%, transparent 40%),
+    linear-gradient(180deg, #050816 0%, #0b1020 48%, #0a0d18 100%);
+  isolation: isolate;
+}
+
+.topo-field::before {
+  content: '';
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(36,255,186,0.10), transparent 50%),
+    radial-gradient(circle at 50% 50%, oklch(0.50 0.22 280 / 0.06), transparent 45%);
+  background-repeat: no-repeat, no-repeat;
+  background-size: 180% 180%, 170% 170%;
+  background-position: 20% 30%, 75% 65%;
+  animation: topo-plasma 18s ease-in-out infinite alternate;
+  pointer-events: none;
+  z-index: 0;
+}
+
+@keyframes topo-plasma {
+  0%   { background-position: 20% 30%, 75% 65%; }
+  100% { background-position: 35% 55%, 60% 40%; }
+}
+
+.topo-field > * { position: relative; z-index: 2; }
+
+/* SVG contour lattice overlay */
+.topo-lattice::after {
+  content: '';
+  position: absolute; inset: 0;
+  background-image:
+    repeating-radial-gradient(circle at 22% 38%,
+      transparent 0, transparent 28px,
+      rgba(36,255,186,0.06) 28px, rgba(36,255,186,0.06) 29px),
+    repeating-radial-gradient(circle at 72% 62%,
+      transparent 0, transparent 34px,
+      rgba(45,212,191,0.05) 34px, rgba(45,212,191,0.05) 35px);
+  mix-blend-mode: screen;
+  opacity: .5;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ==========================================================================
+   GLASS SURFACES — topo-surface (used for cards, sidebar, panels)
+   ========================================================================== */
+.topo-surface {
+  position: relative;
+  isolation: isolate;
+  background: linear-gradient(180deg, oklch(0.11 0.02 220 / 55%), oklch(0.07 0.015 220 / 72%));
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid var(--topo-ring-neutral);
+  border-radius: var(--l2-radius);
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 6%), 0 2px 0 oklch(0 0 0 / 30%);
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* Specular top-edge hairline */
+.topo-shelf::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, oklch(1 0 0 / 40%), transparent);
+  pointer-events: none; z-index: 3;
+}
+
+/* l2-glass — lower intensity glass */
+.l2-glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border-radius: var(--l2-radius);
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+.l2-glass-lo {
+  background: var(--glass-bg-lo);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur));
+  border-radius: var(--l2-radius);
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* ==========================================================================
+   TOPOGRAPHIC-GLOW BUTTONS
+   ========================================================================== */
+.topo-btn {
+  position: relative;
+  padding: 10px 20px;
+  background: transparent;
+  border: 0;
+  color: var(--topo-fg-1);
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  border-radius: var(--topo-r-sys);
+  cursor: pointer;
+  box-shadow:
+    0 0 0 1px rgba(52,211,153,0.20),
+    0 0 12px rgba(36,255,186,0.08);
+  transition: box-shadow .25s var(--topo-ease), transform .25s var(--topo-ease);
+  overflow: hidden;
+}
+
+.topo-btn::before {
+  content: '';
+  position: absolute; left: 0; right: 0; top: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--emerald-edge), transparent);
+  opacity: .6;
+}
+
+.topo-btn:hover {
+  box-shadow:
+    0 0 0 1px rgba(52,211,153,0.50),
+    0 0 24px rgba(36,255,186,0.18),
+    0 0 48px rgba(36,255,186,0.06);
+}
+
+.topo-btn:hover::before { opacity: 1; }
+
+.topo-btn--violet {
+  box-shadow:
+    0 0 0 1px oklch(0.55 0.22 280 / 25%),
+    0 0 12px oklch(0.55 0.22 280 / 15%);
+}
+.topo-btn--violet::before { background: linear-gradient(90deg, transparent, var(--sig-violet-edge), transparent); }
+.topo-btn--violet:hover {
+  box-shadow:
+    0 0 0 1px oklch(0.55 0.22 280 / 55%),
+    0 0 24px oklch(0.55 0.22 280 / 30%);
+}
+
+.topo-btn--muted {
+  box-shadow: inset 0 0 0 1px oklch(1 0 0 / 10%);
+  color: var(--topo-fg-2);
+}
+.topo-btn--muted::before { display: none; }
+.topo-btn--muted:hover { box-shadow: inset 0 0 0 1px oklch(1 0 0 / 25%); color: var(--topo-fg-1); }
+
+.topo-btn--amber {
+  box-shadow: 0 0 0 1px oklch(0.78 0.16 85 / 25%), 0 0 12px oklch(0.78 0.16 85 / 10%);
+  color: oklch(0.85 0.14 85);
+}
+.topo-btn--amber::before { background: linear-gradient(90deg, transparent, oklch(0.85 0.14 85 / .7), transparent); }
+.topo-btn--amber:hover { box-shadow: 0 0 0 1px oklch(0.78 0.16 85 / 55%), 0 0 24px oklch(0.78 0.16 85 / 25%); }
+
+/* Primary button — topo violet variant */
+.btn-primary {
+  position: relative;
+  background: var(--color-primary);
+  color: #EDEAE0;
+  box-shadow: 0 0 16px rgba(127, 0, 255, 0.25);
+  border-radius: var(--l2-radius-md);
+  overflow: hidden;
+}
+
+.btn-primary::before {
+  content: '';
+  position: absolute; left: 0; right: 0; top: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(161,123,255,0.7), transparent);
+  opacity: .8;
+}
+
+.btn-primary:hover {
+  background: var(--color-primary-hover);
+  box-shadow:
+    0 0 0 1px oklch(0.55 0.22 280 / 55%),
+    0 0 24px rgba(127, 0, 255, 0.35);
+}
+
+/* ==========================================================================
+   BADGES / SIGNAL CHIPS
+   ========================================================================== */
+.topo-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  border-radius: var(--topo-r-sys);
+  border: 1px solid currentColor;
+  background: color-mix(in oklch, currentColor 8%, transparent);
+}
+
+/* ==========================================================================
+   TABLE — topo style
+   ========================================================================== */
+.topo-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--topo-fg-2);
+}
+.topo-table thead th {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--topo-fg-3);
+  text-align: left;
+  padding: 12px 16px;
+  border-bottom: 1px solid oklch(1 0 0 / 5%);
+}
+.topo-table tbody td { padding: 10px 16px; border-bottom: 1px solid oklch(1 0 0 / 3%); }
+.topo-table tbody tr { transition: background .15s var(--topo-ease); }
+.topo-table tbody tr:hover { background: oklch(1 0 0 / 3%); }
+.topo-table td.mono { font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; }
+
+/* ==========================================================================
+   SCROLLBAR — Atlas style (emerald-tinted thin)
+   ========================================================================== */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -68,219 +395,217 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2E3340;
-  border-radius: 3px;
+  background: oklch(0.60 0.18 160 / 40%);
+  border-radius: 2px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3D4255;
+  background: oklch(0.60 0.18 160 / 60%);
 }
 
-/* ── Card base border ── */
-.l2-border {
-  border: 1px solid var(--color-border-default);
+/* ==========================================================================
+   HUD DIVIDER
+   ========================================================================== */
+.l2-hud-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--glass-border), transparent);
 }
 
-/* ── Stat card accent variants ── */
-.stat-primary {
-  background: var(--color-bg-surface);
-  border: 1px solid var(--color-border-default);
+.l2-grid-bg {
+  background-image:
+    linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+  background-size: 50px 50px;
 }
 
-.stat-primary .stat-icon-bg {
-  background: var(--color-primary-subtle);
+/* ==========================================================================
+   STAT CARD — topo glass variants
+   ========================================================================== */
+.stat-card {
+  position: relative;
+  isolation: isolate;
+  background: linear-gradient(180deg, oklch(0.11 0.02 220 / 55%), oklch(0.07 0.015 220 / 72%));
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid var(--topo-ring-neutral);
+  border-radius: var(--l2-radius-md);
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 6%), 0 2px 0 oklch(0 0 0 / 30%);
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  transition: border-color .25s var(--topo-ease), box-shadow .25s var(--topo-ease);
 }
 
-.stat-primary .stat-icon {
-  color: var(--color-primary);
+.stat-card::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, oklch(1 0 0 / 20%), transparent);
+  pointer-events: none; z-index: 3; border-radius: var(--l2-radius-md) var(--l2-radius-md) 0 0;
 }
 
-.stat-success {
-  background: var(--color-bg-surface);
-  border: 1px solid var(--color-border-default);
+.stat-card:hover {
+  border-color: oklch(1 0 0 / 18%);
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 8%), 0 4px 24px oklch(0 0 0 / 30%);
 }
 
-.stat-success .stat-icon-bg {
-  background: var(--color-success-subtle);
+.stat-card .stat-icon-bg {
+  border-radius: var(--l2-radius-md);
 }
 
-.stat-success .stat-icon {
-  color: var(--color-success);
-}
+.stat-primary .stat-icon-bg { background: var(--color-primary-subtle); }
+.stat-primary .stat-icon { color: var(--color-primary); }
 
-.stat-danger {
-  background: var(--color-bg-surface);
-  border: 1px solid var(--color-border-default);
-}
+.stat-success .stat-icon-bg { background: var(--color-success-subtle); }
+.stat-success .stat-icon { color: var(--color-success); }
 
-.stat-danger .stat-icon-bg {
-  background: var(--color-danger-subtle);
-}
+.stat-danger .stat-icon-bg { background: var(--color-danger-subtle); }
+.stat-danger .stat-icon { color: var(--color-danger); }
 
-.stat-danger .stat-icon {
-  color: var(--color-danger);
-}
+.stat-warning .stat-icon-bg { background: var(--color-warning-subtle); }
+.stat-warning .stat-icon { color: var(--color-warning); }
 
-.stat-warning {
-  background: var(--color-bg-surface);
-  border: 1px solid var(--color-border-default);
-}
-
-.stat-warning .stat-icon-bg {
-  background: var(--color-warning-subtle);
-}
-
-.stat-warning .stat-icon {
-  color: var(--color-warning);
-}
-
-/* ── Legacy accent mapping ── */
-.stat-violet { background: var(--color-bg-surface); border: 1px solid var(--color-border-default); }
 .stat-violet .stat-icon-bg { background: var(--color-primary-subtle); }
 .stat-violet .stat-icon { color: var(--color-primary); }
-.stat-cyan { background: var(--color-bg-surface); border: 1px solid var(--color-border-default); }
-.stat-cyan .stat-icon-bg { background: var(--color-primary-subtle); }
-.stat-cyan .stat-icon { color: var(--color-primary); }
-.stat-red { background: var(--color-bg-surface); border: 1px solid var(--color-border-default); }
+.stat-cyan .stat-icon-bg { background: var(--color-celestial-subtle); }
+.stat-cyan .stat-icon { color: var(--color-celestial); }
 .stat-red .stat-icon-bg { background: var(--color-danger-subtle); }
 .stat-red .stat-icon { color: var(--color-danger); }
-.stat-yellow { background: var(--color-bg-surface); border: 1px solid var(--color-border-default); }
 .stat-yellow .stat-icon-bg { background: var(--color-warning-subtle); }
 .stat-yellow .stat-icon { color: var(--color-warning); }
 
-/* ── Category badges ── */
-.cat-software {
-  background: rgba(99, 102, 241, 0.1);
-  color: #818CF8;
-}
+/* ==========================================================================
+   CATEGORY BADGES — Atlas palette
+   ========================================================================== */
+.cat-software { background: rgba(127, 0, 255, 0.10); color: #A17BFF; }
+.cat-marketing { background: rgba(255, 214, 0, 0.10); color: #FFD600; }
+.cat-equipamento { background: rgba(0, 255, 148, 0.10); color: #00FF94; }
+.cat-infraestrutura { background: rgba(155, 160, 173, 0.10); color: #9BA0AD; }
+.cat-pessoal { background: rgba(79, 139, 255, 0.10); color: #4F8BFF; }
+.cat-outros { background: rgba(155, 160, 173, 0.06); color: #565C6B; }
 
-.cat-marketing {
-  background: rgba(251, 191, 36, 0.1);
-  color: #FBBF24;
-}
+.bar-software { background: #A17BFF; }
+.bar-marketing { background: #FFD600; }
+.bar-equipamento { background: #00FF94; }
+.bar-infraestrutura { background: #9BA0AD; }
+.bar-pessoal { background: #4F8BFF; }
+.bar-outros { background: #565C6B; }
 
-.cat-equipamento {
-  background: rgba(52, 211, 153, 0.1);
-  color: #34D399;
-}
-
-.cat-infraestrutura {
-  background: rgba(148, 163, 184, 0.1);
-  color: #94A3B8;
-}
-
-.cat-pessoal {
-  background: rgba(167, 139, 250, 0.1);
-  color: #A78BFA;
-}
-
-.cat-outros {
-  background: rgba(148, 163, 184, 0.06);
-  color: #64748B;
-}
-
-/* ── Category bar colors ── */
-.bar-software { background: #818CF8; }
-.bar-marketing { background: #FBBF24; }
-.bar-equipamento { background: #34D399; }
-.bar-infraestrutura { background: #94A3B8; }
-.bar-pessoal { background: #A78BFA; }
-.bar-outros { background: #64748B; }
-
-/* ── Active nav item ── */
+/* ==========================================================================
+   NAVIGATION — active item
+   ========================================================================== */
 .nav-active {
   background: var(--color-primary-subtle);
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  border: 1px solid rgba(127, 0, 255, 0.18);
   color: var(--color-primary);
 }
 
-/* ── Status badges ── */
-.badge-active {
-  background: var(--color-success-subtle);
-  color: var(--color-success);
-}
+/* ==========================================================================
+   STATUS BADGES
+   ========================================================================== */
+.badge-active { background: var(--color-success-subtle); color: var(--color-success); }
+.badge-inactive { background: var(--color-bg-muted); color: var(--color-text-muted); }
 
-.badge-inactive {
-  background: var(--color-bg-muted);
-  color: var(--color-text-muted);
-}
-
-/* ── Primary Button ── */
-.btn-primary {
-  background: var(--color-primary);
-  color: white;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-}
-
-.btn-primary:hover {
-  background: var(--color-primary-hover);
-}
-
-/* ── Form inputs ── */
+/* ==========================================================================
+   FORM INPUTS — Atlas glass style
+   ========================================================================== */
 .input-l2 {
   background: var(--color-bg-card);
-  border: 1px solid var(--color-border-default);
+  border: 1px solid var(--l2-hairline);
   color: var(--color-text-primary);
-  transition: border-color 0.2s ease;
+  border-radius: var(--l2-radius-md);
+  transition: border-color 0.15s ease;
 }
-
-.input-l2::placeholder {
-  color: var(--color-text-muted);
-}
-
+.input-l2::placeholder { color: var(--color-text-muted); }
 .input-l2:focus {
   border-color: var(--color-primary);
   outline: none;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+  box-shadow: 0 0 0 2px rgba(127, 0, 255, 0.12);
 }
 
-/* ── Number & date inputs ── */
-input[type="number"],
-input[type="date"] {
+/* Number & date inputs */
+input[type="number"], input[type="date"] {
   accent-color: var(--color-primary);
   color-scheme: dark;
 }
-
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
-  opacity: 1;
-  height: 28px;
-  cursor: pointer;
+  opacity: 1; height: 28px; cursor: pointer;
 }
+input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; filter: invert(0.6); }
 
-input[type="date"]::-webkit-calendar-picker-indicator {
-  cursor: pointer;
-  filter: invert(0.6);
-}
-
-/* ── Animations ── */
+/* ==========================================================================
+   ANIMATIONS
+   ========================================================================== */
 @keyframes l2SlideIn {
-  0% {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  0% { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
 }
-
 .animate-l2-enter {
   animation: l2SlideIn 300ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 @keyframes growUp {
-  from {
-    transform: scaleY(0);
-  }
-
-  to {
-    transform: scaleY(1);
-  }
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
 }
-
 .animate-grow-up {
   animation: growUp 500ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
   transform-origin: bottom;
+}
+
+@keyframes l2-thrum {
+  0%, 100% { border-color: var(--glass-border); }
+  50%      { border-color: rgba(127, 0, 255, 0.40); }
+}
+.l2-status-pulse { animation: l2-thrum 3s linear infinite; }
+
+@keyframes l2-scan {
+  0%   { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
+@keyframes l2-blink { 50% { opacity: 0; } }
+.l2-blink { animation: l2-blink 1s step-end infinite; }
+
+@keyframes topo-glow-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* ==========================================================================
+   SIDEBAR — Glassmorphism + topography
+   ========================================================================== */
+.sidebar-wrapper {
+  background: linear-gradient(180deg, rgba(5,8,22,0.88), rgba(10,13,24,0.92));
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  border-right: 1px solid rgba(36,255,186,0.08);
+  box-shadow: 1px 0 0 rgba(0,0,0,0.6), 8px 0 32px rgba(0,0,0,0.45);
+  position: relative;
+  overflow: hidden;
+}
+
+.sidebar-wrapper::before {
+  content: '';
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(36,255,186,0.04) 0%, transparent 50%),
+    radial-gradient(circle at 70% 80%, oklch(0.50 0.22 280 / 0.03), transparent 40%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.sidebar-wrapper > * { position: relative; z-index: 1; }
+
+/* ==========================================================================
+   RESPONSIVE
+   ========================================================================== */
+@media (max-width: 1023px) {
+  .sidebar-wrapper {
+    position: fixed !important;
+    top: 0; left: 0; bottom: 0;
+    z-index: 40;
+    transform: translateX(-100%);
+    transition: transform 200ms ease-out;
+  }
+  .sidebar-wrapper.open { transform: translateX(0); }
+  .mobile-menu-btn { display: block !important; }
 }
