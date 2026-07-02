@@ -164,7 +164,12 @@ def create(
         )
 
     config = config_service.load_config()
-    resolved = config_service.resolve_provider(config)
+    # Bind the session to the provider/model a run will actually use (the
+    # provider-mesh projection), not the raw config values — e.g. a Codex
+    # OAuth profile executes openai-codex/gpt-*, whatever provider.model says.
+    from atlas_runtime import provider_service  # noqa: PLC0415
+
+    resolved = provider_service.active_status(config)
     try:
         session = surface_session_service.create_session(
             conn,

@@ -156,6 +156,20 @@ def codex_model_ids() -> list[str]:
         return []
 
 
+def effective_codex_model(configured: str) -> str:
+    """The model a Codex-backed run will actually use for `configured`.
+
+    The Codex backend rejects non-Codex slugs, so a non-gpt configured model
+    projects onto the operator's Codex default (config.toml first, offline).
+    Shared by run-time resolution (native agent) and status projections so
+    every surface reports the model that will actually execute.
+    """
+    ids = codex_model_ids()
+    if not ids or configured in ids or configured.startswith("gpt-"):
+        return configured
+    return ids[0]
+
+
 def import_from_codex_cli() -> dict[str, Any]:
     """Bootstrap Codex tokens from ~/.codex into the foundation's owned store.
 
@@ -190,6 +204,7 @@ __all__ = [
     "cli_status",
     "codex_home",
     "codex_model_ids",
+    "effective_codex_model",
     "import_from_codex_cli",
     "owned_status",
     "resolve_codex_credentials",

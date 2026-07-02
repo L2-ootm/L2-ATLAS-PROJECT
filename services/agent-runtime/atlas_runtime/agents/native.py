@@ -156,14 +156,9 @@ class NativeAtlasAgent(AgentRuntime):
                 base_url = creds["base_url"] or base_url
                 api_key = creds["api_key"] or api_key
                 # The Codex backend rejects non-Codex model slugs outright
-                # ("The '<model>' model is not supported ..."), and the config
-                # default is typically an OpenRouter-era id. Swap to the
-                # operator's Codex default unless the model is already
-                # Codex-plausible (known slug or a gpt-* id newer than the
-                # offline list).
-                codex_ids = codex_auth.codex_model_ids()
-                if codex_ids and model not in codex_ids and not model.startswith("gpt-"):
-                    model = codex_ids[0]
+                # ("The '<model>' model is not supported ..."); project the
+                # configured model onto what Codex will actually accept.
+                model = codex_auth.effective_codex_model(model)
         except Exception as exc:  # noqa: BLE001 — never block a run on config
             logger.debug("native provider resolution fell back to defaults: %s", exc)
         return model, provider, base_url, api_key, auth_mode

@@ -210,6 +210,46 @@ def test_claude_code_maps_stream_to_audit(db: sqlite3.Connection, lock: threadin
     assert any(e.event_type == "tool_call" for e in events)
 
 
+class ToolResultBlock:
+    def __init__(self, tool_use_id: str, content, is_error: bool = False) -> None:  # noqa: ANN001
+        self.tool_use_id = tool_use_id
+        self.content = content
+        self.is_error = is_error
+
+
+class UserMessage:
+    def __init__(self, content: list) -> None:
+        self.content = content
+
+
+def test_claude_code_tool_results_pair_with_calls(db: sqlite3.Connection, lock: threading.Lock) -> None:
+    """Tool results must emit tool_completed with the pairing id inside data —
+    the surface projection only carries the data payload, so web/TUI tool cards
+    need tool_call_id there to flip RUNNING -> DONE."""
+    import json
+
+    mid = _pending_mission(db)
+    rid = _running_run(db, mid)
+    msgs = [
+        AssistantMessage([ToolUseBlock("grep", "tu1", {"q": "x"})]),
+        UserMessage([ToolResultBlock("tu1", [{"type": "text", "text": "3 matches"}])]),
+        ResultMessage(is_error=False),
+    ]
+    agent = ClaudeCodeAgent(query_fn=_make_query(msgs))
+    outcome = agent.execute(db, lock, mission_id=mid, run_id=rid, prompt="do x")
+    assert outcome.status == "succeeded"
+    events = get_events_for_run(db, rid)
+    calls = [e for e in events if e.event_type == "tool_call"]
+    results = [e for e in events if e.event_type == "tool_completed"]
+    assert len(calls) == 1 and len(results) == 1
+    call_data = json.loads(calls[0].data)
+    result_data = json.loads(results[0].data)
+    assert call_data["tool_name"] == "grep"
+    assert call_data["tool_call_id"] == "tu1"
+    assert result_data["tool_call_id"] == "tu1"
+    assert "3 matches" in result_data["summary"]
+
+
 def test_claude_code_result_error_marks_failed(db: sqlite3.Connection, lock: threading.Lock) -> None:
     mid = _pending_mission(db)
     rid = _running_run(db, mid)

@@ -41,9 +41,16 @@ def active_status(config: Optional[config_service.AtlasConfig] = None) -> dict[s
     # for it — the owned store, not resolve_provider, is its truth.
     codex_ready = auth_mode == "oauth_import" and _codex_runtime_ready()
     real = api_key_present or codex_ready or auth_mode in ("claude_code", "freellmapi")
+    provider = resolved.get("provider", "")
+    model = resolved.get("model", "")
+    if codex_ready:
+        # Report what a Codex run will actually use — the foundation resolves
+        # provider "openai-codex", and the backend rejects non-Codex slugs.
+        provider = "openai-codex"
+        model = codex_auth.effective_codex_model(model)
     return {
-        "provider": resolved.get("provider", ""),
-        "model": resolved.get("model", ""),
+        "provider": provider,
+        "model": model,
         "auth_mode": auth_mode,
         "auth_mode_label": _MODE_LABELS.get(auth_mode, auth_mode),
         "base_url": resolved.get("base_url", "") or None,

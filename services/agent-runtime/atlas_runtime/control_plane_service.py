@@ -134,17 +134,17 @@ def get_config_snapshot(
         if ephemeral:
             status_conn.close()
     data = config.model_dump()
+    # mock_mode must agree with what a run would actually do; api_key presence
+    # alone is blind to oauth_import/claude_code/freellmapi (all real without a
+    # resolved key here). Delegate to the provider-mesh projection.
+    from atlas_runtime import provider_service  # noqa: PLC0415 — avoids cycle
+
     data.update(
         {
             "settings": settings,
             "auth": auth,
             "effective": effective,
-            "mock_mode": not bool(
-                config_service.resolve_provider(
-                    config,
-                    focus_framework=focus_framework,
-                )["api_key"]
-            ),
+            "mock_mode": bool(provider_service.active_status(config)["mock_mode"]),
         }
     )
     return ControlPlaneSnapshot.model_validate(data)

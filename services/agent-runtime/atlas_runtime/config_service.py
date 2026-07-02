@@ -294,7 +294,13 @@ def resolve_provider(
 def masked_dict(config: AtlasConfig) -> dict[str, object]:
     """Return the backward-compatible secret-safe config projection."""
     data = config.model_dump()
-    data["mock_mode"] = not bool(resolve_provider(config).get("api_key"))
+    # mock_mode must agree with what a run would actually do. Only api_key
+    # mode resolves a key here; oauth_import/claude_code/freellmapi execute
+    # real runs without one, so delegate the verdict to the provider-mesh
+    # projection (lazy import — provider_service imports this module).
+    from atlas_runtime import provider_service  # noqa: PLC0415
+
+    data["mock_mode"] = bool(provider_service.active_status(config)["mock_mode"])
     return data
 
 

@@ -31,6 +31,23 @@ logger = logging.getLogger(__name__)
 _SUMMARY_CAP = 2000
 
 
+def _result_text(content: Any) -> str:
+    """Flatten a ToolResultBlock content payload into a capped display string."""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content[:_SUMMARY_CAP]
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, dict) and isinstance(item.get("text"), str):
+                parts.append(item["text"])
+            elif isinstance(item, str):
+                parts.append(item)
+        return "\n".join(parts)[:_SUMMARY_CAP]
+    return str(content)[:_SUMMARY_CAP]
+
+
 class ClaudeCodeAgent(AgentRuntime):
     name = "claude_code"
 
@@ -119,12 +136,39 @@ class ClaudeCodeAgent(AgentRuntime):
                         data={"runtime": "claude_code", "text": text},
                     )
                 elif bkind == "ToolUseBlock":
+                    # tool_name/tool_call_id ride inside data too: the surface
+                    # projection (payload_json) carries only the data string,
+                    # so web/TUI tool cards need them there to name and pair
+                    # calls.
                     self._safe_emit(
                         conn, lock, run_id, event_type="tool_call",
                         tool_name=getattr(block, "name", None),
                         tool_call_id=getattr(block, "id", None),
-                        data={"runtime": "claude_code", "input": getattr(block, "input", None)},
+                        data={
+                            "runtime": "claude_code",
+                            "tool_name": getattr(block, "name", None),
+                            "tool_call_id": getattr(block, "id", None),
+                            "input": getattr(block, "input", None),
+                        },
                     )
+        elif kind == "UserMessage":
+            # Tool results come back as ToolResultBlocks on user-role turns.
+            # Emitting them closes the tool_call -> tool_result pair every
+            # surface uses to flip a tool card from RUNNING to DONE.
+            for block in getattr(msg, "content", []) or []:
+                if type(block).__name__ != "ToolResultBlock":
+                    continue
+                call_id = getattr(block, "tool_use_id", None)
+                self._safe_emit(
+                    conn, lock, run_id, event_type="tool_completed",
+                    tool_call_id=call_id,
+                    data={
+                        "runtime": "claude_code",
+                        "tool_call_id": call_id,
+                        "is_error": bool(getattr(block, "is_error", False)),
+                        "summary": _result_text(getattr(block, "content", None)),
+                    },
+                )
         elif kind == "ResultMessage":
             is_error = bool(getattr(msg, "is_error", False))
             if is_error:
