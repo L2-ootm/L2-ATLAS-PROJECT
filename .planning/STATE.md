@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
-last_updated: "2026-07-02T13:00:00-03:00"
-last_activity: 2026-07-02 -- TUI MiMo-grade upgrade + provider-mesh honesty fixes live-verified on real Codex; Svelte cockpit deleted
+last_updated: "2026-07-02T13:35:00-03:00"
+last_activity: 2026-07-02 -- Honest tool-failure lifecycle implemented across Claude harness, TUI, and React console
 progress:
   total_phases: 8
   completed_phases: 7
@@ -14,6 +14,18 @@ progress:
 ---
 
 # STATE — L2 ATLAS
+
+## Stability burn-down checkpoint — honest tool failures
+
+The Claude harness now distinguishes successful `ToolResultBlock`s (`tool_completed`) from
+failed results (`tool_failed`) while preserving call identity and error metadata. The Go TUI
+pairs both outcomes into the existing tool row, including failure detail, without adding a
+duplicate transcript error. The React console projection is now isolated in
+`lib/consoleEvents.ts`; tool-scoped failures retain their tool identity, render the paired card
+as red `FAILED`, and do not terminate the overall turn.
+
+Fresh evidence: focused Python harness tests **2 passed**, Go TUI package tests passed, and
+React console lifecycle tests **5 passed**.
 
 ## Current Position — 2026-07-02: TUI product upgrade + provider-mesh honesty, live-verified
 

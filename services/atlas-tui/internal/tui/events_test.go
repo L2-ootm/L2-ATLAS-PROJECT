@@ -167,6 +167,25 @@ func TestToolCompletionUpdatesInPlace(t *testing.T) {
 	}
 }
 
+func TestToolFailureUpdatesInPlaceWithoutDuplicateError(t *testing.T) {
+	m := chatReadyModel(120, 36)
+	m.applyRunEvent(auditEvent(t,
+		`{"event_type":"tool_call","tool_name":"terminal","tool_call_id":"call-1","data":{"input":{"cmd":"go build"}}}`))
+	m.applyRunEvent(auditEvent(t,
+		`{"event_type":"tool_failed","tool_name":"terminal","tool_call_id":"call-1","data":{"error":"permission denied"}}`))
+
+	if len(m.items) != 1 {
+		t.Fatalf("tool failure appended a duplicate row: %+v", m.items)
+	}
+	tool := m.items[0]
+	if tool.kind != itemTool || tool.status != "failed" {
+		t.Fatalf("tool row not failed in place: %+v", tool)
+	}
+	if !strings.Contains(tool.detail, "permission denied") {
+		t.Fatalf("tool failure detail missing: %+v", tool)
+	}
+}
+
 func TestDuplicateTerminalSummaryIsDeduped(t *testing.T) {
 	m := chatReadyModel(120, 36)
 	answer := "final response text"

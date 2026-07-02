@@ -159,13 +159,17 @@ class ClaudeCodeAgent(AgentRuntime):
                 if type(block).__name__ != "ToolResultBlock":
                     continue
                 call_id = getattr(block, "tool_use_id", None)
+                is_error = bool(getattr(block, "is_error", False))
                 self._safe_emit(
-                    conn, lock, run_id, event_type="tool_completed",
+                    conn,
+                    lock,
+                    run_id,
+                    event_type="tool_failed" if is_error else "tool_completed",
                     tool_call_id=call_id,
                     data={
                         "runtime": "claude_code",
                         "tool_call_id": call_id,
-                        "is_error": bool(getattr(block, "is_error", False)),
+                        "is_error": is_error,
                         "summary": _result_text(getattr(block, "content", None)),
                     },
                 )

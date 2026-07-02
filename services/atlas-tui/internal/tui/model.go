@@ -607,10 +607,11 @@ func (m *model) applyRunEvent(event client.RunEvent) {
 				continue
 			}
 		case itemError:
-			if item.callID != "" {
-				m.completeTool(transcriptItem{
-					kind: itemTool, status: "failed", callID: item.callID, label: item.label,
-				})
+			if item.callID != "" && m.completeTool(transcriptItem{
+				kind: itemTool, status: "failed", callID: item.callID,
+				label: item.label, text: item.text,
+			}) {
+				continue
 			}
 		}
 		m.appendItem(item)

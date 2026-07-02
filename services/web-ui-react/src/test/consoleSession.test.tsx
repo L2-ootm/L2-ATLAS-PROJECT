@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { surfaceConsoleEvent } from '../routes/Console';
+import { isRunTerminalEvent, surfaceConsoleEvent } from '../lib/consoleEvents';
+import { ToolCallCard } from '../routes/Console';
 import {
 	SURFACE_EVENT_KINDS,
 	type SurfaceEvent,
@@ -50,6 +52,51 @@ describe('Console shared session transport', () => {
 		expect(() =>
 			surfaceConsoleEvent({ ...event('text'), payload_json: '{broken' })
 		).toThrow(/Malformed text event/);
+	});
+
+	it('preserves tool identity on tool-scoped failures', () => {
+		const projected = surfaceConsoleEvent(
+			event('error', {
+				error: 'permission denied',
+				tool_name: 'terminal',
+				tool_call_id: 'call-1',
+				is_error: true
+			})
+		);
+
+		expect(projected).toMatchObject({
+			type: 'failure',
+			error: 'permission denied',
+			tool_name: 'terminal',
+			tool_call_id: 'call-1',
+			is_error: true
+		});
+	});
+
+	it('renders a failed tool result without treating it as a terminal run event', () => {
+		const failure = {
+			type: 'failure',
+			error: 'permission denied',
+			tool_name: 'terminal',
+			tool_call_id: 'call-1',
+			is_error: true
+		};
+		render(
+			<ToolCallCard
+				event={{
+					type: 'tool_call',
+					tool_name: 'terminal',
+					tool_call_id: 'call-1',
+					input: { cmd: 'go build' }
+				}}
+				result={failure}
+			/>
+		);
+
+		expect(screen.getByText('FAILED')).toBeInTheDocument();
+		expect(screen.queryByText('DONE')).not.toBeInTheDocument();
+		expect(isRunTerminalEvent(failure)).toBe(false);
+		expect(isRunTerminalEvent({ type: 'failure', error: 'provider unavailable' })).toBe(true);
 	});
 
 	it('contains no production dependency on the legacy console stream', () => {

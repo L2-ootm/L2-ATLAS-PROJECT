@@ -42,8 +42,8 @@ import {
 	type ConsoleChatEvent,
 	type Project
 } from '../lib/api';
+import { isRunTerminalEvent, surfaceConsoleEvent } from '../lib/consoleEvents';
 import { useAgentSurface } from '../context/AgentSurfaceContext';
-import type { SurfaceEvent } from '../lib/surfaceContracts';
 import { selectFolder } from '../lib/host';
 import { computeDwindle, type Rect } from '../lib/bspLayout';
 
@@ -129,75 +129,6 @@ function bootMessage(project: Project | null, cwd: string | null): ConsoleMessag
 			? `Console bound to folder: ${cwd}`
 			: 'Console opened without a folder binding.';
 	return { id: `boot-${Date.now()}`, role: 'system', label: 'ATLAS', body, time: nowLabel() };
-}
-
-export function surfaceConsoleEvent(event: SurfaceEvent): ConsoleChatEvent {
-	let payload: Record<string, unknown>;
-	try {
-		const parsed = JSON.parse(event.payload_json) as unknown;
-		payload =
-			typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
-				? (parsed as Record<string, unknown>)
-				: { value: parsed };
-	} catch {
-		throw new Error(`Malformed ${event.kind} event at sequence ${event.seq}`);
-	}
-	const text =
-		typeof payload.text === 'string'
-			? payload.text
-			: typeof payload.summary === 'string'
-				? payload.summary
-				: undefined;
-	if (event.kind === 'error') {
-		return {
-			type: 'failure',
-			error: text ?? (typeof payload.message === 'string' ? payload.message : 'Agent error')
-		};
-	}
-	if (event.kind === 'completion') {
-		const terminalStatus = payload.status ?? payload.transition;
-		return {
-			type: 'result',
-			content: payload,
-			is_error: terminalStatus !== 'succeeded'
-		};
-	}
-	const toolName =
-		typeof payload.tool === 'string'
-			? payload.tool
-			: typeof payload.tool_name === 'string'
-				? payload.tool_name
-				: null;
-	if (event.kind === 'tool_call' && !toolName) {
-		// Runtime lifecycle markers ride the tool_call audit type without a
-		// tool identity ({transition:"started"}, {runtime:"native"}, mock and
-		// privacy notices). They are status, not tool cards — a card would sit
-		// at RUNNING forever with no result to pair against.
-		const statusText =
-			typeof payload.transition === 'string'
-				? `run ${payload.transition}`
-				: typeof payload.privacy_warning === 'string'
-					? payload.privacy_warning
-					: payload.mock_mode === true
-						? 'MOCK MODE run (deterministic, no provider)'
-						: typeof payload.runtime === 'string'
-							? `runtime ${payload.runtime}`
-							: 'runtime event';
-		return { type: 'status', text: statusText, content: payload };
-	}
-	return {
-		type: event.kind,
-		text,
-		tool_name: toolName,
-		tool_call_id:
-			typeof payload.call_id === 'string'
-				? payload.call_id
-				: typeof payload.tool_call_id === 'string'
-					? payload.tool_call_id
-					: null,
-		input: payload.arguments ?? payload.input ?? payload,
-		content: payload
-	};
 }
 
 export default function Console() {
@@ -338,7 +269,7 @@ export default function Console() {
 										? `${message.body}${event.text ?? ''}`
 										: message.body,
 								status:
-									event.type === 'failure'
+									event.type === 'failure' && !event.tool_call_id
 										? 'failed'
 										: event.type === 'result'
 											? event.is_error
@@ -350,7 +281,7 @@ export default function Console() {
 				)
 			}));
 			setAuditEvents((prior) => [event, ...prior].slice(0, 80));
-			if (event.type === 'failure' || event.type === 'result') {
+			if (isRunTerminalEvent(event)) {
 				activeTurnRef.current = null;
 				setBusyWindow(null);
 			}
@@ -1382,12 +1313,13 @@ function DiffView({ oldStr, newStr }: { oldStr: string; newStr: string }) {
 	);
 }
 
-function ToolCallCard({ event, result }: { event: ConsoleChatEvent; result?: ConsoleChatEvent }) {
+export function ToolCallCard({ event, result }: { event: ConsoleChatEvent; result?: ConsoleChatEvent }) {
 	const [open, setOpen] = useState(false);
 	const Icon = toolIcon(event.tool_name);
 	const name = (event.tool_name ?? 'tool').toUpperCase();
 	const summary = summarizeToolInput(event.tool_name, event.input);
-	const done = !!result;
+	const failed = result?.type === 'failure' || result?.is_error === true;
+	const done = !!result && !failed;
 	const isEdit = ['edit', 'multiedit', 'write'].includes((event.tool_name ?? '').toLowerCase());
 	const editInput = asRecord(event.input);
 	const oldStr = typeof editInput.old_string === 'string' ? editInput.old_string : '';
@@ -1397,18 +1329,22 @@ function ToolCallCard({ event, result }: { event: ConsoleChatEvent; result?: Con
 			: typeof editInput.content === 'string'
 				? editInput.content
 				: '';
-	const resultText = result ? clip(resultToText(result.content)) : '';
+	const resultText = result ? clip(result.error ?? resultToText(result.content)) : '';
 	const Chevron = open ? ChevronDown : ChevronRight;
 	return (
-		<div style={toolCardStyle} data-topo="ai">
+		<div style={toolCardStyle} data-topo={failed ? 'bad' : 'ai'}>
 			<button type="button" style={toolCardHeaderStyle} onClick={() => setOpen((v) => !v)}>
 				<Chevron size={13} strokeWidth={1.8} style={{ color: 'var(--l2-fg-3)', flex: '0 0 auto' }} />
 				<Icon size={14} strokeWidth={1.7} style={{ color: 'var(--atlas-celestial)', flex: '0 0 auto' }} />
 				<span style={toolNameStyle}>{name}</span>
 				<span style={toolSummaryStyle}>{summary}</span>
 				<span style={{ flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-					<Circle size={7} fill={done ? 'rgba(70,240,160,0.95)' : 'rgba(255,214,0,0.95)'} stroke="none" />
-					<span style={monoMicroStyle}>{done ? 'DONE' : 'RUNNING'}</span>
+					<Circle
+						size={7}
+						fill={failed ? 'rgba(255,77,125,0.95)' : done ? 'rgba(70,240,160,0.95)' : 'rgba(255,214,0,0.95)'}
+						stroke="none"
+					/>
+					<span style={monoMicroStyle}>{failed ? 'FAILED' : done ? 'DONE' : 'RUNNING'}</span>
 				</span>
 			</button>
 			{open && (
@@ -1438,7 +1374,7 @@ function AgentTurn({ message }: { message: ConsoleMessage }) {
 	const resultsByCall = useMemo(() => {
 		const map: Record<string, ConsoleChatEvent> = {};
 		for (const e of events) {
-			if (e.type === 'tool_result' && e.tool_call_id) map[e.tool_call_id] = e;
+			if ((e.type === 'tool_result' || e.type === 'failure') && e.tool_call_id) map[e.tool_call_id] = e;
 		}
 		return map;
 	}, [events]);
@@ -1472,6 +1408,7 @@ function AgentTurn({ message }: { message: ConsoleMessage }) {
 					);
 				}
 				if (event.type === 'failure') {
+					if (event.tool_call_id) return null;
 					return (
 						<div key={idx} style={turnErrorStyle}>
 							<AlertTriangle size={13} strokeWidth={1.8} />
