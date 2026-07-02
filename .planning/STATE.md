@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
-last_updated: "2026-07-02T13:42:00-03:00"
-last_activity: 2026-07-02 -- React console continuation moved to a route-persistent provider with buffered-event and watchdog coverage
+last_updated: "2026-07-02T13:45:00-03:00"
+last_activity: 2026-07-02 -- TUI /new is now a conversation-local reset that preserves the owned surface cursor and prompts
 progress:
   total_phases: 8
   completed_phases: 7
@@ -14,6 +14,15 @@ progress:
 ---
 
 # STATE — L2 ATLAS
+
+## Stability burn-down checkpoint — safe TUI `/new`
+
+`/new` now clears transcript items, assistant dedupe state, viewport content, and transient
+errors without rewinding `lastSurfaceSeq`. The owned surface, approvals, and current overlay
+remain intact, so the next poll requests only newer events and cannot resurrect a previously
+consumed prompt. It remains a local conversation reset and performs no backend lifecycle action.
+
+Fresh evidence: the focused reset regression passed and the complete Go TUI suite passed.
 
 ## Stability burn-down checkpoint — route-safe Web continuation
 

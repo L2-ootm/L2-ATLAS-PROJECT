@@ -128,7 +128,6 @@ func (m model) executeSlashCommand(input string) (bool, model, tea.Cmd) {
 		return true, m, nil
 	case "/new":
 		m.items = nil
-		m.lastSurfaceSeq = -1
 		m.lastAssistantText = ""
 		if m.vpReady {
 			m.viewport.SetContent("")
