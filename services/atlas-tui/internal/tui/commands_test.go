@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"atlas-tui/internal/client"
 )
 
 func TestSlashSettingsOpensProviderOverlay(t *testing.T) {
@@ -53,6 +55,54 @@ func TestSecondTurnPreservesVisibleConversation(t *testing.T) {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("visible conversation lost %q: %s", expected, view)
 		}
+	}
+}
+
+func TestNewClearsConversationWithoutReplayingSurfaceState(t *testing.T) {
+	m := chatReadyModel(120, 36)
+	m.items = []transcriptItem{
+		{kind: itemUser, text: "old prompt"},
+		{kind: itemAssistant, text: "old answer"},
+	}
+	m.lastAssistantText = "old answer"
+	m.viewport.SetContent("stale viewport")
+	m.errMsg = "transient failure"
+	m.lastSurfaceSeq = 42
+	m.surface.OwnerToken = "owner-secret"
+	m.approvals = []client.ToolApproval{
+		{ID: "approval-1", ToolName: "terminal", Status: "pending"},
+	}
+	m.overlay = newApprovalOverlay(m.approvals[0])
+	ownedSurface := m.surface
+	ownedOverlay := m.overlay
+
+	handled, updated, cmd := m.executeSlashCommand("/new")
+
+	if !handled || cmd != nil {
+		t.Fatalf("/new result: handled=%v cmd=%v", handled, cmd)
+	}
+	if len(updated.items) != 0 || updated.lastAssistantText != "" || updated.errMsg != "" {
+		t.Fatalf(
+			"conversation-local state survived: items=%d dedupe=%q err=%q",
+			len(updated.items),
+			updated.lastAssistantText,
+			updated.errMsg,
+		)
+	}
+	if strings.Contains(updated.viewport.View(), "stale viewport") {
+		t.Fatalf("viewport was not cleared: %q", updated.viewport.View())
+	}
+	if updated.lastSurfaceSeq != 42 {
+		t.Fatalf("surface cursor changed: got %d want 42", updated.lastSurfaceSeq)
+	}
+	if updated.surface != ownedSurface {
+		t.Fatalf("owned surface changed: got %#v want %#v", updated.surface, ownedSurface)
+	}
+	if len(updated.approvals) != 1 || updated.approvals[0].ID != "approval-1" {
+		t.Fatalf("owned approvals changed: %#v", updated.approvals)
+	}
+	if updated.overlay != ownedOverlay {
+		t.Fatal("active overlay changed")
 	}
 }
 
