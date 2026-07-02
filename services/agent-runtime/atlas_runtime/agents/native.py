@@ -133,6 +133,11 @@ class NativeAtlasAgent(AgentRuntime):
 
             focus = focus_service.get_current_focus(conn)
             framework = (focus.framework if focus else "") or ""
+            if framework and not _is_model_override(conn, framework):
+                # Focus.framework doubles as a model override (A4), but
+                # operators also store methodology labels ("GSD") there. A
+                # non-model value must never reach a provider as a model id.
+                framework = ""
             resolved = config_service.resolve_provider(focus_framework=framework)
             model = self._model or resolved["model"]
             provider = self._provider or resolved["provider"]
@@ -150,6 +155,15 @@ class NativeAtlasAgent(AgentRuntime):
                 provider = self._provider or creds["provider"] or provider
                 base_url = creds["base_url"] or base_url
                 api_key = creds["api_key"] or api_key
+                # The Codex backend rejects non-Codex model slugs outright
+                # ("The '<model>' model is not supported ..."), and the config
+                # default is typically an OpenRouter-era id. Swap to the
+                # operator's Codex default unless the model is already
+                # Codex-plausible (known slug or a gpt-* id newer than the
+                # offline list).
+                codex_ids = codex_auth.codex_model_ids()
+                if codex_ids and model not in codex_ids and not model.startswith("gpt-"):
+                    model = codex_ids[0]
         except Exception as exc:  # noqa: BLE001 — never block a run on config
             logger.debug("native provider resolution fell back to defaults: %s", exc)
         return model, provider, base_url, api_key, auth_mode
@@ -390,6 +404,27 @@ class NativeAtlasAgent(AgentRuntime):
             emit(conn, lock, run_id=run_id, **kwargs)
         except Exception as exc:  # fail-open audit, never crash the run
             logger.warning("NativeAtlasAgent audit emit failed: %s", exc)
+
+
+def _is_model_override(conn: sqlite3.Connection, value: str) -> bool:
+    """True when a Focus.framework value actually names a model.
+
+    Accepts provider-scoped ids ("anthropic/claude-opus-4") and ids present in
+    the model registry. Everything else — methodology labels like "GSD" — must
+    not override the configured model.
+    """
+    value = value.strip()
+    if "/" in value:
+        return True
+    try:
+        from atlas_runtime import model_registry  # noqa: PLC0415
+
+        rows = model_registry.list_models(conn, active_only=False)
+        return any(
+            str(row.get("model_id", "")).lower() == value.lower() for row in rows
+        )
+    except Exception:  # noqa: BLE001 — registry unavailable → not a model
+        return False
 
 
 def _contains_secret(text: str) -> bool:

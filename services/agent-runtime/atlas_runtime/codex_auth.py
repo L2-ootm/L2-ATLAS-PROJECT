@@ -108,6 +108,54 @@ def cli_status() -> dict[str, Any]:
     }
 
 
+def owned_status() -> dict[str, Any]:
+    """Secret-free presence check of the foundation's OWNED Codex store.
+
+    After `atlas auth import-codex`, runtime credential resolution reads the
+    foundation store (never ~/.codex again — D-001). So *this*, not
+    cli_status(), answers "can an oauth_import run execute right now". A
+    present refresh_token is sufficient: the foundation refreshes an expired
+    access token at run time.
+    """
+    try:
+        fa = _foundation_auth()
+        data = fa._read_codex_tokens()  # noqa: SLF001 — foundation API (D-001)
+    except Exception as exc:  # noqa: BLE001 — missing store == not imported
+        return {"present": False, "reason": str(exc)[:120]}
+    tokens = data.get("tokens") or {}
+    access = str(tokens.get("access_token") or "")
+    claims = _jwt_claims(access) if access else {}
+    exp = int(claims.get("exp", 0) or 0)
+    now = int(time.time())
+    return {
+        "present": True,
+        "has_refresh_token": bool(tokens.get("refresh_token")),
+        "access_token_expired": bool(exp and exp <= now),
+        "expires_in_seconds": (exp - now) if exp else None,
+    }
+
+
+def codex_model_ids() -> list[str]:
+    """Codex-backend-capable model slugs, operator default first.
+
+    Offline resolution (config.toml default > cache > curated fallback); never
+    performs a network call here. Returns [] when the foundation is absent so
+    callers can no-op instead of failing a run on model discovery.
+    """
+    try:
+        foundation = _find_foundation()
+        if foundation is not None:
+            path = str(foundation)
+            if path not in sys.path:
+                sys.path.insert(0, path)
+        from hermes_cli import codex_models  # noqa: PLC0415
+
+        return list(codex_models.get_codex_model_ids())
+    except Exception as exc:  # noqa: BLE001 — discovery is best-effort
+        logger.debug("codex model discovery unavailable: %s", exc)
+        return []
+
+
 def import_from_codex_cli() -> dict[str, Any]:
     """Bootstrap Codex tokens from ~/.codex into the foundation's owned store.
 
@@ -141,7 +189,9 @@ def resolve_codex_credentials(*, force_refresh: bool = False) -> dict[str, str]:
 __all__ = [
     "cli_status",
     "codex_home",
+    "codex_model_ids",
     "import_from_codex_cli",
+    "owned_status",
     "resolve_codex_credentials",
     "set_foundation_loader",
 ]

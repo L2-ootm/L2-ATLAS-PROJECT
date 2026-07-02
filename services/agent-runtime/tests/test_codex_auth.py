@@ -166,6 +166,102 @@ class _Capture:
         return _H()
 
 
+# --- owned_status (secret-free read of the foundation store) ---------------
+
+
+def test_owned_status_absent_when_foundation_raises():
+    class _Raising:
+        def _read_codex_tokens(self):
+            raise RuntimeError("No Codex credentials stored.")
+
+    codex_auth.set_foundation_loader(lambda: _Raising())
+    st = codex_auth.owned_status()
+    assert st["present"] is False
+
+
+def test_owned_status_present_without_leaking_tokens():
+    future = int(time.time()) + 3600
+
+    class _Store:
+        def _read_codex_tokens(self):
+            return {"tokens": {
+                "access_token": _jwt(future), "refresh_token": "rt-secret",
+            }}
+
+    codex_auth.set_foundation_loader(lambda: _Store())
+    st = codex_auth.owned_status()
+    assert st["present"] is True
+    assert st["has_refresh_token"] is True
+    assert st["access_token_expired"] is False
+    assert "rt-secret" not in json.dumps(st)
+
+
+def test_owned_status_expired_access_token_still_present():
+    past = int(time.time()) - 10
+
+    class _Store:
+        def _read_codex_tokens(self):
+            return {"tokens": {"access_token": _jwt(past), "refresh_token": "rt"}}
+
+    codex_auth.set_foundation_loader(lambda: _Store())
+    st = codex_auth.owned_status()
+    assert st["present"] is True
+    assert st["access_token_expired"] is True
+    assert st["has_refresh_token"] is True  # foundation can refresh at run time
+
+
+# --- oauth_import model compatibility ---------------------------------------
+
+
+def test_native_oauth_import_swaps_incompatible_model_to_codex_default(
+    db, lock, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    (tmp_path / "config.yaml").write_text(
+        "provider:\n  auth_mode: oauth_import\n  model: anthropic/claude-sonnet-4\n",
+        encoding="utf-8",
+    )
+    cap = _Capture()
+    monkeypatch.setattr(native, "_default_factory", cap)
+    monkeypatch.setattr(
+        codex_auth, "resolve_codex_credentials",
+        lambda **_: {
+            "provider": "openai-codex",
+            "base_url": "https://chatgpt.com/backend-api/codex",
+            "api_key": "codex-access-token",
+        },
+    )
+    monkeypatch.setattr(codex_auth, "codex_model_ids", lambda: ["gpt-5.5", "gpt-5.4"])
+    mid, rid = _insert_mission_run(db)
+    outcome = NativeAtlasAgent().execute(db, lock, mission_id=mid, run_id=rid, prompt="go")
+    assert outcome.status == "succeeded"
+    assert cap.kw["model"] == "gpt-5.5"
+
+
+def test_native_oauth_import_keeps_codex_capable_model(db, lock, monkeypatch, tmp_path):
+    """A gpt-* id newer than the offline list must survive (no silent downgrade)."""
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    (tmp_path / "config.yaml").write_text(
+        "provider:\n  auth_mode: oauth_import\n  model: gpt-6-codex\n",
+        encoding="utf-8",
+    )
+    cap = _Capture()
+    monkeypatch.setattr(native, "_default_factory", cap)
+    monkeypatch.setattr(
+        codex_auth, "resolve_codex_credentials",
+        lambda **_: {
+            "provider": "openai-codex",
+            "base_url": "https://chatgpt.com/backend-api/codex",
+            "api_key": "codex-access-token",
+        },
+    )
+    monkeypatch.setattr(codex_auth, "codex_model_ids", lambda: ["gpt-5.5"])
+    mid, rid = _insert_mission_run(db)
+    outcome = NativeAtlasAgent().execute(db, lock, mission_id=mid, run_id=rid, prompt="go")
+    assert outcome.status == "succeeded"
+    assert cap.kw["model"] == "gpt-6-codex"
+
+
 def test_native_oauth_import_routes_through_codex(db, lock, monkeypatch, tmp_path):
     monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
     (tmp_path / "config.yaml").write_text(
