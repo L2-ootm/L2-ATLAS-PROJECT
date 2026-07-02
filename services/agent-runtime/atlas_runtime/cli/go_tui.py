@@ -38,6 +38,64 @@ def _usable(path: pathlib.Path | None) -> bool:
     return path is not None and path.is_file()
 
 
+def _checkout_sources(tui_dir: pathlib.Path) -> list[pathlib.Path]:
+    sources = [tui_dir / "go.mod", tui_dir / "go.sum"]
+    sources.extend(tui_dir.rglob("*.go"))
+    return [path for path in sources if path.is_file()]
+
+
+def _checkout_binary_stale(tui_dir: pathlib.Path, binary: pathlib.Path) -> bool:
+    if not binary.is_file():
+        return True
+    sources = _checkout_sources(tui_dir)
+    return bool(sources) and max(path.stat().st_mtime for path in sources) > binary.stat().st_mtime
+
+
+def _source_commit(repo: pathlib.Path) -> str:
+    git = shutil.which("git")
+    if not git or not (repo / ".git").exists():
+        return "source"
+    completed = subprocess.run(
+        [git, "rev-parse", "--short", "HEAD"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    commit = completed.stdout.strip()
+    return commit if completed.returncode == 0 and commit else "source"
+
+
+def _build_checkout(tui_dir: pathlib.Path, binary: pathlib.Path) -> pathlib.Path:
+    go = shutil.which("go")
+    if not go:
+        raise TUILaunchError(
+            "atlas-tui source is newer than its binary and Go is unavailable. "
+            "Install Go 1.26+ or run scripts/install-atlas-cli.ps1."
+        )
+    commit = _source_commit(tui_dir.parents[1])
+    completed = subprocess.run(
+        [
+            go,
+            "build",
+            "-trimpath",
+            "-ldflags",
+            f"-s -w -X main.version=dev -X main.commit={commit}",
+            "-o",
+            os.fspath(binary),
+            ".",
+        ],
+        cwd=tui_dir,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode or not binary.is_file():
+        detail = completed.stderr.strip() or f"exit {completed.returncode}"
+        raise TUILaunchError(f"failed to rebuild stale atlas-tui: {detail}")
+    return binary
+
+
 def resolve_binary() -> pathlib.Path:
     """Resolve atlas-tui in the documented precedence order."""
     override = os.environ.get("ATLAS_TUI_BIN", "").strip()
@@ -52,9 +110,13 @@ def resolve_binary() -> pathlib.Path:
 
     repo = _repo_root()
     if repo is not None:
-        checkout = repo / "services" / "atlas-tui" / binary_name()
-        if _usable(checkout):
-            return checkout
+        tui_dir = repo / "services" / "atlas-tui"
+        checkout = tui_dir / binary_name()
+        if (tui_dir / "go.mod").is_file():
+            if _checkout_binary_stale(tui_dir, checkout):
+                return _build_checkout(tui_dir, checkout)
+            if _usable(checkout):
+                return checkout
 
     found = shutil.which("atlas-tui")
     if found:

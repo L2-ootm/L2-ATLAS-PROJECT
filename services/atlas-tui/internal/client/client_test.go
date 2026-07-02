@@ -127,6 +127,7 @@ func TestSurfaceLifecycleUsesOwnerToken(t *testing.T) {
 			}
 			_, _ = w.Write([]byte(`{"id":"surface-1","surface":{"kind":"tui","session_id":"tui-1"},"workspace":{"kind":"global","root":"C:\\atlas"},"agent":"native","model":{"provider":"openrouter","model_id":"test"},"permission_mode":"ask","state":"active","owner_token":"owner-1"}`))
 		case "/v1/surface-sessions/surface-1/heartbeat",
+			"/v1/surface-sessions/surface-1/cancel",
 			"/v1/surface-sessions/surface-1/close":
 			var body map[string]string
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -155,11 +156,14 @@ func TestSurfaceLifecycleUsesOwnerToken(t *testing.T) {
 	if _, err = c.HeartbeatSurface(context.Background(), session); err != nil {
 		t.Fatal(err)
 	}
+	if _, err = c.CancelSurface(context.Background(), session); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = c.CloseSurface(context.Background(), session); err != nil {
 		t.Fatal(err)
 	}
-	if len(calls) != 2 {
-		t.Fatalf("want heartbeat and close calls, got %v", calls)
+	if len(calls) != 3 {
+		t.Fatalf("want heartbeat, cancel, and close calls, got %v", calls)
 	}
 }
 

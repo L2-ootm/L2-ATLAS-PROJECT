@@ -8,34 +8,38 @@ contract the cockpit uses. The Rust runtime and Python services stay authoritati
 
 ## Status
 
-Phase P8 complete: `atlas` and `atlas tui` launch this Go sidecar. Phase 10.7 retired the rejected
-OpenTUI and Python Rich prototypes, making this the sole supported terminal surface. Working today:
+The 2026-07-01 operator UAT correction replaced the dashboard-first prototype with a chat-first
+agent surface. `atlas` and `atlas tui` launch this Go sidecar. Working today:
 
-- Connects to the gateway and renders the **provider mesh** (`/v1/provider/status`,
-  `/v1/provider/modes`) — which ways you can wire a model and what's active.
-- Lists **missions** (`/v1/missions`).
-- **Streams a run live** over SSE (`/v1/runs/{id}/stream`) into a scrollback viewport.
+- Opens with the composer focused. Type immediately and press `enter`; no compose mode or mission
+  shortcut is required.
+- Keeps one visible conversation over the owning surface session. Internal mission/run records
+  remain audit mechanics rather than primary navigation.
+- **Streams each agent turn live** over SSE (`/v1/runs/{id}/stream`) into the transcript.
 - Renders assistant text, reasoning, tool calls/results, diffs, retrieval, and failures from the
   append-only audit stream using a display-field allowlist (unknown payload maps stay opaque).
-- **Composer**: press `n`, type a mission, `ctrl+s` — creates the mission, starts an
-  executing run (`/v1/missions`, `/v1/missions/{id}/run` with `execute:true`) and streams it.
-- **Permission pane**: polls `/v1/tools/approvals` and lets you `a`pprove / re`x`ject the
-  selected pending tool call (the 10.5 surface-scoped broker queue).
-- **Provider settings**: press `s` to edit mode/provider/model/base URL, store an API key through
+- Refuses implicit mock conversations. An unavailable provider produces an onboarding state and
+  preserves the draft; mock execution requires `ATLAS_TUI_ALLOW_MOCK=1`.
+- Polls only `/v1/surface-sessions/{id}/approvals` with the owner token. A pending decision keeps
+  transcript context visible and offers once/session/durable/deny choices.
+- Maps Claude Code auth mode to the `claude_code` runtime; other provider modes use the native
+  runtime/provider mesh.
+- **Provider settings**: press `ctrl+p` to edit mode/provider/model/base URL, store an API key through
   the stdin-safe gateway boundary, or import Codex auth. Config writes use optimistic revisions.
 - **Provider probe**: `ctrl+t` from settings saves, runs one real mission through the active
   provider, labels the outcome `LIVE`, `MOCK MODE`, or `FAILED`, then archives the probe mission.
   Credential writes are refused when the gateway URL is not loopback.
+- Shows provider/session/workspace/policy/approval context in an optional wide-terminal sidebar;
+  missions and operational controls are available through slash commands.
 
 ### Keys
 
-| Focus | Keys |
+| Surface | Keys |
 |---|---|
-| global | `tab` cycle missions/permissions · `n` compose · `s` settings · `p` perms · `m` missions · `r` refresh · `q` quit |
-| missions | `j`/`k` move · `enter` stream selected mission's latest run |
-| permissions | `j`/`k` move · `a`/`enter` approve · `x` reject |
-| composer | `ctrl+s` run · `esc` cancel |
-| settings | `tab` fields · `left`/`right` mode · `ctrl+s` save · `ctrl+t` save + probe · `esc` close |
+| conversation | `enter` submit · `alt+enter` newline · `ctrl+p` settings · `ctrl+o` context · `ctrl+c` cancel/exit |
+| commands | `/settings` · `/missions` · `/permissions` · `/sidebar` · `/new` · `/quit` |
+| approval | arrows or `j`/`k` · number/`enter` select · `esc` deny |
+| settings | `tab` fields · left/right mode · `ctrl+s` save · `ctrl+t` save + probe · `esc` conversation |
 
 ## Run
 
@@ -49,7 +53,9 @@ go run . --gateway http://127.0.0.1:8484
 ```
 
 The installers build a stripped binary into `$ATLAS_HOME/bin` (default `~/.atlas/bin`). Resolution
-order is `ATLAS_TUI_BIN`, ATLAS-owned bin, source-checkout build output, then `PATH`.
+order is `ATLAS_TUI_BIN`, ATLAS-owned bin, source checkout, then `PATH`. In a source checkout the
+launcher compares the executable timestamp with Go sources and rebuilds a missing/stale binary
+before launch. `atlas-tui --version` prints the embedded build identity.
 
 ### Glyphs on legacy terminals
 
@@ -74,7 +80,9 @@ Python + Go working set was 63.17 MiB (47.89 + 15.28 MiB). No dependency was add
 - P6: complete — rich transcript + 80x24/140x40 ASCII/Unicode render tests.
 - P7: complete — typed config/model/auth client, four-mode settings, optimistic save, and
   live/mock/failure probe with automatic cleanup.
-- P8: complete — launcher/installer cutover, source/PATH fallback, and hidden Rich rollback.
-- Phase 10.8 owns the evidence-based final retirement decision for that rollback.
+- P8: complete — launcher/installer cutover and source/PATH fallback.
+- 2026-07-01 correction: chat-first shell, explicit readiness, visible conversation, contextual
+  approvals/sidebar, cancellation-first Ctrl-C, and resolved-artifact integrity.
+- Phase 10.8 owns broader cross-surface UAT and cutover evidence.
 
 See `docs/plans/2026-06-28-atlas-go-tui-and-provider-mesh-design.md`.

@@ -69,10 +69,10 @@ func TestSettingsOpenValidationConflictAndEscape(t *testing.T) {
 	m := New(nil, "http://127.0.0.1:8484")
 	m.phase = phaseReady
 
-	opened, openCmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	opened, openCmd := m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlP})
 	openedModel := opened.(model)
 	if openedModel.focus != focusSettings || openCmd == nil {
-		t.Fatalf("s must open and load settings: focus=%v cmd=%v", openedModel.focus, openCmd)
+		t.Fatalf("ctrl+p must open and load settings: focus=%v cmd=%v", openedModel.focus, openCmd)
 	}
 
 	form := newSettingsForm(testConfig(), nil)
@@ -101,7 +101,7 @@ func TestSettingsOpenValidationConflictAndEscape(t *testing.T) {
 	before := conflicted.settings.inputs[settingsProvider].Value()
 	escaped, escapeCmd := conflicted.handleSettingsKey(tea.KeyMsg{Type: tea.KeyEsc})
 	escapedModel := escaped.(model)
-	if escapeCmd != nil || escapedModel.focus != focusMissions ||
+	if escapeCmd != nil || escapedModel.focus != focusComposer || !escapedModel.composer.Focused() ||
 		escapedModel.settings.inputs[settingsProvider].Value() != before {
 		t.Fatal("escape must close settings without mutation")
 	}

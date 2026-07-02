@@ -1,7 +1,7 @@
 # ATLAS TUI Chat-First Redesign — Product Intent
 
 **Date:** 2026-07-01
-**Status:** Accepted product intent; implementation intentionally deferred
+**Status:** Implemented 2026-07-01; interactive operator UAT pending
 **Reference:** MiMoCode interaction hierarchy and terminal ergonomics, transformed into an
 ATLAS-native experience
 **Trigger:** First operator UAT of the Go/BubbleTea TUI failed product acceptance
