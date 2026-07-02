@@ -36,18 +36,28 @@ def active_status(config: Optional[config_service.AtlasConfig] = None) -> dict[s
     auth_mode = resolved.get("auth_mode", "api_key")
     # A run hits a real provider when credentials resolve OR the mode is
     # credential-less (claude_code uses the local session; freellmapi may use a
-    # keyless base_url). Otherwise it falls back to deterministic MOCK MODE.
-    real = api_key_present or auth_mode in ("claude_code", "freellmapi")
+    # keyless base_url). oauth_import resolves its credential at run time from
+    # the foundation's owned store, so the api_key projection is always empty
+    # for it — the owned store, not resolve_provider, is its truth.
+    codex_ready = auth_mode == "oauth_import" and _codex_runtime_ready()
+    real = api_key_present or codex_ready or auth_mode in ("claude_code", "freellmapi")
     return {
         "provider": resolved.get("provider", ""),
         "model": resolved.get("model", ""),
         "auth_mode": auth_mode,
         "auth_mode_label": _MODE_LABELS.get(auth_mode, auth_mode),
         "base_url": resolved.get("base_url", "") or None,
-        "credentials_present": api_key_present,
+        "credentials_present": api_key_present or codex_ready,
         "mock_mode": not real,
         "remediation": None if real else _active_remediation(auth_mode),
     }
+
+
+def _codex_runtime_ready() -> bool:
+    """True when the foundation's owned Codex store can execute a run. A
+    present refresh_token suffices — the foundation refreshes at run time."""
+    owned = codex_auth.owned_status()
+    return bool(owned.get("present") and owned.get("has_refresh_token"))
 
 
 def _active_remediation(auth_mode: str) -> str:
@@ -80,18 +90,28 @@ def _api_key_mode() -> dict[str, Any]:
 
 
 def _codex_mode() -> dict[str, Any]:
+    imported = _codex_runtime_ready()
     st = codex_auth.cli_status()
     present = bool(st.get("present") and st.get("readable"))
     fresh = present and not st.get("access_token_expired", True)
+    if imported:
+        detail = "imported - foundation store owns refresh"
+        if present and st.get("email"):
+            detail += f" (codex login: {st.get('email')})"
+        return {"available": True, "detail": detail, "remediation": None}
+    if fresh:
+        return {
+            "available": True,
+            "detail": f"codex login: {st.get('email')} (import pending)",
+            "remediation": "run `atlas auth import-codex` to activate",
+        }
     return {
-        "available": fresh,
+        "available": False,
         "detail": (
-            f"codex login: {st.get('email')}"
-            + ("" if fresh else " (token stale — refresh needed)")
+            f"codex login: {st.get('email')} (token stale - refresh needed)"
             if present else "no ~/.codex login found"
         ),
-        "remediation": None if fresh
-        else "run `codex` to log in/refresh, then `atlas auth import-codex`",
+        "remediation": "run `codex` to log in/refresh, then `atlas auth import-codex`",
     }
 
 

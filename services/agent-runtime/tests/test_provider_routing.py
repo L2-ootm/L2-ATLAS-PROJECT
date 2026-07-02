@@ -144,6 +144,44 @@ def test_native_execute_focus_overrides_model(db, lock, monkeypatch, tmp_path):
     assert cap.kw["model"] == "anthropic/claude-opus-4"
 
 
+def test_native_methodology_framework_never_overrides_model(db, lock, monkeypatch, tmp_path):
+    """Focus.framework holding a methodology label ("GSD") must not reach a
+    provider as a model id — the configured model stays authoritative."""
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    _configure_fake_api_key(monkeypatch, tmp_path)
+    _insert_focus(db, framework="GSD")
+    cap = _Capture()
+    monkeypatch.setattr(native, "_default_factory", cap)
+    mid, rid = _insert_mission_run(db)
+    outcome = NativeAtlasAgent().execute(db, lock, mission_id=mid, run_id=rid, prompt="go")
+    assert outcome.status == "succeeded"
+    assert cap.kw["model"] == "anthropic/claude-sonnet-4"
+
+
+def test_native_registry_model_framework_still_overrides(db, lock, monkeypatch, tmp_path):
+    """A slash-less framework value that names a registry model keeps the
+    A4 override behavior."""
+    from atlas_runtime import model_registry
+
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    _configure_fake_api_key(monkeypatch, tmp_path)
+    model_registry.ensure_schema(db)
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    db.execute(
+        "INSERT INTO model_registry(model_id,provider,source,first_seen,last_seen,active) "
+        "VALUES (?,?,?,?,?,1)",
+        ("claude-fable-5", "anthropic", "seed", now, now),
+    )
+    db.commit()
+    _insert_focus(db, framework="claude-fable-5")
+    cap = _Capture()
+    monkeypatch.setattr(native, "_default_factory", cap)
+    mid, rid = _insert_mission_run(db)
+    outcome = NativeAtlasAgent().execute(db, lock, mission_id=mid, run_id=rid, prompt="go")
+    assert outcome.status == "succeeded"
+    assert cap.kw["model"] == "claude-fable-5"
+
+
 def test_native_explicit_model_beats_config(db, lock, monkeypatch, tmp_path):
     monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
     _configure_fake_api_key(monkeypatch, tmp_path)

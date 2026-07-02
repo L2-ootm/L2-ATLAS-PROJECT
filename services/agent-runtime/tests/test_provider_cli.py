@@ -48,6 +48,45 @@ def test_active_status_freellmapi_is_live_without_key(monkeypatch, tmp_path: Pat
     assert info["mock_mode"] is False  # keyless endpoint still calls a real provider
 
 
+def test_active_status_oauth_import_live_when_owned_store_present(
+    monkeypatch, tmp_path: Path
+):
+    """oauth_import resolves its credential at run time from the foundation's
+    owned store; status must agree with what a run would actually do."""
+    from atlas_runtime import codex_auth
+
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    (tmp_path / "config.yaml").write_text(
+        "provider:\n  auth_mode: oauth_import\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        codex_auth, "owned_status",
+        lambda: {"present": True, "has_refresh_token": True,
+                 "access_token_expired": False, "expires_in_seconds": 3600},
+    )
+    info = provider_service.active_status()
+    assert info["auth_mode"] == "oauth_import"
+    assert info["mock_mode"] is False
+    assert info["credentials_present"] is True
+    assert info["remediation"] is None
+
+
+def test_active_status_oauth_import_mock_without_owned_store(
+    monkeypatch, tmp_path: Path
+):
+    from atlas_runtime import codex_auth
+
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    (tmp_path / "config.yaml").write_text(
+        "provider:\n  auth_mode: oauth_import\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(codex_auth, "owned_status", lambda: {"present": False})
+    info = provider_service.active_status()
+    assert info["mock_mode"] is True
+    assert info["credentials_present"] is False
+    assert "import-codex" in info["remediation"]
+
+
 # --- provider_service.modes_status -----------------------------------------
 
 
