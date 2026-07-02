@@ -30,6 +30,10 @@ def test_resolution_order_env_then_atlas_home_then_checkout_then_path(
     checkout = _touch_binary(
         tui / go_tui.binary_name()
     )
+    # Checkout sources older than the owned/checkout binaries: a fresh install
+    # must keep winning over an unchanged source checkout.
+    past = time.time() - 120
+    os.utime(tui / "go.mod", (past, past))
     on_path = _touch_binary(tmp_path / "path" / go_tui.binary_name())
     monkeypatch.setattr(go_tui, "_repo_root", lambda: repo)
     monkeypatch.setattr(go_tui.shutil, "which", lambda _name: str(on_path))
@@ -44,6 +48,38 @@ def test_resolution_order_env_then_atlas_home_then_checkout_then_path(
     checkout.unlink()
     (tui / "go.mod").unlink()
     assert go_tui.resolve_binary() == on_path
+
+
+def test_stale_owned_binary_yields_to_fresh_source_checkout(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An installed ~/.atlas/bin binary older than the source checkout must not
+    shadow it (the 2026-07-01 stale-executable UAT failure)."""
+    owned = _touch_binary(tmp_path / "atlas-home" / "bin" / go_tui.binary_name())
+    old = time.time() - 3600
+    os.utime(owned, (old, old))
+    repo = tmp_path / "repo"
+    tui = repo / "services" / "atlas-tui"
+    tui.mkdir(parents=True)
+    (tui / "go.mod").write_text("module atlas-tui\n", encoding="utf-8")
+    (tui / "main.go").write_text("package main\n", encoding="utf-8")
+    checkout = tui / go_tui.binary_name()
+
+    def build(argv: list[str], **kwargs: object) -> SimpleNamespace:
+        checkout.write_bytes(b"rebuilt")
+        return SimpleNamespace(returncode=0, stderr="")
+
+    monkeypatch.delenv("ATLAS_TUI_BIN", raising=False)
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path / "atlas-home"))
+    monkeypatch.setattr(go_tui, "_repo_root", lambda: repo)
+    monkeypatch.setattr(go_tui.subprocess, "run", MagicMock(side_effect=build))
+    monkeypatch.setattr(
+        go_tui.shutil, "which", lambda name: "go" if name == "go" else None
+    )
+
+    assert go_tui.resolve_binary() == checkout
+    assert checkout.read_bytes() == b"rebuilt"
 
 
 def test_launch_uses_argv_inherited_tty_and_forwarded_gateway(
