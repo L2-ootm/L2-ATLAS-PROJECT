@@ -288,6 +288,7 @@ def resolve_provider(
         "auth_mode": provider.auth_mode,
         "base_url": provider.base_url or "",
         "api_key": api_key,
+        "reasoning_effort": provider.reasoning_effort,
     }
 
 

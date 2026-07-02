@@ -57,6 +57,13 @@ def active_status(config: Optional[config_service.AtlasConfig] = None) -> dict[s
         "credentials_present": api_key_present or codex_ready,
         "mock_mode": not real,
         "remediation": None if real else _active_remediation(auth_mode),
+        "reasoning_effort": resolved.get("reasoning_effort", "") or None,
+        # Surfaced so every UI can show the cost of the mode that is wired
+        # (the run boundary additionally emits the audited D-002 warning).
+        "privacy_warning": (
+            "free endpoints may log prompts — never send secrets"
+            if auth_mode == "freellmapi" else None
+        ),
     }
 
 

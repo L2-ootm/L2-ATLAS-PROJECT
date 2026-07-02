@@ -32,6 +32,9 @@ class ProviderConfig(_FrozenControlPlaneModel):
     auth_mode: Literal["api_key", "oauth_import", "claude_code", "freellmapi"] = "api_key"
     api_key: str = ""
     base_url: str | None = None
+    # Reasoning effort forwarded to providers that support it (the foundation
+    # clamps per provider). Empty = provider default.
+    reasoning_effort: Literal["", "minimal", "low", "medium", "high"] = ""
 
     @field_validator("api_key", mode="before")
     @classmethod
@@ -43,6 +46,19 @@ class ProviderConfig(_FrozenControlPlaneModel):
         if value and not _ENV_REFERENCE.fullmatch(value):
             raise ValueError("provider.api_key must be empty or an env:VAR_NAME reference")
         return value
+
+
+class FunctionsConfig(_FrozenControlPlaneModel):
+    """Function-slot model routing for foundation side tasks.
+
+    With autoconfig on, the curator and auxiliary slots bind to the lightest
+    model available on the active provider mesh (e.g. Codex -> gpt-5.4-mini).
+    Overrides use "provider/model" form and always win over autoconfig.
+    """
+
+    autoconfig: bool = True
+    curator_model: str = ""
+    auxiliary_model: str = ""
 
 
 class RuntimeConfig(_FrozenControlPlaneModel):
@@ -235,6 +251,7 @@ class AtlasConfig(_FrozenControlPlaneModel):
     schema_version: Literal[1] = 1
     revision: int = Field(default=0, ge=0)
     provider: ProviderConfig = Field(default_factory=ProviderConfig)
+    functions: FunctionsConfig = Field(default_factory=FunctionsConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     cockpit: CockpitConfig = Field(default_factory=CockpitConfig)

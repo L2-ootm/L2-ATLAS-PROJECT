@@ -60,6 +60,7 @@ def _default_factory(
     provider: Optional[str] = None,
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
+    reasoning_effort: str = "",
 ) -> Any:
     """Construct a real foundation AIAgent (lazy import; path-injected).
 
@@ -95,7 +96,20 @@ def _default_factory(
         kwargs["base_url"] = base_url
     if api_key:
         kwargs["api_key"] = api_key
+    if reasoning_effort:
+        # The foundation clamps effort per provider; empty means default.
+        kwargs["reasoning_config"] = {"effort": reasoning_effort}
     return AIAgent(**kwargs)
+
+
+def _resolve_reasoning_effort() -> str:
+    """The operator-configured reasoning effort, or "" (provider default)."""
+    try:
+        from atlas_runtime import config_service  # noqa: PLC0415
+
+        return config_service.load_config().provider.reasoning_effort
+    except Exception:  # noqa: BLE001 — never block a run on config
+        return ""
 
 
 class NativeAtlasAgent(AgentRuntime):
@@ -257,6 +271,13 @@ class NativeAtlasAgent(AgentRuntime):
                     data={"runtime": "native", "mock_mode": True},
                 )
             else:
+                # Keep foundation side-task slots (curator/auxiliary) bound to
+                # the lightest model on the active mesh (best-effort, audited
+                # config write inside the foundation's own store).
+                from atlas_runtime import function_router  # noqa: PLC0415
+
+                function_router.apply_autoconfig()
+                reasoning_effort = _resolve_reasoning_effort()
                 factory = lambda session_id: _default_factory(  # noqa: E731
                     session_id,
                     self._max_iterations,
@@ -264,6 +285,7 @@ class NativeAtlasAgent(AgentRuntime):
                     provider=provider,
                     base_url=base_url,
                     api_key=api_key,
+                    reasoning_effort=reasoning_effort,
                 )
         try:
             agent = factory(session_id=run_id)
