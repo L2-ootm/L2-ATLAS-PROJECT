@@ -241,3 +241,56 @@ func TestSettingsCommandsDoNotRequireBusinessLogic(t *testing.T) {
 	_ = (*client.Client).StoreAPIKey
 	_ = (*client.Client).ImportCodex
 }
+
+func TestSettingsEffortCyclerPatchesAndRestores(t *testing.T) {
+	snapshot := testConfig()
+	snapshot.Provider.ReasoningEffort = "medium"
+	form := newSettingsForm(snapshot, nil)
+	if form.effort() != "medium" {
+		t.Fatalf("effort not restored from snapshot: %q", form.effort())
+	}
+	form.cycleEffort(1)
+	if form.effort() != "high" {
+		t.Fatalf("cycle failed: %q", form.effort())
+	}
+	if !strings.Contains(plain(form.view(100)), "high") {
+		t.Fatal("effort row missing from settings view")
+	}
+	form.effortIx = 0
+	if !strings.Contains(plain(form.view(100)), "provider default") {
+		t.Fatal("empty effort must render as provider default")
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/v1/config" {
+			http.NotFound(w, r)
+			return
+		}
+		var body struct {
+			Changes map[string]any `json:"changes"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body.Changes["provider.reasoning_effort"] != "low" {
+			t.Fatalf("effort missing from patch: %+v", body.Changes)
+		}
+		_, _ = w.Write([]byte(`{"schema_version":1,"revision":5,"provider":{"name":"openrouter","model":"m","auth_mode":"api_key","api_key":"","base_url":null,"reasoning_effort":"low"}}`))
+	}))
+	defer srv.Close()
+
+	m := New(client.New(srv.URL), srv.URL)
+	patched := newSettingsForm(testConfig(), nil)
+	for patched.effort() != "low" {
+		patched.cycleEffort(1)
+	}
+	m.settings = &patched
+	_, cmd := m.saveSettings(false)
+	if cmd == nil {
+		t.Fatal("save did not return a command")
+	}
+	if saved, ok := cmd().(settingsSavedMsg); !ok || saved.err != nil {
+		t.Fatalf("save failed: %+v", saved)
+	}
+}

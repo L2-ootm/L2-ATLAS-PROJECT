@@ -15,6 +15,10 @@ import (
 
 var providerModes = []string{"api_key", "oauth_import", "claude_code", "freellmapi"}
 
+// effortLevels cycles the provider.reasoning_effort setting; "" defers to
+// the provider default (the foundation clamps per provider).
+var effortLevels = []string{"", "minimal", "low", "medium", "high"}
+
 const (
 	settingsProvider = iota
 	settingsModel
@@ -25,9 +29,13 @@ const (
 
 const settingsModeField = 0
 
+// settingsEffortField is the trailing cycler after the text inputs.
+const settingsEffortField = settingsInputCount + 1
+
 type settingsForm struct {
 	revision   int64
 	modeIx     int
+	effortIx   int
 	field      int
 	inputs     [settingsInputCount]textinput.Model
 	models     []client.Model
@@ -87,6 +95,12 @@ func newSettingsForm(snapshot client.ConfigSnapshot, models []client.Model) sett
 			break
 		}
 	}
+	for i, effort := range effortLevels {
+		if effort == snapshot.Provider.ReasoningEffort {
+			form.effortIx = i
+			break
+		}
+	}
 	return form
 }
 
@@ -94,17 +108,31 @@ func (f *settingsForm) mode() string {
 	return providerModes[f.modeIx]
 }
 
+func (f *settingsForm) effort() string {
+	return effortLevels[f.effortIx]
+}
+
 func (f *settingsForm) cycleMode(delta int) {
 	f.modeIx = (f.modeIx + delta + len(providerModes)) % len(providerModes)
 }
 
+func (f *settingsForm) cycleEffort(delta int) {
+	f.effortIx = (f.effortIx + delta + len(effortLevels)) % len(effortLevels)
+}
+
+// isCycler reports whether a field index is a left/right selector rather
+// than a text input.
+func isCycler(field int) bool {
+	return field == settingsModeField || field == settingsEffortField
+}
+
 func (f *settingsForm) moveField(delta int) tea.Cmd {
-	if f.field > settingsModeField {
+	if !isCycler(f.field) {
 		f.inputs[f.field-1].Blur()
 	}
-	fieldCount := settingsInputCount + 1
+	fieldCount := settingsInputCount + 2
 	f.field = (f.field + delta + fieldCount) % fieldCount
-	if f.field > settingsModeField {
+	if !isCycler(f.field) {
 		return f.inputs[f.field-1].Focus()
 	}
 	return nil
@@ -121,13 +149,21 @@ func (f *settingsForm) update(msg tea.KeyMsg) tea.Cmd {
 			f.cycleMode(-1)
 			return nil
 		}
+		if f.field == settingsEffortField {
+			f.cycleEffort(-1)
+			return nil
+		}
 	case "right":
 		if f.field == settingsModeField {
 			f.cycleMode(1)
 			return nil
 		}
+		if f.field == settingsEffortField {
+			f.cycleEffort(1)
+			return nil
+		}
 	}
-	if f.field == settingsModeField {
+	if isCycler(f.field) {
 		return nil
 	}
 	var cmd tea.Cmd
@@ -161,6 +197,11 @@ func (f settingsForm) view(width int) string {
 	b.WriteString(row(settingsModel+1, "model", f.inputs[settingsModel].View()) + "\n")
 	b.WriteString(row(settingsBaseURL+1, "base URL", f.inputs[settingsBaseURL].View()) + "\n")
 	b.WriteString(row(settingsAPIKey+1, "API key", f.inputs[settingsAPIKey].View()) + "\n")
+	effortLabel := f.effort()
+	if effortLabel == "" {
+		effortLabel = "provider default"
+	}
+	b.WriteString(row(settingsEffortField, "effort", styleViolet(effortLabel)) + "\n")
 	if len(f.models) > 0 {
 		b.WriteString(styleMuted.Render(fmt.Sprintf(
 			"catalog: %d models; current matches are validated by the runtime on save",
@@ -203,6 +244,7 @@ func (m model) saveSettings(probeAfter bool) (model, tea.Cmd) {
 		return m, nil
 	}
 	mode := m.settings.mode()
+	effort := m.settings.effort()
 	provider := strings.TrimSpace(m.settings.inputs[settingsProvider].Value())
 	modelName := strings.TrimSpace(m.settings.inputs[settingsModel].Value())
 	baseURL := strings.TrimSpace(m.settings.inputs[settingsBaseURL].Value())
@@ -249,10 +291,11 @@ func (m model) saveSettings(probeAfter bool) (model, tea.Cmd) {
 			baseURLValue = baseURL
 		}
 		snapshot, err := c.PatchConfig(context.Background(), revision, map[string]any{
-			"provider.name":      provider,
-			"provider.model":     modelName,
-			"provider.auth_mode": mode,
-			"provider.base_url":  baseURLValue,
+			"provider.name":             provider,
+			"provider.model":            modelName,
+			"provider.auth_mode":        mode,
+			"provider.base_url":         baseURLValue,
+			"provider.reasoning_effort": effort,
 		})
 		return settingsSavedMsg{
 			snapshot:   snapshot,

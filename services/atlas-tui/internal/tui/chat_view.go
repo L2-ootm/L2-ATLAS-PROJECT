@@ -41,6 +41,9 @@ func (m model) idleChatView() string {
 		body.WriteString(styleVal.Render(readiness.Label) +
 			styleMuted.Render("  "+orDash(m.surface.PermissionMode)) + "\n")
 		body.WriteString(styleMuted.Render("enter submit  tab mode  / commands"))
+		if m.status.PrivacyWarning != nil && *m.status.PrivacyWarning != "" {
+			body.WriteString("\n" + styleWarn.Render(*m.status.PrivacyWarning))
+		}
 	} else {
 		body.WriteString(onboardingNotice(m))
 	}
@@ -186,6 +189,9 @@ func (m model) contextSidebar() string {
 	contextRow(&b, "ROOT", truncate(orDash(m.surface.Workspace.Root), 25))
 	contextRow(&b, "MODEL", truncate(orDash(m.status.Model), 25))
 	contextRow(&b, "AUTH", orDash(m.status.AuthMode))
+	if m.status.ReasoningEffort != nil && *m.status.ReasoningEffort != "" {
+		contextRow(&b, "EFFORT", *m.status.ReasoningEffort)
+	}
 	contextRow(&b, "POLICY", orDash(m.surface.PermissionMode))
 	contextRow(&b, "APPROVALS", fmt.Sprintf("%d", len(m.approvals)))
 	if len(m.approvals) > 0 {
@@ -226,10 +232,13 @@ func (m model) composerSurface(width int, readiness executionReadiness) string {
 }
 
 // modeStatusLine is the composer's identity row: active mode in its color,
-// then auth mode / model, MiMo-style.
+// then auth mode / model / effort, MiMo-style.
 func (m model) modeStatusLine() string {
 	mode := lipgloss.NewStyle().Foreground(m.mode.color()).Bold(true).Render(m.mode.label())
 	meta := orDash(m.status.AuthMode) + " / " + orDash(m.status.Model)
+	if m.status.ReasoningEffort != nil && *m.status.ReasoningEffort != "" {
+		meta += " / " + *m.status.ReasoningEffort
+	}
 	return mode + styleMuted.Render(" "+gl.bullet+" "+meta+"  "+m.mode.hint())
 }
 
