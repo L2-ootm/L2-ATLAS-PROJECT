@@ -41,6 +41,10 @@ const (
 
 const approvalPollInterval = 4 * time.Second
 const spinnerInterval = 120 * time.Millisecond
+const animInterval = 300 * time.Millisecond
+
+// starSeed keeps the ambient field deterministic per session (and in tests).
+const starSeed uint64 = 0x1157a5
 
 // --- messages --------------------------------------------------------------
 
@@ -80,6 +84,7 @@ type approvalActionMsg struct {
 }
 type pollTickMsg struct{}
 type spinnerTickMsg struct{}
+type animTickMsg struct{}
 type latestRunMsg struct {
 	runID string
 	err   error
@@ -133,6 +138,10 @@ type model struct {
 	spinFrame   int
 	turnStarted time.Time
 
+	mode      agentMode
+	animFrame int
+	stars     []star
+
 	settings        *settingsForm
 	settingsLoading bool
 	probing         bool
@@ -165,12 +174,21 @@ func New(c *client.Client, gateway string) model {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(m.fetchStatus(), m.fetchModes(), m.fetchMissions(), m.createSurface())
+	return tea.Batch(
+		m.fetchStatus(), m.fetchModes(), m.fetchMissions(), m.createSurface(),
+		scheduleAnim(),
+	)
 }
 
 // busy reports whether agent work is in flight (spinner + cancel semantics).
 func (m model) busy() bool {
 	return m.submitting || m.streaming
+}
+
+// idleHeroVisible reports whether the animated idle hero is on screen.
+func (m model) idleHeroVisible() bool {
+	return m.phase == phaseReady && m.overlay == nil && m.focus != focusSettings &&
+		len(m.items) == 0 && !m.busy()
 }
 
 // --- commands --------------------------------------------------------------
@@ -248,6 +266,10 @@ func schedulePoll() tea.Cmd {
 
 func scheduleSpinner() tea.Cmd {
 	return tea.Tick(spinnerInterval, func(time.Time) tea.Msg { return spinnerTickMsg{} })
+}
+
+func scheduleAnim() tea.Cmd {
+	return tea.Tick(animInterval, func(time.Time) tea.Msg { return animTickMsg{} })
 }
 
 func (m model) resolveLatestRun(missionID string) tea.Cmd {
@@ -328,6 +350,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.spinFrame++
 		return m, scheduleSpinner()
+
+	case animTickMsg:
+		// One persistent low-rate chain; the frame only advances while the
+		// idle hero is visible so other views stay render-stable.
+		if m.idleHeroVisible() {
+			m.animFrame++
+		}
+		return m, scheduleAnim()
 
 	case statusMsg:
 		m.phase = phaseReady
@@ -696,6 +726,12 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.showSidebar = !m.showSidebar
 			m.layout()
 			return m, nil
+		case "tab":
+			m.mode = m.mode.next()
+			return m, nil
+		case "shift+tab":
+			m.mode = m.mode.prev()
+			return m, nil
 		case "esc":
 			return m, nil
 		}
@@ -848,26 +884,44 @@ func (m model) submitComposer() (tea.Model, tea.Cmd) {
 		}
 		return updated, cmd
 	}
-	readiness := readinessFor(m.status, mockAllowed())
-	if !readiness.CanRun {
-		m.focus = focusSettings
-		m.settingsLoading = true
-		m.settings = nil
-		m.errMsg = "LIVE PROVIDER REQUIRED"
-		if readiness.Remediation != "" {
-			m.errMsg += " - " + readiness.Remediation
-		}
-		return m, m.fetchSettings()
+	if gated, blocked, cmd := m.readinessGate(); blocked {
+		// The unsent draft survives the detour into provider settings.
+		return gated, cmd
 	}
-	title := firstLine(text)
-	m.appendItem(transcriptItem{kind: itemUser, text: text})
 	m.composer.Reset()
 	m.menuMatches = nil
 	m.composer.Focus()
 	m.focus = focusComposer
+	return m.dispatchMission(firstLine(text), m.mode.wrapIntent(text), text)
+}
+
+// readinessGate routes the operator to provider settings when no live
+// provider is available. blocked=true means dispatch must not proceed.
+func (m model) readinessGate() (model, bool, tea.Cmd) {
+	readiness := readinessFor(m.status, mockAllowed())
+	if readiness.CanRun {
+		return m, false, nil
+	}
+	m.focus = focusSettings
+	m.settingsLoading = true
+	m.settings = nil
+	m.errMsg = "LIVE PROVIDER REQUIRED"
+	if readiness.Remediation != "" {
+		m.errMsg += " - " + readiness.Remediation
+	}
+	return m, true, m.fetchSettings()
+}
+
+// dispatchMission submits an intent as a mission + executed run behind the
+// same readiness gate the composer uses. display is echoed as the user turn.
+func (m model) dispatchMission(title, intent, display string) (model, tea.Cmd) {
+	if gated, blocked, cmd := m.readinessGate(); blocked {
+		return gated, cmd
+	}
+	m.appendItem(transcriptItem{kind: itemUser, text: display})
 	m.submitting = true
 	m.turnStarted = time.Now()
-	return m, tea.Batch(m.submitMission(truncate(title, 120), text), scheduleSpinner())
+	return m, tea.Batch(m.submitMission(truncate(title, 120), intent), scheduleSpinner())
 }
 
 func (m *model) appendItem(item transcriptItem) {
@@ -925,6 +979,7 @@ func (m *model) layout() {
 	m.viewport.SetContent(renderTranscript(m.items, w))
 	m.viewport.GotoBottom()
 	m.composer.SetWidth(w)
+	m.stars = buildStarfield(m.width, max(18, m.height-2), starSeed)
 }
 
 // --- view ------------------------------------------------------------------
