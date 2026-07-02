@@ -4,11 +4,12 @@ import "encoding/json"
 
 // ProviderConfig is the editable provider slice of GET /v1/config.
 type ProviderConfig struct {
-	Name     string  `json:"name"`
-	Model    string  `json:"model"`
-	AuthMode string  `json:"auth_mode"`
-	APIKey   string  `json:"api_key"`
-	BaseURL  *string `json:"base_url"`
+	Name            string  `json:"name"`
+	Model           string  `json:"model"`
+	AuthMode        string  `json:"auth_mode"`
+	APIKey          string  `json:"api_key"`
+	BaseURL         *string `json:"base_url"`
+	ReasoningEffort string  `json:"reasoning_effort"`
 }
 
 // ConfigSnapshot carries the optimistic revision required by PATCH /v1/config.
@@ -63,6 +64,8 @@ type ProviderStatus struct {
 	CredentialsPresent bool    `json:"credentials_present"`
 	MockMode           bool    `json:"mock_mode"`
 	Remediation        *string `json:"remediation"`
+	ReasoningEffort    *string `json:"reasoning_effort"`
+	PrivacyWarning     *string `json:"privacy_warning"`
 }
 
 // ProviderMode mirrors one row of GET /v1/provider/modes.
