@@ -17,7 +17,30 @@ export default defineConfig({
 	build: {
 		outDir: 'dist',
 		target: 'es2022',
-		sourcemap: true
+		sourcemap: true,
+		chunkSizeWarningLimit: 1400,
+		rollupOptions: {
+			output: {
+				manualChunks(id) {
+					const normalized = id.replaceAll('\\', '/');
+					if (!normalized.includes('/node_modules/')) return;
+					if (
+						/\/node_modules\/(?:react|react-dom|react-router|react-router-dom|scheduler)\//.test(
+							normalized
+						)
+					) {
+						return 'vendor-react';
+					}
+					if (
+						/\/node_modules\/(?:3d-force-graph|three-forcegraph|three-render-objects|three-spritetext|three|d3-[^/]+|ngraph[^/]*|kapsule|accessor-fn|data-bind-mapper|float-tooltip|tinycolor2|polished|@tweenjs\/tween\.js)\//.test(
+							normalized
+						)
+					) {
+						return 'vendor-force-graph';
+					}
+				}
+			}
+		}
 	},
 	server: { port: 5174 }
 });

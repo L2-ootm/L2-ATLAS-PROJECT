@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
-last_updated: "2026-07-02T13:51:00-03:00"
-last_activity: 2026-07-02 -- Ruff and ESLint warning burn-down complete with component-only providers and zero active legacy-UI references
+last_updated: "2026-07-02T14:00:00-03:00"
+last_activity: 2026-07-02 -- Stability and warning burn-down fully verified across Python, Go, and React
 progress:
   total_phases: 8
   completed_phases: 7
@@ -14,6 +14,30 @@ progress:
 ---
 
 # STATE — L2 ATLAS
+
+## Stability burn-down — final verification
+
+All five repair commits passed the fresh cross-stack gate: Ruff clean; agent runtime
+**707 passed / 1 skipped**; Go TUI tests and `gofmt -d` clean; React **27 passed**; bundle
+checker **3 passed**; TypeScript, zero-warning ESLint, production build, and every raw/gzip
+bundle budget passed. `git diff --check` passed and the branch was clean after verification.
+
+The in-app browser's enterprise policy blocked localhost, so the manual browser smoke could not
+run in that surface. Route continuation, pre-run-id buffering, terminal remount handling,
+failed-tool rendering, owner-window locking, and watchdog recovery are covered by DOM integration
+tests instead. Interactive TUI terminal feel remains operator-gated as before.
+
+## Stability burn-down checkpoint — measured bundle policy
+
+Vite now emits stable React and graph vendor chunks while keeping the graph route lazy. The
+prebundled `3d-force-graph` stack remains accepted with a 1.4 MB warning ceiling; no library or
+runtime dependency changed. Every build runs a dependency-free Node checker enforcing raw and
+gzip ceilings for entry, React vendor, graph vendor, and all remaining JavaScript chunks.
+
+Measured on this checkout: entry fell from **593.40/163.88 KB** raw/gzip to
+**309.65/73.53 KB**; React vendor is **284.61/89.55 KB**; graph vendor remains route-lazy at
+**1,350.05/358.56 KB**. All budgets passed, and the checker has three passing boundary/failure
+tests.
 
 ## Stability burn-down checkpoint — zero-warning source
 
