@@ -3,19 +3,74 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
-last_updated: "2026-07-01T22:32:11-03:00"
-last_activity: 2026-07-01 -- Go TUI chat-first correction implemented; interactive UAT pending
+last_updated: "2026-07-02T13:00:00-03:00"
+last_activity: 2026-07-02 -- TUI MiMo-grade upgrade + provider-mesh honesty fixes live-verified on real Codex; Svelte cockpit deleted
 progress:
   total_phases: 8
   completed_phases: 7
   total_plans: 48
   completed_plans: 48
-  percent: 88
+  percent: 90
 ---
 
 # STATE — L2 ATLAS
 
-## Current Position — Phase 10.7 Complete; Phase 10.8 TUI Correction Implemented
+## Current Position — 2026-07-02: TUI product upgrade + provider-mesh honesty, live-verified
+
+Operator-directed session (outside GSD flow, quality-first): six commits on `main`.
+
+**Provider mesh made honest end-to-end (root causes found by live UAT):**
+- `active_status()` reported MOCK for an imported Codex profile — the owned foundation
+  store (the run-time truth) was never consulted. New secret-free `codex_auth.owned_status()`
+  + `_codex_runtime_ready()`; the modes board distinguishes imported vs import-pending.
+- Focus.framework methodology labels ("GSD") were reaching providers as model ids and
+  400'ing every native run ("The 'GSD' model is not supported..."). Framework only overrides
+  the model when it names one (slash-scoped id or registry row).
+- Codex runs project the configured model onto a Codex-capable slug via shared
+  `codex_auth.effective_codex_model()` (config.toml default `gpt-5.5` first, offline).
+- `mock_mode` in `/v1/config` and the control-plane snapshot now delegates to the
+  provider-mesh verdict (was `not api_key` — blind to 3 of 4 auth modes; the web banner lied).
+- Surface sessions bind the EFFECTIVE provider/model (`openai-codex/gpt-5.5`), not raw config.
+- claude_code emits tool_name/tool_call_id inside audit `data` + `tool_completed` for
+  ToolResultBlocks so surface tool cards can name and complete (payload_json is all the
+  projection carries).
+- Launcher: a stale `~/.atlas/bin/atlas-tui.exe` now yields to a newer source checkout
+  (the exact 2026-07-01 stale-executable failure mode); pure installs unchanged.
+
+**Go TUI raised from contract-complete to product-complete** (`services/atlas-tui`):
+- New `transcript.go`: typed transcript items rendered at view time — full assistant
+  responses with markdown-lite (headings/bullets/fenced code/bold/inline code), width-aware
+  wrap + resize re-flow. (Old path collapsed replies to one 240-char line.)
+- `events.go` maps SSE events to semantic items; tools complete in place via tool_call_id;
+  terminal summaries dedupe against llm_call text; runtime markers stay quiet.
+- Slash-command registry + typed-"/" autocomplete menu (tab complete / enter run / esc keeps draft).
+- Idle hero with ATLAS logo (Unicode+ASCII), single bordered composer carrying readiness
+  color, busy spinner + elapsed, aligned onboarding board, persistent status bar.
+- `readinessFor` fails closed (zero projection = unconfigured, never LIVE).
+- Env-gated live smoke (`ATLAS_TUI_LIVE_GATEWAY`) drove the real model loop through
+  surface->mission->run->SSE->transcript and PASSED against the live gateway on the imported
+  Codex session (real gpt-5.5 reply, 21s). go fmt/vet clean; 81 tests; 8.0 MiB binary; zero deps.
+- Interactive Windows Terminal UAT (typing/resize/Ctrl+C feel) remains the operator's gate.
+
+**Web cockpit (React) console hardening, live-verified via Playwright:**
+- Lifecycle markers render as status lines, not perpetual RUNNING tool cards.
+- Stuck-turn watchdog polls the run record so a dropped terminal event can't lock the composer.
+- AgentSurfaceContext: single-flight polling, seq-dedupe, 500-event cap.
+- Console state survives route changes (module cache); mock banner refetches on interval/focus.
+- Polish: pulsing LIVE badges, composer focus ring. tsc/lint/vitest(21)/build green.
+- Live turn verified end-to-end in the browser with a real Codex response.
+
+**Deleted `services/web-ui` (Svelte)** — React cockpit has full route parity (`/wiki` -> Codex
+route); no installer/docker/gateway/runtime references remained. D-023 migration complete.
+
+Suites: agent-runtime **705 passed**; Go **81 passed** (fmt/vet clean); React tsc/lint/21
+tests/build green. Codex auth imported into the foundation store; `~/.atlas` config
+auth_mode=oauth_import. Gateway binary rebuilt (sources were newer — recurring gotcha).
+
+Next: operator interactive UAT of `atlas` in Windows Terminal; then resume Phase 10.8
+cross-surface conformance closeout.
+
+## Prior Position — Phase 10.7 Complete; Phase 10.8 TUI Correction Implemented
 
 First operator UAT of the Go TUI failed product acceptance on 2026-07-01. The launched
 source-checkout executable was stale (built 2026-06-28 versus source changed 2026-06-30), still
