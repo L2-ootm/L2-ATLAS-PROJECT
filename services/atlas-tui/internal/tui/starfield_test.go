@@ -3,9 +3,16 @@ package tui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
+
+func TestIdleAnimationCadenceMatchesMiMoReference(t *testing.T) {
+	if animInterval != 50*time.Millisecond {
+		t.Fatalf("animation cadence = %s, want 50ms", animInterval)
+	}
+}
 
 func TestBuildStarfieldIsDeterministicPerSeed(t *testing.T) {
 	a := buildStarfield(120, 30, starSeed)
@@ -42,6 +49,19 @@ func TestComposeRowExcludesHeroGutterAndFitsWidth(t *testing.T) {
 	}
 }
 
+func TestStarfieldCanvasAlignsHeroAsOneBlock(t *testing.T) {
+	canvas := plain(starfieldCanvas(40, 8, "123456789\nabc", nil, 0))
+	lines := strings.Split(canvas, "\n")
+	first := strings.Index(lines[3], "123456789")
+	second := strings.Index(lines[4], "abc")
+	if first < 0 || second < 0 {
+		t.Fatalf("hero lines missing:\n%s", canvas)
+	}
+	if first != second {
+		t.Fatalf("hero lines are independently centered: first=%d second=%d\n%s", first, second, canvas)
+	}
+}
+
 func TestIdleViewAnimatesWithinWidthAcrossFrames(t *testing.T) {
 	m := chatReadyModel(120, 36)
 	if len(m.stars) == 0 {
@@ -71,21 +91,20 @@ func TestIdleViewAnimatesWithinWidthAcrossFrames(t *testing.T) {
 }
 
 func TestPulseLogoBreathesWithoutChangingGlyphs(t *testing.T) {
-	// Colors are profile-dependent (stripped without a TTY), so assert the
-	// ramp cycle and glyph stability rather than styled bytes.
-	if len(logoPulseRamps) < 3 {
-		t.Fatalf("pulse needs dim/base/bright ramps, got %d", len(logoPulseRamps))
+	if logoPulsePeriod != 92 {
+		t.Fatalf("logo pulse period = %d frames, want 92", logoPulsePeriod)
 	}
-	seen := map[int]bool{}
-	for frame := 0; frame < 2*len(logoPulseRamps); frame++ {
-		seen[(frame/2)%len(logoPulseRamps)] = true
+	if left, right := logoGradientColor(0, 0), logoGradientColor(1, 0); left == right {
+		t.Fatalf("logo gradient collapsed to one color: %s", left)
+	}
+	if start, quarter := logoGradientColor(0.5, 0), logoGradientColor(0.5, logoPulsePeriod/4); start == quarter {
+		t.Fatalf("logo highlight does not travel: %s", start)
+	}
+	for _, frame := range []int{0, logoPulsePeriod / 4, logoPulsePeriod / 2, logoPulsePeriod - 1} {
 		if got, want := plain(strings.Join(pulseLogoRows(frame), "\n")),
 			plain(strings.Join(pulseLogoRows(0), "\n")); got != want {
 			t.Fatalf("logo glyphs changed at frame %d", frame)
 		}
-	}
-	if len(seen) != len(logoPulseRamps) {
-		t.Fatalf("pulse never visited every ramp: %v", seen)
 	}
 }
 
