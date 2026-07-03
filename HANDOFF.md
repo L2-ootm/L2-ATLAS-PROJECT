@@ -30,12 +30,22 @@
   forces `NODE_ENV=production` (sidecar died at boot demanding ENCRYPTION_KEY).
   Note: the free route currently lacks tool-calling (HTTP 429 exhausted) — real runs need
   a tool-capable model/route; wiring itself is proven.
-- **Next action:** WS-A STAGE 2 — wholesale donor TUI tree copy
-  (`_EXTERNAL_REPOS/mimo-code/packages/opencode/src/cli/cmd/tui`, ~180 files) + vendored
-  sdk v2 client/types + identity scrub (MIMOCODE_*→ATLAS_*, branding, MIT notices kept) +
-  boundary-scanner extension; wire `createAtlasFetchHandle` into the donor SDKProvider.
-  Then STAGE 3 parity/UAT; then WS-D (`atlas up` full topology), WS-C, WS-B per the
-  mission doc execution order.
+- **STAGE 2 DONE (2026-07-03 late night, commits `4e7478a2`/`1432e5ae`/`1c606dcf`)**:
+  donor TUI vendored wholesale (138 files + SDK v2 + pure modules + shims for disabled
+  server/plugin machinery), boots over the ATLAS adapter (internal plugins load,
+  composer renders, live provider in status), identity scrubbed (flags/aliases/branding/
+  i18n). tsc clean, 9 bun tests, smoke + headless boot verified. Operator ratifications
+  applied: get_key.py deleted; freellmapi status api_key exposure kept (documented).
+- **Next action — STAGE 3:**
+  1. Operator UAT: `cd services/atlas-terminal && bun run dev` in Windows Terminal
+     (mouse, dialogs, model selector, prompt loop against the live gateway).
+  2. Remove donor account-login feature (`dialog-mimo-login.tsx`, mimo_login/mimo_free
+     i18n keys) and its command wiring.
+  3. Extend `scripts/tui-boundary-check.ps1` to services/atlas-terminal.
+  4. Parity audit vs Go TUI (starfield idle, modes, workflows, /freellmapi, settings
+     overlay) → default-surface decision + Go TUI retirement gate (tested rollback).
+  Then WS-D (`atlas up` full topology), WS-C (CLI polish), WS-B (installer) per
+  `docs/plans/2026-07-03-finish-mission-analysis-and-execution-order.md`.
 
 ## Current state
 

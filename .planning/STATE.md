@@ -15,7 +15,34 @@ progress:
 
 # STATE — L2 ATLAS
 
-## Current Position — 2026-07-03 (night): donor TUI STAGE 1 landed + freellmapi run path fixed
+## Current Position — 2026-07-03 (late night): donor TUI STAGE 2 complete — vendored, booting, scrubbed
+
+Three commits (`4e7478a2`, `1432e5ae`, `1c606dcf`):
+
+1. **STAGE 2a — wholesale vendoring**: donor TUI tree (~138 files) into
+   `services/atlas-terminal/src/tui`, SDK v2 client/types into `src/sdk`, pure donor
+   modules into `src/vendor` (util/bus/cli/config/session-schema/installation/lsp/
+   shared/ui-i18n). Donor server/plugin-loader/npm/effect-runtime machinery replaced by
+   typed shims (external plugins disabled; no second backend). Deps pinned to the donor
+   catalog (effect 4.0.0-beta.48, zod 4.1.8, opentui 0.1.99). tsc clean.
+2. **STAGE 2b — boot over ATLAS**: `main.tsx` boots the donor `tui()` entry with
+   `createAtlasFetchHandle` fetch + bus EventSource (no worker thread). Headless boot
+   verified: internal feature-plugins load, composer renders, status shows the live
+   ATLAS provider.
+3. **STAGE 2c — identity scrub**: MIMOCODE_* → ATLAS_TUI_*, @mimo-ai/* → @atlas/*,
+   MiMo/Xiaomi branding → ATLAS (incl. i18n), theme/util renames. No donor branding in
+   rendered output. Residual: `dialog-mimo-login.tsx` (donor account login — remove in
+   STAGE 3), mimo_login/mimo_free i18n keys, boundary-scanner extension.
+
+Gates: tsc clean; 9 bun tests; `--smoke` LIVE; headless boot renders.
+
+**Next: STAGE 3** — interactive operator UAT in Windows Terminal
+(`cd services/atlas-terminal && bun run dev`), remove donor login dialog, extend
+`scripts/tui-boundary-check.ps1` to atlas-terminal, feature parity audit vs Go TUI
+(starfield/modes/workflows//freellmapi/settings), then default-surface decision +
+Go TUI retirement gate. Then WS-D/WS-C/WS-B per the mission doc.
+
+## Previous Position — 2026-07-03 (night): donor TUI STAGE 1 landed + freellmapi run path fixed
 
 Mission doc: `docs/plans/2026-07-03-finish-mission-analysis-and-execution-order.md`
 (workstreams WS-A..WS-G with file:line problem inventories for CLI, `atlas up`, Go TUI caching).
