@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
-last_updated: "2026-07-02T22:30:00-03:00"
-last_activity: 2026-07-02 -- MiMo-grade TUI + provider-mesh customization + web settings shipped, live-verified, entropy+ultrareview passed
+last_updated: "2026-07-02T23:00:00-03:00"
+last_activity: 2026-07-02 -- Complete Cashflow surface shipped ATLAS-styled + gateway /cashflow/full handoff, live-verified round trip
 progress:
   total_phases: 8
   completed_phases: 7
@@ -15,7 +15,34 @@ progress:
 
 # STATE — L2 ATLAS
 
-## Current Position — 2026-07-02 (evening): MiMo-grade TUI + mesh customization, merged to main
+## Current Position — 2026-07-02 (night): Complete Cashflow surface, ATLAS-styled + gateway handoff
+
+Cockpit `/cashflow` stays the modular sum page; the complete cashflow functions now live
+**outside the cockpit** in the vendored Next.js app (`services/cashflow`), fully rebranded to
+the ATLAS canon, reached through the previously-future gateway endpoint.
+
+- **Gateway `GET /cashflow/full`** (Rust, no new deps): self-contained ATLAS launcher page —
+  probes the Next surface, auto-starts a stopped module via `/v1/cashflow/start`, waits for
+  connections, redirects to `/dashboard`. App URL from `ATLAS_CASHFLOW_URL` at request time.
+  New test `cashflow_full_serves_atlas_launcher_page`; suite 102 green.
+- **Full app restyle:** cherry-picked the `arturo` branch scaffold (`cf2af8b2`, glass/topo
+  structure) then corrected it to canon — arturo's emerald/electric-violet plasma replaced by
+  the ATLAS role law (celestial primary, cyan telemetry, violet secondary, bronze identity-only,
+  neutral blue-gray lattice). All legacy L2-Financeiro pages (clientes/contratos/faturas/
+  despesas/fluxo-caixa/socios/relatorios/enterprise/*) mapped from hardcoded slate/indigo hexes
+  to tokens; primary actions are celestial tinted glass; `.l2-border` defined as the data-panel
+  glass slab; radii 2px system / 8px earned; ATLAS // Cashflow rebrand with ported `AtlasMark`;
+  cockpit back-link env-driven (`NEXT_PUBLIC_ATLAS_URL`, default :5173).
+- **Live-verified round trip:** cockpit sum page → COMPLETE CASHFLOW → `:8484/cashflow/full` →
+  full app dashboard → `← Atlas` back to cockpit. Offline path renders the launcher
+  (CHECKING → WAITING → redirect once :3000 accepts). `next build`, eslint, cargo tests green.
+  Proof shots: `output/playwright/cashflow-full-dashboard.png`, `cashflow-clientes-v3.png`,
+  `cashflow-handoff-starting.png`, `cockpit-cashflow-sum.png`, `cockpit-to-full-e2e.png`.
+- Branch `feat/cashflow-full-page`, merged to main. The old gateway binary on :8484 lacked the
+  route and locked the exe (release build fails Access-Denied while it runs) — kill it before
+  `cargo build --release -p atlas-gateway`.
+
+## Previous Position — 2026-07-02 (evening): MiMo-grade TUI + mesh customization, merged to main
 
 Operator-directed autonomous session on `codex/atlas-stability-warning-burn-down`, merged to
 `main` and pushed. Ready for operator UAT: review a codebase via codex auth.
