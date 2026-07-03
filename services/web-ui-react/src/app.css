@@ -436,7 +436,7 @@ body,
 /* Edge-limit pulse — a small light pulse in the new-mission hover tones
    (emerald → celestial) when a scroll container hits its vertical limit. */
 .atlas-scroll-pulse {
-	position: fixed;
+	position: absolute;
 	height: 2px;
 	pointer-events: none;
 	z-index: 9999;

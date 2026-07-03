@@ -66,11 +66,11 @@ async function ready() {
 }
 
 describe('Models route', () => {
-	it('renders the registry grouped by provider with the sidecar panel', async () => {
+	it('renders the registry grouped by provider without the sidecar panel', async () => {
 		render(<Models />);
 		await ready();
-		expect(screen.getByText('FREELLMAPI ENDPOINT')).toBeInTheDocument();
-		expect(screen.getByText('STOPPED')).toBeInTheDocument();
+		// The sidecar panel moved to Settings; Models stays a pure registry surface.
+		expect(screen.queryByText('FREELLMAPI ENDPOINT')).not.toBeInTheDocument();
 		// The active provider/model row is marked IN USE.
 		expect(screen.getByText('IN USE')).toBeInTheDocument();
 	});

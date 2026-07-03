@@ -24,12 +24,30 @@ function scrollableAncestor(start: Element | null): HTMLElement | null {
 	return null;
 }
 
-function spawnPulse(rect: DOMRect, edge: 'top' | 'bottom'): void {
+function isFixedAncestor(start: Element | null): boolean {
+	let node: Element | null = start;
+	while (node && node !== document.body && node !== document.documentElement) {
+		if (node instanceof HTMLElement) {
+			if (getComputedStyle(node).position === 'fixed') return true;
+		}
+		node = node.parentElement;
+	}
+	return false;
+}
+
+function spawnPulse(rect: DOMRect, edge: 'top' | 'bottom', fixedMode: boolean): void {
 	const bar = document.createElement('div');
 	bar.className = 'atlas-scroll-pulse';
-	bar.style.left = `${Math.round(rect.left)}px`;
+	if (fixedMode) {
+		bar.style.position = 'fixed';
+		bar.style.left = `${Math.round(rect.left)}px`;
+		bar.style.top = edge === 'top' ? `${Math.round(rect.top)}px` : `${Math.round(rect.bottom - 2)}px`;
+	} else {
+		bar.style.position = 'absolute';
+		bar.style.left = `${Math.round(rect.left + window.scrollX)}px`;
+		bar.style.top = edge === 'top' ? `${Math.round(rect.top + window.scrollY)}px` : `${Math.round(rect.bottom + window.scrollY - 2)}px`;
+	}
 	bar.style.width = `${Math.round(rect.width)}px`;
-	bar.style.top = edge === 'top' ? `${Math.round(rect.top)}px` : `${Math.round(rect.bottom - 2)}px`;
 	document.body.appendChild(bar);
 	window.setTimeout(() => bar.remove(), 600);
 }
@@ -43,12 +61,14 @@ function onWheel(e: WheelEvent): void {
 
 	const atTop = el.scrollTop <= EDGE_EPSILON;
 	const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - EDGE_EPSILON;
+	const fixedMode = isFixedAncestor(el);
+	
 	if (e.deltaY > 0 && atBottom) {
 		lastPulseAt = now;
-		spawnPulse(el.getBoundingClientRect(), 'bottom');
+		spawnPulse(el.getBoundingClientRect(), 'bottom', fixedMode);
 	} else if (e.deltaY < 0 && atTop) {
 		lastPulseAt = now;
-		spawnPulse(el.getBoundingClientRect(), 'top');
+		spawnPulse(el.getBoundingClientRect(), 'top', fixedMode);
 	}
 }
 

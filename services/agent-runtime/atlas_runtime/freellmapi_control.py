@@ -70,6 +70,22 @@ def health_ok(timeout: float = 1.0) -> bool:
         return False
 
 
+def get_api_key() -> str | None:
+    root = resolve_dir()
+    if not root:
+        return None
+    db_path = root / "server" / "data" / "freeapi.db"
+    if not db_path.exists():
+        return None
+    try:
+        import sqlite3
+        with sqlite3.connect(db_path) as conn:
+            row = conn.execute("SELECT value FROM settings WHERE key = 'unified_api_key'").fetchone()
+            return row[0] if row else None
+    except Exception:
+        return None
+
+
 def status() -> dict:
     d = resolve_dir()
     return {
@@ -77,6 +93,7 @@ def status() -> dict:
         "base_url": BASE_URL,
         "dir": str(d) if d else None,
         "installed": d is not None,
+        "api_key": get_api_key(),
         "remediation": None if d else f"clone the sidecar first: {CLONE_HINT}",
     }
 

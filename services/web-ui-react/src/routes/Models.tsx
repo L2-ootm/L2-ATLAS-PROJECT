@@ -1,20 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Search, Boxes, RefreshCw, Power, Star, Zap } from 'lucide-react';
+import { Search, Boxes, RefreshCw, Star } from 'lucide-react';
 import { Page } from '../components/Page';
 import TopoInput from '../components/TopoInput';
 import { glassPanel } from '../lib/glass';
 import {
 	ApiError,
-	freellmapiStart,
-	freellmapiStatus,
-	freellmapiStop,
 	getConfig,
 	getProviderStatus,
 	listModels,
 	modelsRefresh,
 	patchConfig,
 	type AtlasConfigView,
-	type FreellmapiStatus,
 	type ModelEntry,
 	type ProviderStatusView
 } from '../lib/api';
@@ -59,7 +55,6 @@ export default function Models() {
 	const [models, setModels] = useState<ModelEntry[]>([]);
 	const [config, setConfig] = useState<AtlasConfigView | null>(null);
 	const [status, setStatus] = useState<ProviderStatusView | null>(null);
-	const [sidecar, setSidecar] = useState<FreellmapiStatus | null>(null);
 	const [query, setQuery] = useState('');
 	const [providerFilter, setProviderFilter] = useState<string | null>(null);
 	const [activeOnly, setActiveOnly] = useState(false);
@@ -69,11 +64,10 @@ export default function Models() {
 	const { epoch } = useGatewayHealth();
 
 	const refresh = useCallback(async () => {
-		const [m, c, s, f] = await Promise.allSettled([
+		const [m, c, s] = await Promise.allSettled([
 			listModels(),
 			getConfig(),
-			getProviderStatus(),
-			freellmapiStatus()
+			getProviderStatus()
 		]);
 		if (m.status !== 'fulfilled') {
 			setLoad({ s: 'error' });
@@ -82,7 +76,6 @@ export default function Models() {
 		setModels(m.value.models);
 		setConfig(c.status === 'fulfilled' ? c.value : null);
 		setStatus(s.status === 'fulfilled' ? s.value : null);
-		setSidecar(f.status === 'fulfilled' ? f.value : null);
 		setLoad({ s: 'ready' });
 	}, []);
 
@@ -140,27 +133,6 @@ export default function Models() {
 			setBusyKey(null);
 		}
 	}, [refresh]);
-
-	const toggleSidecar = useCallback(async () => {
-		if (!sidecar) return;
-		setBusyKey('__sidecar__');
-		setToast(null);
-		try {
-			const r = sidecar.running ? await freellmapiStop() : await freellmapiStart();
-			setToast({ tone: r.ok === false ? 'bad' : 'good', text: r.message });
-			// The sidecar boots asynchronously; poll a few times so the pill flips.
-			for (let i = 0; i < 5; i++) {
-				await new Promise((res) => setTimeout(res, 1200));
-				const st = await freellmapiStatus();
-				setSidecar(st);
-				if (st.running !== sidecar.running) break;
-			}
-		} catch (err) {
-			setToast({ tone: 'bad', text: (err as Error).message });
-		} finally {
-			setBusyKey(null);
-		}
-	}, [sidecar]);
 
 	const activeModel = config ? `${config.provider.name}/${config.provider.model}` : null;
 	const curator = config?.functions?.curator_model ?? '';
@@ -244,7 +216,6 @@ export default function Models() {
 				</div>
 			)}
 
-			<SidecarPanel sidecar={sidecar} busy={busyKey === '__sidecar__'} onToggle={() => void toggleSidecar()} />
 
 			<div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 }}>
 				<div style={{ flex: '1 1 260px', minWidth: 220 }}>
@@ -397,53 +368,6 @@ export default function Models() {
 				)}
 			</section>
 		</Page>
-	);
-}
-
-// ── freellmapi sidecar panel ──────────────────────────────────────────────────
-function SidecarPanel({
-	sidecar,
-	busy,
-	onToggle
-}: {
-	sidecar: FreellmapiStatus | null;
-	busy: boolean;
-	onToggle: () => void;
-}) {
-	if (!sidecar) return null;
-	const color = sidecar.running ? 'var(--l2-success)' : 'var(--l2-fg-3)';
-	return (
-		<div style={{ ...glassPanel(), padding: '13px 18px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-			<Zap size={13} color="var(--atlas-bronze)" />
-			<span style={{ ...mono(10.5, 'var(--atlas-bronze)'), letterSpacing: '0.2em' }}>FREELLMAPI ENDPOINT</span>
-			<span style={{ width: 7, height: 7, borderRadius: '50%', background: color, boxShadow: `0 0 8px ${color}` }} />
-			<span style={mono(10.5, color)}>{sidecar.running ? 'RUNNING' : 'STOPPED'}</span>
-			{sidecar.base_url && <span style={mono(10.5, 'var(--l2-fg-3)')}>{sidecar.base_url}</span>}
-			{!sidecar.installed && sidecar.remediation && (
-				<span style={mono(10, 'var(--l2-warning)')}>{sidecar.remediation}</span>
-			)}
-			<button
-				onClick={onToggle}
-				disabled={busy || (!sidecar.installed && !sidecar.running)}
-				style={{
-					marginLeft: 'auto',
-					display: 'inline-flex',
-					alignItems: 'center',
-					gap: 7,
-					padding: '7px 14px',
-					borderRadius: 2,
-					border: `1px solid ${sidecar.running ? 'var(--l2-error)' : 'rgba(79,139,255,0.4)'}`,
-					background: sidecar.running ? 'transparent' : 'rgba(79,139,255,0.12)',
-					color: sidecar.running ? 'var(--l2-error)' : 'var(--atlas-celestial)',
-					cursor: busy ? 'default' : 'pointer',
-					opacity: busy || (!sidecar.installed && !sidecar.running) ? 0.5 : 1,
-					...mono(10)
-				}}
-			>
-				<Power size={12} />
-				{busy ? '…' : sidecar.running ? 'STOP' : 'START'}
-			</button>
-		</div>
 	);
 }
 

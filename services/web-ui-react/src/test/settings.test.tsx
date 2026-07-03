@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Settings from '../routes/Settings';
 import {
 	ApiError,
+	freellmapiStatus,
 	getConfig,
 	getProviderModes,
 	getProviderStatus,
@@ -25,7 +26,10 @@ vi.mock('../lib/api', async () => {
 		listModels: vi.fn(),
 		patchConfig: vi.fn(),
 		storeProviderKey: vi.fn(),
-		importCodex: vi.fn()
+		importCodex: vi.fn(),
+		freellmapiStatus: vi.fn(),
+		freellmapiStart: vi.fn(),
+		freellmapiStop: vi.fn()
 	};
 });
 
@@ -82,6 +86,15 @@ function arm(config = configView(), status = statusView()) {
 		provider: 'openai-codex',
 		status: 'stored',
 		redacted_hint: 'sk-***'
+	});
+	// Sidecar absent by default so freellmapi mode does not auto-fill base URL/key.
+	vi.mocked(freellmapiStatus).mockResolvedValue({
+		running: false,
+		base_url: '',
+		dir: null,
+		installed: false,
+		api_key: null,
+		remediation: null
 	});
 }
 
