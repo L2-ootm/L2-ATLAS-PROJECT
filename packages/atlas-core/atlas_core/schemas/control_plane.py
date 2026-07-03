@@ -199,7 +199,7 @@ class PermissionConfig(_FrozenControlPlaneModel):
     fail_closed_on_disconnect: bool = True
 
     @model_validator(mode="after")
-    def validate_profiles_only_narrow(self) -> "PermissionConfig":
+    def validate_profiles_only_narrow(self) -> PermissionConfig:
         master_rank = _PRESET_RANK[self.preset]
         master_allow_keys = {
             (

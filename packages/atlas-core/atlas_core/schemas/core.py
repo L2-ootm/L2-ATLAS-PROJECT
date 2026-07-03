@@ -12,7 +12,7 @@ from __future__ import annotations
 import datetime
 import re
 import uuid
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
@@ -52,12 +52,12 @@ class Mission(BaseModel):
         "archived",
     ] = "pending"
     project: str = ""
-    project_id: Optional[str] = None
+    project_id: str | None = None
     created_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
     updated_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
 
     @field_serializer("created_at", "updated_at")
@@ -76,10 +76,10 @@ class Project(BaseModel):
     name: str
     root_path: str
     created_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
     updated_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
 
     @field_serializer("created_at", "updated_at")
@@ -104,13 +104,13 @@ class Focus(BaseModel):
     framework: str = ""
     priorities: str = "[]"  # JSON array of strings
     drivers: str = "[]"  # JSON array of strings
-    project_id: Optional[str] = None
+    project_id: str | None = None
     status: Literal["active", "archived"] = "active"
     created_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
     updated_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
 
     @field_serializer("created_at", "updated_at")
@@ -130,17 +130,17 @@ class Goal(BaseModel):
     model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    focus_id: Optional[str] = None
-    parent_goal_id: Optional[str] = None
+    focus_id: str | None = None
+    parent_goal_id: str | None = None
     title: str
     description: str = ""
     status: Literal["open", "active", "done", "archived"] = "open"
     position: int = 0
     created_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
     updated_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
 
     @field_serializer("created_at", "updated_at")
@@ -161,10 +161,10 @@ class Task(BaseModel):
     status: Literal["todo", "doing", "done"] = "todo"
     position: int = 0
     created_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
     updated_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
 
     @field_serializer("created_at", "updated_at")
@@ -182,12 +182,12 @@ class Observation(BaseModel):
     model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    goal_id: Optional[str] = None
-    run_id: Optional[str] = None
+    goal_id: str | None = None
+    run_id: str | None = None
     body: str
     source: str = "operator"  # "operator" | "run:<id>" | "compounding-loop"
     created_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
 
     @field_serializer("created_at")
@@ -207,7 +207,7 @@ class Module(BaseModel):
     name: str
     description: str = ""
     status: Literal["active", "inactive"] = "inactive"
-    activated_at: Optional[datetime.datetime] = None
+    activated_at: datetime.datetime | None = None
 
     @field_serializer("activated_at")
     def serialize_activated_at(self, dt: datetime.datetime | None) -> str | None:
@@ -222,12 +222,12 @@ class Run(BaseModel):
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     mission_id: str
-    session_id: Optional[str] = None
+    session_id: str | None = None
     status: Literal["running", "succeeded", "failed", "cancelled"] = "running"
     started_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
-    finished_at: Optional[datetime.datetime] = None
+    finished_at: datetime.datetime | None = None
     summary: str = ""
     # Which AgentRuntime executed this run (P4 — migration 0006).
     agent_runtime: Literal["native", "claude_code"] = "native"
@@ -249,9 +249,9 @@ class AuditEvent(BaseModel):
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     run_id: str
-    task_id: Optional[str] = None
-    session_id: Optional[str] = None
-    tool_call_id: Optional[str] = None
+    task_id: str | None = None
+    session_id: str | None = None
+    tool_call_id: str | None = None
     event_type: Literal[
         "llm_call",
         "tool_call",
@@ -288,13 +288,13 @@ class AuditEvent(BaseModel):
         "model_call_end",
         "provider_fallback",
     ]
-    tool_name: Optional[str] = None
+    tool_name: str | None = None
     timestamp: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
-    duration_ms: Optional[int] = None
+    duration_ms: int | None = None
     data: str = "{}"
-    policy_result: Optional[str] = None
+    policy_result: str | None = None
 
     @field_serializer("timestamp")
     def serialize_dt(self, dt: datetime.datetime | None) -> str | None:
@@ -316,15 +316,15 @@ class ToolCall(BaseModel):
     run_id: str
     tool_name: str
     args: str = "{}"
-    result: Optional[str] = None
-    exit_code: Optional[int] = None
-    stdout: Optional[str] = None
-    stderr: Optional[str] = None
-    duration_ms: Optional[int] = None
-    policy_allowed: Optional[bool] = None
-    requires_approval: Optional[bool] = None
+    result: str | None = None
+    exit_code: int | None = None
+    stdout: str | None = None
+    stderr: str | None = None
+    duration_ms: int | None = None
+    policy_allowed: bool | None = None
+    requires_approval: bool | None = None
     timestamp: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
 
     @field_serializer("timestamp")
@@ -342,13 +342,13 @@ class Artifact(BaseModel):
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     run_id: str
-    audit_event_id: Optional[str] = None
+    audit_event_id: str | None = None
     path: str
     artifact_type: Literal["file_write", "file_edit", "file_delete", "unknown"]
-    sha256: Optional[str] = None
-    size_bytes: Optional[int] = None
+    sha256: str | None = None
+    size_bytes: int | None = None
     created_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
 
     @field_serializer("created_at")
@@ -370,11 +370,11 @@ class Source(BaseModel):
     size_bytes: int
     mime_type: str = "text/plain"
     ingested_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
     title: str = ""
     untrusted: bool = False
-    ingested_by_run_id: Optional[str] = None
+    ingested_by_run_id: str | None = None
 
     @field_serializer("ingested_at")
     def serialize_dt(self, dt: datetime.datetime | None) -> str | None:
@@ -393,12 +393,12 @@ class WikiPage(BaseModel):
     slug: str
     title: str
     body: str = ""
-    source_id: Optional[str] = None
+    source_id: str | None = None
     created_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
     updated_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
     version: int = 1
 
@@ -415,14 +415,14 @@ class MemoryProvenance(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     layer: Literal["WIKI", "PROFILE", "GRAPH", "SKILL", "AUDIT"]
     item_id: str
-    run_id: Optional[str] = None
-    source_id: Optional[str] = None
-    audit_event_id: Optional[str] = None
-    operator_id: Optional[str] = None
+    run_id: str | None = None
+    source_id: str | None = None
+    audit_event_id: str | None = None
+    operator_id: str | None = None
     sensitivity: Literal["public", "internal", "private", "restricted"] = "internal"
     untrusted: bool = False
     written_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
 
     @field_serializer("written_at")

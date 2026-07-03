@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import datetime
 import uuid
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
@@ -47,17 +47,17 @@ class DiscordApproval(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     action: DiscordAction
     guild_id: str
-    target_id: Optional[str] = None  # channel/role id for edit/delete/permissions; None for create
+    target_id: str | None = None  # channel/role id for edit/delete/permissions; None for create
     params: str = "{}"  # JSON string, secret-redacted before persistence (D-013)
     summary: str = ""  # human-readable, e.g. "create text channel #general"
     status: DiscordApprovalStatus = "pending"
-    reason: Optional[str] = None  # operator note (propose or reject)
-    result: Optional[str] = None  # JSON string: created id/name on success, error on failure
+    reason: str | None = None  # operator note (propose or reject)
+    result: str | None = None  # JSON string: created id/name on success, error on failure
     run_id: str = "operator"
     requested_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
-    decided_at: Optional[datetime.datetime] = None
+    decided_at: datetime.datetime | None = None
 
     @field_serializer("requested_at", "decided_at")
     def serialize_dt(self, dt: datetime.datetime | None) -> str | None:

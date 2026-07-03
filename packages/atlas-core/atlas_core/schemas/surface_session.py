@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import datetime
 import uuid
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
@@ -74,17 +74,17 @@ class SurfaceSession(BaseModel):
     context_policy_version: str
     state: SessionState = "starting"
     owner_token: str = ""
-    owner_pid: Optional[int] = None
-    mission_id: Optional[str] = None
-    run_id: Optional[str] = None
+    owner_pid: int | None = None
+    mission_id: str | None = None
+    run_id: str | None = None
     heartbeat_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
     created_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
     updated_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
 
     @field_serializer("heartbeat_at", "created_at", "updated_at")
@@ -103,7 +103,7 @@ class SurfaceEvent(_FrozenContract):
     session_id: str
     seq: int
     kind: EventKind
-    run_id: Optional[str] = None
+    run_id: str | None = None
     occurred_at: str
     payload_json: str = "{}"
 

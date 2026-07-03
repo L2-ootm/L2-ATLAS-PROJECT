@@ -117,7 +117,7 @@ class WorkspaceIdentity(_FrozenContract):
         return None if value is None else _require_text(value)
 
     @model_validator(mode="after")
-    def require_project_id(self) -> "WorkspaceIdentity":
+    def require_project_id(self) -> WorkspaceIdentity:
         if self.kind == "project" and self.project_id is None:
             raise ValueError("project workspaces require project_id")
         return self
@@ -211,7 +211,7 @@ class ContextEnvelope(_FrozenContract):
         return tuple(_require_text(value) for value in values)
 
     @model_validator(mode="after")
-    def enforce_budget(self) -> "ContextEnvelope":
+    def enforce_budget(self) -> ContextEnvelope:
         if self.estimated_tokens > self.budget_tokens:
             raise ValueError("estimated_tokens must not exceed budget_tokens")
         return self
@@ -278,7 +278,7 @@ class ToolCapability(_FrozenContract):
         return value
 
     @model_validator(mode="after")
-    def validate_risk_semantics(self) -> "ToolCapability":
+    def validate_risk_semantics(self) -> ToolCapability:
         if not self.side_effects:
             raise ValueError("side_effects classification is required")
         if not self.audit_events:
