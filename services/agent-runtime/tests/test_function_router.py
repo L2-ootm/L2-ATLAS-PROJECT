@@ -166,6 +166,39 @@ def test_apply_writes_managed_slots_idempotently(tmp_path, monkeypatch) -> None:
     assert second["tasks"]["curator"] == "current"
 
 
+def test_apply_adopts_unstamped_slot_matching_desired_binding(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(codex_auth, "codex_model_ids", lambda: ["gpt-5.4-mini"])
+    config = _config(auth_mode="oauth_import", model="gpt-5.5")
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "auxiliary": {
+                    # Already holds exactly what autoconfig would write, but
+                    # without the atlas stamp — gets adopted, not skipped.
+                    "curator": {
+                        "provider": "openai-codex",
+                        "model": "gpt-5.4-mini",
+                        "timeout": 600,
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report = _REAL_APPLY_AUTOCONFIG(config, config_path=path)
+    assert report["applied"] is True
+    assert report["tasks"]["curator"] == "updated"
+
+    aux = yaml.safe_load(path.read_text(encoding="utf-8"))["auxiliary"]
+    assert aux["curator"]["managed_by"] == "atlas"
+    # Adjacent slot keys (timeouts etc.) survive the merge.
+    assert aux["curator"]["timeout"] == 600
+
+
 def test_apply_retargets_previously_managed_slots(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(codex_auth, "codex_model_ids", lambda: ["gpt-5.4-mini"])
     path = tmp_path / "config.yaml"

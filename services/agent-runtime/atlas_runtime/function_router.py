@@ -164,8 +164,16 @@ def apply_autoconfig(
         for task, desired in bindings.items():
             existing = aux.get(task) if isinstance(aux.get(task), dict) else {}
             if existing and not _atlas_owned(existing):
-                report["tasks"][task] = "operator-owned"
-                continue
+                # Adopt a slot that already holds exactly the binding we would
+                # write (same provider/model, just missing our stamp) so a
+                # later provider switch can retarget it; anything else is a
+                # deliberate operator choice and stays untouched (D-001).
+                same_target = existing.get("provider") == desired.get(
+                    "provider"
+                ) and existing.get("model") == desired.get("model")
+                if not same_target:
+                    report["tasks"][task] = "operator-owned"
+                    continue
             merged = {**existing, **desired}
             if merged != existing:
                 aux[task] = merged
