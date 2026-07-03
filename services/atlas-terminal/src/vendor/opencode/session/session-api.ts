@@ -1,4 +1,4 @@
-// ATLAS shim adapted from MiMo-Code (MIT). Type/helper surface only —
+// ATLAS shim adapted from ATLAS (MIT). Type/helper surface only —
 // no donor server/runtime logic. See ATTRIBUTION.md.
 
 /** Donor default titles look like "<prefix>2026-07-03T12:00:00.000Z". */

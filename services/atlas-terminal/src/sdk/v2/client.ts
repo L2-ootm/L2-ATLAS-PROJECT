@@ -20,8 +20,8 @@ function rewrite(request: Request, values: { directory?: string; workspace?: str
   let changed = false
 
   for (const [name, key] of [
-    ["x-mimocode-directory", "directory"],
-    ["x-mimocode-workspace", "workspace"],
+    ["x-atlas-tui-directory", "directory"],
+    ["x-atlas-tui-workspace", "workspace"],
   ] as const) {
     const value = pick(
       request.headers.get(name),
@@ -38,8 +38,8 @@ function rewrite(request: Request, values: { directory?: string; workspace?: str
   if (!changed) return request
 
   const next = new Request(url, request)
-  next.headers.delete("x-mimocode-directory")
-  next.headers.delete("x-mimocode-workspace")
+  next.headers.delete("x-atlas-tui-directory")
+  next.headers.delete("x-atlas-tui-workspace")
   return next
 }
 
@@ -59,14 +59,14 @@ export function createOpencodeClient(config?: Config & { directory?: string; exp
   if (config?.directory) {
     config.headers = {
       ...config.headers,
-      "x-mimocode-directory": encodeURIComponent(config.directory),
+      "x-atlas-tui-directory": encodeURIComponent(config.directory),
     }
   }
 
   if (config?.experimental_workspaceID) {
     config.headers = {
       ...config.headers,
-      "x-mimocode-workspace": config.experimental_workspaceID,
+      "x-atlas-tui-workspace": config.experimental_workspaceID,
     }
   }
 

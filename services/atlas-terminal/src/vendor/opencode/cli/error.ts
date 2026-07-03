@@ -1,4 +1,4 @@
-import { NamedError } from "@mimo-ai/shared/util/error"
+import { NamedError } from "@atlas/shared/util/error"
 import { errorFormat } from "@/util/error"
 
 interface ErrorLike {
@@ -33,7 +33,7 @@ export function FormatError(input: unknown) {
       `Model not found: ${data?.providerID}/${data?.modelID}`,
       ...(suggestions.length ? ["Did you mean: " + suggestions.join(", ")] : []),
       `Try: \`mimo models\` to list available models`,
-      `Or check your config (mimocode.json) provider/model names`,
+      `Or check your config (atlas-tui.json) provider/model names`,
     ].join("\n")
   }
 

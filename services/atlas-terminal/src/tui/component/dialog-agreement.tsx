@@ -13,7 +13,7 @@ export const FREE_AGREEMENT_KEY = "free_agreement_accepted"
 export const FREE_MODEL_IDS = new Set(["mimo-auto", "mimo-free"])
 
 const TERMS_URL = "https://platform.xiaomimimo.com/docs/terms/user-agreement"
-const PRIVACY_URL = "https://privacy.mi.com/XiaomiMiMoPlatform"
+const PRIVACY_URL = "https://privacy.mi.com/ATLASMiMoPlatform"
 
 export function DialogAgreement(props: { onConfirm?: () => void; onCancel?: () => void }) {
   const dialog = useDialog()

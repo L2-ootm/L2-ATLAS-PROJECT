@@ -3,10 +3,10 @@ import { xdgData, xdgCache, xdgConfig, xdgState } from "xdg-basedir"
 import os from "os"
 import { Context, Effect, Layer } from "effect"
 
-const APP = "mimocode"
+const APP = "atlas-tui"
 
 export type ResolvedPaths = {
-  mode: "mimocode_home" | "xdg"
+  mode: "atlas-tui_home" | "xdg"
   root?: string
   data: string
   cache: string
@@ -15,24 +15,24 @@ export type ResolvedPaths = {
 }
 
 /**
- * Resolve mimocode's four base directories (config/data/state/cache)
+ * Resolve atlas-tui's four base directories (config/data/state/cache)
  * from environment variables.
  *
- * If MIMOCODE_HOME is set and non-empty, the four paths are subdirectories
+ * If ATLAS_TUI_HOME is set and non-empty, the four paths are subdirectories
  * of it. Otherwise, falls through to XDG Base Directory defaults.
  *
- * @throws if MIMOCODE_HOME is set but not an absolute path
+ * @throws if ATLAS_TUI_HOME is set but not an absolute path
  */
 export function resolveMimocodeHome(env: NodeJS.ProcessEnv = process.env): ResolvedPaths {
-  const home = env.MIMOCODE_HOME
+  const home = env.ATLAS_TUI_HOME
   if (home) {
     if (!path.isAbsolute(home)) {
       throw new Error(
-        `MIMOCODE_HOME must be an absolute path, got: ${JSON.stringify(home)}`,
+        `ATLAS_TUI_HOME must be an absolute path, got: ${JSON.stringify(home)}`,
       )
     }
     return {
-      mode: "mimocode_home",
+      mode: "atlas-tui_home",
       root: home,
       data: path.join(home, "data"),
       cache: path.join(home, "cache"),

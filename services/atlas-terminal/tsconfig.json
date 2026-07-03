@@ -23,22 +23,22 @@
 			"@tui/*": [
 				"./src/tui/*"
 			],
-			"@mimo-ai/sdk/v2": [
+			"@atlas/sdk/v2": [
 				"./src/sdk/v2/index.ts"
 			],
-			"@mimo-ai/sdk/v2/*": [
+			"@atlas/sdk/v2/*": [
 				"./src/sdk/v2/*"
 			],
-			"@mimo-ai/plugin": [
+			"@atlas/plugin": [
 				"./src/vendor/plugin/index.ts"
 			],
-			"@mimo-ai/plugin/tui": [
+			"@atlas/plugin/tui": [
 				"./src/vendor/plugin/tui.ts"
 			],
-			"@mimo-ai/shared/*": [
+			"@atlas/shared/*": [
 				"./src/vendor/shared/*"
 			],
-			"@mimo-ai/ui/*": [
+			"@atlas/ui/*": [
 				"./src/vendor/ui/*"
 			],
 			"@/cli/cmd/tui/*": [
