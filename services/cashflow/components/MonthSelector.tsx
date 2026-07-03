@@ -17,25 +17,41 @@ export default function MonthSelector({ value, onChange }: MonthSelectorProps) {
     };
 
     return (
-        <div className="flex items-center gap-3 rounded-lg px-2 py-1.5" style={{ background: "#1A1D26", border: "1px solid #2E3340" }}>
+        <div className="topo-surface flex items-center gap-3 px-3 py-2">
             <button
                 onClick={() => navigate(-1)}
-                className="p-1.5 rounded-md transition-colors"
-                style={{ color: "#9CA3B4" }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = "#252937"; e.currentTarget.style.color = "#F1F3F6"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#9CA3B4"; }}
+                className="p-1.5 rounded-sm transition-all"
+                style={{ color: "oklch(0.72 0.02 200)" }}
+                onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "oklch(1 0 0 / 5%)";
+                    e.currentTarget.style.color = "oklch(0.95 0.01 200)";
+                }}
+                onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "transparent";
+                    e.currentTarget.style.color = "oklch(0.72 0.02 200)";
+                }}
             >
                 <ChevronLeft className="w-4 h-4" />
             </button>
-            <span className="text-sm font-semibold min-w-[140px] text-center" style={{ color: "#F1F3F6" }}>
+            <span className="text-sm font-semibold min-w-[140px] text-center" style={{
+                color: "oklch(0.95 0.01 200)",
+                fontFamily: "var(--font-mono)",
+                letterSpacing: "0.05em",
+            }}>
                 {getMonthLabel(value)}
             </span>
             <button
                 onClick={() => navigate(1)}
-                className="p-1.5 rounded-md transition-colors"
-                style={{ color: "#9CA3B4" }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = "#252937"; e.currentTarget.style.color = "#F1F3F6"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#9CA3B4"; }}
+                className="p-1.5 rounded-sm transition-all"
+                style={{ color: "oklch(0.72 0.02 200)" }}
+                onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "oklch(1 0 0 / 5%)";
+                    e.currentTarget.style.color = "oklch(0.95 0.01 200)";
+                }}
+                onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "transparent";
+                    e.currentTarget.style.color = "oklch(0.72 0.02 200)";
+                }}
             >
                 <ChevronRight className="w-4 h-4" />
             </button>

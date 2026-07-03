@@ -67,7 +67,7 @@ export default function ReportsDashboard({ clientName, period, commercialRows, o
     borderRadius: 8,
     fontSize: 14,
     fontWeight: activeTab === tab ? 600 : 500,
-    color: activeTab === tab ? "#6366F1" : "#9CA3B4",
+    color: activeTab === tab ? "#4F8BFF" : "var(--l2-fg-2)",
     background: activeTab === tab ? "rgba(99,102,241,0.1)" : "transparent",
     border: activeTab === tab ? "1px solid rgba(99,102,241,0.18)" : "1px solid transparent",
     cursor: "pointer" as const,
@@ -91,14 +91,14 @@ export default function ReportsDashboard({ clientName, period, commercialRows, o
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={exportCSV} style={{
             padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-            color: "#F1F3F6", background: "#6366F1", border: "none", cursor: "pointer",
+            color: "#9CC0FF", background: "rgba(79,139,255,0.14)", border: "1px solid rgba(79,139,255,0.38)", cursor: "pointer",
             display: "flex", alignItems: "center", gap: 6
           }}>
             <Download size={14} /> Exportar CSV
           </button>
           <button onClick={() => window.print()} style={{
             padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-            color: "#9CA3B4", background: "#1A1D26", border: "1px solid #2E3340", cursor: "pointer",
+            color: "var(--l2-fg-2)", background: "rgba(24,28,38,0.55)", border: "1px solid var(--l2-hairline)", cursor: "pointer",
             display: "flex", alignItems: "center", gap: 6
           }}>
             <Printer size={14} /> PDF
@@ -114,26 +114,26 @@ export default function ReportsDashboard({ clientName, period, commercialRows, o
 
       {/* Commercial Report */}
       {activeTab === 'commercial' && (
-        <div className="print-content" style={{ background: "#1A1D26", padding: 24, borderRadius: 12, border: "1px solid #2E3340" }}>
-          <h2 style={{ fontSize: 16, fontWeight: 600, color: "#F1F3F6", margin: "0 0 20px 0" }}>
+        <div className="print-content" style={{ background: "rgba(24,28,38,0.55)", padding: 24, borderRadius: 12, border: "1px solid var(--l2-hairline)" }}>
+          <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--l2-fg-1)", margin: "0 0 20px 0" }}>
             Relatório Comercial — {clientName} ({period})
           </h2>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
             <thead>
-              <tr style={{ borderBottom: "2px solid #2E3340" }}>
-                <th style={{ padding: "12px 0", color: "#9CA3B4", textAlign: "left", fontWeight: 500 }}>Métrica</th>
-                <th style={{ padding: "12px 0", color: "#9CA3B4", textAlign: "right", fontWeight: 500 }}>Valor</th>
+              <tr style={{ borderBottom: "2px solid var(--l2-hairline)" }}>
+                <th style={{ padding: "12px 0", color: "var(--l2-fg-2)", textAlign: "left", fontWeight: 500 }}>Métrica</th>
+                <th style={{ padding: "12px 0", color: "var(--l2-fg-2)", textAlign: "right", fontWeight: 500 }}>Valor</th>
               </tr>
             </thead>
             <tbody>
               {commercialRows.map((row, i) => (
-                <tr key={i} style={{ borderBottom: "1px solid #2E3340" }}>
-                  <td style={{ padding: "14px 0", color: "#F1F3F6", fontWeight: row.label.includes('Margem') || row.label.includes('Receita Total') ? 600 : 400 }}>
+                <tr key={i} style={{ borderBottom: "1px solid var(--l2-hairline)" }}>
+                  <td style={{ padding: "14px 0", color: "var(--l2-fg-1)", fontWeight: row.label.includes('Margem') || row.label.includes('Receita Total') ? 600 : 400 }}>
                     {row.label}
                   </td>
                   <td style={{
                     padding: "14px 0", textAlign: "right", fontWeight: 600,
-                    color: row.label.includes('Custo') ? "#F87171" : row.label.includes('Margem') && row.value < 0 ? "#F87171" : "#34D399"
+                    color: row.label.includes('Custo') ? "#FF0055" : row.label.includes('Margem') && row.value < 0 ? "#FF0055" : "#46F0E0"
                   }} className="font-mono">
                     {row.isPercent ? `${row.value.toFixed(1)}%` : row.isCount ? row.value.toLocaleString() : formatCurrency(row.value)}
                   </td>
@@ -157,19 +157,19 @@ export default function ReportsDashboard({ clientName, period, commercialRows, o
               { label: "Custo/Sessão", value: formatCurrency(operational.summary.avgCostPerSession) },
               { label: "Cache Hit Rate", value: `${operational.summary.cacheHitRate.toFixed(1)}%` },
             ].map((card, i) => (
-              <div key={i} style={{ background: "#1A1D26", padding: 16, borderRadius: 10, border: "1px solid #2E3340" }}>
-                <p style={{ color: "#9CA3B4", fontSize: 12, marginBottom: 4, textTransform: "uppercase" }}>{card.label}</p>
-                <p style={{ color: "#F1F3F6", fontSize: 20, fontWeight: 700, margin: 0 }} className="font-mono">{card.value}</p>
+              <div key={i} style={{ background: "rgba(24,28,38,0.55)", padding: 16, borderRadius: 10, border: "1px solid var(--l2-hairline)" }}>
+                <p style={{ color: "var(--l2-fg-2)", fontSize: 12, marginBottom: 4, textTransform: "uppercase" }}>{card.label}</p>
+                <p style={{ color: "var(--l2-fg-1)", fontSize: 20, fontWeight: 700, margin: 0 }} className="font-mono">{card.value}</p>
               </div>
             ))}
           </div>
 
           {/* Model Breakdown */}
-          <div style={{ background: "#1A1D26", padding: 24, borderRadius: 12, border: "1px solid #2E3340" }}>
-            <h2 style={{ fontSize: 16, fontWeight: 600, color: "#F1F3F6", margin: "0 0 16px 0" }}>Breakdown por Modelo</h2>
+          <div style={{ background: "rgba(24,28,38,0.55)", padding: 24, borderRadius: 12, border: "1px solid var(--l2-hairline)" }}>
+            <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--l2-fg-1)", margin: "0 0 16px 0" }}>Breakdown por Modelo</h2>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
               <thead>
-                <tr style={{ borderBottom: "1px solid #2E3340", color: "#9CA3B4", textAlign: "left" }}>
+                <tr style={{ borderBottom: "1px solid var(--l2-hairline)", color: "var(--l2-fg-2)", textAlign: "left" }}>
                   <th style={{ padding: "12px 0", fontWeight: 500 }}>Modelo</th>
                   <th style={{ padding: "12px 0", fontWeight: 500, textAlign: "right" }}>Sessões</th>
                   <th style={{ padding: "12px 0", fontWeight: 500, textAlign: "right" }}>Input Tokens</th>
@@ -179,12 +179,12 @@ export default function ReportsDashboard({ clientName, period, commercialRows, o
               </thead>
               <tbody>
                 {operational.modelBreakdown.map((m: any, i: number) => (
-                  <tr key={i} style={{ borderBottom: "1px solid #2E3340" }}>
-                    <td style={{ padding: "12px 0", color: "#F1F3F6", fontWeight: 500 }}>{m.model_name}</td>
-                    <td style={{ padding: "12px 0", color: "#9CA3B4", textAlign: "right" }} className="font-mono">{m.sessions}</td>
-                    <td style={{ padding: "12px 0", color: "#9CA3B4", textAlign: "right" }} className="font-mono">{(m.input_tokens || 0).toLocaleString()}</td>
-                    <td style={{ padding: "12px 0", color: "#9CA3B4", textAlign: "right" }} className="font-mono">{(m.output_tokens || 0).toLocaleString()}</td>
-                    <td style={{ padding: "12px 0", color: "#F87171", textAlign: "right", fontWeight: 600 }} className="font-mono">{formatCurrency(m.cost)}</td>
+                  <tr key={i} style={{ borderBottom: "1px solid var(--l2-hairline)" }}>
+                    <td style={{ padding: "12px 0", color: "var(--l2-fg-1)", fontWeight: 500 }}>{m.model_name}</td>
+                    <td style={{ padding: "12px 0", color: "var(--l2-fg-2)", textAlign: "right" }} className="font-mono">{m.sessions}</td>
+                    <td style={{ padding: "12px 0", color: "var(--l2-fg-2)", textAlign: "right" }} className="font-mono">{(m.input_tokens || 0).toLocaleString()}</td>
+                    <td style={{ padding: "12px 0", color: "var(--l2-fg-2)", textAlign: "right" }} className="font-mono">{(m.output_tokens || 0).toLocaleString()}</td>
+                    <td style={{ padding: "12px 0", color: "#FF0055", textAlign: "right", fontWeight: 600 }} className="font-mono">{formatCurrency(m.cost)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -192,11 +192,11 @@ export default function ReportsDashboard({ clientName, period, commercialRows, o
           </div>
 
           {/* Top Users */}
-          <div style={{ background: "#1A1D26", padding: 24, borderRadius: 12, border: "1px solid #2E3340" }}>
-            <h2 style={{ fontSize: 16, fontWeight: 600, color: "#F1F3F6", margin: "0 0 16px 0" }}>Top 10 Alunos por Custo</h2>
+          <div style={{ background: "rgba(24,28,38,0.55)", padding: 24, borderRadius: 12, border: "1px solid var(--l2-hairline)" }}>
+            <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--l2-fg-1)", margin: "0 0 16px 0" }}>Top 10 Alunos por Custo</h2>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
               <thead>
-                <tr style={{ borderBottom: "1px solid #2E3340", color: "#9CA3B4", textAlign: "left" }}>
+                <tr style={{ borderBottom: "1px solid var(--l2-hairline)", color: "var(--l2-fg-2)", textAlign: "left" }}>
                   <th style={{ padding: "12px 0", fontWeight: 500 }}>Aluno</th>
                   <th style={{ padding: "12px 0", fontWeight: 500, textAlign: "right" }}>Sessões</th>
                   <th style={{ padding: "12px 0", fontWeight: 500, textAlign: "right" }}>Tokens</th>
@@ -205,11 +205,11 @@ export default function ReportsDashboard({ clientName, period, commercialRows, o
               </thead>
               <tbody>
                 {operational.topUsers.map((u: any, i: number) => (
-                  <tr key={i} style={{ borderBottom: "1px solid #2E3340" }}>
-                    <td style={{ padding: "12px 0", color: "#F1F3F6", fontWeight: 500 }}>{u.user_id}</td>
-                    <td style={{ padding: "12px 0", color: "#9CA3B4", textAlign: "right" }} className="font-mono">{u.sessions}</td>
-                    <td style={{ padding: "12px 0", color: "#9CA3B4", textAlign: "right" }} className="font-mono">{(u.tokens || 0).toLocaleString()}</td>
-                    <td style={{ padding: "12px 0", color: "#F87171", textAlign: "right", fontWeight: 600 }} className="font-mono">{formatCurrency(u.cost)}</td>
+                  <tr key={i} style={{ borderBottom: "1px solid var(--l2-hairline)" }}>
+                    <td style={{ padding: "12px 0", color: "var(--l2-fg-1)", fontWeight: 500 }}>{u.user_id}</td>
+                    <td style={{ padding: "12px 0", color: "var(--l2-fg-2)", textAlign: "right" }} className="font-mono">{u.sessions}</td>
+                    <td style={{ padding: "12px 0", color: "var(--l2-fg-2)", textAlign: "right" }} className="font-mono">{(u.tokens || 0).toLocaleString()}</td>
+                    <td style={{ padding: "12px 0", color: "#FF0055", textAlign: "right", fontWeight: 600 }} className="font-mono">{formatCurrency(u.cost)}</td>
                   </tr>
                 ))}
               </tbody>

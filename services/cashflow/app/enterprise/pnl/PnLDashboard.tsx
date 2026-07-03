@@ -59,21 +59,21 @@ export default function PnLDashboard({
         />
       </div>
 
-      <div style={{ background: "#1A1D26", padding: 24, borderRadius: 12, border: "1px solid #2E3340", marginBottom: 24 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 600, color: "#F1F3F6", margin: "0 0 16px 0", display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ background: "rgba(24,28,38,0.55)", padding: 24, borderRadius: 12, border: "1px solid var(--l2-hairline)", marginBottom: 24 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--l2-fg-1)", margin: "0 0 16px 0", display: "flex", alignItems: "center", gap: 8 }}>
           <Target size={18} /> Budget &amp; Alertas
         </h2>
         <div style={{ display: "flex", gap: 24, alignItems: "center" }}>
           <div style={{ flex: 1 }}>
-            <p style={{ color: "#9CA3B4", fontSize: 13, marginBottom: 4 }}>Margem Mínima Alvo</p>
-            <p style={{ fontSize: 20, fontWeight: 600, color: "#F1F3F6", margin: 0 }} className="font-mono">{formatCurrency(minMarginTarget)}</p>
+            <p style={{ color: "var(--l2-fg-2)", fontSize: 13, marginBottom: 4 }}>Margem Mínima Alvo</p>
+            <p style={{ fontSize: 20, fontWeight: 600, color: "var(--l2-fg-1)", margin: 0 }} className="font-mono">{formatCurrency(minMarginTarget)}</p>
           </div>
           <div style={{ flex: 1 }}>
-            <p style={{ color: "#9CA3B4", fontSize: 13, marginBottom: 4 }}>Status</p>
+            <p style={{ color: "var(--l2-fg-2)", fontSize: 13, marginBottom: 4 }}>Status</p>
             {marginIsHealthy ? (
-              <span style={{ background: "rgba(52,211,153,0.15)", color: "#34D399", padding: "4px 12px", borderRadius: 16, fontSize: 13, fontWeight: 600 }}>SAUDÁVEL</span>
+              <span style={{ background: "rgba(52,211,153,0.15)", color: "#46F0E0", padding: "4px 12px", borderRadius: 16, fontSize: 13, fontWeight: 600 }}>SAUDÁVEL</span>
             ) : (
-              <span style={{ background: "rgba(248,113,113,0.15)", color: "#F87171", padding: "4px 12px", borderRadius: 16, fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, width: "fit-content" }}>
+              <span style={{ background: "rgba(248,113,113,0.15)", color: "#FF0055", padding: "4px 12px", borderRadius: 16, fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, width: "fit-content" }}>
                 <AlertTriangle size={14} /> ATENÇÃO
               </span>
             )}
@@ -81,21 +81,21 @@ export default function PnLDashboard({
         </div>
       </div>
       
-      <div style={{ background: "#1A1D26", padding: 24, borderRadius: 12, border: "1px solid #2E3340" }}>
-        <h2 style={{ fontSize: 16, fontWeight: 600, color: "#F1F3F6", margin: "0 0 16px 0" }}>Resumo Operacional</h2>
+      <div style={{ background: "rgba(24,28,38,0.55)", padding: 24, borderRadius: 12, border: "1px solid var(--l2-hairline)" }}>
+        <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--l2-fg-1)", margin: "0 0 16px 0" }}>Resumo Operacional</h2>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
           <tbody>
-            <tr style={{ borderBottom: "1px solid #2E3340" }}>
-              <td style={{ padding: "12px 0", color: "#9CA3B4" }}>Contrato Ativo</td>
-              <td style={{ padding: "12px 0", color: "#F1F3F6", textAlign: "right", fontWeight: 500 }}>{contract?.name || "N/A"}</td>
+            <tr style={{ borderBottom: "1px solid var(--l2-hairline)" }}>
+              <td style={{ padding: "12px 0", color: "var(--l2-fg-2)" }}>Contrato Ativo</td>
+              <td style={{ padding: "12px 0", color: "var(--l2-fg-1)", textAlign: "right", fontWeight: 500 }}>{contract?.name || "N/A"}</td>
             </tr>
-            <tr style={{ borderBottom: "1px solid #2E3340" }}>
-              <td style={{ padding: "12px 0", color: "#9CA3B4" }}>Input Tokens Totais</td>
-              <td style={{ padding: "12px 0", color: "#F1F3F6", textAlign: "right", fontWeight: 500 }} className="font-mono">{metrics.total_input_tokens.toLocaleString()}</td>
+            <tr style={{ borderBottom: "1px solid var(--l2-hairline)" }}>
+              <td style={{ padding: "12px 0", color: "var(--l2-fg-2)" }}>Input Tokens Totais</td>
+              <td style={{ padding: "12px 0", color: "var(--l2-fg-1)", textAlign: "right", fontWeight: 500 }} className="font-mono">{metrics.total_input_tokens.toLocaleString()}</td>
             </tr>
             <tr>
-              <td style={{ padding: "12px 0", color: "#9CA3B4" }}>Output Tokens Totais</td>
-              <td style={{ padding: "12px 0", color: "#F1F3F6", textAlign: "right", fontWeight: 500 }} className="font-mono">{metrics.total_output_tokens.toLocaleString()}</td>
+              <td style={{ padding: "12px 0", color: "var(--l2-fg-2)" }}>Output Tokens Totais</td>
+              <td style={{ padding: "12px 0", color: "var(--l2-fg-1)", textAlign: "right", fontWeight: 500 }} className="font-mono">{metrics.total_output_tokens.toLocaleString()}</td>
             </tr>
           </tbody>
         </table>

@@ -64,8 +64,8 @@ export default function DespesasPage() {
             {/* Header */}
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
                 <div>
-                    <h1 className="text-2xl font-bold" style={{ color: "#F1F3F6" }}>Despesas</h1>
-                    <p className="text-sm mt-0.5" style={{ color: "#5C6478" }}>Controle de custos e despesas operacionais</p>
+                    <h1 className="text-2xl font-bold" style={{ color: "var(--l2-fg-1)" }}>Despesas</h1>
+                    <p className="text-sm mt-0.5" style={{ color: "var(--l2-fg-3)" }}>Controle de custos e despesas operacionais</p>
                 </div>
                 <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
                     <MonthSelector value={month} onChange={setMonth} />
@@ -74,13 +74,13 @@ export default function DespesasPage() {
                         style={{
                             display: "flex", alignItems: "center", gap: 8,
                             padding: "10px 24px", borderRadius: 8,
-                            background: "#6366F1", color: "#fff", fontWeight: 600, fontSize: 14,
-                            border: "none", cursor: "pointer",
+                            background: "rgba(79,139,255,0.14)", color: "#9CC0FF", fontWeight: 600, fontSize: 14,
+                            border: "1px solid rgba(79,139,255,0.38)", cursor: "pointer",
                             boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
                             transition: "background 200ms",
                         }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = "#818CF8"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = "#6366F1"; }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(79,139,255,0.24)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(79,139,255,0.14)"; }}
                     >
                         <Plus style={{ width: 18, height: 18 }} />
                         Nova Despesa
@@ -101,8 +101,8 @@ export default function DespesasPage() {
                     style={{
                         padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 500,
                         background: filterCat === "all" ? "rgba(99,102,241,0.12)" : "transparent",
-                        color: filterCat === "all" ? "#6366F1" : "#9CA3B4",
-                        border: filterCat === "all" ? "1px solid rgba(99,102,241,0.25)" : "1px solid #2E3340",
+                        color: filterCat === "all" ? "#4F8BFF" : "var(--l2-fg-2)",
+                        border: filterCat === "all" ? "1px solid rgba(99,102,241,0.25)" : "1px solid var(--l2-hairline)",
                         cursor: "pointer", transition: "all 200ms",
                     }}>
                     Todas
@@ -112,8 +112,8 @@ export default function DespesasPage() {
                         style={{
                             padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 500,
                             background: filterCat === cat ? "rgba(99,102,241,0.12)" : "transparent",
-                            color: filterCat === cat ? "#6366F1" : "#9CA3B4",
-                            border: filterCat === cat ? "1px solid rgba(99,102,241,0.25)" : "1px solid #2E3340",
+                            color: filterCat === cat ? "#4F8BFF" : "var(--l2-fg-2)",
+                            border: filterCat === cat ? "1px solid rgba(99,102,241,0.25)" : "1px solid var(--l2-hairline)",
                             cursor: "pointer", transition: "all 200ms",
                         }}>
                         {cat}
@@ -122,25 +122,25 @@ export default function DespesasPage() {
             </div>
 
             {/* Table */}
-            <div className="l2-border" style={{ borderRadius: 12, overflow: "hidden", background: "#1A1D26" }}>
+            <div className="l2-border" style={{ borderRadius: 12, overflow: "hidden", background: "rgba(24,28,38,0.55)" }}>
                 <div style={{
                     display: "grid",
                     gridTemplateColumns: "2fr 1.5fr 1fr 1fr 1fr 80px",
                     padding: "14px 24px",
-                    borderBottom: "1px solid #2E3340",
-                    background: "#1F2230",
+                    borderBottom: "1px solid var(--l2-hairline)",
+                    background: "rgba(18,21,29,0.65)",
                 }}>
-                    <span className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "#5C6478" }}>Descrição</span>
-                    <span className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "#5C6478" }}>Cliente</span>
-                    <span className="text-[10px] font-mono uppercase tracking-wider text-center" style={{ color: "#5C6478" }}>Categoria</span>
-                    <span className="text-[10px] font-mono uppercase tracking-wider text-right" style={{ color: "#5C6478" }}>Valor</span>
-                    <span className="text-[10px] font-mono uppercase tracking-wider text-center" style={{ color: "#5C6478" }}>Data</span>
-                    <span className="text-[10px] font-mono uppercase tracking-wider text-center" style={{ color: "#5C6478" }}>Ações</span>
+                    <span className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "var(--l2-fg-3)" }}>Descrição</span>
+                    <span className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "var(--l2-fg-3)" }}>Cliente</span>
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-center" style={{ color: "var(--l2-fg-3)" }}>Categoria</span>
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-right" style={{ color: "var(--l2-fg-3)" }}>Valor</span>
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-center" style={{ color: "var(--l2-fg-3)" }}>Data</span>
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-center" style={{ color: "var(--l2-fg-3)" }}>Ações</span>
                 </div>
 
                 {filtered.length === 0 ? (
                     <div style={{ padding: "48px 24px", textAlign: "center" }}>
-                        <p className="text-sm" style={{ color: "#5C6478" }}>Nenhuma despesa encontrada</p>
+                        <p className="text-sm" style={{ color: "var(--l2-fg-3)" }}>Nenhuma despesa encontrada</p>
                     </div>
                 ) : (
                     filtered.map((exp, i) => (
@@ -149,35 +149,35 @@ export default function DespesasPage() {
                             gridTemplateColumns: "2fr 1.5fr 1fr 1fr 1fr 80px",
                             padding: "16px 24px",
                             alignItems: "center",
-                            borderBottom: i < filtered.length - 1 ? "1px solid #252937" : "none",
+                            borderBottom: i < filtered.length - 1 ? "1px solid rgba(34,40,56,0.65)" : "none",
                             transition: "background 150ms",
                         }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = "#1F2230"; }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(18,21,29,0.65)"; }}
                             onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
                         >
                             <div>
-                                <span className="text-sm truncate block" style={{ color: "#F1F3F6" }}>{exp.description}</span>
-                                {exp.recurring && <span className="text-[9px] font-mono uppercase mt-0.5 flex items-center gap-1" style={{ color: "#FBBF24" }}><Repeat className="w-3 h-3" /> Recorrente</span>}
+                                <span className="text-sm truncate block" style={{ color: "var(--l2-fg-1)" }}>{exp.description}</span>
+                                {exp.recurring && <span className="text-[9px] font-mono uppercase mt-0.5 flex items-center gap-1" style={{ color: "#FFD600" }}><Repeat className="w-3 h-3" /> Recorrente</span>}
                             </div>
-                            <span className="text-sm truncate" style={{ color: "#9CA3B4" }}>{getClientName(exp.clientId)}</span>
+                            <span className="text-sm truncate" style={{ color: "var(--l2-fg-2)" }}>{getClientName(exp.clientId)}</span>
                             <div className="text-center">{catBadge(exp.category)}</div>
-                            <span className="text-sm font-mono font-semibold text-right" style={{ color: "#F87171" }}>{formatCurrency(exp.amount)}</span>
-                            <span className="text-sm font-mono text-center" style={{ color: "#9CA3B4" }}>{formatDate(exp.date)}</span>
+                            <span className="text-sm font-mono font-semibold text-right" style={{ color: "#FF0055" }}>{formatCurrency(exp.amount)}</span>
+                            <span className="text-sm font-mono text-center" style={{ color: "var(--l2-fg-2)" }}>{formatDate(exp.date)}</span>
                             <div style={{ display: "flex", gap: 4, justifyContent: "center" }}>
                                 <button onClick={() => { setEditExpense(exp); setModalOpen(true); }}
                                     title="Editar"
                                     className="p-2 rounded-lg transition-colors"
-                                    style={{ color: "#5C6478", background: "transparent", border: "none", cursor: "pointer" }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.background = "#252937"; e.currentTarget.style.color = "#F1F3F6"; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#5C6478"; }}>
+                                    style={{ color: "var(--l2-fg-3)", background: "transparent", border: "none", cursor: "pointer" }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(34,40,56,0.65)"; e.currentTarget.style.color = "var(--l2-fg-1)"; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--l2-fg-3)"; }}>
                                     <Edit2 className="w-4 h-4" />
                                 </button>
                                 <button onClick={() => handleDelete(exp.id)}
                                     title="Excluir"
                                     className="p-2 rounded-lg transition-colors"
-                                    style={{ color: "#5C6478", background: "transparent", border: "none", cursor: "pointer" }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.color = "#F87171"; e.currentTarget.style.background = "#252937"; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.color = "#5C6478"; e.currentTarget.style.background = "transparent"; }}>
+                                    style={{ color: "var(--l2-fg-3)", background: "transparent", border: "none", cursor: "pointer" }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.color = "#FF0055"; e.currentTarget.style.background = "rgba(34,40,56,0.65)"; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.color = "var(--l2-fg-3)"; e.currentTarget.style.background = "transparent"; }}>
                                     <Trash2 className="w-4 h-4" />
                                 </button>
                             </div>

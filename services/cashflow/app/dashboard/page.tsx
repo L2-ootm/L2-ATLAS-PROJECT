@@ -53,7 +53,7 @@ export default function DashboardPage() {
             const end = new Date(c.startDate);
             end.setMonth(end.getMonth() + c.contractMonths);
             const daysRemaining = Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-            return daysRemaining >= 0 && daysRemaining <= 30; // 30 dias de aviso
+            return daysRemaining >= 0 && daysRemaining <= 30;
         }).map(c => {
             const end = new Date(c.startDate);
             end.setMonth(end.getMonth() + (c.contractMonths || 0));
@@ -91,8 +91,18 @@ export default function DashboardPage() {
             <div className="flex-1 flex flex-col gap-6 min-w-0">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
-                        <h1 className="text-2xl font-bold tracking-tight" style={{ color: "#F1F3F6" }}>Visão Geral</h1>
-                        <p className="text-sm mt-0.5" style={{ color: "#5C6478" }}>Visão geral financeira da L2</p>
+                        <h1 style={{
+                            fontSize: "1.5rem", fontWeight: 700,
+                            letterSpacing: "var(--tr-tight)",
+                            color: "oklch(0.95 0.01 200)",
+                            fontFamily: "var(--font-sans)",
+                        }}>Visão Geral</h1>
+                        <p style={{
+                            fontSize: 14, marginTop: 2,
+                            color: "oklch(0.50 0.02 200)",
+                            fontFamily: "var(--font-mono)",
+                            letterSpacing: "0.05em",
+                        }}>Visão geral financeira da L2</p>
                     </div>
                     <MonthSelector value={month} onChange={setMonth} />
                 </div>
@@ -121,22 +131,32 @@ export default function DashboardPage() {
                 {(alertInvoices.length > 0 || expiringContracts.length > 0) && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-2">
                         {alertInvoices.length > 0 && (
-                            <div className="l2-border rounded-xl p-5" style={{ background: "#1A1D26", borderColor: "rgba(248,113,113,0.2)" }}>
+                            <div className="stat-card p-5" style={{ borderColor: "oklch(0.58 0.22 20 / 25%)" }}>
                                 <div className="flex items-center justify-between mb-4">
-                                    <h2 className="text-xs font-semibold uppercase tracking-wider flex items-center gap-2" style={{ color: "#9CA3B4" }}>
-                                        <AlertTriangle className="w-4 h-4" style={{ color: "#F87171" }} /> Faturas Pendentes
+                                    <h2 style={{
+                                        fontSize: 11, fontWeight: 600, textTransform: "uppercase" as const,
+                                        letterSpacing: "0.12em", display: "flex", alignItems: "center", gap: 8,
+                                        color: "oklch(0.72 0.02 200)",
+                                        fontFamily: "var(--font-mono)",
+                                    }}>
+                                        <AlertTriangle style={{ width: 16, height: 16, color: "var(--sig-crimson)" }} /> Faturas Pendentes
                                     </h2>
-                                    <Link href="/faturas" className="text-[11px] font-medium transition-colors" style={{ color: "#F87171" }}>Ver todas →</Link>
+                                    <Link href="/faturas" className="topo-btn topo-btn--muted" style={{
+                                        fontSize: 10, padding: "3px 8px",
+                                    }}>Ver todas →</Link>
                                 </div>
                                 <div className="space-y-2">
                                     {overdueInvoices.slice(0, 3).map((inv) => (
-                                        <div key={inv.id} className="flex justify-between items-center p-3 rounded-lg"
-                                            style={{ background: "rgba(248,113,113,0.06)", border: "1px solid rgba(248,113,113,0.15)" }}>
+                                        <div key={inv.id} className="flex justify-between items-center p-3 rounded-sm"
+                                            style={{
+                                                background: "oklch(0.58 0.22 20 / 6%)",
+                                                border: "1px solid oklch(0.58 0.22 20 / 15%)",
+                                            }}>
                                             <div>
-                                                <p className="text-xs font-medium" style={{ color: "#F1F3F6" }}>{inv.clientName}</p>
-                                                <p className="text-[9px] font-mono mt-0.5" style={{ color: "#F87171" }}>ATRASADO</p>
+                                                <p style={{ fontSize: 12, fontWeight: 500, color: "oklch(0.95 0.01 200)", fontFamily: "var(--font-sans)" }}>{inv.clientName}</p>
+                                                <p style={{ fontSize: 9, fontFamily: "var(--font-mono)", marginTop: 2, color: "var(--sig-crimson)" }}>ATRASADO</p>
                                             </div>
-                                            <span className="text-sm font-bold font-mono" style={{ color: "#F1F3F6" }}>{formatCurrency(inv.amount)}</span>
+                                            <span style={{ fontSize: 14, fontWeight: 700, color: "oklch(0.95 0.01 200)", fontFamily: "var(--font-mono)" }}>{formatCurrency(inv.amount)}</span>
                                         </div>
                                     ))}
                                 </div>
@@ -144,22 +164,32 @@ export default function DashboardPage() {
                         )}
 
                         {expiringContracts.length > 0 && (
-                            <div className="l2-border rounded-xl p-5" style={{ background: "#1A1D26", borderColor: "rgba(251,191,36,0.2)" }}>
+                            <div className="stat-card p-5" style={{ borderColor: "oklch(0.78 0.16 85 / 25%)" }}>
                                 <div className="flex items-center justify-between mb-4">
-                                    <h2 className="text-xs font-semibold uppercase tracking-wider flex items-center gap-2" style={{ color: "#9CA3B4" }}>
-                                        <AlertTriangle className="w-4 h-4" style={{ color: "#FBBF24" }} /> Vencimento de Contratos
+                                    <h2 style={{
+                                        fontSize: 11, fontWeight: 600, textTransform: "uppercase" as const,
+                                        letterSpacing: "0.12em", display: "flex", alignItems: "center", gap: 8,
+                                        color: "oklch(0.72 0.02 200)",
+                                        fontFamily: "var(--font-mono)",
+                                    }}>
+                                        <AlertTriangle style={{ width: 16, height: 16, color: "var(--sig-amber)" }} /> Vencimento de Contratos
                                     </h2>
-                                    <Link href="/contratos" className="text-[11px] font-medium transition-colors" style={{ color: "#FBBF24" }}>Ver todos →</Link>
+                                    <Link href="/contratos" className="topo-btn topo-btn--muted" style={{
+                                        fontSize: 10, padding: "3px 8px",
+                                    }}>Ver todos →</Link>
                                 </div>
                                 <div className="space-y-2">
                                     {expiringContracts.slice(0, 3).sort((a, b) => a.daysRemaining - b.daysRemaining).map((c) => (
-                                        <div key={c.id} className="flex justify-between items-center p-3 rounded-lg"
-                                            style={{ background: "rgba(251,191,36,0.06)", border: "1px solid rgba(251,191,36,0.15)" }}>
+                                        <div key={c.id} className="flex justify-between items-center p-3 rounded-sm"
+                                            style={{
+                                                background: "oklch(0.78 0.16 85 / 6%)",
+                                                border: "1px solid oklch(0.78 0.16 85 / 15%)",
+                                            }}>
                                             <div>
-                                                <p className="text-xs font-medium" style={{ color: "#F1F3F6" }}>{c.name}</p>
-                                                <p className="text-[9px] font-mono mt-0.5" style={{ color: "#FBBF24" }}>{c.daysRemaining === 0 ? 'HOJE' : `EM ${c.daysRemaining} DIAS`}</p>
+                                                <p style={{ fontSize: 12, fontWeight: 500, color: "oklch(0.95 0.01 200)", fontFamily: "var(--font-sans)" }}>{c.name}</p>
+                                                <p style={{ fontSize: 9, fontFamily: "var(--font-mono)", marginTop: 2, color: "var(--sig-amber)" }}>{c.daysRemaining === 0 ? 'HOJE' : `EM ${c.daysRemaining} DIAS`}</p>
                                             </div>
-                                            <span className="text-sm font-bold font-mono" style={{ color: "#F1F3F6" }}>{formatCurrency(c.monthlyPayment)}</span>
+                                            <span style={{ fontSize: 14, fontWeight: 700, color: "oklch(0.95 0.01 200)", fontFamily: "var(--font-mono)" }}>{formatCurrency(c.monthlyPayment)}</span>
                                         </div>
                                     ))}
                                 </div>
@@ -168,7 +198,7 @@ export default function DashboardPage() {
                     </div>
                 )}
 
-                {/* Legacy TokenTracking component integrated */}
+                {/* TokenTracking component */}
                 <div className="mt-4">
                     <TokenTracking />
                 </div>

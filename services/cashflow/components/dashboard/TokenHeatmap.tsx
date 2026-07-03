@@ -68,17 +68,17 @@ export default function TokenHeatmap({ clients, invoices }: TokenHeatmapProps) {
             const data = payload[0].payload;
             const isDanger = data.marginPercent < 50;
             return (
-                <div className="l2-border rounded-lg p-3" style={{ background: "#1A1D26", boxShadow: "0 8px 24px rgba(0,0,0,0.3)" }}>
-                    <p className="text-xs font-bold mb-1" style={{ color: "#F1F3F6" }}>{data.name}</p>
+                <div className="topo-surface p-3" style={{ boxShadow: "0 8px 24px rgba(0,0,0,0.4)" }}>
+                    <p className="text-xs font-bold mb-1" style={{ color: "oklch(0.95 0.01 200)" }}>{data.name}</p>
                     <div className="space-y-1 mt-2">
-                        <p className="text-[10px] flex justify-between gap-4" style={{ color: "#9CA3B4" }}>
+                        <p className="text-[10px] flex justify-between gap-4" style={{ color: "oklch(0.72 0.02 200)" }}>
                             <span>Receita:</span> <span className="font-mono">{formatCurrency(data.revenue)}</span>
                         </p>
-                        <p className="text-[10px] flex justify-between gap-4" style={{ color: "#9CA3B4" }}>
-                            <span>Custo IA:</span> <span className="font-mono" style={{ color: "#F87171" }}>{formatCurrency(data.cost)}</span>
+                        <p className="text-[10px] flex justify-between gap-4" style={{ color: "oklch(0.72 0.02 200)" }}>
+                            <span>Custo IA:</span> <span className="font-mono" style={{ color: "var(--sig-crimson)" }}>{formatCurrency(data.cost)}</span>
                         </p>
-                        <hr style={{ border: "none", borderTop: "1px solid #2E3340", margin: "4px 0" }} />
-                        <p className={`text-[10px] font-bold flex justify-between gap-4`} style={{ color: isDanger ? '#F87171' : '#34D399' }}>
+                        <hr style={{ border: "none", borderTop: "1px solid oklch(1 0 0 / 5%)", margin: "4px 0" }} />
+                        <p className="text-[10px] font-bold flex justify-between gap-4" style={{ color: isDanger ? 'var(--sig-crimson)' : 'var(--emerald-core)' }}>
                             <span>Margem:</span> <span className="font-mono">{data.marginPercent.toFixed(1)}%</span>
                         </p>
                     </div>
@@ -89,30 +89,34 @@ export default function TokenHeatmap({ clients, invoices }: TokenHeatmapProps) {
     };
 
     return (
-        <div className="l2-border rounded-xl p-6 h-full flex flex-col relative overflow-hidden transition-colors" style={{ background: "#1A1D26" }}>
+        <div className="topo-surface topo-shelf p-6 h-full flex flex-col relative overflow-hidden">
 
             <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: "#F1F3F6" }}>
-                    <Bot className="w-4 h-4" style={{ color: "#34D399" }} />
+                <h3 className="text-sm font-semibold flex items-center gap-2" style={{
+                    color: "oklch(0.95 0.01 200)",
+                    fontFamily: "var(--font-mono)",
+                    letterSpacing: "0.08em",
+                }}>
+                    <Bot className="w-4 h-4" style={{ color: "var(--emerald-core)" }} />
                     Custo IA por Cliente
                 </h3>
-                {loading && <span className="text-[10px]" style={{ color: "#5C6478" }}>Carregando...</span>}
+                {loading && <span className="text-[10px]" style={{ color: "oklch(0.50 0.02 200)" }}>Carregando...</span>}
             </div>
 
             <div className="flex-1 min-h-[200px]">
                 {data.length === 0 && !loading ? (
-                    <div className="absolute inset-0 flex items-center justify-center text-xs" style={{ color: "#5C6478" }}>Sem dados suficientes.</div>
+                    <div className="absolute inset-0 flex items-center justify-center text-xs" style={{ color: "oklch(0.50 0.02 200)" }}>Sem dados suficientes.</div>
                 ) : (
                     <ResponsiveContainer width="100%" height="100%">
                         <ScatterChart margin={{ top: 10, right: 10, bottom: -10, left: -20 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#252937" vertical={false} />
+                            <CartesianGrid strokeDasharray="3 3" stroke="oklch(1 0 0 / 5%)" vertical={false} />
                             <XAxis
                                 type="number"
                                 dataKey="revenue"
                                 name="Receita"
                                 tickFormatter={(val) => `R$${val / 1000}k`}
-                                stroke="#2E3340"
-                                tick={{ fontSize: 10, fill: '#5C6478' }}
+                                stroke="oklch(1 0 0 / 5%)"
+                                tick={{ fontSize: 10, fill: 'oklch(0.50 0.02 200)' }}
                                 axisLine={false}
                                 tickLine={false}
                             />
@@ -121,24 +125,26 @@ export default function TokenHeatmap({ clients, invoices }: TokenHeatmapProps) {
                                 dataKey="cost"
                                 name="Custo IA"
                                 tickFormatter={(val) => `R$${val}`}
-                                stroke="#2E3340"
-                                tick={{ fontSize: 10, fill: '#5C6478' }}
+                                stroke="oklch(1 0 0 / 5%)"
+                                tick={{ fontSize: 10, fill: 'oklch(0.50 0.02 200)' }}
                                 axisLine={false}
                                 tickLine={false}
                             />
                             <ZAxis type="number" dataKey="z" range={[60, 100]} />
-                            <Tooltip content={<CustomTooltip />} cursor={{ strokeDasharray: '3 3', stroke: '#3D4255' }} />
+                            <Tooltip content={<CustomTooltip />} cursor={{ strokeDasharray: '3 3', stroke: 'oklch(1 0 0 / 8%)' }} />
                             <Scatter
                                 name="Clientes"
                                 data={data}
                                 shape={(props: any) => {
                                     const { cx, cy, payload } = props;
                                     const isDanger = payload.marginPercent < 60;
-                                    const colorPrimary = isDanger ? '#F87171' : '#34D399';
+                                    const colorPrimary = isDanger ? 'var(--sig-crimson)' : 'var(--emerald-core)';
 
                                     return (
                                         <g transform={`translate(${cx},${cy})`}>
-                                            <circle r="6" fill={colorPrimary} opacity={0.8} />
+                                            <circle r="6" fill={colorPrimary} opacity={0.8} style={{
+                                                filter: `drop-shadow(0 0 4px ${isDanger ? 'rgba(255,0,85,0.3)' : 'rgba(70,240,224,0.3)'})`,
+                                            }} />
                                         </g>
                                     );
                                 }}
@@ -147,7 +153,11 @@ export default function TokenHeatmap({ clients, invoices }: TokenHeatmapProps) {
                     </ResponsiveContainer>
                 )}
             </div>
-            <div className="text-[9px] text-center mt-2" style={{ color: "#5C6478" }}>
+            <div className="text-[9px] text-center mt-2" style={{
+                color: "oklch(0.50 0.02 200)",
+                fontFamily: "var(--font-mono)",
+                letterSpacing: "0.08em",
+            }}>
                 Eixo X: Receita Total | Eixo Y: Custo de Inferência LLM (R$)
             </div>
         </div>

@@ -39,15 +39,15 @@ export default function ForecastDashboard(props: ForecastDashboardProps) {
 
   // Cores do alerta
   const alertColors: Record<string, { bg: string; text: string; label: string }> = {
-    green: { bg: "rgba(52,211,153,0.15)", text: "#34D399", label: "SAUDÁVEL" },
-    yellow: { bg: "rgba(251,191,36,0.15)", text: "#FBBF24", label: "ATENÇÃO" },
-    red: { bg: "rgba(248,113,113,0.15)", text: "#F87171", label: "CRÍTICO" }
+    green: { bg: "rgba(52,211,153,0.15)", text: "#46F0E0", label: "SAUDÁVEL" },
+    yellow: { bg: "rgba(251,191,36,0.15)", text: "#FFD600", label: "ATENÇÃO" },
+    red: { bg: "rgba(248,113,113,0.15)", text: "#FF0055", label: "CRÍTICO" }
   };
 
   const alert = alertColors[alertStatus];
 
   // Cor da barra de progresso
-  const progressColor = budgetProgress < 60 ? "#34D399" : budgetProgress < 85 ? "#FBBF24" : "#F87171";
+  const progressColor = budgetProgress < 60 ? "#46F0E0" : budgetProgress < 85 ? "#FFD600" : "#FF0055";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -82,9 +82,9 @@ export default function ForecastDashboard(props: ForecastDashboardProps) {
       </div>
 
       {/* Budget Progress */}
-      <div style={{ background: "#1A1D26", padding: 24, borderRadius: 12, border: "1px solid #2E3340" }}>
+      <div style={{ background: "rgba(24,28,38,0.55)", padding: 24, borderRadius: 12, border: "1px solid var(--l2-hairline)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 600, color: "#F1F3F6", margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--l2-fg-1)", margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
             <AlertTriangle size={18} /> Status do Budget
           </h2>
           <span style={{ background: alert.bg, color: alert.text, padding: "4px 14px", borderRadius: 16, fontSize: 13, fontWeight: 600 }}>
@@ -93,7 +93,7 @@ export default function ForecastDashboard(props: ForecastDashboardProps) {
         </div>
 
         {/* Progress Bar */}
-        <div style={{ background: "#0F1117", borderRadius: 8, height: 32, position: "relative", overflow: "hidden", marginBottom: 12 }}>
+        <div style={{ background: "var(--l2-void-deep)", borderRadius: 8, height: 32, position: "relative", overflow: "hidden", marginBottom: 12 }}>
           <div style={{
             width: `${Math.min(budgetProgress, 100)}%`,
             height: "100%",
@@ -102,64 +102,64 @@ export default function ForecastDashboard(props: ForecastDashboardProps) {
             transition: "width 600ms ease",
             display: "flex", alignItems: "center", justifyContent: "flex-end", paddingRight: 12
           }}>
-            <span style={{ color: "#0F1117", fontSize: 13, fontWeight: 700 }} className="font-mono">
+            <span style={{ color: "var(--l2-void-deep)", fontSize: 13, fontWeight: 700 }} className="font-mono">
               {budgetProgress.toFixed(1)}%
             </span>
           </div>
         </div>
 
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#9CA3B4" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--l2-fg-2)" }}>
           <span>Consumido: {formatCurrency(totalCost)}</span>
           <span>Limite: {budgetHardCap > 0 ? formatCurrency(budgetHardCap) : formatCurrency(monthlyRevenue)}</span>
         </div>
       </div>
 
       {/* Simulador */}
-      <div style={{ background: "#1A1D26", padding: 24, borderRadius: 12, border: "1px solid #2E3340" }}>
-        <h2 style={{ fontSize: 16, fontWeight: 600, color: "#F1F3F6", margin: "0 0 20px 0", display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ background: "rgba(24,28,38,0.55)", padding: 24, borderRadius: 12, border: "1px solid var(--l2-hairline)" }}>
+        <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--l2-fg-1)", margin: "0 0 20px 0", display: "flex", alignItems: "center", gap: 8 }}>
           <Calculator size={18} /> Simulador de Margem
         </h2>
-        <p style={{ color: "#9CA3B4", fontSize: 13, marginBottom: 24, marginTop: 0 }}>
+        <p style={{ color: "var(--l2-fg-2)", fontSize: 13, marginBottom: 24, marginTop: 0 }}>
           Ajuste os sliders abaixo para projetar cenários hipotéticos de margem.
         </p>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 24 }}>
           {/* Slider: Custo por sessão */}
           <div>
-            <label style={{ color: "#9CA3B4", fontSize: 13, display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+            <label style={{ color: "var(--l2-fg-2)", fontSize: 13, display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
               <span>Custo por sessão</span>
-              <span style={{ color: costAdjust > 100 ? "#F87171" : "#34D399", fontWeight: 600 }} className="font-mono">{costAdjust}%</span>
+              <span style={{ color: costAdjust > 100 ? "#FF0055" : "#46F0E0", fontWeight: 600 }} className="font-mono">{costAdjust}%</span>
             </label>
             <input
               type="range" min={50} max={200} value={costAdjust}
               onChange={e => setCostAdjust(Number(e.target.value))}
-              style={{ width: "100%", accentColor: "#6366F1" }}
+              style={{ width: "100%", accentColor: "#4F8BFF" }}
             />
           </div>
 
           {/* Slider: Nº de alunos */}
           <div>
-            <label style={{ color: "#9CA3B4", fontSize: 13, display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+            <label style={{ color: "var(--l2-fg-2)", fontSize: 13, display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
               <span>Volume de alunos</span>
-              <span style={{ color: studentAdjust > 100 ? "#F87171" : "#34D399", fontWeight: 600 }} className="font-mono">{studentAdjust}%</span>
+              <span style={{ color: studentAdjust > 100 ? "#FF0055" : "#46F0E0", fontWeight: 600 }} className="font-mono">{studentAdjust}%</span>
             </label>
             <input
               type="range" min={50} max={200} value={studentAdjust}
               onChange={e => setStudentAdjust(Number(e.target.value))}
-              style={{ width: "100%", accentColor: "#6366F1" }}
+              style={{ width: "100%", accentColor: "#4F8BFF" }}
             />
           </div>
 
           {/* Slider: Cache hit rate */}
           <div>
-            <label style={{ color: "#9CA3B4", fontSize: 13, display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+            <label style={{ color: "var(--l2-fg-2)", fontSize: 13, display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
               <span>Eficiência de cache</span>
-              <span style={{ color: cacheAdjust < 100 ? "#34D399" : "#F87171", fontWeight: 600 }} className="font-mono">{cacheAdjust}%</span>
+              <span style={{ color: cacheAdjust < 100 ? "#46F0E0" : "#FF0055", fontWeight: 600 }} className="font-mono">{cacheAdjust}%</span>
             </label>
             <input
               type="range" min={50} max={150} value={cacheAdjust}
               onChange={e => setCacheAdjust(Number(e.target.value))}
-              style={{ width: "100%", accentColor: "#6366F1" }}
+              style={{ width: "100%", accentColor: "#4F8BFF" }}
             />
           </div>
         </div>
@@ -172,16 +172,16 @@ export default function ForecastDashboard(props: ForecastDashboardProps) {
         }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, textAlign: "center" }}>
             <div>
-              <p style={{ color: "#9CA3B4", fontSize: 12, marginBottom: 4 }}>Custo Simulado</p>
-              <p style={{ fontSize: 20, fontWeight: 700, color: "#F1F3F6", margin: 0 }} className="font-mono">{formatCurrency(simAdjustedCost)}</p>
+              <p style={{ color: "var(--l2-fg-2)", fontSize: 12, marginBottom: 4 }}>Custo Simulado</p>
+              <p style={{ fontSize: 20, fontWeight: 700, color: "var(--l2-fg-1)", margin: 0 }} className="font-mono">{formatCurrency(simAdjustedCost)}</p>
             </div>
             <div>
-              <p style={{ color: "#9CA3B4", fontSize: 12, marginBottom: 4 }}>Margem Simulada</p>
-              <p style={{ fontSize: 20, fontWeight: 700, color: simMargin >= 0 ? "#34D399" : "#F87171", margin: 0 }} className="font-mono">{formatCurrency(simMargin)}</p>
+              <p style={{ color: "var(--l2-fg-2)", fontSize: 12, marginBottom: 4 }}>Margem Simulada</p>
+              <p style={{ fontSize: 20, fontWeight: 700, color: simMargin >= 0 ? "#46F0E0" : "#FF0055", margin: 0 }} className="font-mono">{formatCurrency(simMargin)}</p>
             </div>
             <div>
-              <p style={{ color: "#9CA3B4", fontSize: 12, marginBottom: 4 }}>Margem %</p>
-              <p style={{ fontSize: 20, fontWeight: 700, color: simMarginPct >= 20 ? "#34D399" : simMarginPct >= 0 ? "#FBBF24" : "#F87171", margin: 0 }} className="font-mono">{simMarginPct.toFixed(1)}%</p>
+              <p style={{ color: "var(--l2-fg-2)", fontSize: 12, marginBottom: 4 }}>Margem %</p>
+              <p style={{ fontSize: 20, fontWeight: 700, color: simMarginPct >= 20 ? "#46F0E0" : simMarginPct >= 0 ? "#FFD600" : "#FF0055", margin: 0 }} className="font-mono">{simMarginPct.toFixed(1)}%</p>
             </div>
           </div>
         </div>

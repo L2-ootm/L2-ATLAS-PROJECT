@@ -8,14 +8,14 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const jetbrains = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains" });
 
 export const metadata: Metadata = {
-  title: "L2 Financeiro",
-  description: "Gestão financeira — L2 Systems",
+  title: "ATLAS // Cashflow",
+  description: "Gestão financeira completa — módulo ATLAS, L2 Systems",
   manifest: "/manifest.json",
-  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "L2 Financeiro" },
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "ATLAS Cashflow" },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0F1117",
+  themeColor: "#0B0D12",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -30,13 +30,14 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body
         suppressHydrationWarning
         className={`${inter.variable} ${jetbrains.variable} antialiased`}
-        style={{ background: "#0F1117", color: "#F1F3F6", margin: 0, overflowX: "hidden" }}
       >
-        <div style={{ display: "flex", minHeight: "100vh" }}>
-          <Sidebar />
-          <main style={{ flex: 1, padding: "32px", minWidth: 0 }}>
-            {children}
-          </main>
+        <div className="topo-field topo-lattice" style={{ minHeight: "100vh" }}>
+          <div style={{ display: "flex", minHeight: "100vh" }}>
+            <Sidebar />
+            <main style={{ flex: 1, padding: "32px", minWidth: 0 }}>
+              {children}
+            </main>
+          </div>
         </div>
         <NeuralCommandOverlay />
       </body>
