@@ -282,6 +282,13 @@ def resolve_provider(
     api_key = ""
     if provider.api_key.startswith("env:"):
         api_key = os.environ.get(provider.api_key[len("env:") :], "")
+    if not api_key and provider.auth_mode == "freellmapi":
+        # The sidecar owns its unified key; runs must not depend on an OS env
+        # var side channel (OMNI_SURFACE_WIRING_STRATEGY §1-2). Best-effort:
+        # a stopped/absent sidecar keeps the keyless-base_url contract intact.
+        from atlas_runtime import freellmapi_control  # noqa: PLC0415
+
+        api_key = freellmapi_control.get_api_key() or ""
     return {
         "provider": provider.name,
         "model": model,

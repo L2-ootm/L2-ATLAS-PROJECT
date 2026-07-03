@@ -108,6 +108,33 @@ def test_resolve_provider_blank_when_env_unset(monkeypatch):
     assert config_service.resolve_provider(cfg)["api_key"] == ""
 
 
+def test_resolve_provider_freellmapi_derefs_sidecar_key(monkeypatch):
+    from atlas_runtime import freellmapi_control
+
+    monkeypatch.setattr(freellmapi_control, "get_api_key", lambda: "fk-side-1")
+    cfg = config_service.AtlasConfig(
+        provider=config_service.ProviderConfig(
+            name="freellmapi", auth_mode="freellmapi",
+            base_url="http://127.0.0.1:3001/v1",
+        )
+    )
+    assert config_service.resolve_provider(cfg)["api_key"] == "fk-side-1"
+
+
+def test_resolve_provider_freellmapi_keyless_when_sidecar_absent(monkeypatch):
+    from atlas_runtime import freellmapi_control
+
+    monkeypatch.setattr(freellmapi_control, "get_api_key", lambda: None)
+    cfg = config_service.AtlasConfig(
+        provider=config_service.ProviderConfig(
+            name="freellmapi", auth_mode="freellmapi",
+            base_url="http://127.0.0.1:3001/v1",
+        )
+    )
+    # keyless-base_url contract stays intact for open sidecars
+    assert config_service.resolve_provider(cfg)["api_key"] == ""
+
+
 # --- native execute resolution ---------------------------------------------
 
 

@@ -15,7 +15,34 @@ progress:
 
 # STATE — L2 ATLAS
 
-## Current Position — 2026-07-03 (later): Finish-sprint implementation — 5 items landed
+## Current Position — 2026-07-03 (night): donor TUI STAGE 1 landed + freellmapi run path fixed
+
+Mission doc: `docs/plans/2026-07-03-finish-mission-analysis-and-execution-order.md`
+(workstreams WS-A..WS-G with file:line problem inventories for CLI, `atlas up`, Go TUI caching).
+
+1. **STAGE 1 adapter (atlas-terminal)**: full donor chat loop over ATLAS contracts —
+   `POST/GET /session`, `/session/{id}/message`, `prompt_async` → mission+run(+surface
+   session `kind=tui`), SSE run stream translated to donor parts (text/reasoning/tool
+   with in-place state settle by callID), `/event` bus with recent-replay, permission
+   bridge (approvals poll → `permission.asked`; reply → approve/reject with owner token).
+   9 bun tests + tsc clean. **Live-verified** against the real gateway: prompt → mission
+   `mis-*` → run → SSE parts → `session.idle`; errors surface honestly in the transcript.
+2. **freellmapi run path fixed (OMNI wiring law)**: `resolve_provider` now derefs the
+   sidecar's `unified_api_key` when auth_mode=freellmapi and no key is configured (no
+   more `FREELLMAPI_API_KEY` env side channel; keyless contract kept when sidecar absent;
+   2 new tests). `freellmapi_control.start()` no longer forces `NODE_ENV=production`
+   (which made the sidecar require ENCRYPTION_KEY and die at boot — root cause the
+   sidecar never stayed up when started via ATLAS).
+3. **Live chain proven**: adapter → gateway :8484 → mission/run → native runtime →
+   sidecar :3001. Remaining failure is upstream capacity (free route lacks tool-calling,
+   HTTP 429) — model-selection issue, not wiring; same on any surface.
+4. Gates: agent-runtime **734 passed / 1 skipped**; atlas-terminal 9 bun tests + tsc.
+
+Next: STAGE 2 — wholesale donor TUI tree copy + identity scrub + boundary-scanner
+extension; then STAGE 3 parity/UAT. Then WS-D (`atlas up` full topology), WS-C (CLI
+polish), WS-B (installer).
+
+## Previous Position — 2026-07-03 (later): Finish-sprint implementation — 5 items landed
 
 Operator-directed implementation session against the sprint plan. Five commits on `main`:
 

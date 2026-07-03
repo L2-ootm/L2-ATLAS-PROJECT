@@ -118,7 +118,9 @@ def start(poll_seconds: float = 0.0) -> tuple[bool, str]:
     env = os.environ.copy()
     env.setdefault("HOST", "127.0.0.1")
     env.setdefault("PORT", str(DEFAULT_PORT))
-    env.setdefault("NODE_ENV", "production")
+    # Never force NODE_ENV=production: the sidecar then hard-requires an
+    # ENCRYPTION_KEY and exits at boot. Local sidecars use their own .env;
+    # outside production the server auto-generates a DB-stored key.
     kwargs: dict = {}
     if os.name == "nt":
         kwargs["creationflags"] = (
