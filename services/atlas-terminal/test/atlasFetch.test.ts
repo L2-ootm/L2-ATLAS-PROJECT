@@ -66,11 +66,11 @@ describe('createAtlasFetch', () => {
 
 	it('answers unimplemented donor endpoints with a typed 501, never a crash', async () => {
 		const f = createAtlasFetch({ gateway: GW, fetchImpl: stubGateway({}) });
-		const res = await f('http://donor.local/session', { method: 'POST' });
+		const res = await f('http://donor.local/mcp', { method: 'POST' });
 		expect(res.status).toBe(501);
 		const body = (await res.json()) as { error: string; path: string };
 		expect(body.error).toBe('not_implemented');
-		expect(body.path).toBe('POST /session');
+		expect(body.path).toBe('POST /mcp');
 	});
 
 	it('propagates gateway failure as 502 rather than fake data', async () => {
