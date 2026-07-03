@@ -888,8 +888,25 @@ export async function checkHealth(): Promise<{ status: string; db: string }> {
 
 // ── Config (~/.atlas/config.yaml, masked) ─────────────────────────────────────
 
+/** Credential wiring mode for the multi-mode provider mesh. */
+export type ProviderAuthMode = 'api_key' | 'oauth_import' | 'claude_code' | 'freellmapi';
+
+/** Reasoning effort forwarded to providers that support it; '' = provider default. */
+export type ReasoningEffort = '' | 'minimal' | 'low' | 'medium' | 'high';
+
 export interface AtlasConfigView {
-	provider: { name: string; model: string; api_key: string; base_url: string | null };
+	/** Optimistic-concurrency revision required by PATCH /v1/config. */
+	revision?: number;
+	provider: {
+		name: string;
+		model: string;
+		api_key: string;
+		base_url: string | null;
+		auth_mode?: ProviderAuthMode;
+		reasoning_effort?: ReasoningEffort;
+	};
+	/** Function-slot routing: curator/auxiliary side-task model autoconfig. */
+	functions?: { autoconfig: boolean; curator_model: string; auxiliary_model: string };
 	runtime: { default_agent: string; iteration_budget: number; compression: string };
 	gateway: { rust_port: number; messaging_enabled: boolean; messaging_port: number };
 	cockpit: { port: number; branding: string };
@@ -902,6 +919,72 @@ export interface AtlasConfigView {
 /** Masked ATLAS config from the gateway. Secrets are env: refs only. */
 export async function getConfig(): Promise<AtlasConfigView> {
 	return apiFetch('/v1/config');
+}
+
+/**
+ * One optimistic config mutation. `changes` maps dotted setting paths
+ * (e.g. "provider.auth_mode") to new values; a stale `expectedRevision`
+ * rejects with a 409 ApiError carrying `currentRevision`.
+ */
+export async function patchConfig(
+	expectedRevision: number,
+	changes: Record<string, unknown>
+): Promise<AtlasConfigView> {
+	return apiFetch('/v1/config', {
+		method: 'PATCH',
+		body: JSON.stringify({ expected_revision: expectedRevision, changes })
+	});
+}
+
+// ── Provider mesh (status / modes / auth) ─────────────────────────────────────
+
+export interface ProviderStatusView {
+	provider: string;
+	model: string;
+	auth_mode: ProviderAuthMode;
+	auth_mode_label: string;
+	base_url: string | null;
+	credentials_present: boolean;
+	mock_mode: boolean;
+	remediation: string | null;
+	reasoning_effort?: string | null;
+	privacy_warning?: string | null;
+}
+
+export interface ProviderModeView {
+	mode: ProviderAuthMode;
+	label: string;
+	active: boolean;
+	available: boolean;
+	detail: string;
+	remediation: string | null;
+}
+
+/** Active provider resolution + mock-vs-live verdict (secret-free). */
+export async function getProviderStatus(): Promise<ProviderStatusView> {
+	return apiFetch('/v1/provider/status');
+}
+
+/** The four-way "which ways can I wire?" availability board. */
+export async function getProviderModes(): Promise<ProviderModeView[]> {
+	return apiFetch('/v1/provider/modes');
+}
+
+/** Store an API key in the ATLAS auth store (secret crosses once, masked reply). */
+export async function storeProviderKey(
+	provider: string,
+	apiKey: string,
+	baseUrl?: string
+): Promise<{ provider: string; status: string; redacted_hint: string }> {
+	return apiFetch('/v1/auth/providers', {
+		method: 'POST',
+		body: JSON.stringify({ provider, api_key: apiKey, ...(baseUrl ? { base_url: baseUrl } : {}) })
+	});
+}
+
+/** Import the operator's Codex/ChatGPT OAuth login into the owned store. */
+export async function importCodex(): Promise<{ imported: boolean; reason?: string }> {
+	return apiFetch('/v1/auth/codex/import', { method: 'POST' });
 }
 
 // ── Channels (foundation messaging gateway config) ────────────────────────────

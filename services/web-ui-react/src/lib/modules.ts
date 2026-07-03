@@ -12,6 +12,7 @@ import {
 	FolderGit2,
 	Share2,
 	SlidersHorizontal,
+	Settings2,
 	Hash
 } from 'lucide-react';
 
@@ -72,6 +73,7 @@ export const navSections: NavSection[] = [
 	{
 		pillar: 'SYSTEM',
 		items: [
+			{ id: 'settings', label: 'SETTINGS', route: '/settings', icon: Settings2, status: 'active', ariaLabel: 'Settings' },
 			{ id: 'system', label: 'SYSTEM', route: '/system', icon: SlidersHorizontal, status: 'beta', ariaLabel: 'System' }
 		]
 	}

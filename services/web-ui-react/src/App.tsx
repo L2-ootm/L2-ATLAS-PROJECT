@@ -10,6 +10,7 @@ import Console from './routes/Console';
 import Command from './routes/Command';
 import Projects from './routes/Projects';
 import System from './routes/System';
+import Settings from './routes/Settings';
 import Discord from './routes/Discord';
 import Cashflow from './routes/Cashflow';
 import Ledger from './routes/Ledger';
@@ -42,6 +43,7 @@ const router = createBrowserRouter([
 			{ path: 'integrations', element: <Integrations /> },
 			{ path: 'discord', element: <Discord /> },
 			{ path: 'system', element: <System /> },
+			{ path: 'settings', element: <Settings /> },
 			{ path: '*', element: <Migrating pillar="ATLAS" name="Not Found" /> }
 		]
 	}
