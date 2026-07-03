@@ -592,6 +592,11 @@ export async function cashflowStop(): Promise<{ message: string }> {
 	return apiFetch('/v1/cashflow/stop', { method: 'POST' });
 }
 
+/** Sync the model registry against the live sidecar /models list. */
+export async function modelsRefresh(): Promise<{ message: string }> {
+	return apiFetch('/v1/models/refresh', { method: 'POST' });
+}
+
 // ── FreeLLMAPI sidecar control (D-015 external checkout) ─────────────────────
 
 export interface FreellmapiStatus {
