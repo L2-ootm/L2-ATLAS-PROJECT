@@ -74,7 +74,7 @@ function stamp() {
 
 export async function init(options: Options) {
   if (options.level) level = options.level
-  rotation = options.rotate ?? !Flag.MIMOCODE_DISABLE_LOG_ROTATION
+  rotation = options.rotate ?? !Flag.ATLAS_TUI_DISABLE_LOG_ROTATION
   void cleanup(Global.Path.log)
   if (options.print) return
   logpath = path.join(Global.Path.log, options.dev ? "dev.log" : stamp() + ".log")

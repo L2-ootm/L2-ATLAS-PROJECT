@@ -1,5 +1,5 @@
 /**
- * ATLAS fetch adapter — the seam that lets the MiMo-Code donor TUI run over
+ * ATLAS fetch adapter — the seam that lets the ATLAS donor TUI run over
  * the ATLAS Rust gateway without a second backend.
  *
  * The donor client (`createOpencodeClient({ fetch })`) accepts an injected

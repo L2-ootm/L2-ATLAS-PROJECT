@@ -92,7 +92,7 @@ export function DialogModel(props: { providerID?: string }) {
         (provider) => providerName(provider),
       ),
       flatMap((provider) => {
-        // The free mimo-auto model is surfaced as the top entry of the Xiaomi
+        // The free mimo-auto model is surfaced as the top entry of the ATLAS
         // group below, so the mimo provider never renders its own section.
         if (provider.id === "mimo") return []
         const models = pipe(
@@ -121,7 +121,7 @@ export function DialogModel(props: { providerID?: string }) {
             (x) => x.title,
           ),
         )
-        // Prepend the free mimo-auto model to the Xiaomi group when it's loaded
+        // Prepend the free mimo-auto model to the ATLAS group when it's loaded
         // and not already surfaced in the Favorites/Recent sections.
         const free =
           provider.id === "xiaomi" &&

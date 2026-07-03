@@ -1,8 +1,8 @@
 declare global {
-  const MIMOCODE_VERSION: string
-  const MIMOCODE_CHANNEL: string
+  const ATLAS_TUI_VERSION: string
+  const ATLAS_TUI_CHANNEL: string
 }
 
-export const InstallationVersion = typeof MIMOCODE_VERSION === "string" ? MIMOCODE_VERSION : "local"
-export const InstallationChannel = typeof MIMOCODE_CHANNEL === "string" ? MIMOCODE_CHANNEL : "local"
+export const InstallationVersion = typeof ATLAS_TUI_VERSION === "string" ? ATLAS_TUI_VERSION : "local"
+export const InstallationChannel = typeof ATLAS_TUI_CHANNEL === "string" ? ATLAS_TUI_CHANNEL : "local"
 export const InstallationLocal = InstallationChannel === "local"
