@@ -1355,6 +1355,41 @@ async fn fresh_multi_migration_db_serves_all_read_surfaces() {
     }
 }
 
+// --- Cashflow full-surface handoff page --------------------------------------
+
+#[tokio::test]
+async fn cashflow_full_serves_atlas_launcher_page() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = seeded_db(&dir);
+    let router = test_app(path);
+    let response = router
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/cashflow/full")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
+    assert!(content_type.starts_with("text/html"));
+    let bytes = http_body_util::BodyExt::collect(response.into_body())
+        .await
+        .unwrap()
+        .to_bytes();
+    let body = String::from_utf8(bytes.to_vec()).unwrap();
+    // Template placeholder must be resolved to a concrete app URL.
+    assert!(!body.contains("__CASHFLOW_URL__"));
+    assert!(body.contains("/v1/cashflow/status"));
+    assert!(body.contains("COMPLETE CASHFLOW"));
+}
+
 // --- Modules read surface (Decision 3b — optional activatable modules) -------
 
 #[tokio::test]
