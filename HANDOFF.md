@@ -23,9 +23,19 @@
   WS-A (donor TUI, main), WS-B (installer), WS-C (CLI polish), WS-D (`atlas up` + model
   fetch), WS-E (TUI caching), WS-F (surface wiring law), WS-G (cashflow, document-only).
   Contains file:line problem inventories for CLI, `atlas up`, and Go TUI caching.
-- **Next action:** WS-A STAGE 1 — atlas-terminal adapter chat loop (donor
-  `/session*` + `/permission*` + `/question*` → ATLAS surface-sessions/missions/runs/
-  approvals; SSE bridge SurfaceEvents → donor event names).
+- **STAGE 1 DONE (2026-07-03 night, commit `97ca5112`)**: donor chat loop live-verified
+  end-to-end (session → prompt_async → mission/run → SSE parts → idle; permission bridge
+  with owner token). Two root causes fixed on the way: `resolve_provider` now derefs the
+  freellmapi sidecar key (no env side channel), and `freellmapi_control.start` no longer
+  forces `NODE_ENV=production` (sidecar died at boot demanding ENCRYPTION_KEY).
+  Note: the free route currently lacks tool-calling (HTTP 429 exhausted) — real runs need
+  a tool-capable model/route; wiring itself is proven.
+- **Next action:** WS-A STAGE 2 — wholesale donor TUI tree copy
+  (`_EXTERNAL_REPOS/mimo-code/packages/opencode/src/cli/cmd/tui`, ~180 files) + vendored
+  sdk v2 client/types + identity scrub (MIMOCODE_*→ATLAS_*, branding, MIT notices kept) +
+  boundary-scanner extension; wire `createAtlasFetchHandle` into the donor SDKProvider.
+  Then STAGE 3 parity/UAT; then WS-D (`atlas up` full topology), WS-C, WS-B per the
+  mission doc execution order.
 
 ## Current state
 
