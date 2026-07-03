@@ -4,13 +4,54 @@
 	"compilerOptions": {
 		"jsx": "preserve",
 		"jsxImportSource": "@opentui/solid",
-		"lib": ["ESNext", "DOM", "DOM.Iterable"],
-		"types": ["bun"],
+		"lib": [
+			"ESNext",
+			"DOM",
+			"DOM.Iterable"
+		],
+		"types": [
+			"bun"
+		],
 		"noUncheckedIndexedAccess": false,
-		"customConditions": ["browser"],
+		"customConditions": [
+			"browser"
+		],
 		"paths": {
-			"@/*": ["./src/*"]
-		}
+			"@/*": [
+				"./src/vendor/opencode/*"
+			],
+			"@tui/*": [
+				"./src/tui/*"
+			],
+			"@mimo-ai/sdk/v2": [
+				"./src/sdk/v2/index.ts"
+			],
+			"@mimo-ai/sdk/v2/*": [
+				"./src/sdk/v2/*"
+			],
+			"@mimo-ai/plugin": [
+				"./src/vendor/plugin/index.ts"
+			],
+			"@mimo-ai/plugin/tui": [
+				"./src/vendor/plugin/tui.ts"
+			],
+			"@mimo-ai/shared/*": [
+				"./src/vendor/shared/*"
+			],
+			"@mimo-ai/ui/*": [
+				"./src/vendor/ui/*"
+			],
+			"@/cli/cmd/tui/*": [
+				"./src/tui/*"
+			]
+		},
+		"noPropertyAccessFromIndexSignature": false,
+		"noUnusedLocals": false,
+		"noUnusedParameters": false,
+		"noImplicitAny": false
 	},
-	"include": ["src", "test"]
+	"include": [
+		"src",
+		"test"
+	]
 }
