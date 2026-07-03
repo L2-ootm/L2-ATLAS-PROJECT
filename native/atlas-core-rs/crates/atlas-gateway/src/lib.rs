@@ -2262,6 +2262,13 @@ async fn cashflow_stop(State(state): State<AppState>) -> ApiResult {
     Ok(Json(json!({ "message": msg })))
 }
 
+/// POST /v1/models/refresh — sync the registry against the live sidecar
+/// /models list. Dispatch-only; the CLI owns discovery/seed semantics.
+async fn models_refresh(State(state): State<AppState>) -> ApiResult {
+    let out = dispatch_atlas(&state.atlas_cmd, &["models", "refresh"]).await?;
+    Ok(Json(json!({ "message": out })))
+}
+
 /// GET /v1/freellmapi/status — sidecar liveness + install/remediation state.
 async fn freellmapi_status(State(state): State<AppState>) -> ApiResult {
     let out = dispatch_atlas(&state.atlas_cmd, &["freellmapi", "status", "--json"]).await?;
@@ -2647,6 +2654,7 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/cashflow/summary", get(cashflow_summary))
         .route("/v1/cashflow/start", post(cashflow_start))
         .route("/v1/cashflow/stop", post(cashflow_stop))
+        .route("/v1/models/refresh", post(models_refresh))
         .route("/v1/freellmapi/status", get(freellmapi_status))
         .route("/v1/freellmapi/start", post(freellmapi_start))
         .route("/v1/freellmapi/stop", post(freellmapi_stop))
