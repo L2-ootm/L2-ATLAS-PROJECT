@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/* Explicit sources: automatic detection misses this vendored subdir, which
+   silently drops every spacing utility (p-*, m-*, gap-*) from the build. */
+@source "../app";
+@source "../components";
+@source "../lib";
+
 @theme inline {
   /* ── Atlas Void — blue-temperature near-black ── */
   --color-bg-base: #0B0D12;
@@ -151,10 +157,14 @@
   --foreground: #EDEAE0;
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+/* Reset lives in @layer base so Tailwind spacing utilities (layered) can
+   override it. Unlayered, this rule nulled every padding/margin/gap utility. */
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
 }
 
 body {
