@@ -1,8 +1,31 @@
 # Handoff — L2 ATLAS Finish Sprint
 
-**Date:** 2026-07-03  
+**Date:** 2026-07-03 (updated later the same day)  
 **Sprint deadline:** 2026-07-09  
-**Current mode:** documentation/planning captured; implementation should resume from this handoff.
+**Current mode:** mission analysis documented; implementation resumes at donor TUI STAGE 1.
+
+## Session update — 2026-07-03 (later): hygiene + mission analysis
+
+- Consistency review ran first (`.planning/reports/handoff-roadmap-consistency-review-2026-07-03.md`):
+  STAGE 0 had been left untracked despite STATE claiming "committed"; uncommitted WIP broke
+  7 cockpit tests + 2 python tests. All fixed and committed:
+  - `feat(freellmapi)` — sidecar key autowire into `atlas models refresh`, sidecar panel
+    moved Models→Settings, canonical provider names, tests updated. Gates fresh: agent-runtime
+    **732 passed / 1 skipped**; cockpit 44 tests + tsc + zero-warning lint + build/bundle;
+    atlas-terminal 5 bun tests + tsc + `--smoke` boot LIVE.
+  - `feat(atlas-terminal)` — STAGE 0 committed (plan, OMNI wiring strategy, Bun adapter scaffold).
+- **Flag for operator:** `freellmapi status` now returns the sidecar `api_key` cleartext
+  (local-only convenience; diverges from the masked-secret contract). Ratify or revert.
+- `get_key.py` at repo root is stray scratch (logic productionized in
+  `freellmapi_control.get_api_key()`); recommend deletion.
+- Mission analysis + execution order for the operator's 2026-07-03 task list:
+  `docs/plans/2026-07-03-finish-mission-analysis-and-execution-order.md` — workstreams
+  WS-A (donor TUI, main), WS-B (installer), WS-C (CLI polish), WS-D (`atlas up` + model
+  fetch), WS-E (TUI caching), WS-F (surface wiring law), WS-G (cashflow, document-only).
+  Contains file:line problem inventories for CLI, `atlas up`, and Go TUI caching.
+- **Next action:** WS-A STAGE 1 — atlas-terminal adapter chat loop (donor
+  `/session*` + `/permission*` + `/question*` → ATLAS surface-sessions/missions/runs/
+  approvals; SSE bridge SurfaceEvents → donor event names).
 
 ## Current state
 
