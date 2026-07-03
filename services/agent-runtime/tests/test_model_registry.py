@@ -117,7 +117,7 @@ def test_cli_refresh_and_list(monkeypatch, conn, lock):
     monkeypatch.setattr(cli_main, "_get_connection", lambda: conn)
     monkeypatch.setattr(cli_main, "_get_lock", lambda: lock)
     monkeypatch.setattr(
-        model_registry, "fetch_gateway_models", lambda base_url=None: [{"id": "m-cli"}]
+        model_registry, "fetch_gateway_models", lambda base_url=None, api_key=None: [{"id": "m-cli"}]
     )
     runner = CliRunner()
     result = runner.invoke(cli_main.app, ["models", "refresh", "--gateway", "http://x/v1"])

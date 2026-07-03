@@ -22,9 +22,26 @@ def test_status_shape(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(fc, "STATE_FILE", tmp_path / "freellmapi.json")
     _offline(monkeypatch)
     st = fc.status()
-    assert set(st) == {"running", "base_url", "dir", "installed", "remediation"}
+    assert set(st) == {"running", "base_url", "dir", "installed", "api_key", "remediation"}
     assert st["running"] is False
     assert st["base_url"].startswith("http")
+
+
+def test_get_api_key_absent_checkout(monkeypatch) -> None:
+    monkeypatch.setattr(fc, "resolve_dir", lambda: None)
+    assert fc.get_api_key() is None
+
+
+def test_get_api_key_reads_sidecar_db(tmp_path, monkeypatch) -> None:
+    import sqlite3
+
+    db_dir = tmp_path / "server" / "data"
+    db_dir.mkdir(parents=True)
+    with sqlite3.connect(db_dir / "freeapi.db") as conn:
+        conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)")
+        conn.execute("INSERT INTO settings VALUES ('unified_api_key', 'fk-local-123')")
+    monkeypatch.setattr(fc, "resolve_dir", lambda: tmp_path)
+    assert fc.get_api_key() == "fk-local-123"
 
 
 def test_start_without_checkout_gives_remediation(tmp_path, monkeypatch) -> None:

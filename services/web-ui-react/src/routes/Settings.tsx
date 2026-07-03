@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Cable, KeyRound, ShieldAlert, Zap, RefreshCw, Save } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import { Cable, KeyRound, Power, ShieldAlert, Zap, RefreshCw, Save } from 'lucide-react';
+import { TopoScroll } from '../components/TopoScroll';
 import { Page } from '../components/Page';
 import { glassPanel } from '../lib/glass';
 import {
 	ApiError,
+	freellmapiStart,
+	freellmapiStatus,
+	freellmapiStop,
 	getConfig,
 	getProviderModes,
 	getProviderStatus,
@@ -12,6 +16,7 @@ import {
 	patchConfig,
 	storeProviderKey,
 	type AtlasConfigView,
+	type FreellmapiStatus,
 	type ModelEntry,
 	type ProviderAuthMode,
 	type ProviderModeView,
@@ -64,29 +69,43 @@ export function ProviderSettingsPanel() {
 
 	const [busy, setBusy] = useState(false);
 	const [banner, setBanner] = useState<Banner>(null);
+	const [sidecar, setSidecar] = useState<FreellmapiStatus | null>(null);
+	const [sidecarBusy, setSidecarBusy] = useState(false);
 
 	const refresh = useCallback(async () => {
-		const [c, s, m, md] = await Promise.allSettled([
+		const [c, s, m, md, fl] = await Promise.allSettled([
 			getConfig(),
 			getProviderStatus(),
 			getProviderModes(),
-			listModels()
+			listModels(),
+			freellmapiStatus()
 		]);
 		setOffline(c.status === 'rejected');
-		if (c.status === 'fulfilled') {
-			setConfig(c.value);
-			setAuthMode(c.value.provider.auth_mode ?? 'api_key');
-			setProviderName(c.value.provider.name);
-			setModel(c.value.provider.model);
-			setBaseUrl(c.value.provider.base_url ?? '');
-			setEffort(c.value.provider.reasoning_effort ?? '');
-			setFnAutoconfig(c.value.functions?.autoconfig ?? true);
-			setFnCurator(c.value.functions?.curator_model ?? '');
-			setFnAuxiliary(c.value.functions?.auxiliary_model ?? '');
+		const cfg = c.status === 'fulfilled' ? c.value : null;
+		const sv = s.status === 'fulfilled' ? s.value : null;
+		if (cfg) {
+			setConfig(cfg);
+			const mode = cfg.provider.auth_mode ?? 'api_key';
+			setAuthMode(mode);
+			// Canonical provider names for managed modes — overrides stale config values.
+			let pName = cfg.provider.name;
+			if (mode === 'oauth_import') pName = 'openai-codex';
+			else if (mode === 'claude_code') pName = 'claude_code';
+			else if (mode === 'freellmapi') pName = 'freellmapi';
+			setProviderName(pName);
+			// Prefer effective model from status when modes agree (avoids stale config model).
+			const effectiveModel = sv && sv.auth_mode === mode ? sv.model : cfg.provider.model;
+			setModel(effectiveModel);
+			setBaseUrl(cfg.provider.base_url ?? '');
+			setEffort(cfg.provider.reasoning_effort ?? '');
+			setFnAutoconfig(cfg.functions?.autoconfig ?? true);
+			setFnCurator(cfg.functions?.curator_model ?? '');
+			setFnAuxiliary(cfg.functions?.auxiliary_model ?? '');
 		}
-		setStatus(s.status === 'fulfilled' ? s.value : null);
+		setStatus(sv);
 		setModes(m.status === 'fulfilled' ? m.value : []);
 		setModels(md.status === 'fulfilled' ? md.value.models : []);
+		setSidecar(fl.status === 'fulfilled' ? fl.value : null);
 	}, []);
 
 	useEffect(() => {
@@ -105,7 +124,7 @@ export function ProviderSettingsPanel() {
 		setBusy(true);
 		setBanner(null);
 		try {
-			if (authMode === 'api_key' && apiKey.trim() !== '') {
+			if ((authMode === 'api_key' || authMode === 'freellmapi') && apiKey.trim() !== '') {
 				await storeProviderKey(providerName.trim(), apiKey, baseUrl.trim() || undefined);
 				setApiKey('');
 			}
@@ -167,10 +186,48 @@ export function ProviderSettingsPanel() {
 		}
 	}, [refresh]);
 
-	const modelOptions = useMemo(
-		() => [...new Set(models.map((m) => m.model_id))].slice(0, 200),
-		[models]
-	);
+	/** Auto-sets canonical provider name when switching to a managed auth mode. */
+	const selectMode = useCallback((mode: ProviderAuthMode) => {
+		setAuthMode(mode);
+		if (mode === 'oauth_import') setProviderName('openai-codex');
+		else if (mode === 'claude_code') setProviderName('claude_code');
+		else if (mode === 'freellmapi') {
+			setProviderName('freellmapi');
+			if (sidecar?.base_url) setBaseUrl(sidecar.base_url);
+			if (sidecar?.api_key) setApiKey(sidecar.api_key);
+		}
+	}, [sidecar]);
+
+	const toggleSidecar = useCallback(async () => {
+		if (!sidecar) return;
+		setSidecarBusy(true);
+		try {
+			const r = sidecar.running ? await freellmapiStop() : await freellmapiStart();
+			if (r.ok === false) {
+				setBanner({ tone: 'bad', text: r.message });
+			}
+			// The sidecar boots asynchronously; poll a few times so the pill flips.
+			for (let i = 0; i < 5; i++) {
+				await new Promise((res) => setTimeout(res, 1200));
+				const st = await freellmapiStatus();
+				setSidecar(st);
+				if (st.running !== sidecar.running) break;
+			}
+		} catch (err) {
+			setBanner({ tone: 'bad', text: (err as Error).message });
+		} finally {
+			setSidecarBusy(false);
+		}
+	}, [sidecar]);
+
+	/** Model options filtered to the active provider for faster selection.
+	 * Falls back to all models if the registry has nothing for this provider yet. */
+	const modelOptions = useMemo(() => {
+		const pName = providerName.trim().toLowerCase();
+		const matching = pName ? models.filter((m) => m.provider.toLowerCase() === pName) : models;
+		const ids = [...new Set(matching.map((m) => m.model_id))].slice(0, 200);
+		return ids.length > 0 ? ids : [...new Set(models.map((m) => m.model_id))].slice(0, 200);
+	}, [models, providerName]);
 
 	return (
 		<div>
@@ -216,7 +273,7 @@ export function ProviderSettingsPanel() {
 						{modes.map((m) => (
 							<button
 								key={m.mode}
-								onClick={() => setAuthMode(m.mode)}
+								onClick={() => selectMode(m.mode)}
 								aria-pressed={authMode === m.mode}
 								style={{
 									display: 'flex',
@@ -246,6 +303,7 @@ export function ProviderSettingsPanel() {
 					</div>
 					<p style={{ ...mono(9.5, 'var(--l2-fg-3)'), marginTop: 10 }}>{MODE_HINTS[authMode]}</p>
 					{authMode === 'freellmapi' && (
+						<>
 						<div role="alert" style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
 							<ShieldAlert size={13} color="var(--l2-warning)" />
 							<span style={mono(10.5, 'var(--l2-warning)')}>
@@ -253,6 +311,34 @@ export function ProviderSettingsPanel() {
 								audit-stamped with this warning.
 							</span>
 						</div>
+						{sidecar && (
+							<div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', borderRadius: 2, border: `1px solid ${sidecar.running ? 'rgba(0,229,255,0.25)' : 'var(--l2-hairline)'}` }}>
+								<Zap size={12} color="var(--atlas-bronze)" />
+								<span style={mono(10, 'var(--atlas-bronze)')}>SIDECAR</span>
+								<span style={{ width: 6, height: 6, borderRadius: '50%', background: sidecar.running ? 'var(--l2-success)' : 'var(--l2-fg-3)', flexShrink: 0 }} />
+								<span style={mono(10, sidecar.running ? 'var(--l2-success)' : 'var(--l2-fg-3)')}>{sidecar.running ? 'RUNNING' : 'STOPPED'}</span>
+								{sidecar.base_url && <span style={{ ...mono(10, 'var(--l2-fg-3)'), overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 240 }}>{sidecar.base_url}</span>}
+								<button
+									onClick={() => void toggleSidecar()}
+									disabled={sidecarBusy || (!sidecar.installed && !sidecar.running)}
+									style={{
+										marginLeft: 'auto', flexShrink: 0,
+										display: 'inline-flex', alignItems: 'center', gap: 6,
+										padding: '5px 12px', borderRadius: 2,
+										border: `1px solid ${sidecar.running ? 'var(--l2-error)' : 'rgba(79,139,255,0.4)'}`,
+										background: sidecar.running ? 'transparent' : 'rgba(79,139,255,0.12)',
+										color: sidecar.running ? 'var(--l2-error)' : 'var(--atlas-celestial)',
+										cursor: sidecarBusy || (!sidecar.installed && !sidecar.running) ? 'default' : 'pointer',
+										opacity: sidecarBusy || (!sidecar.installed && !sidecar.running) ? 0.5 : 1,
+										...mono(10)
+									}}
+								>
+									<Power size={11} />
+									{sidecarBusy ? '…' : sidecar.running ? 'STOP' : 'START'}
+								</button>
+							</div>
+						)}
+						</>
 					)}
 					{authMode === 'oauth_import' && (
 						<div style={{ marginTop: 10 }}>
@@ -267,7 +353,19 @@ export function ProviderSettingsPanel() {
 					<SectionTitle icon={<Zap size={13} />} text="MODEL & EFFORT" />
 					<div style={{ display: 'grid', gap: 12, marginTop: 12, maxWidth: 560 }}>
 						<Field label="PROVIDER">
-							<TextInput value={providerName} onChange={setProviderName} placeholder="openrouter" ariaLabel="Provider name" />
+							{authMode === 'api_key' || authMode === 'freellmapi' ? (
+								<TextInput
+									value={providerName}
+									onChange={setProviderName}
+									placeholder={authMode === 'freellmapi' ? 'freellmapi' : 'openrouter'}
+									ariaLabel="Provider name"
+								/>
+							) : (
+								<div style={{ padding: '9px 12px', borderRadius: 2, border: '1px solid var(--l2-hairline)', background: 'rgba(255,255,255,0.02)', display: 'flex', alignItems: 'center', gap: 10 }}>
+									<span style={mono(11, 'var(--l2-fg-2)')}>{providerName || '—'}</span>
+									<span style={mono(9, 'var(--l2-fg-ghost)')}>managed by auth mode</span>
+								</div>
+							)}
 						</Field>
 						<Field label="MODEL">
 							<TextInput
@@ -275,28 +373,23 @@ export function ProviderSettingsPanel() {
 								onChange={setModel}
 								placeholder="provider/model"
 								ariaLabel="Model id"
-								listId="settings-model-catalog"
+								options={modelOptions}
 							/>
-							<datalist id="settings-model-catalog">
-								{modelOptions.map((id) => (
-									<option key={id} value={id} />
-								))}
-							</datalist>
 						</Field>
 						<Field label="BASE URL">
 							<TextInput
 								value={baseUrl}
 								onChange={setBaseUrl}
-								placeholder="optional OpenAI-compatible endpoint"
+								placeholder={authMode === 'freellmapi' ? 'http://127.0.0.1:3001/v1' : 'optional OpenAI-compatible endpoint'}
 								ariaLabel="Base URL"
 							/>
 						</Field>
-						{authMode === 'api_key' && (
+						{(authMode === 'api_key' || authMode === 'freellmapi') && (
 							<Field label="API KEY">
 								<TextInput
 									value={apiKey}
 									onChange={setApiKey}
-									placeholder="leave blank to keep the stored credential"
+									placeholder={authMode === 'freellmapi' ? '(Optional) freellmapi-...' : 'leave blank to keep the stored credential'}
 									ariaLabel="API key"
 									password
 								/>
@@ -431,33 +524,108 @@ function TextInput({
 	placeholder,
 	ariaLabel,
 	password,
-	listId
+	options
 }: {
 	value: string;
 	onChange: (v: string) => void;
 	placeholder?: string;
 	ariaLabel: string;
 	password?: boolean;
-	listId?: string;
+	options?: string[];
 }) {
+	const [focused, setFocused] = useState(false);
+	const wrapperRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		if (!focused || !options) return;
+		function onDocClick(e: MouseEvent) {
+			if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+				setFocused(false);
+			}
+		}
+		document.addEventListener('mousedown', onDocClick);
+		return () => document.removeEventListener('mousedown', onDocClick);
+	}, [focused, options]);
+
+	const filtered = options ? options.filter(o => o.toLowerCase().includes(value.toLowerCase())) : [];
+
 	return (
-		<input
-			type={password ? 'password' : 'text'}
-			value={value}
-			list={listId}
-			onChange={(e) => onChange(e.target.value)}
-			placeholder={placeholder}
-			aria-label={ariaLabel}
-			autoComplete="off"
-			style={{
-				padding: '9px 12px',
-				borderRadius: 2,
-				border: '1px solid var(--l2-hairline)',
-				background: 'rgba(255,255,255,0.02)',
-				color: 'var(--l2-fg-1)',
-				...mono(11)
-			}}
-		/>
+		<div style={{ position: 'relative', width: '100%', flex: 1 }} ref={wrapperRef}>
+			<input
+				type={password ? 'password' : 'text'}
+				value={value}
+				onChange={(e) => onChange(e.target.value)}
+				onFocus={(e) => {
+					e.target.style.borderColor = 'rgba(0, 229, 255, 0.4)';
+					setFocused(true);
+				}}
+				onBlur={(e) => {
+					e.target.style.borderColor = 'var(--l2-hairline)';
+				}}
+				placeholder={placeholder}
+				aria-label={ariaLabel}
+				autoComplete="off"
+				style={{
+					width: '100%',
+					padding: '9px 12px',
+					borderRadius: 2,
+					border: '1px solid var(--l2-hairline)',
+					background: 'rgba(255,255,255,0.02)',
+					color: 'var(--l2-fg-1)',
+					outline: 'none',
+					...mono(11)
+				}}
+			/>
+			{options && focused && filtered.length > 0 && (
+				<TopoScroll tone="info" className="atlas-dropdown-scroll" style={{
+					position: 'absolute',
+					top: '100%',
+					left: 0,
+					right: 0,
+					marginTop: 4,
+					background: 'var(--l2-void-card)',
+					border: '1px solid var(--l2-hairline)',
+					borderRadius: 2,
+					maxHeight: 200,
+					zIndex: 100,
+					boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+					display: 'flex',
+					flexDirection: 'column'
+				}} viewportStyle={{ maxHeight: 200, display: 'flex', flexDirection: 'column' }}>
+					{filtered.map(o => (
+						<button
+							key={o}
+							onMouseDown={(e) => {
+								e.preventDefault();
+								onChange(o);
+								setFocused(false);
+							}}
+							style={{
+								padding: '8px 12px',
+								textAlign: 'left',
+								background: 'transparent',
+								border: 'none',
+								borderBottom: '1px solid rgba(255,255,255,0.03)',
+								color: 'var(--l2-fg-1)',
+								cursor: 'pointer',
+								transition: 'background 100ms, color 100ms',
+								...mono(11)
+							}}
+							onMouseEnter={(e) => {
+								e.currentTarget.style.background = 'rgba(0, 229, 255, 0.1)';
+								e.currentTarget.style.color = 'var(--l2-fg-0)';
+							}}
+							onMouseLeave={(e) => {
+								e.currentTarget.style.background = 'transparent';
+								e.currentTarget.style.color = 'var(--l2-fg-1)';
+							}}
+						>
+							{o}
+						</button>
+					))}
+				</TopoScroll>
+			)}
+		</div>
 	);
 }
 

@@ -25,12 +25,17 @@ def refresh(
     conn = _get_connection()
     lock = _get_lock()
     base = gateway.rstrip("/") if gateway else None
+    api_key = None
+    if (base or model_registry.gateway_base_url()) == model_registry.DEFAULT_GATEWAY_URL:
+        from atlas_runtime import freellmapi_control
+        api_key = freellmapi_control.get_api_key()
+
     try:
         result = model_registry.refresh(
             conn,
             lock,
             source=base,
-            fetcher=lambda: model_registry.fetch_gateway_models(base_url=base),
+            fetcher=lambda: model_registry.fetch_gateway_models(base_url=base, api_key=api_key),
         )
     except Exception as exc:  # network/parse errors surface as exit 1
         typer.echo(f"Error: {exc}", err=True)

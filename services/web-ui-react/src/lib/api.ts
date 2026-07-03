@@ -604,6 +604,7 @@ export interface FreellmapiStatus {
 	base_url: string;
 	dir: string | null;
 	installed: boolean;
+	api_key?: string | null;
 	remediation: string | null;
 }
 

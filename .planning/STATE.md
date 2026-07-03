@@ -4,7 +4,7 @@ milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
 last_updated: "2026-07-03"
-last_activity: 2026-07-03 -- Documented finish sprint through 2026-07-09
+last_activity: 2026-07-03 -- Finish-sprint implementation: 5 items landed (spacing root cause, /control merge, freellmapi control, dynamic Models, donor TUI STAGE 0)
 progress:
   total_phases: 8
   completed_phases: 7
@@ -15,7 +15,56 @@ progress:
 
 # STATE — L2 ATLAS
 
-## Current Position — 2026-07-03: Finish sprint documented, implementation paused
+## Current Position — 2026-07-03 (later): Finish-sprint implementation — 5 items landed
+
+Operator-directed implementation session against the sprint plan. Five commits on `main`:
+
+1. **Cashflow spacing root cause fixed** (`1d10e77e`): an unlayered `* { margin:0; padding:0 }`
+   reset in `globals.css` was beating every layered Tailwind utility, so ALL `p-*/m-*/gap-*`
+   classes computed to 0 across the app — the true cause of text sitting flush against panel
+   edges. Reset moved into `@layer base` + explicit `@source` directives. Verified: eslint
+   zero-warnings, `next build`, 15/15 route smoke, live DOM shows `p-7`=28px, before/after
+   screenshots in `output/playwright/audit/`.
+2. **Settings + System merged into `/control`** (`26b65ea4`): one tabbed page (STATUS /
+   PROVIDER / TOOLS & POLICY / CHANNELS / MODULES / ABOUT), ARIA tablist with arrow-key
+   roving focus, `?tab=` deep links, live badges (offline, pending approvals). `/settings`
+   and `/system` are redirect shims; sidebar SYSTEM pillar has one CONTROL entry. Panels
+   extracted to `components/control/panels.tsx`; provider form reusable as
+   `ProviderSettingsPanel`. 5 new Control tests.
+3. **FreeLLMAPI first-class module control** (`6e692986`): `freellmapi_control.py`
+   (detached node spawn, `~/.atlas/freellmapi.json`, health probe, D-015 external checkout
+   resolved via `ATLAS_FREELLMAPI_DIR`/siblings with clone remediation), `atlas freellmapi
+   start|status|stop --json`, dispatch-only gateway routes `/v1/freellmapi/*`, cockpit api
+   client, TUI `/freellmapi` slash command. agent-runtime 730 passed; gateway 103; Go 96.
+4. **Models page reworked as a dynamic control surface** (`9a64daba`): live registry +
+   config + provider status + sidecar status; USE/CURATOR/AUX per-row actions each persist
+   through ONE immediate optimistic PATCH (no page save button, 409 reload path), favorites,
+   provider filter chips, active-only, search, SYNC REGISTRY via new dispatch-only
+   `POST /v1/models/refresh`, FreeLLMAPI START/STOP panel. 6 new Models tests; cockpit 44
+   tests total; tsc/lint/build/bundle green.
+5. **MiMo donor TUI refactor STAGE 0** (committed 2026-07-03 after a consistency review
+   found it left untracked — see
+   `.planning/reports/handoff-roadmap-consistency-review-2026-07-03.md`): plan committed
+   (`docs/plans/2026-07-03-mimo-donor-tui-refactor-plan.md`) — the donor's injectable-fetch
+   seam means the 28k-LOC Solid/OpenTUI tree can be copied wholesale and pointed at an
+   ATLAS adapter with no second backend. Donor partial clone widened to full source
+   (packages/opencode + sdk + script). New `services/atlas-terminal` Bun package:
+   `createAtlasFetch()` adapter (config/providers/SSE handshake/typed 501s) with 5 bun
+   tests, tsc clean, headless `--smoke` boot OK, OpenTUI/Solid interactive shell entry.
+   Go TUI remains the default `atlas` surface until the STAGE 3 parity/retirement gate.
+
+Next: STAGE 1 adapter (session prompt → mission/run → SSE part bridge; permission.reply),
+then STAGE 2 wholesale donor copy + identity scrub. The gateway binary on :8484 was rebuilt to
+enable the new `/v1/models/refresh` and `/v1/freellmapi/*` routes, fixing the registry refresh
+issue. A follow-up polish pass (committed 2026-07-03) moved the FreeLLMAPI start/stop panel
+from Models into the Provider settings, made managed auth modes set canonical provider names,
+filtered model options to the active provider, and injected the sidecar's `unified_api_key`
+into `atlas models refresh` against the local gateway. Note: `freellmapi status` now returns
+the sidecar api_key in cleartext (local-only convenience, flagged in the consistency review).
+Verified: agent-runtime 732 passed / 1 skipped; cockpit 44 tests + tsc + zero-warning lint +
+build/bundle green; atlas-terminal 5 bun tests + tsc + `--smoke` boot OK (gateway LIVE).
+
+## Previous Position — 2026-07-03: Finish sprint documented, implementation paused
 
 Operator direction changed to documentation only. No code/UI implementation was performed in this
 step. Captured the sprint to finish active milestones by **2026-07-09**:
@@ -1351,3 +1400,9 @@ Full codebase analysis of the Graphify knowledge graph system completed. Documen
 - Files that will change, testing evidence, operator context
 
 **Key decisions pending:** D-025 (graph storage), D-026 (update strategy), D-027 (entity schema), D-028 (visual language), Rust vs Python for graph engine
+
+
+## Architectural Mandate — 2026-07-03 (Immediate Correction)
+
+Operator directive (2026-07-03): ATLAS must **never** treat Hermes as a black-box external executable dependency. The current workaround of injecting environment variables for the legacy TUI to call the external Hermes engine violates L2 engineering principles. The end-stage ATLAS TUI (Stage 3, based on MiMo-Code, OpenCode, and Hermes MIT-licensed logic) must natively incorporate the logic rather than shelling out to an external engine. No temporary environment-variable hacks are permitted.
+
