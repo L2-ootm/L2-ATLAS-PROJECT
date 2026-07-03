@@ -1,248 +1,25 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Server, Database, Copy, Check, Power, Cpu, Radio, ShieldCheck, Wrench, Clock } from 'lucide-react';
-import { Page } from '../components/Page';
-import { glassPanel } from '../lib/glass';
-import {
-	checkHealth,
-	getConfig,
-	listChannels,
-	listModels,
-	listModules,
-	messagingGatewayStatus,
-	setModuleActive,
-	startMessagingGateway,
-	stopMessagingGateway,
-	toggleChannel,
-	getToolManifests,
-	listToolApprovals,
-	type AtlasConfigView,
-	type ChannelSummary,
-	type MessagingGatewayStatus,
-	type ModelEntry,
-	type Module,
-	type ToolManifest,
-	type ToolApproval
-} from '../lib/api';
-import { isTauri, startGatewayViaShell } from '../lib/host';
-import { useGatewayHealth } from '../lib/useGatewayHealth';
-import emblemFull from '../brand/assets/emblem-full.webp';
+import { useState } from 'react';
+import { Copy, Check, Power, Cpu, Radio, ShieldCheck, Wrench, Clock } from 'lucide-react';
+import { glassPanel } from '../../lib/glass';
+import type {
+	AtlasConfigView,
+	ChannelSummary,
+	MessagingGatewayStatus,
+	Module,
+	ToolManifest,
+	ToolApproval
+} from '../../lib/api';
+import { isTauri, startGatewayViaShell } from '../../lib/host';
+import emblemFull from '../../brand/assets/emblem-full.webp';
 
-// ── System — operator control surface ────────────────────────────────────────
-// Gateway + database health, the offline start affordance (a browser SPA cannot
-// spawn a process; in the future Tauri shell it can — feature-detected here), and
-// the activatable-modules toggle (Decision 3b: cashflow is an optional module).
+// ── Control-page panels ───────────────────────────────────────────────────────
+// Extracted from the former System route so the merged Settings/System Control
+// page composes them per tab. Presentational only — state lives in Control.tsx.
 
 const START_COMMAND = 'atlas gateway start';
 
-type Health = { status: string; db: string } | null;
-type Load = { s: 'loading' } | { s: 'ready' } | { s: 'error' };
-
-export default function System() {
-	const [health, setHealth] = useState<Health>(null);
-	const [online, setOnline] = useState<boolean | null>(null);
-	const [modules, setModules] = useState<Module[]>([]);
-	const [config, setConfig] = useState<AtlasConfigView | null>(null);
-	const [channels, setChannels] = useState<ChannelSummary[]>([]);
-	const [models, setModels] = useState<ModelEntry[]>([]);
-	const [tools, setTools] = useState<ToolManifest[]>([]);
-	const [toolApprovals, setToolApprovals] = useState<ToolApproval[]>([]);
-	const [msgGw, setMsgGw] = useState<MessagingGatewayStatus>({ running: false, pid: null });
-	const [msgGwBusy, setMsgGwBusy] = useState(false);
-	const [load, setLoad] = useState<Load>({ s: 'loading' });
-	const [busyId, setBusyId] = useState<string | null>(null);
-	const [chBusy, setChBusy] = useState<string | null>(null);
-	const [err, setErr] = useState<string | null>(null);
-	const { epoch } = useGatewayHealth();
-
-	const refresh = useCallback(async () => {
-		const [h, m, c, ch, gw, md, tl, ta] = await Promise.allSettled([
-			checkHealth(),
-			listModules(),
-			getConfig(),
-			listChannels(),
-			messagingGatewayStatus(),
-			listModels(),
-			getToolManifests(),
-			listToolApprovals()
-		]);
-		if (h.status === 'fulfilled') {
-			setHealth(h.value);
-			setOnline(true);
-		} else {
-			setHealth(null);
-			setOnline(false);
-		}
-		if (m.status === 'fulfilled') setModules(m.value.modules);
-		setConfig(c.status === 'fulfilled' ? c.value : null);
-		setChannels(ch.status === 'fulfilled' ? ch.value.channels : []);
-		setMsgGw(gw.status === 'fulfilled' ? gw.value : { running: false, pid: null });
-		setModels(md.status === 'fulfilled' ? md.value.models : []);
-		setTools(tl.status === 'fulfilled' ? tl.value : []);
-		setToolApprovals(ta.status === 'fulfilled' ? ta.value : []);
-		setLoad({ s: h.status === 'rejected' && m.status === 'rejected' ? 'error' : 'ready' });
-	}, []);
-
-	async function toggleMsgGw() {
-		setMsgGwBusy(true);
-		setErr(null);
-		try {
-			if (msgGw.running) await stopMessagingGateway();
-			else await startMessagingGateway();
-			await refresh();
-		} catch {
-			setErr('Could not control the messaging gateway — is the REST gateway running?');
-		} finally {
-			setMsgGwBusy(false);
-		}
-	}
-
-	async function toggleCh(ch: ChannelSummary) {
-		setChBusy(ch.name);
-		setErr(null);
-		try {
-			await toggleChannel(ch.name, !ch.enabled);
-			await refresh();
-		} catch {
-			setErr(`Could not toggle ${ch.name} — is the gateway running?`);
-		} finally {
-			setChBusy(null);
-		}
-	}
-
-	useEffect(() => {
-		void refresh();
-		const id = setInterval(() => void refresh(), 15_000);
-		return () => clearInterval(id);
-	}, [refresh, epoch]);
-
-	async function toggle(mod: Module) {
-		setBusyId(mod.id);
-		setErr(null);
-		try {
-			await setModuleActive(mod.id, mod.status !== 'active');
-			await refresh();
-		} catch {
-			setErr(`Could not toggle ${mod.name} — is the gateway running?`);
-		} finally {
-			setBusyId(null);
-		}
-	}
-
-	return (
-		<Page eyebrow="SYSTEM" title="System">
-			<div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-				<StatusCard
-					icon={<Server size={15} strokeWidth={1.5} />}
-					label="GATEWAY"
-					value={online === null ? 'CHECKING' : online ? 'ONLINE' : 'OFFLINE'}
-					ok={online === true}
-				/>
-				<StatusCard
-					icon={<Database size={15} strokeWidth={1.5} />}
-					label="DATABASE"
-					value={(health?.db ?? (online ? 'unknown' : '—')).toUpperCase()}
-					ok={(health?.db ?? '').toLowerCase() === 'ok'}
-				/>
-			</div>
-
-			{online === false && <OfflinePanel onStarted={() => void refresh()} />}
-
-			{config && <RuntimeConfigPanel config={config} />}
-
-			<ModelRegistryPanel models={models} provider={config?.provider.name ?? null} />
-
-			<PolicyPanel />
-
-			<ToolsPanel tools={tools} />
-
-			<ToolApprovalsPanel approvals={toolApprovals} />
-
-			<ChannelsPanel
-				channels={channels}
-				offline={online === false}
-				busyName={chBusy}
-				onToggle={toggleCh}
-				gateway={msgGw}
-				gatewayBusy={msgGwBusy}
-				onGatewayToggle={toggleMsgGw}
-			/>
-
-			<ModulesPanel
-				modules={modules}
-				loading={load.s === 'loading'}
-				offline={online === false}
-				busyId={busyId}
-				onToggle={toggle}
-				err={err}
-			/>
-
-			<AboutPanel />
-		</Page>
-	);
-}
-
-// ── about band (PAGES-SPEC §10) ──────────────────────────────────────────────
-// Where the full Operator-Atlas emblem lives at rest: brand narrative, the three
-// thesis pillars, and the honest foundation attribution. Always renders (no
-// gateway dependency) — this page is partly an offline-diagnostic surface.
-function AboutPanel() {
-	return (
-		<section
-			style={glassPanel({
-				overflow: 'hidden',
-				marginTop: 16,
-				position: 'relative',
-				textAlign: 'center',
-				padding: '40px 28px 34px'
-			})}
-		>
-			<span
-				aria-hidden="true"
-				style={{
-					position: 'absolute',
-					top: 0,
-					left: 0,
-					right: 0,
-					height: 1,
-					background: 'linear-gradient(90deg, transparent, var(--atlas-bronze) 50%, transparent)',
-					opacity: 0.5
-				}}
-			/>
-			<img
-				src={emblemFull}
-				alt="The Operator Atlas"
-				style={{ width: 'min(280px, 70%)', height: 'auto', margin: '0 auto 22px', display: 'block', filter: 'drop-shadow(0 8px 32px rgba(79,139,255,0.18))' }}
-			/>
-			<div style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 10, letterSpacing: '0.34em', color: 'var(--atlas-bronze)', textTransform: 'uppercase', marginBottom: 12 }}>
-				The Operator Atlas
-			</div>
-			<h2 style={{ fontFamily: 'var(--l2-font-serif)', fontWeight: 600, fontSize: 24, color: 'var(--l2-fg-1)', margin: '0 0 18px', letterSpacing: '0.04em' }}>
-				Bearing Complexity Through Structure
-			</h2>
-			<div style={{ display: 'flex', justifyContent: 'center', gap: 28, flexWrap: 'wrap', marginBottom: 22 }}>
-				{[
-					['MISSION', 'Author intent; the titan does the work.'],
-					['AUDIT', 'Every action accounted for.'],
-					['STRUCTURE', 'Memory, models, and integrations, mapped.']
-				].map(([k, v]) => (
-					<div key={k} style={{ maxWidth: 200 }}>
-						<div style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 10.5, letterSpacing: '0.22em', color: 'var(--atlas-celestial)', marginBottom: 6 }}>{k}</div>
-						<div style={{ color: 'var(--l2-fg-3)', fontSize: 12.5, lineHeight: 1.5 }}>{v}</div>
-					</div>
-				))}
-			</div>
-			<div style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 10, letterSpacing: '0.26em', color: 'var(--l2-fg-2)', marginBottom: 8 }}>
-				BY L2 SYSTEMS
-			</div>
-			<div style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 10, letterSpacing: '0.06em', color: 'var(--l2-fg-3)', maxWidth: 520, margin: '0 auto', lineHeight: 1.6 }}>
-				Runtime foundation derived from Hermes (MIT). See ATTRIBUTION.md.
-			</div>
-		</section>
-	);
-}
-
 // ── status cards ──────────────────────────────────────────────────────────────
-function StatusCard({
+export function StatusCard({
 	icon,
 	label,
 	value,
@@ -271,7 +48,7 @@ function StatusCard({
 // ── runtime config panel ─────────────────────────────────────────────────────
 // Reads ~/.atlas/config.yaml (masked) via the gateway. Secrets are env: refs only,
 // so no value is ever shown. Configure with `atlas setup` / `atlas config set`.
-function RuntimeConfigPanel({ config }: { config: AtlasConfigView }) {
+export function RuntimeConfigPanel({ config }: { config: AtlasConfigView }) {
 	const rows: Array<[string, string]> = [
 		['Provider', config.provider.name],
 		['Model', config.provider.model],
@@ -325,157 +102,11 @@ function RuntimeConfigPanel({ config }: { config: AtlasConfigView }) {
 	);
 }
 
-// ── model registry panel ──────────────────────────────────────────────────────
-// The provider/model registry (GET /v1/models). Provider credentials live in the
-// RUNTIME CONFIG panel above; this lists every known model with its source and
-// active state. Read-only — discovery/seeding happens via the CLI.
-function ModelRegistryPanel({ models, provider }: { models: ModelEntry[]; provider: string | null }) {
-	const [query, setQuery] = useState('');
-	const activeCount = models.filter((m) => m.active).length;
-
-	// Filter by model id or provider; grouping + a capped-scroll body keep the
-	// panel bounded once `atlas models refresh` pulls a real (hundreds-long) list.
-	const q = query.trim().toLowerCase();
-	const filtered = q
-		? models.filter((m) => m.model_id.toLowerCase().includes(q) || m.provider.toLowerCase().includes(q))
-		: models;
-
-	const groups = new Map<string, ModelEntry[]>();
-	for (const m of filtered) {
-		const key = m.provider || 'unknown';
-		const bucket = groups.get(key);
-		if (bucket) bucket.push(m);
-		else groups.set(key, [m]);
-	}
-	const providerKeys = [...groups.keys()].sort();
-	for (const k of providerKeys) groups.get(k)!.sort((a, b) => a.model_id.localeCompare(b.model_id));
-
-	return (
-		<section style={glassPanel({ overflow: 'hidden', marginBottom: 16 })}>
-			<header
-				style={{
-					display: 'flex',
-					alignItems: 'center',
-					gap: 8,
-					padding: '14px 18px',
-					borderBottom: '1px solid var(--l2-hairline)'
-				}}
-			>
-				<Cpu size={14} strokeWidth={1.6} color="var(--atlas-bronze)" />
-				<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 11, letterSpacing: '0.22em', color: 'var(--atlas-bronze)' }}>
-					MODEL REGISTRY
-				</span>
-				<span style={{ marginLeft: 'auto', fontFamily: 'var(--l2-font-mono)', fontSize: 10, letterSpacing: '0.14em', color: 'var(--l2-fg-3)' }}>
-					{activeCount}/{models.length} ACTIVE
-				</span>
-			</header>
-
-			{models.length === 0 ? (
-				<div style={{ padding: '24px 18px', color: 'var(--l2-fg-3)', fontSize: 13, lineHeight: 1.6 }}>
-					No models registered{provider ? ` for ${provider}` : ''}. Sync the registry with{' '}
-					<code style={{ fontFamily: 'var(--l2-font-mono)', color: 'var(--atlas-celestial)' }}>atlas models refresh</code>.
-				</div>
-			) : (
-				<>
-					{models.length > 8 && (
-						<div
-							style={{
-								display: 'flex',
-								alignItems: 'center',
-								gap: 12,
-								padding: '10px 18px',
-								borderBottom: '1px solid var(--l2-hairline)'
-							}}
-						>
-							<input
-								value={query}
-								onChange={(e) => setQuery(e.target.value)}
-								placeholder="Filter by model or provider…"
-								style={{
-									flex: 1,
-									minWidth: 0,
-									background: 'transparent',
-									border: 'none',
-									outline: 'none',
-									color: 'var(--l2-fg-1)',
-									fontFamily: 'var(--l2-font-mono)',
-									fontSize: 12,
-									letterSpacing: '0.04em'
-								}}
-							/>
-							<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 10, letterSpacing: '0.12em', color: 'var(--l2-fg-3)', flexShrink: 0 }}>
-								{q ? `${filtered.length}/${models.length}` : `${models.length}`}
-							</span>
-						</div>
-					)}
-					<div style={{ maxHeight: 320, overflowY: 'auto' }}>
-						{filtered.length === 0 ? (
-							<div style={{ padding: '20px 18px', color: 'var(--l2-fg-3)', fontSize: 13 }}>
-								No models match “{query.trim()}”.
-							</div>
-						) : (
-							providerKeys.map((pk) => (
-								<div key={pk}>
-									<div
-										style={{
-											position: 'sticky',
-											top: 0,
-											display: 'flex',
-											alignItems: 'center',
-											gap: 8,
-											padding: '7px 18px',
-											background: 'rgba(11, 13, 18, 0.92)',
-											borderTop: '1px solid var(--l2-hairline)',
-											borderBottom: '1px solid var(--l2-hairline)'
-										}}
-									>
-										<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 10, letterSpacing: '0.18em', color: 'var(--atlas-bronze)', textTransform: 'uppercase' }}>
-											{pk}
-										</span>
-										<span style={{ marginLeft: 'auto', fontFamily: 'var(--l2-font-mono)', fontSize: 10, letterSpacing: '0.1em', color: 'var(--l2-fg-3)' }}>
-											{groups.get(pk)!.length}
-										</span>
-									</div>
-									{groups.get(pk)!.map((m, i) => (
-										<div
-											key={`${m.provider}/${m.model_id}`}
-											style={{
-												display: 'flex',
-												alignItems: 'center',
-												justifyContent: 'space-between',
-												gap: 16,
-												padding: '11px 18px',
-												borderTop: i === 0 ? 'none' : '1px solid var(--l2-hairline)'
-											}}
-										>
-											<div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-												<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 13, color: 'var(--l2-fg-1)', wordBreak: 'break-all' }}>
-													{m.model_id}
-												</span>
-												<StatusPill active={m.active} />
-											</div>
-											{m.health && (
-												<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 9.5, letterSpacing: '0.1em', color: 'var(--l2-fg-3)', flexShrink: 0 }}>
-													{m.health.toUpperCase()}
-												</span>
-											)}
-										</div>
-									))}
-								</div>
-							))
-						)}
-					</div>
-				</>
-			)}
-		</section>
-	);
-}
-
 // ── channels panel ────────────────────────────────────────────────────────────
 // Messaging channels from the foundation gateway config. Toggling persists to
 // the foundation config.yaml via the gateway; credential presence only (never
 // values). Credentials/tokens are configured out-of-band (atlas setup / env).
-function ChannelsPanel({
+export function ChannelsPanel({
 	channels,
 	offline,
 	busyName,
@@ -605,7 +236,7 @@ function ChannelsPanel({
 }
 
 // ── offline start panel ─────────────────────────────────────────────────────
-function OfflinePanel({ onStarted }: { onStarted: () => void }) {
+export function OfflinePanel({ onStarted }: { onStarted: () => void }) {
 	const [copied, setCopied] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const [err, setErr] = useState<string | null>(null);
@@ -696,7 +327,7 @@ function OfflinePanel({ onStarted }: { onStarted: () => void }) {
 }
 
 // ── modules panel ─────────────────────────────────────────────────────────────
-function ModulesPanel({
+export function ModulesPanel({
 	modules,
 	loading,
 	offline,
@@ -778,7 +409,7 @@ function ModulesPanel({
 }
 
 // ── tool policy panel (SC3 — the posture must be VISIBLE, not just enforced) ──
-function PolicyPanel() {
+export function PolicyPanel() {
 	return (
 		<section style={glassPanel({ overflow: 'hidden', marginBottom: 16 })}>
 			<header
@@ -850,7 +481,7 @@ function RiskLegendRow({ tone, level, text }: { tone: string; level: string; tex
 }
 
 // ── tools panel — manifest-driven (SC2/SC3) ───────────────────────────────────
-function ToolsPanel({ tools }: { tools: ToolManifest[] }) {
+export function ToolsPanel({ tools }: { tools: ToolManifest[] }) {
 	const toneFor = (r: string) => (r === 'read' ? 'var(--atlas-cyan)' : r === 'write' ? 'var(--atlas-celestial)' : 'var(--l2-error)');
 	return (
 		<section style={glassPanel({ overflow: 'hidden', marginBottom: 16 })}>
@@ -917,7 +548,7 @@ function ToolsPanel({ tools }: { tools: ToolManifest[] }) {
 }
 
 // ── tool approvals panel — clones the Discord ApprovalsPanel pattern ──────────
-function ToolApprovalsPanel({
+export function ToolApprovalsPanel({
 	approvals
 }: {
 	approvals: ToolApproval[];
@@ -989,7 +620,67 @@ function ToolApprovalsPanel({
 	);
 }
 
-function StatusPill({ active }: { active: boolean }) {
+// ── about band (PAGES-SPEC §10) ──────────────────────────────────────────────
+// Where the full Operator-Atlas emblem lives at rest: brand narrative, the three
+// thesis pillars, and the honest foundation attribution. Always renders (no
+// gateway dependency) — this surface doubles as an offline diagnostic.
+export function AboutPanel() {
+	return (
+		<section
+			style={glassPanel({
+				overflow: 'hidden',
+				marginTop: 16,
+				position: 'relative',
+				textAlign: 'center',
+				padding: '40px 28px 34px'
+			})}
+		>
+			<span
+				aria-hidden="true"
+				style={{
+					position: 'absolute',
+					top: 0,
+					left: 0,
+					right: 0,
+					height: 1,
+					background: 'linear-gradient(90deg, transparent, var(--atlas-bronze) 50%, transparent)',
+					opacity: 0.5
+				}}
+			/>
+			<img
+				src={emblemFull}
+				alt="The Operator Atlas"
+				style={{ width: 'min(280px, 70%)', height: 'auto', margin: '0 auto 22px', display: 'block', filter: 'drop-shadow(0 8px 32px rgba(79,139,255,0.18))' }}
+			/>
+			<div style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 10, letterSpacing: '0.34em', color: 'var(--atlas-bronze)', textTransform: 'uppercase', marginBottom: 12 }}>
+				The Operator Atlas
+			</div>
+			<h2 style={{ fontFamily: 'var(--l2-font-serif)', fontWeight: 600, fontSize: 24, color: 'var(--l2-fg-1)', margin: '0 0 18px', letterSpacing: '0.04em' }}>
+				Bearing Complexity Through Structure
+			</h2>
+			<div style={{ display: 'flex', justifyContent: 'center', gap: 28, flexWrap: 'wrap', marginBottom: 22 }}>
+				{[
+					['MISSION', 'Author intent; the titan does the work.'],
+					['AUDIT', 'Every action accounted for.'],
+					['STRUCTURE', 'Memory, models, and integrations, mapped.']
+				].map(([k, v]) => (
+					<div key={k} style={{ maxWidth: 200 }}>
+						<div style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 10.5, letterSpacing: '0.22em', color: 'var(--atlas-celestial)', marginBottom: 6 }}>{k}</div>
+						<div style={{ color: 'var(--l2-fg-3)', fontSize: 12.5, lineHeight: 1.5 }}>{v}</div>
+					</div>
+				))}
+			</div>
+			<div style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 10, letterSpacing: '0.26em', color: 'var(--l2-fg-2)', marginBottom: 8 }}>
+				BY L2 SYSTEMS
+			</div>
+			<div style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 10, letterSpacing: '0.06em', color: 'var(--l2-fg-3)', maxWidth: 520, margin: '0 auto', lineHeight: 1.6 }}>
+				Runtime foundation derived from Hermes (MIT). See ATTRIBUTION.md.
+			</div>
+		</section>
+	);
+}
+
+export function StatusPill({ active }: { active: boolean }) {
 	const color = active ? 'var(--atlas-cyan)' : 'var(--l2-fg-3)';
 	return (
 		<span
@@ -1008,7 +699,7 @@ function StatusPill({ active }: { active: boolean }) {
 	);
 }
 
-function ToggleButton({
+export function ToggleButton({
 	active,
 	busy,
 	disabled,
@@ -1045,7 +736,7 @@ function ToggleButton({
 	);
 }
 
-function PrimaryButton({
+export function PrimaryButton({
 	children,
 	icon,
 	onClick,
