@@ -3,7 +3,7 @@
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import { formatCurrency } from "@/lib/utils";
 
-const COLORS = ['#6366F1', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
+const COLORS = ['#4F8BFF', '#4F8BFF', '#00FF94', '#FFD600', '#FF0055', '#A17BFF'];
 
 export default function ExplorerCharts({
   costByModel,
@@ -24,8 +24,8 @@ export default function ExplorerCharts({
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 24 }}>
         
         {/* Cost By Model */}
-        <div style={{ background: "#1A1D26", padding: 24, borderRadius: 12, border: "1px solid #2E3340" }}>
-          <h2 style={{ fontSize: 16, fontWeight: 600, color: "#F1F3F6", margin: "0 0 16px 0" }}>Custo por Modelo</h2>
+        <div style={{ background: "rgba(24,28,38,0.55)", padding: 24, borderRadius: 12, border: "1px solid var(--l2-hairline)" }}>
+          <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--l2-fg-1)", margin: "0 0 16px 0" }}>Custo por Modelo</h2>
           <div style={{ height: 250 }}>
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -53,8 +53,8 @@ export default function ExplorerCharts({
         </div>
 
         {/* Cache Efficiency */}
-        <div style={{ background: "#1A1D26", padding: 24, borderRadius: 12, border: "1px solid #2E3340" }}>
-          <h2 style={{ fontSize: 16, fontWeight: 600, color: "#F1F3F6", margin: "0 0 16px 0" }}>Eficiência de Cache</h2>
+        <div style={{ background: "rgba(24,28,38,0.55)", padding: 24, borderRadius: 12, border: "1px solid var(--l2-hairline)" }}>
+          <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--l2-fg-1)", margin: "0 0 16px 0" }}>Eficiência de Cache</h2>
           <div style={{ height: 250 }}>
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -72,8 +72,8 @@ export default function ExplorerCharts({
                     return `${name} ${(percent * 100).toFixed(0)}%`;
                   }}
                 >
-                  <Cell fill="#10B981" />
-                  <Cell fill="#EF4444" />
+                  <Cell fill="#00FF94" />
+                  <Cell fill="#FF0055" />
                 </Pie>
                 <Tooltip formatter={(val: any) => `${val.toLocaleString()} tokens`} />
               </PieChart>
@@ -84,12 +84,12 @@ export default function ExplorerCharts({
       </div>
 
       {/* Top Users */}
-      <div style={{ background: "#1A1D26", padding: 24, borderRadius: 12, border: "1px solid #2E3340" }}>
-        <h2 style={{ fontSize: 16, fontWeight: 600, color: "#F1F3F6", margin: "0 0 16px 0" }}>Alunos Deficitários (Top Gastos)</h2>
+      <div style={{ background: "rgba(24,28,38,0.55)", padding: 24, borderRadius: 12, border: "1px solid var(--l2-hairline)" }}>
+        <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--l2-fg-1)", margin: "0 0 16px 0" }}>Alunos Deficitários (Top Gastos)</h2>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
             <thead>
-              <tr style={{ borderBottom: "1px solid #2E3340", color: "#9CA3B4", textAlign: "left" }}>
+              <tr style={{ borderBottom: "1px solid var(--l2-hairline)", color: "var(--l2-fg-2)", textAlign: "left" }}>
                 <th style={{ padding: "12px 0", fontWeight: 500 }}>Aluno (User ID)</th>
                 <th style={{ padding: "12px 0", fontWeight: 500, textAlign: "right" }}>Eventos</th>
                 <th style={{ padding: "12px 0", fontWeight: 500, textAlign: "right" }}>Tokens Trafegados</th>
@@ -98,16 +98,16 @@ export default function ExplorerCharts({
             </thead>
             <tbody>
               {topUsers.map((user) => (
-                <tr key={user.user_id} style={{ borderBottom: "1px solid #2E3340" }}>
-                  <td style={{ padding: "12px 0", color: "#F1F3F6", fontWeight: 500 }}>{user.user_id}</td>
-                  <td style={{ padding: "12px 0", color: "#9CA3B4", textAlign: "right" }}>{user.total_events}</td>
-                  <td style={{ padding: "12px 0", color: "#9CA3B4", textAlign: "right" }} className="font-mono">{(user.total_tokens || 0).toLocaleString()}</td>
-                  <td style={{ padding: "12px 0", color: "#F87171", textAlign: "right", fontWeight: 600 }} className="font-mono">{formatCurrency(user.total_cost)}</td>
+                <tr key={user.user_id} style={{ borderBottom: "1px solid var(--l2-hairline)" }}>
+                  <td style={{ padding: "12px 0", color: "var(--l2-fg-1)", fontWeight: 500 }}>{user.user_id}</td>
+                  <td style={{ padding: "12px 0", color: "var(--l2-fg-2)", textAlign: "right" }}>{user.total_events}</td>
+                  <td style={{ padding: "12px 0", color: "var(--l2-fg-2)", textAlign: "right" }} className="font-mono">{(user.total_tokens || 0).toLocaleString()}</td>
+                  <td style={{ padding: "12px 0", color: "#FF0055", textAlign: "right", fontWeight: 600 }} className="font-mono">{formatCurrency(user.total_cost)}</td>
                 </tr>
               ))}
               {topUsers.length === 0 && (
                 <tr>
-                  <td colSpan={4} style={{ padding: "24px 0", textAlign: "center", color: "#9CA3B4" }}>Nenhum uso registrado neste mês.</td>
+                  <td colSpan={4} style={{ padding: "24px 0", textAlign: "center", color: "var(--l2-fg-2)" }}>Nenhum uso registrado neste mês.</td>
                 </tr>
               )}
             </tbody>

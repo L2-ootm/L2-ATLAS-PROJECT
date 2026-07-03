@@ -143,7 +143,7 @@ export default function TokenHeatmap({ clients, invoices }: TokenHeatmapProps) {
                                     return (
                                         <g transform={`translate(${cx},${cy})`}>
                                             <circle r="6" fill={colorPrimary} opacity={0.8} style={{
-                                                filter: `drop-shadow(0 0 4px ${isDanger ? 'rgba(255,0,85,0.3)' : 'rgba(36,255,186,0.3)'})`,
+                                                filter: `drop-shadow(0 0 4px ${isDanger ? 'rgba(255,0,85,0.3)' : 'rgba(70,240,224,0.3)'})`,
                                             }} />
                                         </g>
                                     );

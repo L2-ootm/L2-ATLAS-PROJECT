@@ -8,14 +8,14 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const jetbrains = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains" });
 
 export const metadata: Metadata = {
-  title: "L2 Financeiro",
-  description: "Gestão financeira — L2 Systems",
+  title: "ATLAS // Cashflow",
+  description: "Gestão financeira completa — módulo ATLAS, L2 Systems",
   manifest: "/manifest.json",
-  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "L2 Financeiro" },
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "ATLAS Cashflow" },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#050816",
+  themeColor: "#0B0D12",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,

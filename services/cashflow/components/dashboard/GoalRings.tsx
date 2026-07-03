@@ -59,7 +59,7 @@ export default function GoalRings({ revenue, expenses, goal = 50000 }: GoalRings
                         className="transition-all duration-1000 ease-out"
                         strokeLinecap="round"
                         style={{
-                            filter: `drop-shadow(0 0 6px ${progress >= 100 ? 'var(--emerald-glow)' : 'rgba(127,0,255,0.3)'})`,
+                            filter: `drop-shadow(0 0 6px ${progress >= 100 ? 'var(--emerald-glow)' : 'rgba(161,123,255,0.3)'})`,
                         }}
                     />
                 </svg>
@@ -88,7 +88,7 @@ export default function GoalRings({ revenue, expenses, goal = 50000 }: GoalRings
                 <div className="flex flex-col text-right">
                     <span className="text-[10px] uppercase tracking-wider" style={{ color: "oklch(0.50 0.02 200)" }}>Falta para Meta</span>
                     <span className="text-sm font-mono font-bold mt-0.5" style={{ color: revenue >= goal ? "var(--emerald-core)" : "var(--sig-crimson)" }}>
-                        {revenue >= goal ? "Batida!" : formatCurrency(goal - revenue)}
+                        {revenue >= goal ? "Atingida" : formatCurrency(goal - revenue)}
                     </span>
                 </div>
             </div>

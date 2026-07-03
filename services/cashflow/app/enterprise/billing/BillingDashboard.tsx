@@ -50,14 +50,14 @@ export default function BillingDashboard({ totals, activeSubscriptions, recentEv
       </div>
 
       {/* Assinaturas Ativas */}
-      <div style={{ background: "#1A1D26", padding: 24, borderRadius: 12, border: "1px solid #2E3340" }}>
-        <h2 style={{ fontSize: 16, fontWeight: 600, color: "#F1F3F6", margin: "0 0 16px 0", display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ background: "rgba(24,28,38,0.55)", padding: 24, borderRadius: 12, border: "1px solid var(--l2-hairline)" }}>
+        <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--l2-fg-1)", margin: "0 0 16px 0", display: "flex", alignItems: "center", gap: 8 }}>
           <Users size={18} /> Assinaturas Plus Ativas ({activeSubscriptions.length})
         </h2>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
             <thead>
-              <tr style={{ borderBottom: "1px solid #2E3340", color: "#9CA3B4", textAlign: "left" }}>
+              <tr style={{ borderBottom: "1px solid var(--l2-hairline)", color: "var(--l2-fg-2)", textAlign: "left" }}>
                 <th style={{ padding: "12px 0", fontWeight: 500 }}>Aluno</th>
                 <th style={{ padding: "12px 0", fontWeight: 500 }}>Plano</th>
                 <th style={{ padding: "12px 0", fontWeight: 500 }}>Gateway</th>
@@ -67,15 +67,15 @@ export default function BillingDashboard({ totals, activeSubscriptions, recentEv
             </thead>
             <tbody>
               {activeSubscriptions.map((sub: any) => (
-                <tr key={sub.id} style={{ borderBottom: "1px solid #2E3340" }}>
-                  <td style={{ padding: "12px 0", color: "#F1F3F6", fontWeight: 500 }}>{sub.user_id}</td>
-                  <td style={{ padding: "12px 0", color: "#9CA3B4" }}>{sub.plan_name}</td>
-                  <td style={{ padding: "12px 0", color: "#9CA3B4", textTransform: "capitalize" }}>{sub.gateway || "—"}</td>
-                  <td style={{ padding: "12px 0", color: "#34D399", textAlign: "right", fontWeight: 600 }} className="font-mono">{formatCurrency(sub.price_brl)}</td>
+                <tr key={sub.id} style={{ borderBottom: "1px solid var(--l2-hairline)" }}>
+                  <td style={{ padding: "12px 0", color: "var(--l2-fg-1)", fontWeight: 500 }}>{sub.user_id}</td>
+                  <td style={{ padding: "12px 0", color: "var(--l2-fg-2)" }}>{sub.plan_name}</td>
+                  <td style={{ padding: "12px 0", color: "var(--l2-fg-2)", textTransform: "capitalize" }}>{sub.gateway || "—"}</td>
+                  <td style={{ padding: "12px 0", color: "#46F0E0", textAlign: "right", fontWeight: 600 }} className="font-mono">{formatCurrency(sub.price_brl)}</td>
                   <td style={{ padding: "12px 0", textAlign: "right" }}>
                     <span style={{
                       background: sub.status === 'active' ? "rgba(52,211,153,0.15)" : "rgba(248,113,113,0.15)",
-                      color: sub.status === 'active' ? "#34D399" : "#F87171",
+                      color: sub.status === 'active' ? "#46F0E0" : "#FF0055",
                       padding: "3px 10px", borderRadius: 12, fontSize: 12, fontWeight: 600
                     }}>
                       {sub.status === 'active' ? 'Ativo' : sub.status}
@@ -85,7 +85,7 @@ export default function BillingDashboard({ totals, activeSubscriptions, recentEv
               ))}
               {activeSubscriptions.length === 0 && (
                 <tr>
-                  <td colSpan={5} style={{ padding: "24px 0", textAlign: "center", color: "#9CA3B4" }}>Nenhuma assinatura Plus registrada.</td>
+                  <td colSpan={5} style={{ padding: "24px 0", textAlign: "center", color: "var(--l2-fg-2)" }}>Nenhuma assinatura Plus registrada.</td>
                 </tr>
               )}
             </tbody>
@@ -94,12 +94,12 @@ export default function BillingDashboard({ totals, activeSubscriptions, recentEv
       </div>
 
       {/* Eventos Recentes */}
-      <div style={{ background: "#1A1D26", padding: 24, borderRadius: 12, border: "1px solid #2E3340" }}>
-        <h2 style={{ fontSize: 16, fontWeight: 600, color: "#F1F3F6", margin: "0 0 16px 0" }}>Eventos de Billing Recentes</h2>
+      <div style={{ background: "rgba(24,28,38,0.55)", padding: 24, borderRadius: 12, border: "1px solid var(--l2-hairline)" }}>
+        <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--l2-fg-1)", margin: "0 0 16px 0" }}>Eventos de Billing Recentes</h2>
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
             <thead>
-              <tr style={{ borderBottom: "1px solid #2E3340", color: "#9CA3B4", textAlign: "left" }}>
+              <tr style={{ borderBottom: "1px solid var(--l2-hairline)", color: "var(--l2-fg-2)", textAlign: "left" }}>
                 <th style={{ padding: "12px 0", fontWeight: 500 }}>Tipo</th>
                 <th style={{ padding: "12px 0", fontWeight: 500 }}>Aluno</th>
                 <th style={{ padding: "12px 0", fontWeight: 500, textAlign: "right" }}>Bruto</th>
@@ -110,26 +110,26 @@ export default function BillingDashboard({ totals, activeSubscriptions, recentEv
             </thead>
             <tbody>
               {recentEvents.map((evt: any) => (
-                <tr key={evt.id} style={{ borderBottom: "1px solid #2E3340" }}>
-                  <td style={{ padding: "12px 0", color: "#F1F3F6" }}>
+                <tr key={evt.id} style={{ borderBottom: "1px solid var(--l2-hairline)" }}>
+                  <td style={{ padding: "12px 0", color: "var(--l2-fg-1)" }}>
                     <span style={{
                       background: evt.event_type === 'payment_received' ? "rgba(52,211,153,0.15)" : "rgba(248,113,113,0.15)",
-                      color: evt.event_type === 'payment_received' ? "#34D399" : "#F87171",
+                      color: evt.event_type === 'payment_received' ? "#46F0E0" : "#FF0055",
                       padding: "3px 8px", borderRadius: 8, fontSize: 11, fontWeight: 600
                     }}>
                       {evt.event_type === 'payment_received' ? 'Pagamento' : evt.event_type}
                     </span>
                   </td>
-                  <td style={{ padding: "12px 0", color: "#9CA3B4" }}>{evt.user_id || "—"}</td>
-                  <td style={{ padding: "12px 0", color: "#F1F3F6", textAlign: "right" }} className="font-mono">{formatCurrency(evt.amount_brl)}</td>
-                  <td style={{ padding: "12px 0", color: "#F87171", textAlign: "right" }} className="font-mono">-{formatCurrency(evt.gateway_fee_brl)}</td>
-                  <td style={{ padding: "12px 0", color: "#6366F1", textAlign: "right" }} className="font-mono">{formatCurrency(evt.l2_share_brl)}</td>
-                  <td style={{ padding: "12px 0", color: "#3B82F6", textAlign: "right" }} className="font-mono">{formatCurrency(evt.client_share_brl)}</td>
+                  <td style={{ padding: "12px 0", color: "var(--l2-fg-2)" }}>{evt.user_id || "—"}</td>
+                  <td style={{ padding: "12px 0", color: "var(--l2-fg-1)", textAlign: "right" }} className="font-mono">{formatCurrency(evt.amount_brl)}</td>
+                  <td style={{ padding: "12px 0", color: "#FF0055", textAlign: "right" }} className="font-mono">-{formatCurrency(evt.gateway_fee_brl)}</td>
+                  <td style={{ padding: "12px 0", color: "#4F8BFF", textAlign: "right" }} className="font-mono">{formatCurrency(evt.l2_share_brl)}</td>
+                  <td style={{ padding: "12px 0", color: "#4F8BFF", textAlign: "right" }} className="font-mono">{formatCurrency(evt.client_share_brl)}</td>
                 </tr>
               ))}
               {recentEvents.length === 0 && (
                 <tr>
-                  <td colSpan={6} style={{ padding: "24px 0", textAlign: "center", color: "#9CA3B4" }}>Nenhum evento neste mês.</td>
+                  <td colSpan={6} style={{ padding: "24px 0", textAlign: "center", color: "var(--l2-fg-2)" }}>Nenhum evento neste mês.</td>
                 </tr>
               )}
             </tbody>

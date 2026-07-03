@@ -27,9 +27,9 @@ export default function ExpenseDonutChart({ expenses }: ExpenseDonutChartProps) 
         'Software': '#A17BFF',
         'Marketing': '#FFD600',
         'Equipamento': '#00FF94',
-        'Infraestrutura': '#94A3B8',
+        'Infraestrutura': 'var(--l2-fg-2)',
         'Pessoal': '#4F8BFF',
-        'Outros': '#64748B',
+        'Outros': 'var(--l2-fg-3)',
     };
 
     const CustomTooltip = ({ active, payload }: any) => {

@@ -55,48 +55,48 @@ export default function ClientModal({ isOpen, onClose, onSave, client }: ClientM
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 transition-all" style={{ background: "rgba(0,0,0,0.5)" }} onClick={!isSubmitting ? onClose : undefined}>
-            <div className="animate-l2-enter relative overflow-hidden" style={{ borderRadius: 12, padding: 32, width: "100%", maxWidth: 520, background: "#1A1D26", border: "1px solid #2E3340", boxShadow: "0 24px 48px rgba(0,0,0,0.4)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="animate-l2-enter relative overflow-hidden" style={{ borderRadius: 12, padding: 32, width: "100%", maxWidth: 520, background: "rgba(24,28,38,0.55)", border: "1px solid var(--l2-hairline)", boxShadow: "0 24px 48px rgba(0,0,0,0.4)" }} onClick={(e) => e.stopPropagation()}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
-                    <h2 className="text-lg font-bold" style={{ color: "#F1F3F6" }}>{client ? "Editar Cliente" : "Novo Cliente"}</h2>
-                    <button onClick={onClose} className="p-1.5 rounded-lg transition-colors" style={{ color: "#5C6478" }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = "#252937"; e.currentTarget.style.color = "#F1F3F6"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#5C6478"; }}>
+                    <h2 className="text-lg font-bold" style={{ color: "var(--l2-fg-1)" }}>{client ? "Editar Cliente" : "Novo Cliente"}</h2>
+                    <button onClick={onClose} className="p-1.5 rounded-lg transition-colors" style={{ color: "var(--l2-fg-3)" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(34,40,56,0.65)"; e.currentTarget.style.color = "var(--l2-fg-1)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--l2-fg-3)"; }}>
                         <X className="w-5 h-5" />
                     </button>
                 </div>
                 <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 20 }}>
                     <div>
-                        <label className="block text-xs font-medium uppercase tracking-wider" style={{ marginBottom: 8, color: "#9CA3B4" }}>Nome do Cliente</label>
+                        <label className="block text-xs font-medium uppercase tracking-wider" style={{ marginBottom: 8, color: "var(--l2-fg-2)" }}>Nome do Cliente</label>
                         <input type="text" required value={name} onChange={(e) => setName(e.target.value)}
                             className="input-l2 w-full px-4 py-2.5 rounded-lg" placeholder="Ex: Clínica Dr. Silva" />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-xs font-medium uppercase tracking-wider" style={{ marginBottom: 8, color: "#9CA3B4" }}>Serviço Prestado</label>
+                            <label className="block text-xs font-medium uppercase tracking-wider" style={{ marginBottom: 8, color: "var(--l2-fg-2)" }}>Serviço Prestado</label>
                             <input type="text" required value={service} onChange={(e) => setService(e.target.value)}
                                 className="input-l2 w-full px-4 py-2.5 rounded-lg" placeholder="Ex: Gestão de WhatsApp" />
                         </div>
                         <div>
-                            <label className="block text-xs font-medium uppercase tracking-wider" style={{ marginBottom: 8, color: "#9CA3B4" }}>WhatsApp (Cobrança)</label>
+                            <label className="block text-xs font-medium uppercase tracking-wider" style={{ marginBottom: 8, color: "var(--l2-fg-2)" }}>WhatsApp (Cobrança)</label>
                             <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)}
                                 className="input-l2 w-full px-4 py-2.5 rounded-lg" placeholder="Ex: 5511999999999" />
                         </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-xs font-medium uppercase tracking-wider" style={{ marginBottom: 8, color: "#9CA3B4" }}>Valor Mensal (R$)</label>
+                            <label className="block text-xs font-medium uppercase tracking-wider" style={{ marginBottom: 8, color: "var(--l2-fg-2)" }}>Valor Mensal (R$)</label>
                             <input type="number" required min="0" step="0.01" value={monthlyPayment} onChange={(e) => setMonthlyPayment(e.target.value)}
                                 className="input-l2 w-full px-4 py-2.5 rounded-lg font-mono" placeholder="0,00" />
                         </div>
                         <div>
-                            <label className="block text-xs font-medium uppercase tracking-wider" style={{ marginBottom: 8, color: "#9CA3B4" }}>Início do Contrato</label>
+                            <label className="block text-xs font-medium uppercase tracking-wider" style={{ marginBottom: 8, color: "var(--l2-fg-2)" }}>Início do Contrato</label>
                             <input type="date" required value={startDate} onChange={(e) => setStartDate(e.target.value)}
                                 className="input-l2 w-full px-4 py-2.5 rounded-lg" />
                         </div>
                     </div>
                     <div>
-                        <label className="block text-xs font-medium uppercase tracking-wider" style={{ marginBottom: 8, color: "#9CA3B4" }}>Vigência do Contrato (Meses)</label>
-                        <select value={contractMonths} onChange={(e) => setContractMonths(e.target.value)} className="input-l2 w-full px-4 py-2.5 rounded-lg text-sm" style={{ background: "#1F2230" }}>
+                        <label className="block text-xs font-medium uppercase tracking-wider" style={{ marginBottom: 8, color: "var(--l2-fg-2)" }}>Vigência do Contrato (Meses)</label>
+                        <select value={contractMonths} onChange={(e) => setContractMonths(e.target.value)} className="input-l2 w-full px-4 py-2.5 rounded-lg text-sm" style={{ background: "rgba(18,21,29,0.65)" }}>
                             <option value="0">Sem Fidelidade (Recorrente Mensal)</option>
                             <option value="3">3 Meses (Trimestral)</option>
                             <option value="6">6 Meses (Semestral)</option>
@@ -107,20 +107,20 @@ export default function ClientModal({ isOpen, onClose, onSave, client }: ClientM
                     <div className="flex items-center gap-3">
                         <label className="relative inline-flex items-center cursor-pointer">
                             <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="sr-only peer" />
-                            <div className="w-10 h-5 rounded-full peer after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full" style={{ background: active ? "#6366F1" : "#252937" }}><div className="absolute top-[2px] rounded-full h-4 w-4 bg-white transition-all" style={{ left: active ? "22px" : "2px" }} /></div>
+                            <div className="w-10 h-5 rounded-full peer after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full" style={{ background: active ? "#4F8BFF" : "rgba(34,40,56,0.65)" }}><div className="absolute top-[2px] rounded-full h-4 w-4 bg-white transition-all" style={{ left: active ? "22px" : "2px" }} /></div>
                         </label>
-                        <span className="text-sm" style={{ color: "#9CA3B4" }}>Cliente ativo</span>
+                        <span className="text-sm" style={{ color: "var(--l2-fg-2)" }}>Cliente ativo</span>
                     </div>
                     <div>
-                        <label className="block text-xs font-medium uppercase tracking-wider" style={{ marginBottom: 8, color: "#9CA3B4" }}>Observações</label>
+                        <label className="block text-xs font-medium uppercase tracking-wider" style={{ marginBottom: 8, color: "var(--l2-fg-2)" }}>Observações</label>
                         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3}
                             className="input-l2 w-full px-4 py-2.5 rounded-lg resize-none" placeholder="Notas opcionais..." />
                     </div>
                     <div style={{ display: "flex", gap: 12, paddingTop: 8 }}>
                         <button type="button" onClick={onClose} disabled={isSubmitting} className="flex-1 px-4 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50"
-                            style={{ background: "#252937", color: "#9CA3B4" }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = "#2E3340"; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = "#252937"; }}>
+                            style={{ background: "rgba(34,40,56,0.65)", color: "var(--l2-fg-2)" }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--l2-hairline)"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(34,40,56,0.65)"; }}>
                             Cancelar
                         </button>
                         <button type="submit" disabled={isSubmitting} className="flex-1 px-4 py-2.5 btn-primary rounded-lg font-semibold flex justify-center items-center gap-2 transition-all disabled:opacity-80 disabled:cursor-wait">

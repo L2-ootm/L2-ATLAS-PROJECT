@@ -4,6 +4,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutDashboard, Users, Receipt, BarChart3, Menu, X, Wallet, FileText, Briefcase, Landmark, LineChart, Search, CreditCard, Gauge, FileBarChart, ShieldCheck, Globe } from "lucide-react";
 import { useState } from "react";
+import AtlasMark from "./AtlasMark";
+
+const ATLAS_COCKPIT_URL = process.env.NEXT_PUBLIC_ATLAS_URL || "http://localhost:5173";
 
 const navigation = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -36,11 +39,11 @@ export default function Sidebar() {
                 style={{
                     position: "fixed", top: 16, left: 16, zIndex: 50,
                     padding: 10, borderRadius: 2,
-                    background: "rgba(5,8,22,0.85)", color: "#EDEAE0",
-                    border: "1px solid rgba(36,255,186,0.15)",
+                    background: "rgba(7,8,12,0.85)", color: "#EDEAE0",
+                    border: "1px solid rgba(79,139,255,0.20)",
                     cursor: "pointer",
                     backdropFilter: "blur(16px) saturate(140%)",
-                    boxShadow: "0 0 12px rgba(36,255,186,0.08)",
+                    boxShadow: "0 0 12px rgba(79,139,255,0.08)",
                     display: "none",
                     transition: "box-shadow 0.25s cubic-bezier(0.22, 1, 0.36, 1)",
                 }}
@@ -54,27 +57,25 @@ export default function Sidebar() {
                 <div style={{
                     height: 72, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
                     padding: "0 18px",
-                    borderBottom: "1px solid rgba(36,255,186,0.06)",
+                    borderBottom: "1px solid var(--l2-hairline)",
                 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                        <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-                            <path d="M16 2L2 28H10L16 16L22 28H30L16 2Z" fill="#4F8BFF" opacity="0.9" />
-                        </svg>
+                        <AtlasMark size={30} title="ATLAS" />
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
                             <h1 style={{
-                                fontSize: "1.1875rem", fontWeight: 700, margin: 0, color: "#EDEAE0",
+                                fontSize: "1rem", fontWeight: 700, margin: 0, color: "#EDEAE0",
                                 lineHeight: 1, letterSpacing: "0.3em", textTransform: "uppercase",
                                 fontFamily: "var(--font-sans)",
                             }}>
-                                L2
+                                ATLAS
                             </h1>
-                            <span style={{ color: "oklch(0.50 0.02 200)", fontWeight: 400, fontSize: "0.5rem", letterSpacing: "0.3em", textTransform: "uppercase", fontFamily: "var(--font-mono)" }}>
-                                FINANCEIRO
+                            <span style={{ color: "var(--l2-fg-3)", fontWeight: 400, fontSize: "0.5rem", letterSpacing: "0.3em", textTransform: "uppercase", fontFamily: "var(--font-mono)" }}>
+                                CASHFLOW
                             </span>
                         </div>
                     </div>
                     <a
-                        href="http://localhost:5174/cashflow"
+                        href={`${ATLAS_COCKPIT_URL}/cashflow`}
                         target="_top"
                         className="topo-btn topo-btn--muted"
                         style={{
@@ -116,13 +117,13 @@ export default function Sidebar() {
                                     whiteSpace: "nowrap",
                                     ...(isActive
                                         ? {
-                                            background: "oklch(0.50 0.22 280 / 12%)",
-                                            color: "oklch(0.82 0.24 230)",
-                                            boxShadow: "inset 2px 0 0 0 oklch(0.82 0.24 230 / 70%), 0 0 16px oklch(0.50 0.22 280 / 15%)",
+                                            background: "rgba(79,139,255,0.10)",
+                                            color: "var(--atlas-celestial)",
+                                            boxShadow: "inset 2px 0 0 0 rgba(79,139,255,0.70), 0 0 16px rgba(79,139,255,0.12)",
                                           }
                                         : {
                                             background: "transparent",
-                                            color: "oklch(0.50 0.02 200)",
+                                            color: "var(--l2-fg-3)",
                                           }),
                                 }}
                                 onMouseEnter={(e) => {
@@ -138,7 +139,7 @@ export default function Sidebar() {
                                     }
                                 }}
                             >
-                                {/* Active left accent bar — emerald glow */}
+                                {/* Active left accent bar — signal-cyan glow */}
                                 {isActive && (
                                     <span
                                         aria-hidden
@@ -175,7 +176,7 @@ export default function Sidebar() {
                 {/* Footer — topo system status */}
                 <div style={{
                     padding: "14px 18px",
-                    borderTop: "1px solid rgba(36,255,186,0.06)",
+                    borderTop: "1px solid var(--l2-hairline)",
                     display: "flex", flexDirection: "column", gap: 10,
                 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -192,8 +193,8 @@ export default function Sidebar() {
                             SERVER · ONLINE
                         </span>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: "oklch(0.50 0.02 200)" }}>
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="oklch(0.72 0.02 200)" strokeWidth="3" strokeLinecap="square">
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--l2-fg-3)" }}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--atlas-bronze)" strokeWidth="3" strokeLinecap="square">
                             <path d="M5 5 V19 H13 M15 5 H19 V11 H15 V19 H19" />
                         </svg>
                         <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.22em", textTransform: "uppercase" }}>

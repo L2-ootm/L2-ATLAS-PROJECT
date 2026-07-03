@@ -62,7 +62,7 @@ export default function ContratosPage() {
                 <span style={{
                     display: "inline-block", padding: "4px 10px", borderRadius: 6,
                     fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em",
-                    background: "rgba(99,102,241,0.1)", color: "#6366F1",
+                    background: "rgba(99,102,241,0.1)", color: "#4F8BFF",
                 }}>
                     Mensal
                 </span>
@@ -73,7 +73,7 @@ export default function ContratosPage() {
                 <span style={{
                     display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6,
                     fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em",
-                    background: "rgba(248,113,113,0.1)", color: "#F87171",
+                    background: "rgba(248,113,113,0.1)", color: "#FF0055",
                 }}>
                     <AlertTriangle style={{ width: 12, height: 12 }} /> Vencido
                 </span>
@@ -84,7 +84,7 @@ export default function ContratosPage() {
                 <span style={{
                     display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6,
                     fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em",
-                    background: "rgba(251,191,36,0.1)", color: "#FBBF24",
+                    background: "rgba(251,191,36,0.1)", color: "#FFD600",
                 }}>
                     <Clock style={{ width: 12, height: 12 }} /> Renovar ({days}d)
                 </span>
@@ -94,7 +94,7 @@ export default function ContratosPage() {
             <span style={{
                 display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6,
                 fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em",
-                background: "rgba(52,211,153,0.1)", color: "#34D399",
+                background: "rgba(52,211,153,0.1)", color: "#46F0E0",
             }}>
                 <CheckCircle2 style={{ width: 12, height: 12 }} /> Ativo
             </span>
@@ -105,8 +105,8 @@ export default function ContratosPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
                 <div>
-                    <h1 className="text-2xl font-bold" style={{ color: "#F1F3F6" }}>Contratos</h1>
-                    <p className="text-sm mt-0.5" style={{ color: "#5C6478" }}>Monitoramento de vigência e retenção</p>
+                    <h1 className="text-2xl font-bold" style={{ color: "var(--l2-fg-1)" }}>Contratos</h1>
+                    <p className="text-sm mt-0.5" style={{ color: "var(--l2-fg-3)" }}>Monitoramento de vigência e retenção</p>
                 </div>
             </div>
 
@@ -120,45 +120,45 @@ export default function ContratosPage() {
             </div>
 
             {/* Table */}
-            <div className="l2-border" style={{ borderRadius: 12, overflow: "hidden", background: "#1A1D26" }}>
+            <div className="l2-border" style={{ borderRadius: 12, overflow: "hidden", background: "rgba(24,28,38,0.55)" }}>
                 <div style={{
                     display: "grid", gridTemplateColumns: "1fr 2fr 1fr 1fr 1fr 1fr",
-                    padding: "14px 24px", borderBottom: "1px solid #2E3340", background: "#1F2230",
+                    padding: "14px 24px", borderBottom: "1px solid var(--l2-hairline)", background: "rgba(18,21,29,0.65)",
                 }}>
-                    <span className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "#5C6478" }}>Status</span>
-                    <span className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "#5C6478" }}>Cliente</span>
-                    <span className="text-[10px] font-mono uppercase tracking-wider text-right" style={{ color: "#5C6478" }}>Valor Mensal</span>
-                    <span className="text-[10px] font-mono uppercase tracking-wider text-center" style={{ color: "#5C6478" }}>Início</span>
-                    <span className="text-[10px] font-mono uppercase tracking-wider text-center" style={{ color: "#5C6478" }}>Vencimento</span>
-                    <span className="text-[10px] font-mono uppercase tracking-wider text-right" style={{ color: "#5C6478" }}>Prazo Total</span>
+                    <span className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "var(--l2-fg-3)" }}>Status</span>
+                    <span className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "var(--l2-fg-3)" }}>Cliente</span>
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-right" style={{ color: "var(--l2-fg-3)" }}>Valor Mensal</span>
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-center" style={{ color: "var(--l2-fg-3)" }}>Início</span>
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-center" style={{ color: "var(--l2-fg-3)" }}>Vencimento</span>
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-right" style={{ color: "var(--l2-fg-3)" }}>Prazo Total</span>
                 </div>
 
                 {contractsData.length === 0 ? (
                     <div style={{ padding: "48px 24px", textAlign: "center" }}>
-                        <p className="text-sm" style={{ color: "#5C6478" }}>Nenhum contrato ativo.</p>
+                        <p className="text-sm" style={{ color: "var(--l2-fg-3)" }}>Nenhum contrato ativo.</p>
                     </div>
                 ) : (
                     contractsData.map((contract, i) => (
                         <div key={contract.id} style={{
                             display: "grid", gridTemplateColumns: "1fr 2fr 1fr 1fr 1fr 1fr",
                             padding: "16px 24px", alignItems: "center",
-                            borderBottom: i < contractsData.length - 1 ? "1px solid #252937" : "none",
+                            borderBottom: i < contractsData.length - 1 ? "1px solid rgba(34,40,56,0.65)" : "none",
                             transition: "background 150ms",
                         }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = "#1F2230"; }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(18,21,29,0.65)"; }}
                             onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
                         >
                             <div>{getStatusBadge(contract.status, contract.daysRemaining)}</div>
                             <div>
-                                <span className="text-sm font-semibold block truncate" style={{ color: "#F1F3F6" }}>{contract.name}</span>
-                                <span className="text-[10px] font-mono uppercase" style={{ color: "#9CA3B4" }}>{contract.service}</span>
+                                <span className="text-sm font-semibold block truncate" style={{ color: "var(--l2-fg-1)" }}>{contract.name}</span>
+                                <span className="text-[10px] font-mono uppercase" style={{ color: "var(--l2-fg-2)" }}>{contract.service}</span>
                             </div>
-                            <span className="text-sm font-mono font-semibold text-right" style={{ color: "#F1F3F6" }}>{formatCurrency(contract.monthlyPayment)}</span>
-                            <span className="text-sm font-mono text-center" style={{ color: "#9CA3B4" }}>{formatDate(contract.startDate)}</span>
-                            <span className="text-sm font-mono text-center font-semibold" style={{ color: contract.status === "recorrente" ? "#5C6478" : contract.status === "vencido" ? "#F87171" : contract.status === "atencao" ? "#FBBF24" : "#F1F3F6" }}>
+                            <span className="text-sm font-mono font-semibold text-right" style={{ color: "var(--l2-fg-1)" }}>{formatCurrency(contract.monthlyPayment)}</span>
+                            <span className="text-sm font-mono text-center" style={{ color: "var(--l2-fg-2)" }}>{formatDate(contract.startDate)}</span>
+                            <span className="text-sm font-mono text-center font-semibold" style={{ color: contract.status === "recorrente" ? "var(--l2-fg-3)" : contract.status === "vencido" ? "#FF0055" : contract.status === "atencao" ? "#FFD600" : "var(--l2-fg-1)" }}>
                                 {contract.endDate ? formatDate(contract.endDate) : "—"}
                             </span>
-                            <span className="text-sm text-right" style={{ color: "#9CA3B4" }}>
+                            <span className="text-sm text-right" style={{ color: "var(--l2-fg-2)" }}>
                                 {contract.status === "recorrente" ? "Indeterminado" : `${contract.contractMonths} meses`}
                             </span>
                         </div>

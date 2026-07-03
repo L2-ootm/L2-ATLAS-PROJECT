@@ -202,17 +202,17 @@ export default function RelatoriosPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold" style={{ color: "#F1F3F6" }}>Relatórios</h1>
-                    <p className="text-sm mt-0.5" style={{ color: "#5C6478" }}>Análise detalhada de lucro e despesas</p>
+                    <h1 className="text-2xl font-bold" style={{ color: "var(--l2-fg-1)" }}>Relatórios</h1>
+                    <p className="text-sm mt-0.5" style={{ color: "var(--l2-fg-3)" }}>Análise detalhada de lucro e despesas</p>
                 </div>
                 <div className="flex items-center gap-3 flex-shrink-0">
                     <MonthSelector value={month} onChange={setMonth} />
 
                     <button onClick={exportReport} title="Copiar Resumo" className="flex items-center justify-center w-10 h-10 rounded-lg transition-colors"
                         style={{
-                            background: "#1A1D26",
-                            color: copied ? "#34D399" : "#9CA3B4",
-                            border: copied ? "1px solid rgba(52,211,153,0.3)" : "1px solid #2E3340"
+                            background: "rgba(24,28,38,0.55)",
+                            color: copied ? "#46F0E0" : "var(--l2-fg-2)",
+                            border: copied ? "1px solid rgba(52,211,153,0.3)" : "1px solid var(--l2-hairline)"
                         }}>
                         {copied ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                     </button>
@@ -232,71 +232,71 @@ export default function RelatoriosPage() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                <div className="l2-border rounded-xl p-7" style={{ background: "#1A1D26" }}>
-                    <h2 className="text-xs font-semibold mb-4 uppercase tracking-wider flex items-center gap-2" style={{ color: "#9CA3B4" }}>
-                        <Users className="w-4 h-4" style={{ color: "#6366F1" }} /> Lucro por Cliente
+                <div className="l2-border rounded-sm p-7" style={{ background: "rgba(24,28,38,0.55)" }}>
+                    <h2 className="text-xs font-semibold mb-4 uppercase tracking-wider flex items-center gap-2" style={{ color: "var(--l2-fg-2)" }}>
+                        <Users className="w-4 h-4" style={{ color: "#4F8BFF" }} /> Lucro por Cliente
                     </h2>
                     {clientProfitability.length === 0 ? (
-                        <p className="text-sm text-center py-6" style={{ color: "#5C6478" }}>Nenhum cliente ativo</p>
+                        <p className="text-sm text-center py-6" style={{ color: "var(--l2-fg-3)" }}>Nenhum cliente ativo</p>
                     ) : (
                         <div className="space-y-3">
                             {clientProfitability.map((cp) => (
-                                <div key={cp.id} className="rounded-lg p-4" style={{ background: "#1F2230", border: "1px solid #2E3340" }}>
+                                <div key={cp.id} className="rounded-lg p-4" style={{ background: "rgba(18,21,29,0.65)", border: "1px solid var(--l2-hairline)" }}>
                                     <div className="flex items-start justify-between mb-2">
-                                        <p className="text-sm font-semibold" style={{ color: "#F1F3F6" }}>{cp.name}</p>
-                                        <p className="text-sm font-bold font-mono" style={{ color: cp.profit >= 0 ? "#34D399" : "#F87171" }}>{formatCurrency(cp.profit)}</p>
+                                        <p className="text-sm font-semibold" style={{ color: "var(--l2-fg-1)" }}>{cp.name}</p>
+                                        <p className="text-sm font-bold font-mono" style={{ color: cp.profit >= 0 ? "#46F0E0" : "#FF0055" }}>{formatCurrency(cp.profit)}</p>
                                     </div>
-                                    <div className="flex items-center gap-4 text-[10px] font-mono uppercase tracking-wider" style={{ color: "#9CA3B4" }}>
+                                    <div className="flex items-center gap-4 text-[10px] font-mono uppercase tracking-wider" style={{ color: "var(--l2-fg-2)" }}>
                                         <span>Rec: {formatCurrency(cp.revenue)}</span>
-                                        <span>Desp: <span style={{ color: "#F87171" }}>{formatCurrency(cp.expenses)}</span></span>
-                                        <span style={{ color: parseFloat(cp.margin) >= 50 ? "#34D399" : parseFloat(cp.margin) >= 20 ? "#FBBF24" : "#F87171" }}>{cp.margin}%</span>
+                                        <span>Desp: <span style={{ color: "#FF0055" }}>{formatCurrency(cp.expenses)}</span></span>
+                                        <span style={{ color: parseFloat(cp.margin) >= 50 ? "#46F0E0" : parseFloat(cp.margin) >= 20 ? "#FFD600" : "#FF0055" }}>{cp.margin}%</span>
                                     </div>
-                                    <div className="mt-2 h-1 rounded-full overflow-hidden" style={{ background: "#252937" }}>
+                                    <div className="mt-2 h-1 rounded-full overflow-hidden" style={{ background: "rgba(34,40,56,0.65)" }}>
                                         <div className={`h-full rounded-full`}
-                                            style={{ background: cp.profit >= 0 ? "#34D399" : "#F87171", width: `${Math.min(Math.abs(parseFloat(cp.margin)), 100)}%` }} />
+                                            style={{ background: cp.profit >= 0 ? "#46F0E0" : "#FF0055", width: `${Math.min(Math.abs(parseFloat(cp.margin)), 100)}%` }} />
                                     </div>
                                 </div>
                             ))}
                             {generalExpenses > 0 && (
-                                <div className="rounded-lg p-4" style={{ background: "#1F2230", border: "1px solid #2E3340" }}>
+                                <div className="rounded-lg p-4" style={{ background: "rgba(18,21,29,0.65)", border: "1px solid var(--l2-hairline)" }}>
                                     <div className="flex items-center justify-between">
-                                        <p className="text-sm font-semibold" style={{ color: "#F1F3F6" }}>Despesas Gerais L2</p>
-                                        <p className="text-sm font-bold font-mono" style={{ color: "#F87171" }}>-{formatCurrency(generalExpenses)}</p>
+                                        <p className="text-sm font-semibold" style={{ color: "var(--l2-fg-1)" }}>Despesas Gerais L2</p>
+                                        <p className="text-sm font-bold font-mono" style={{ color: "#FF0055" }}>-{formatCurrency(generalExpenses)}</p>
                                     </div>
-                                    <p className="text-[10px] mt-1 uppercase tracking-wider" style={{ color: "#5C6478" }}>Gastos não vinculados a cliente</p>
+                                    <p className="text-[10px] mt-1 uppercase tracking-wider" style={{ color: "var(--l2-fg-3)" }}>Gastos não vinculados a cliente</p>
                                 </div>
                             )}
                         </div>
                     )}
                 </div>
 
-                <div className="l2-border rounded-xl p-7" style={{ background: "#1A1D26" }}>
-                    <h2 className="text-xs font-semibold mb-4 uppercase tracking-wider flex items-center gap-2" style={{ color: "#9CA3B4" }}>
-                        <BarChart3 className="w-4 h-4" style={{ color: "#6366F1" }} /> Despesas por Categoria
+                <div className="l2-border rounded-sm p-7" style={{ background: "rgba(24,28,38,0.55)" }}>
+                    <h2 className="text-xs font-semibold mb-4 uppercase tracking-wider flex items-center gap-2" style={{ color: "var(--l2-fg-2)" }}>
+                        <BarChart3 className="w-4 h-4" style={{ color: "#4F8BFF" }} /> Despesas por Categoria
                     </h2>
                     {categoryBreakdown.length === 0 ? (
-                        <p className="text-sm text-center py-6" style={{ color: "#5C6478" }}>Nenhuma despesa neste período</p>
+                        <p className="text-sm text-center py-6" style={{ color: "var(--l2-fg-3)" }}>Nenhuma despesa neste período</p>
                     ) : (
                         <div className="space-y-4">
                             {categoryBreakdown.map((cat) => (
                                 <div key={cat.category}>
                                     <div className="flex items-center justify-between mb-1.5">
-                                        <span className="text-sm font-medium" style={{ color: "#F1F3F6" }}>{cat.category}</span>
+                                        <span className="text-sm font-medium" style={{ color: "var(--l2-fg-1)" }}>{cat.category}</span>
                                         <div className="flex items-center gap-2">
-                                            <span className="text-[10px] font-mono" style={{ color: "#5C6478" }}>{cat.percentage}%</span>
-                                            <span className="text-sm font-semibold font-mono" style={{ color: "#F87171" }}>{formatCurrency(cat.amount)}</span>
+                                            <span className="text-[10px] font-mono" style={{ color: "var(--l2-fg-3)" }}>{cat.percentage}%</span>
+                                            <span className="text-sm font-semibold font-mono" style={{ color: "#FF0055" }}>{formatCurrency(cat.amount)}</span>
                                         </div>
                                     </div>
-                                    <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "#252937" }}>
+                                    <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(34,40,56,0.65)" }}>
                                         <div className={`h-full rounded-full animate-grow-up ${barClass[cat.category] || "bar-outros"}`}
                                             style={{ width: `${cat.percentage}%` }} />
                                     </div>
                                 </div>
                             ))}
-                            <div className="pt-3 mt-3" style={{ borderTop: "1px solid #2E3340" }}>
+                            <div className="pt-3 mt-3" style={{ borderTop: "1px solid var(--l2-hairline)" }}>
                                 <div className="flex items-center justify-between">
-                                    <span className="text-sm font-semibold" style={{ color: "#F1F3F6" }}>Total</span>
-                                    <span className="text-base font-bold font-mono" style={{ color: "#F87171" }}>{formatCurrency(totalExpenses)}</span>
+                                    <span className="text-sm font-semibold" style={{ color: "var(--l2-fg-1)" }}>Total</span>
+                                    <span className="text-base font-bold font-mono" style={{ color: "#FF0055" }}>{formatCurrency(totalExpenses)}</span>
                                 </div>
                             </div>
                         </div>
@@ -304,12 +304,12 @@ export default function RelatoriosPage() {
                 </div>
 
                 {/* Top Clientes (Faturamento) */}
-                <div className="l2-border rounded-xl p-7" style={{ background: "#1A1D26" }}>
-                    <h2 className="text-xs font-semibold mb-5 uppercase tracking-wider flex items-center gap-2" style={{ color: "#9CA3B4" }}>
-                        <TrendingUp style={{ width: 16, height: 16, color: "#34D399" }} /> Top 5 Clientes (Receita)
+                <div className="l2-border rounded-sm p-7" style={{ background: "rgba(24,28,38,0.55)" }}>
+                    <h2 className="text-xs font-semibold mb-5 uppercase tracking-wider flex items-center gap-2" style={{ color: "var(--l2-fg-2)" }}>
+                        <TrendingUp style={{ width: 16, height: 16, color: "#46F0E0" }} /> Top 5 Clientes (Receita)
                     </h2>
                     {activeClients.length === 0 ? (
-                        <p className="text-sm text-center py-6" style={{ color: "#5C6478" }}>Nenhum cliente ativo</p>
+                        <p className="text-sm text-center py-6" style={{ color: "var(--l2-fg-3)" }}>Nenhum cliente ativo</p>
                     ) : (
                         <div className="space-y-3">
                             {[...activeClients]
@@ -319,28 +319,28 @@ export default function RelatoriosPage() {
                                     return (
                                         <div key={client.id} style={{
                                             padding: 16, borderRadius: 10,
-                                            background: index === 0 ? "rgba(99,102,241,0.05)" : "#1F2230",
-                                            border: index === 0 ? "1px solid rgba(99,102,241,0.2)" : "1px solid #2E3340",
+                                            background: index === 0 ? "rgba(99,102,241,0.05)" : "rgba(18,21,29,0.65)",
+                                            border: index === 0 ? "1px solid rgba(99,102,241,0.2)" : "1px solid var(--l2-hairline)",
                                             display: "flex", alignItems: "center", justifyContent: "space-between"
                                         }}>
                                             <div className="flex items-center gap-4">
                                                 <div style={{
                                                     width: 28, height: 28, borderRadius: "50%",
-                                                    background: index === 0 ? "rgba(99,102,241,0.15)" : "#252937",
-                                                    color: index === 0 ? "#6366F1" : "#9CA3B4",
+                                                    background: index === 0 ? "rgba(99,102,241,0.15)" : "rgba(34,40,56,0.65)",
+                                                    color: index === 0 ? "#4F8BFF" : "var(--l2-fg-2)",
                                                     display: "flex", alignItems: "center", justifyContent: "center",
                                                     fontSize: 12, fontWeight: "bold"
                                                 }}>
                                                     {index + 1}
                                                 </div>
                                                 <div>
-                                                    <p className="text-sm font-semibold" style={{ color: "#F1F3F6" }}>{client.name}</p>
-                                                    <p className="text-[10px] uppercase tracking-wider" style={{ color: "#9CA3B4" }}>{client.service}</p>
+                                                    <p className="text-sm font-semibold" style={{ color: "var(--l2-fg-1)" }}>{client.name}</p>
+                                                    <p className="text-[10px] uppercase tracking-wider" style={{ color: "var(--l2-fg-2)" }}>{client.service}</p>
                                                 </div>
                                             </div>
                                             <div className="text-right">
-                                                <span className="text-sm font-bold font-mono" style={{ color: "#F1F3F6" }}>{formatCurrency(client.monthlyPayment)}</span>
-                                                <span className="text-[10px] font-mono block" style={{ color: "#5C6478" }}>{(totalRevenue > 0 ? (client.monthlyPayment / totalRevenue) * 100 : 0).toFixed(1)}%</span>
+                                                <span className="text-sm font-bold font-mono" style={{ color: "var(--l2-fg-1)" }}>{formatCurrency(client.monthlyPayment)}</span>
+                                                <span className="text-[10px] font-mono block" style={{ color: "var(--l2-fg-3)" }}>{(totalRevenue > 0 ? (client.monthlyPayment / totalRevenue) * 100 : 0).toFixed(1)}%</span>
                                             </div>
                                         </div>
                                     );
@@ -351,15 +351,15 @@ export default function RelatoriosPage() {
             </div>
 
             {/* ROI por Cliente */}
-            <div className="l2-border rounded-xl p-7" style={{ background: "#1A1D26" }}>
-                <h2 className="text-xs font-semibold mb-5 uppercase tracking-wider flex items-center gap-2" style={{ color: "#9CA3B4" }}>
-                    <DollarSign style={{ width: 16, height: 16, color: "#34D399" }} /> ROI por Cliente
+            <div className="l2-border rounded-sm p-7" style={{ background: "rgba(24,28,38,0.55)" }}>
+                <h2 className="text-xs font-semibold mb-5 uppercase tracking-wider flex items-center gap-2" style={{ color: "var(--l2-fg-2)" }}>
+                    <DollarSign style={{ width: 16, height: 16, color: "#46F0E0" }} /> ROI por Cliente
                 </h2>
-                <p className="text-sm mb-6" style={{ color: "#9CA3B4" }}>
+                <p className="text-sm mb-6" style={{ color: "var(--l2-fg-2)" }}>
                     Análise de rentabilidade considerando a receita do cliente subtraída de suas despesas específicas neste mês.
                 </p>
                 {activeClients.length === 0 ? (
-                    <p className="text-sm text-center py-6" style={{ color: "#5C6478" }}>Nenhum cliente ativo</p>
+                    <p className="text-sm text-center py-6" style={{ color: "var(--l2-fg-3)" }}>Nenhum cliente ativo</p>
                 ) : (
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
                         {activeClients.map((client) => {
@@ -372,45 +372,45 @@ export default function RelatoriosPage() {
                             return (
                                 <div key={client.id} style={{
                                     padding: 20, borderRadius: 12,
-                                    background: "#1F2230", border: "1px solid #2E3340",
+                                    background: "rgba(18,21,29,0.65)", border: "1px solid var(--l2-hairline)",
                                 }}>
                                     <div className="flex justify-between items-start mb-4">
                                         <div>
-                                            <h3 className="text-sm font-bold" style={{ color: "#F1F3F6" }}>{client.name}</h3>
+                                            <h3 className="text-sm font-bold" style={{ color: "var(--l2-fg-1)" }}>{client.name}</h3>
                                             <span className="text-[10px] px-2 py-0.5 rounded-full mt-1 inline-block"
-                                                style={{ background: "rgba(99,102,241,0.1)", color: "#6366F1", border: "1px solid rgba(99,102,241,0.2)" }}>
+                                                style={{ background: "rgba(99,102,241,0.1)", color: "#4F8BFF", border: "1px solid rgba(99,102,241,0.2)" }}>
                                                 {client.service}
                                             </span>
                                         </div>
                                         <div className="text-right">
-                                            <p className="text-sm font-bold font-mono" style={{ color: isPositive ? "#34D399" : "#F87171" }}>
+                                            <p className="text-sm font-bold font-mono" style={{ color: isPositive ? "#46F0E0" : "#FF0055" }}>
                                                 {formatCurrency(profit)}
                                             </p>
-                                            <p className="text-[10px] uppercase tracking-wider" style={{ color: "#9CA3B4" }}>Lucro Líquido</p>
+                                            <p className="text-[10px] uppercase tracking-wider" style={{ color: "var(--l2-fg-2)" }}>Lucro Líquido</p>
                                         </div>
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-4 mb-4">
-                                        <div className="p-3 rounded-lg" style={{ background: "#252937", border: "1px solid #2E3340" }}>
-                                            <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "#9CA3B4" }}>Receita</p>
-                                            <p className="text-sm font-mono" style={{ color: "#F1F3F6" }}>{formatCurrency(client.monthlyPayment)}</p>
+                                        <div className="p-3 rounded-lg" style={{ background: "rgba(34,40,56,0.65)", border: "1px solid var(--l2-hairline)" }}>
+                                            <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--l2-fg-2)" }}>Receita</p>
+                                            <p className="text-sm font-mono" style={{ color: "var(--l2-fg-1)" }}>{formatCurrency(client.monthlyPayment)}</p>
                                         </div>
-                                        <div className="p-3 rounded-lg" style={{ background: "#252937", border: "1px solid #2E3340" }}>
-                                            <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "#9CA3B4" }}>Custos</p>
-                                            <p className="text-sm font-mono" style={{ color: "#F87171" }}>{formatCurrency(clientExpenses)}</p>
+                                        <div className="p-3 rounded-lg" style={{ background: "rgba(34,40,56,0.65)", border: "1px solid var(--l2-hairline)" }}>
+                                            <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--l2-fg-2)" }}>Custos</p>
+                                            <p className="text-sm font-mono" style={{ color: "#FF0055" }}>{formatCurrency(clientExpenses)}</p>
                                         </div>
                                     </div>
 
-                                    <div className="flex items-center justify-between pt-3" style={{ borderTop: "1px solid #2E3340" }}>
+                                    <div className="flex items-center justify-between pt-3" style={{ borderTop: "1px solid var(--l2-hairline)" }}>
                                         <div className="flex items-center gap-2">
-                                            <span className="text-[10px] uppercase tracking-wider" style={{ color: "#9CA3B4" }}>Margem</span>
-                                            <span className="text-xs font-bold font-mono" style={{ color: isPositive ? "#34D399" : "#F87171" }}>
+                                            <span className="text-[10px] uppercase tracking-wider" style={{ color: "var(--l2-fg-2)" }}>Margem</span>
+                                            <span className="text-xs font-bold font-mono" style={{ color: isPositive ? "#46F0E0" : "#FF0055" }}>
                                                 {margin}%
                                             </span>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            <span className="text-[10px] uppercase tracking-wider" style={{ color: "#9CA3B4" }}>ROI</span>
-                                            <span className="text-xs font-bold font-mono" style={{ color: isPositive ? "#34D399" : "#F87171" }}>
+                                            <span className="text-[10px] uppercase tracking-wider" style={{ color: "var(--l2-fg-2)" }}>ROI</span>
+                                            <span className="text-xs font-bold font-mono" style={{ color: isPositive ? "#46F0E0" : "#FF0055" }}>
                                                 {roi === "∞" ? "100%+" : `${roi}%`}
                                             </span>
                                         </div>
@@ -423,26 +423,26 @@ export default function RelatoriosPage() {
             </div>
 
             {/* Margem por Serviço */}
-            <div className="l2-border rounded-xl p-7" style={{ background: "#1A1D26" }}>
-                <h2 className="text-xs font-semibold mb-5 uppercase tracking-wider flex items-center gap-2" style={{ color: "#9CA3B4" }}>
-                    <Briefcase style={{ width: 16, height: 16, color: "#6366F1" }} /> Margem por Serviço
+            <div className="l2-border rounded-sm p-7" style={{ background: "rgba(24,28,38,0.55)" }}>
+                <h2 className="text-xs font-semibold mb-5 uppercase tracking-wider flex items-center gap-2" style={{ color: "var(--l2-fg-2)" }}>
+                    <Briefcase style={{ width: 16, height: 16, color: "#4F8BFF" }} /> Margem por Serviço
                 </h2>
                 {serviceMargin.length === 0 ? (
-                    <p className="text-sm text-center py-6" style={{ color: "#5C6478" }}>Nenhum serviço encontrado</p>
+                    <p className="text-sm text-center py-6" style={{ color: "var(--l2-fg-3)" }}>Nenhum serviço encontrado</p>
                 ) : (
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
                         {serviceMargin.map((s) => {
                             const marginNum = parseFloat(s.margin);
-                            const barColor = marginNum >= 60 ? "#34D399" : marginNum >= 30 ? "#FBBF24" : "#F87171";
+                            const barColor = marginNum >= 60 ? "#46F0E0" : marginNum >= 30 ? "#FFD600" : "#FF0055";
                             return (
                                 <div key={s.service} style={{
                                     padding: 20, borderRadius: 10,
-                                    background: "#1F2230", border: "1px solid #2E3340",
+                                    background: "rgba(18,21,29,0.65)", border: "1px solid var(--l2-hairline)",
                                 }}>
                                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                                         <div>
-                                            <p className="text-sm font-semibold" style={{ color: "#F1F3F6" }}>{s.service}</p>
-                                            <p className="text-[10px] mt-1 font-mono uppercase tracking-wider" style={{ color: "#5C6478" }}>
+                                            <p className="text-sm font-semibold" style={{ color: "var(--l2-fg-1)" }}>{s.service}</p>
+                                            <p className="text-[10px] mt-1 font-mono uppercase tracking-wider" style={{ color: "var(--l2-fg-3)" }}>
                                                 {s.count} cliente{s.count > 1 ? "s" : ""}
                                             </p>
                                         </div>
@@ -451,10 +451,10 @@ export default function RelatoriosPage() {
                                         </span>
                                     </div>
                                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-                                        <span className="text-[10px] font-mono" style={{ color: "#9CA3B4" }}>Rec: {formatCurrency(s.revenue)}</span>
-                                        <span className="text-[10px] font-mono" style={{ color: "#9CA3B4" }}>Desp: {formatCurrency(s.expenses)}</span>
+                                        <span className="text-[10px] font-mono" style={{ color: "var(--l2-fg-2)" }}>Rec: {formatCurrency(s.revenue)}</span>
+                                        <span className="text-[10px] font-mono" style={{ color: "var(--l2-fg-2)" }}>Desp: {formatCurrency(s.expenses)}</span>
                                     </div>
-                                    <div style={{ height: 6, background: "#252937", borderRadius: 3, overflow: "hidden" }}>
+                                    <div style={{ height: 6, background: "rgba(34,40,56,0.65)", borderRadius: 3, overflow: "hidden" }}>
                                         <div style={{
                                             height: "100%", borderRadius: 3,
                                             width: `${Math.min(Math.abs(marginNum), 100)}%`,
@@ -463,7 +463,7 @@ export default function RelatoriosPage() {
                                         }} />
                                     </div>
                                     <div style={{ marginTop: 8, textAlign: "right" }}>
-                                        <span className="text-sm font-bold font-mono" style={{ color: s.profit >= 0 ? "#34D399" : "#F87171" }}>
+                                        <span className="text-sm font-bold font-mono" style={{ color: s.profit >= 0 ? "#46F0E0" : "#FF0055" }}>
                                             {formatCurrency(s.profit)}
                                         </span>
                                     </div>

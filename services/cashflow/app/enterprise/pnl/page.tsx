@@ -35,8 +35,8 @@ export default async function EnterprisePnL({
     <div style={{ padding: 24, maxWidth: 1200, margin: "0 auto" }}>
       <header style={{ marginBottom: 32, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: "#F1F3F6", margin: "0 0 8px 0" }}>Enterprise P&L</h1>
-          <p style={{ color: "#9CA3B4", margin: 0, fontSize: 14 }}>
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: "var(--l2-fg-1)", margin: "0 0 8px 0" }}>Enterprise P&L</h1>
+          <p style={{ color: "var(--l2-fg-2)", margin: 0, fontSize: 14 }}>
             Análise de Margem para <strong>{client.name}</strong> ({client.segment})
           </p>
         </div>

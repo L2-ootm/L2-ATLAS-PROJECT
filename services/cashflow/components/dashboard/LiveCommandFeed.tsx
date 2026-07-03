@@ -89,7 +89,7 @@ export default function LiveCommandFeed({ expenses, invoices }: LiveCommandFeedP
                                             boxShadow: `0 0 6px ${isExpense
                                                 ? 'rgba(255,0,85,0.4)'
                                                 : isIncome
-                                                    ? 'rgba(36,255,186,0.4)'
+                                                    ? 'rgba(70,240,224,0.4)'
                                                     : 'rgba(255,214,0,0.4)'}`,
                                         }} />
 
