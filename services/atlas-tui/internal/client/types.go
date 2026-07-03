@@ -173,3 +173,18 @@ type RunEvent struct {
 	Name string
 	Data json.RawMessage
 }
+
+// FreellmapiStatus decodes GET /v1/freellmapi/status (sidecar liveness).
+type FreellmapiStatus struct {
+	Running     bool   `json:"running"`
+	BaseURL     string `json:"base_url"`
+	Dir         string `json:"dir"`
+	Installed   bool   `json:"installed"`
+	Remediation string `json:"remediation"`
+}
+
+// FreellmapiAction decodes POST /v1/freellmapi/{start,stop}.
+type FreellmapiAction struct {
+	OK      bool   `json:"ok"`
+	Message string `json:"message"`
+}

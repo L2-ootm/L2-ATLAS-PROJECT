@@ -1355,6 +1355,43 @@ async fn fresh_multi_migration_db_serves_all_read_surfaces() {
     }
 }
 
+// --- FreeLLMAPI sidecar control routes ----------------------------------------
+
+#[tokio::test]
+async fn freellmapi_routes_registered_and_dispatch_only() {
+    // With a nonexistent atlas binary the dispatch layer must fail as 500,
+    // proving the routes are registered (404 would mean unrouted) and that
+    // the gateway holds no sidecar logic of its own (D-022).
+    let dir = tempfile::tempdir().unwrap();
+    let router = app(AppState {
+        db_path: seeded_db(&dir),
+        atlas_cmd: vec!["__nonexistent_atlas_binary__".to_string()],
+        repo_root: PathBuf::from("."),
+    });
+    for (method, uri) in [
+        ("GET", "/v1/freellmapi/status"),
+        ("POST", "/v1/freellmapi/start"),
+        ("POST", "/v1/freellmapi/stop"),
+    ] {
+        let resp = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri(uri)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "{method} {uri} should be a registered dispatch route"
+        );
+    }
+}
+
 // --- Cashflow full-surface handoff page --------------------------------------
 
 #[tokio::test]

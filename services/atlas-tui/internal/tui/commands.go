@@ -23,6 +23,7 @@ var slashCommands = []slashCommand{
 	{"/distill", "mine recent work for reusable workflows and skills"},
 	{"/deep-research", "deep multi-source research brief on a topic"},
 	{"/review", "review uncommitted changes in the workspace"},
+	{"/freellmapi", "control the free endpoint sidecar: status, start, stop"},
 	{"/permissions", "review owned pending approvals"},
 	{"/history", "recent missions on this gateway"},
 	{"/sidebar", "toggle the context sidebar"},
@@ -188,6 +189,16 @@ func (m model) executeSlashCommand(input string) (bool, model, tea.Cmd) {
 		}
 		m.appendSystem("MODE " + m.mode.label() + "  " + gl.bullet + "  " + m.mode.hint())
 		return true, m, nil
+	case "/freellmapi":
+		verb := "status"
+		if len(fields) > 1 {
+			verb = strings.ToLower(fields[1])
+		}
+		if verb != "status" && verb != "start" && verb != "stop" {
+			m.appendSystem("usage: /freellmapi [status|start|stop]")
+			return true, m, nil
+		}
+		return true, m, m.freellmapiAction(verb)
 	case "/permissions":
 		if len(m.approvals) == 0 {
 			m.appendSystem("No owned approvals pending.")

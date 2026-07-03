@@ -87,6 +87,12 @@ type approvalActionMsg struct {
 	approval client.ToolApproval
 	err      error
 }
+type freellmapiMsg struct {
+	verb   string // "status" | "start" | "stop"
+	status client.FreellmapiStatus
+	action client.FreellmapiAction
+	err    error
+}
 type pollTickMsg struct{}
 type spinnerTickMsg struct{}
 type animTickMsg struct{}
@@ -311,6 +317,24 @@ func (m model) selectedAgent() string {
 	return "native"
 }
 
+// freellmapiAction runs a sidecar verb against the gateway control routes.
+func (m model) freellmapiAction(verb string) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		switch verb {
+		case "start":
+			a, err := m.c.FreellmapiStart(ctx)
+			return freellmapiMsg{verb: verb, action: a, err: err}
+		case "stop":
+			a, err := m.c.FreellmapiStop(ctx)
+			return freellmapiMsg{verb: verb, action: a, err: err}
+		default:
+			s, err := m.c.FreellmapiStatus(ctx)
+			return freellmapiMsg{verb: "status", status: s, err: err}
+		}
+	}
+}
+
 func (m model) approveTool(approval client.ToolApproval, scope string) tea.Cmd {
 	return func() tea.Msg {
 		a, err := m.c.ApproveTool(context.Background(), m.surface, approval, scope)
@@ -472,6 +496,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			})
 		}
 		return m, m.fetchApprovals()
+
+	case freellmapiMsg:
+		if msg.err != nil {
+			m.appendItem(transcriptItem{
+				kind: itemError, label: "freellmapi", text: msg.verb + " failed: " + msg.err.Error(),
+			})
+		} else if msg.verb == "status" {
+			state := "STOPPED"
+			if msg.status.Running {
+				state = "RUNNING"
+			}
+			text := "FREELLMAPI " + state + "  " + gl.bullet + "  " + msg.status.BaseURL
+			if !msg.status.Installed && msg.status.Remediation != "" {
+				text += "  " + gl.bullet + "  " + msg.status.Remediation
+			}
+			m.appendSystem(text)
+		} else {
+			m.appendSystem("FREELLMAPI " + strings.ToUpper(msg.verb) + "  " + gl.bullet + "  " + msg.action.Message)
+		}
+		return m, nil
 
 	case missionCreatedMsg:
 		if msg.err != nil {
