@@ -318,6 +318,27 @@ func (c *Client) ProviderModes(ctx context.Context) ([]ProviderMode, error) {
 	return m, err
 }
 
+// FreellmapiStatus reports the external FreeLLMAPI sidecar's liveness.
+func (c *Client) FreellmapiStatus(ctx context.Context) (FreellmapiStatus, error) {
+	var s FreellmapiStatus
+	err := c.getJSON(ctx, "/v1/freellmapi/status", &s)
+	return s, err
+}
+
+// FreellmapiStart asks the gateway to bring the FreeLLMAPI sidecar up.
+func (c *Client) FreellmapiStart(ctx context.Context) (FreellmapiAction, error) {
+	var r FreellmapiAction
+	err := c.postJSON(ctx, "/v1/freellmapi/start", map[string]any{}, &r)
+	return r, err
+}
+
+// FreellmapiStop stops the CLI-managed FreeLLMAPI sidecar process.
+func (c *Client) FreellmapiStop(ctx context.Context) (FreellmapiAction, error) {
+	var r FreellmapiAction
+	err := c.postJSON(ctx, "/v1/freellmapi/stop", map[string]any{}, &r)
+	return r, err
+}
+
 // Missions lists recent missions.
 func (c *Client) Missions(ctx context.Context) ([]Mission, error) {
 	var env missionsEnvelope

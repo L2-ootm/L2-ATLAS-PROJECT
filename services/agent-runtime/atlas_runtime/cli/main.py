@@ -62,6 +62,8 @@ module_app = typer.Typer(name="module", help="Optional modules: list, activate, 
 app.add_typer(module_app, name="module")
 cashflow_app = typer.Typer(name="cashflow", help="Cashflow module process: start, status, stop.")
 app.add_typer(cashflow_app, name="cashflow")
+freellmapi_app = typer.Typer(name="freellmapi", help="FreeLLMAPI sidecar endpoint: start, status, stop.")
+app.add_typer(freellmapi_app, name="freellmapi")
 graph_app = typer.Typer(name="graph", help="Project knowledge graph for the cockpit Graphify view.")
 app.add_typer(graph_app, name="graph")
 run_app = typer.Typer(name="run", help="Execute an already-started run (background-safe).")
@@ -1063,6 +1065,57 @@ def cashflow_stop() -> None:
 
     ok, message = cashflow_control.stop()
     typer.echo(message)
+    if not ok:
+        raise typer.Exit(1)
+
+
+# ---------------------------------------------------------------------------
+# freellmapi subcommands — external sidecar endpoint control (D-015)
+# ---------------------------------------------------------------------------
+
+
+@freellmapi_app.command("start")
+def freellmapi_start(
+    json_out: bool = typer.Option(False, "--json", help="Emit machine-readable JSON."),
+) -> None:
+    """Start the FreeLLMAPI sidecar endpoint (external checkout)."""
+    from atlas_runtime import freellmapi_control
+
+    ok, message = freellmapi_control.start()
+    if json_out:
+        typer.echo(json.dumps({"ok": ok, "message": message, **freellmapi_control.status()}))
+    else:
+        typer.echo(message)
+    if not ok:
+        raise typer.Exit(1)
+
+
+@freellmapi_app.command("status")
+def freellmapi_status(
+    json_out: bool = typer.Option(False, "--json", help="Emit machine-readable JSON."),
+) -> None:
+    """Print FreeLLMAPI sidecar status."""
+    from atlas_runtime import freellmapi_control
+
+    st = freellmapi_control.status()
+    if json_out:
+        typer.echo(json.dumps(st))
+    else:
+        typer.echo(f"{'running' if st['running'] else 'stopped'} {st['base_url']}")
+
+
+@freellmapi_app.command("stop")
+def freellmapi_stop(
+    json_out: bool = typer.Option(False, "--json", help="Emit machine-readable JSON."),
+) -> None:
+    """Stop the FreeLLMAPI sidecar started by this CLI."""
+    from atlas_runtime import freellmapi_control
+
+    ok, message = freellmapi_control.stop()
+    if json_out:
+        typer.echo(json.dumps({"ok": ok, "message": message}))
+    else:
+        typer.echo(message)
     if not ok:
         raise typer.Exit(1)
 

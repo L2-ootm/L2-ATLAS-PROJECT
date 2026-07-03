@@ -2262,6 +2262,30 @@ async fn cashflow_stop(State(state): State<AppState>) -> ApiResult {
     Ok(Json(json!({ "message": msg })))
 }
 
+/// GET /v1/freellmapi/status — sidecar liveness + install/remediation state.
+async fn freellmapi_status(State(state): State<AppState>) -> ApiResult {
+    let out = dispatch_atlas(&state.atlas_cmd, &["freellmapi", "status", "--json"]).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("freellmapi status parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+/// POST /v1/freellmapi/start — bring the external OpenAI-compatible sidecar up.
+async fn freellmapi_start(State(state): State<AppState>) -> ApiResult {
+    let out = dispatch_atlas(&state.atlas_cmd, &["freellmapi", "start", "--json"]).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("freellmapi start parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+/// POST /v1/freellmapi/stop — stop the CLI-managed sidecar process.
+async fn freellmapi_stop(State(state): State<AppState>) -> ApiResult {
+    let out = dispatch_atlas(&state.atlas_cmd, &["freellmapi", "stop", "--json"]).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("freellmapi stop parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
 async fn cashflow_summary() -> ApiResult {
     let summary = tokio::task::spawn_blocking(db::cashflow_summary)
         .await
@@ -2623,6 +2647,9 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/cashflow/summary", get(cashflow_summary))
         .route("/v1/cashflow/start", post(cashflow_start))
         .route("/v1/cashflow/stop", post(cashflow_stop))
+        .route("/v1/freellmapi/status", get(freellmapi_status))
+        .route("/v1/freellmapi/start", post(freellmapi_start))
+        .route("/v1/freellmapi/stop", post(freellmapi_stop))
         .route("/v1/projects/{id}", get(project_detail))
         .layer(middleware::from_fn(cors))
         .with_state(state)

@@ -592,6 +592,35 @@ export async function cashflowStop(): Promise<{ message: string }> {
 	return apiFetch('/v1/cashflow/stop', { method: 'POST' });
 }
 
+// ── FreeLLMAPI sidecar control (D-015 external checkout) ─────────────────────
+
+export interface FreellmapiStatus {
+	running: boolean;
+	base_url: string;
+	dir: string | null;
+	installed: boolean;
+	remediation: string | null;
+}
+
+export async function freellmapiStatus(): Promise<FreellmapiStatus> {
+	try {
+		return await apiFetch<FreellmapiStatus>('/v1/freellmapi/status');
+	} catch (err) {
+		if (err instanceof ApiError && (err.status === 404 || err.status === 503)) {
+			return { running: false, base_url: '', dir: null, installed: false, remediation: null };
+		}
+		throw err;
+	}
+}
+
+export async function freellmapiStart(): Promise<{ ok: boolean; message: string }> {
+	return apiFetch('/v1/freellmapi/start', { method: 'POST' });
+}
+
+export async function freellmapiStop(): Promise<{ ok: boolean; message: string }> {
+	return apiFetch('/v1/freellmapi/stop', { method: 'POST' });
+}
+
 export interface CashflowClient {
 	id: string;
 	name: string;
