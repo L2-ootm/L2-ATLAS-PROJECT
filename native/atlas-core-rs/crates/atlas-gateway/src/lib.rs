@@ -10,7 +10,7 @@ use axum::extract::{Path as AxPath, Query, Request, State};
 use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::sse::{Event, KeepAlive, Sse};
-use axum::response::{IntoResponse, Response};
+use axum::response::{Html, IntoResponse, Response};
 use axum::{
     routing::{get, post},
     Json, Router,
@@ -2270,6 +2270,153 @@ async fn cashflow_summary() -> ApiResult {
     Ok(Json(summary))
 }
 
+/// Browser-facing handoff to the complete cashflow surface (the vendored
+/// Next.js app). Serves an ATLAS-styled launcher page that checks module
+/// status via /v1/cashflow/status, auto-starts a stopped module, waits for
+/// the app to accept connections, then redirects. The app URL is resolved at
+/// request time from ATLAS_CASHFLOW_URL (same knob the CLI honors).
+async fn cashflow_full() -> Html<String> {
+    let app_url = std::env::var("ATLAS_CASHFLOW_URL")
+        .unwrap_or_else(|_| "http://localhost:3000".to_string());
+    Html(CASHFLOW_FULL_PAGE.replace("__CASHFLOW_URL__", app_url.trim_end_matches('/')))
+}
+
+const CASHFLOW_FULL_PAGE: &str = r#"<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ATLAS // CASHFLOW LINK</title>
+<style>
+  :root {
+    --void: #0B0D12; --ink: #151820; --ivory: #EDEAE0; --fg2: #9BA0AD; --fg3: #565C6B;
+    --celestial: #4F8BFF; --cyan: #46F0E0; --bronze: #B08A57; --error: #FF0055;
+    --hairline: rgba(237,234,224,0.08); --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background:
+      radial-gradient(circle at 24% 30%, rgba(79,139,255,0.07) 0%, transparent 46%),
+      radial-gradient(circle at 76% 66%, rgba(70,240,224,0.04) 0%, transparent 40%),
+      linear-gradient(180deg, #07080C 0%, #0B0D12 50%, #0A0C11 100%);
+    color: var(--ivory);
+    font-family: 'JetBrains Mono', ui-monospace, 'Courier New', monospace;
+    display: grid; place-items: center; position: relative; overflow: hidden;
+  }
+  body::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .5;
+    background-image:
+      repeating-radial-gradient(circle at 22% 38%, transparent 0, transparent 28px,
+        rgba(180,200,235,0.05) 28px, rgba(180,200,235,0.05) 29px),
+      repeating-radial-gradient(circle at 72% 62%, transparent 0, transparent 34px,
+        rgba(180,200,235,0.04) 34px, rgba(180,200,235,0.04) 35px);
+    mix-blend-mode: screen;
+  }
+  .panel {
+    position: relative; z-index: 1; width: min(560px, calc(100vw - 48px));
+    background: linear-gradient(180deg, rgba(21,24,32,0.72), rgba(11,13,18,0.82));
+    backdrop-filter: blur(22px) saturate(140%); -webkit-backdrop-filter: blur(22px) saturate(140%);
+    border: 1px solid var(--hairline); border-radius: 2px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 1px 0 rgba(0,0,0,0.4), 0 24px 64px rgba(0,0,0,0.5);
+    padding: 30px 34px;
+  }
+  .eyebrow { font-size: 10px; letter-spacing: 0.22em; color: var(--bronze); margin-bottom: 12px; }
+  h1 { font-size: 20px; font-weight: 700; letter-spacing: 0.12em; margin-bottom: 22px; }
+  .row { display: flex; align-items: center; gap: 10px; padding: 11px 0; border-top: 1px solid var(--hairline); }
+  .row:last-of-type { border-bottom: 1px solid var(--hairline); }
+  .k { font-size: 10px; letter-spacing: 0.18em; color: var(--fg3); width: 120px; flex-shrink: 0; }
+  .v { font-size: 12px; letter-spacing: 0.08em; color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fg3); flex-shrink: 0; }
+  .dot.live { background: var(--cyan); box-shadow: 0 0 10px rgba(70,240,224,0.45); animation: pulse 2.4s ease-in-out infinite; }
+  .dot.bad { background: var(--error); box-shadow: 0 0 10px rgba(255,0,85,0.45); }
+  .dot.wait { background: var(--celestial); box-shadow: 0 0 10px rgba(79,139,255,0.45); animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
+  #state { color: var(--fg2); }
+  #state.live { color: var(--cyan); }
+  #state.bad { color: var(--error); }
+  #detail { font-size: 10.5px; letter-spacing: 0.06em; color: var(--fg3); margin-top: 16px; min-height: 15px; word-break: break-all; }
+  .actions { margin-top: 22px; display: flex; gap: 10px; }
+  a.btn, button.btn {
+    display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; cursor: pointer;
+    border-radius: 2px; font-family: inherit; font-size: 10.5px; letter-spacing: 0.16em;
+    text-transform: uppercase; text-decoration: none; transition: all .25s var(--ease);
+    background: rgba(79,139,255,0.10); border: 1px solid rgba(79,139,255,0.36); color: #9CC0FF;
+  }
+  a.btn:hover, button.btn:hover { background: rgba(79,139,255,0.20); box-shadow: 0 0 18px rgba(79,139,255,0.18); }
+  .btn.ghost { background: transparent; border-color: var(--hairline); color: var(--fg3); }
+  .btn.ghost:hover { color: var(--fg2); box-shadow: none; background: rgba(255,255,255,0.03); }
+  .bar { height: 1px; background: linear-gradient(90deg, transparent, rgba(176,138,87,0.32), transparent); margin: 20px 0 0; }
+</style>
+</head>
+<body>
+  <main class="panel" role="status" aria-live="polite">
+    <div class="eyebrow">ATLAS // MODULE LINK</div>
+    <h1>COMPLETE CASHFLOW</h1>
+    <div class="row"><span id="dot" class="dot wait"></span><span class="k">MODULE STATE</span><span class="v" id="state">CHECKING…</span></div>
+    <div class="row"><span class="dot"></span><span class="k">SURFACE</span><span class="v" id="surface">__CASHFLOW_URL__</span></div>
+    <div id="detail"></div>
+    <div class="bar"></div>
+    <div class="actions">
+      <button class="btn" id="retry" style="display:none" onclick="boot()">RETRY LINK</button>
+      <a class="btn ghost" href="javascript:history.back()">RETURN TO COCKPIT</a>
+    </div>
+  </main>
+<script>
+  var APP = "__CASHFLOW_URL__";
+  var TARGET = APP + "/dashboard";
+  function el(id) { return document.getElementById(id); }
+  function setState(cls, msg, detail) {
+    el("dot").className = "dot " + cls;
+    el("state").className = cls;
+    el("state").textContent = msg;
+    el("detail").textContent = detail || "";
+    el("retry").style.display = cls === "bad" ? "inline-flex" : "none";
+  }
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function probeApp() {
+    // no-cors fetch resolves once the Next server accepts connections.
+    return fetch(TARGET, { mode: "no-cors", cache: "no-store" }).then(function () { return true; }, function () { return false; });
+  }
+  async function status() {
+    var r = await fetch("/v1/cashflow/status", { cache: "no-store" });
+    if (!r.ok) { throw new Error("status " + r.status + ": " + (await r.text()).slice(0, 300)); }
+    return r.json();
+  }
+  async function waitReady(tries) {
+    for (var i = 0; i < tries; i++) {
+      if (await probeApp()) { return true; }
+      await sleep(1500);
+    }
+    return false;
+  }
+  async function boot() {
+    try {
+      setState("wait", "CHECKING…");
+      if (await probeApp()) { setState("live", "ONLINE — LINKING"); location.replace(TARGET); return; }
+      var s = await status();
+      if (!s.running) {
+        setState("wait", "OFFLINE — STARTING MODULE");
+        var r = await fetch("/v1/cashflow/start", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ backend: s.backend || "local" })
+        });
+        if (!r.ok) { throw new Error("start " + r.status + ": " + (await r.text()).slice(0, 300)); }
+      }
+      setState("wait", "WAITING FOR SURFACE…");
+      if (await waitReady(40)) { setState("live", "ONLINE — LINKING"); location.replace(TARGET); return; }
+      setState("bad", "SURFACE UNREACHABLE", "Module process started but " + TARGET + " did not accept connections.");
+    } catch (e) {
+      setState("bad", "LINK FAILED", String(e && e.message || e));
+    }
+  }
+  boot();
+</script>
+</body>
+</html>
+"#;
+
 // ---------------------------------------------------------------------------
 // Run cancel handler (Phase 8 — Surface 2 run monitoring)
 // ---------------------------------------------------------------------------
@@ -2471,6 +2618,7 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/modules", get(modules_list))
         .route("/v1/modules/{id}/activate", post(module_activate))
         .route("/v1/modules/{id}/deactivate", post(module_deactivate))
+        .route("/cashflow/full", get(cashflow_full))
         .route("/v1/cashflow/status", get(cashflow_status))
         .route("/v1/cashflow/summary", get(cashflow_summary))
         .route("/v1/cashflow/start", post(cashflow_start))
