@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
-last_updated: "2026-07-02T14:00:00-03:00"
-last_activity: 2026-07-02 -- Stability and warning burn-down fully verified across Python, Go, and React
+last_updated: "2026-07-02T22:30:00-03:00"
+last_activity: 2026-07-02 -- MiMo-grade TUI + provider-mesh customization + web settings shipped, live-verified, entropy+ultrareview passed
 progress:
   total_phases: 8
   completed_phases: 7
@@ -14,6 +14,51 @@ progress:
 ---
 
 # STATE — L2 ATLAS
+
+## Current Position — 2026-07-02 (evening): MiMo-grade TUI + mesh customization, merged to main
+
+Operator-directed autonomous session on `codex/atlas-stability-warning-burn-down`, merged to
+`main` and pushed. Ready for operator UAT: review a codebase via codex auth.
+
+**TUI (Go, `services/atlas-tui`) — MiMo-grade idle experience:**
+- Deterministic starfield with twinkling glyph cycle + periodic meteor + pulsing gradient logo
+  (`starfield.go`; 300ms anim tick, frame advances only while the idle hero is visible; text
+  exclusion zone so stars never collide with content; ASCII fallback under legacy consoles).
+- Agent modes Build/Plan/Compose cycled with Tab (`mode.go`); Plan/Compose wrap the dispatched
+  intent without leaking the wrapper into the transcript; mode color carries the composer border
+  and status line ("MODE · auth/model/effort").
+- Built-in workflows `/dream /distill /deep-research /review` + `/mode` (`commands.go`),
+  rotating idle tips. 93 Go tests; gofmt/vet clean; fresh checkout binary built (launcher
+  auto-rebuilds stale ones).
+
+**Provider mesh customization (CLI/TUI/Web parity):**
+- `provider.reasoning_effort` ("", minimal..high) end-to-end: control-plane schema → resolve →
+  native `AIAgent(reasoning_config)`; surfaced in provider status + TUI sidebar/status line +
+  settings cyclers; `privacy_warning` surfaced for freellmapi.
+- `functions.{autoconfig,curator_model,auxiliary_model}`: `function_router.py` binds foundation
+  aux slots (curator/compression/title_generation) to the lightest model on the active mesh
+  (codex → gpt-5.4-mini via mini/nano slug scan; anthropic → haiku; etc.), writes only
+  atlas-stamped/unset slots in the foundation's own config.yaml (D-001-safe), adopts unstamped
+  slots that already match the target (ultrareview fix), never fails a run. Synced at the
+  native run boundary. Tests keep the real ~/.hermes store untouched (conftest stub).
+- New web `/settings` route: mode board (READY/MISSING/ACTIVE), model+effort, function routing,
+  live/mock status panel, freellmapi privacy alert, codex import button; secrets via
+  POST /v1/auth/providers, rest via one optimistic PATCH (409 reload path tested).
+
+**Live verification (real gateway :8484, codex OAuth):** provider status LIVE
+`openai-codex/gpt-5.5` mock_mode=false; PATCH round-trips revision 1→6 incl. functions.* keys;
+stale revision → 409; Playwright drove the built cockpit `/settings` — saved effort=high live,
+banner + revision advance observed, reverted. `apply_autoconfig` live: curator/compression/
+title_generation all bound to `openai-codex/gpt-5.4-mini` (stamped `managed_by: atlas`).
+
+**Quality passes:** entropy scan applied 105 safe ruff fixes in atlas-core
+(`.planning/reports/entropy-scan-2026-07-02.md`); ultrareview record in
+`.planning/reports/ultrareview-provider-mesh-tui-web-2026-07-02.md` (1 finding fixed, 1 verified
+non-issue). Final gates: agent-runtime **721 passed**, atlas-core **97**, Go **93**, React **33**
++ tsc/lint-zero-warning/build/bundle budgets.
+
+Next: operator UAT — interactive `atlas` (Windows Terminal feel, starfield/modes/workflows) and
+a real codebase-review mission on codex auth; then Phase 10.8 conformance closeout.
 
 ## Stability burn-down — final verification
 
