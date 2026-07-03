@@ -11,10 +11,9 @@ auth store and are never written to SQLite or returned by any status command.
 from __future__ import annotations
 
 import datetime
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, field_serializer
-
 
 # ---------------------------------------------------------------------------
 # Provider — one row per known provider identity (PROV-01).
@@ -32,15 +31,15 @@ class Provider(BaseModel):
     model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
 
     provider_id: str
-    display_name: Optional[str] = None
-    auth_type: Optional[str] = None
-    default_base_url: Optional[str] = None
+    display_name: str | None = None
+    auth_type: str | None = None
+    default_base_url: str | None = None
     # JSON string (never dict) per D-013; mirrors TEXT NOT NULL DEFAULT '{}'
     api_modes_json: str = "{}"
-    source: Optional[str] = None
-    status: Optional[str] = None
-    last_checked: Optional[datetime.datetime] = None
-    last_error: Optional[str] = None
+    source: str | None = None
+    status: str | None = None
+    last_checked: datetime.datetime | None = None
+    last_error: str | None = None
 
     @field_serializer("last_checked")
     def serialize_last_checked(self, dt: datetime.datetime | None) -> str | None:
@@ -77,7 +76,7 @@ class ModelV2(BaseModel):
     model_id: str
     provider_id: str
     source: str
-    api_mode: Optional[str] = None
+    api_mode: str | None = None
     status: Literal[
         "available",
         "offline",
@@ -101,7 +100,7 @@ class ModelV2(BaseModel):
     metadata_json: str = "{}"
     first_seen: datetime.datetime
     last_seen: datetime.datetime
-    deactivated_at: Optional[datetime.datetime] = None
+    deactivated_at: datetime.datetime | None = None
 
     @field_serializer("first_seen", "last_seen", "deactivated_at")
     def serialize_dt(self, dt: datetime.datetime | None) -> str | None:
@@ -129,11 +128,11 @@ class RoutePolicy(BaseModel):
     model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
 
     task_class: str
-    provider_id: Optional[str] = None
-    model_id: Optional[str] = None
+    provider_id: str | None = None
+    model_id: str | None = None
     # JSON string (never dict) per D-013; mirrors TEXT NOT NULL DEFAULT '{}'
     fallback_policy_json: str = "{}"
-    updated_at: Optional[datetime.datetime] = None
+    updated_at: datetime.datetime | None = None
 
     @field_serializer("updated_at")
     def serialize_updated_at(self, dt: datetime.datetime | None) -> str | None:

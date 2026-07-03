@@ -4,7 +4,6 @@ import json
 
 import pytest
 
-
 # --- Import tests ---
 
 
@@ -16,11 +15,11 @@ def test_import() -> None:
 def test_all_models_importable() -> None:
     """SCHEMA-01: all 7 model names and SECRET_PATTERNS must be importable."""
     from atlas_core.schemas.core import (  # noqa: F401
+        SECRET_PATTERNS,
         Artifact,
         AuditEvent,
         Mission,
         Run,
-        SECRET_PATTERNS,
         Source,
         ToolCall,
         WikiPage,
@@ -171,7 +170,6 @@ def test_json_schema_all_models() -> None:
 
 def test_secret_patterns() -> None:
     """SECRET_PATTERNS must catch URL querystring, JSON key-value, and Bearer notation."""
-    import re
     from atlas_core.schemas.core import SECRET_PATTERNS
 
     assert isinstance(SECRET_PATTERNS, tuple)

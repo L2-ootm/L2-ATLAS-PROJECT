@@ -58,7 +58,7 @@ def test_discord_approval_serializes_json_safe() -> None:
         guild_id="g1",
         target_id="c1",
         params=json.dumps({"name": "general"}),
-        decided_at=datetime.datetime.now(datetime.timezone.utc),
+        decided_at=datetime.datetime.now(datetime.UTC),
     )
     dumped = a.model_dump()
     # round-trips through json (datetimes are ISO strings, params is a str)

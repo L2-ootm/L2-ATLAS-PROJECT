@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import datetime
 import uuid
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
@@ -71,8 +71,8 @@ class ToolResult(BaseModel):
     tool_name: str = ""
     ok: bool
     output: str = ""
-    error: Optional[str] = None
-    exit_code: Optional[int] = None
+    error: str | None = None
+    exit_code: int | None = None
 
 
 class ToolApproval(BaseModel):
@@ -87,23 +87,23 @@ class ToolApproval(BaseModel):
     args: str = "{}"  # JSON string, secret-redacted before persistence (D-013)
     summary: str = ""  # human-readable, e.g. "webhook_notify POST https://…"
     status: ToolApprovalStatus = "pending"
-    reason: Optional[str] = None  # operator note (propose or reject)
-    result: Optional[str] = None  # JSON string: adapter output on success, error on failure
+    reason: str | None = None  # operator note (propose or reject)
+    result: str | None = None  # JSON string: adapter output on success, error on failure
     run_id: str = "operator"
     requested_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
-    decided_at: Optional[datetime.datetime] = None
+    decided_at: datetime.datetime | None = None
     # Phase 10.5 surface-scoped broker (PERM-01). All Optional so legacy NULL rows
     # load; mirrors migration 0017 additive columns 1:1 (Pitfall 2 lockstep).
-    surface_session_id: Optional[str] = None  # soft anchor to surface_sessions.id
-    surface_kind: Optional[str] = None  # cli | tui | webui | api
-    workspace_root: Optional[str] = None  # resolved workspace for scope binding
-    expiry_at: Optional[datetime.datetime] = None  # TTL deadline (SEC-02 stale gate)
-    decision: Optional[str] = None  # claim outcome (allow/deny cause)
-    nonce: Optional[str] = None  # replay guard (SEC-02)
-    args_normalized: Optional[str] = None  # redacted canonical args = policy match key
-    policy_receipt: Optional[str] = None  # JSON PermissionExplainReceipt, secret-safe
+    surface_session_id: str | None = None  # soft anchor to surface_sessions.id
+    surface_kind: str | None = None  # cli | tui | webui | api
+    workspace_root: str | None = None  # resolved workspace for scope binding
+    expiry_at: datetime.datetime | None = None  # TTL deadline (SEC-02 stale gate)
+    decision: str | None = None  # claim outcome (allow/deny cause)
+    nonce: str | None = None  # replay guard (SEC-02)
+    args_normalized: str | None = None  # redacted canonical args = policy match key
+    policy_receipt: str | None = None  # JSON PermissionExplainReceipt, secret-safe
 
     @field_serializer("requested_at", "decided_at", "expiry_at")
     def serialize_dt(self, dt: datetime.datetime | None) -> str | None:
@@ -121,9 +121,9 @@ class ApprovalChannel(BaseModel):
     surface_session_id: str
     surface_kind: str
     registered_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
-    revoked_at: Optional[datetime.datetime] = None
+    revoked_at: datetime.datetime | None = None
 
     @field_serializer("registered_at", "revoked_at")
     def serialize_dt(self, dt: datetime.datetime | None) -> str | None:
@@ -150,7 +150,7 @@ class SessionAllowRule(BaseModel):
     arg_pattern: str
     rule_kind: SessionAllowRuleKind
     created_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
 
     @field_serializer("created_at")
