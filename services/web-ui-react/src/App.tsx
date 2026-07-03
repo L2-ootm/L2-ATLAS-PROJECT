@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { createBrowserRouter, RouterProvider } from 'react-router-dom';
+import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom';
 import Layout from './shell/Layout';
 import Dashboard from './routes/Dashboard';
 import Missions from './routes/Missions';
@@ -9,8 +9,7 @@ import RunDetail from './routes/RunDetail';
 import Console from './routes/Console';
 import Command from './routes/Command';
 import Projects from './routes/Projects';
-import System from './routes/System';
-import Settings from './routes/Settings';
+import Control from './routes/Control';
 import Discord from './routes/Discord';
 import Cashflow from './routes/Cashflow';
 import Ledger from './routes/Ledger';
@@ -42,8 +41,10 @@ const router = createBrowserRouter([
 			{ path: 'models', element: <Models /> },
 			{ path: 'integrations', element: <Integrations /> },
 			{ path: 'discord', element: <Discord /> },
-			{ path: 'system', element: <System /> },
-			{ path: 'settings', element: <Settings /> },
+			{ path: 'control', element: <Control /> },
+			// Compatibility shims — Settings and System merged into /control.
+			{ path: 'system', element: <Navigate to="/control" replace /> },
+			{ path: 'settings', element: <Navigate to="/control?tab=provider" replace /> },
 			{ path: '*', element: <Migrating pillar="ATLAS" name="Not Found" /> }
 		]
 	}

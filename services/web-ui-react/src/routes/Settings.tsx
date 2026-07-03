@@ -35,7 +35,17 @@ const MODE_HINTS: Record<ProviderAuthMode, string> = {
 
 type Banner = { tone: 'good' | 'bad' | 'warn'; text: string } | null;
 
+// Route shim: /settings now redirects to /control (PROVIDER tab); this default
+// export remains the standalone page form used by the component tests.
 export default function Settings() {
+	return (
+		<Page eyebrow="SYSTEM" title="Settings">
+			<ProviderSettingsPanel />
+		</Page>
+	);
+}
+
+export function ProviderSettingsPanel() {
 	const [config, setConfig] = useState<AtlasConfigView | null>(null);
 	const [status, setStatus] = useState<ProviderStatusView | null>(null);
 	const [modes, setModes] = useState<ProviderModeView[]>([]);
@@ -163,7 +173,7 @@ export default function Settings() {
 	);
 
 	return (
-		<Page eyebrow="SYSTEM" title="Settings">
+		<div>
 			{offline && (
 				<div style={{ ...glassPanel({ borderColor: 'rgba(255,183,77,0.45)' }), padding: 16, marginBottom: 16 }}>
 					<span style={mono(11, 'var(--l2-warning)')}>
@@ -358,7 +368,7 @@ export default function Settings() {
 					</span>
 				</div>
 			</div>
-		</Page>
+		</div>
 	);
 }
 
