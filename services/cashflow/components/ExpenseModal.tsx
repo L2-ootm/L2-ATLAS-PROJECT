@@ -104,7 +104,7 @@ export default function ExpenseModal({ isOpen, onClose, onSave, expense }: Expen
                     <div className="flex items-center gap-3">
                         <label className="relative inline-flex items-center cursor-pointer">
                             <input type="checkbox" checked={recurring} onChange={(e) => setRecurring(e.target.checked)} className="sr-only peer" />
-                            <div className="w-10 h-5 rounded-full peer after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full" style={{ background: recurring ? "#4F8BFF" : "rgba(34,40,56,0.65)" }}><div className="absolute top-[2px] rounded-full h-4 w-4 bg-white transition-all" style={{ left: recurring ? "22px" : "2px" }} /></div>
+                            <div className="w-10 h-5 rounded-full peer after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full" style={{ background: recurring ? "var(--atlas-celestial)" : "rgba(34,40,56,0.65)" }}><div className="absolute top-[2px] rounded-full h-4 w-4 bg-white transition-all" style={{ left: recurring ? "22px" : "2px" }} /></div>
                         </label>
                         <span className="text-sm" style={{ color: "var(--l2-fg-2)" }}>Despesa recorrente</span>
                     </div>

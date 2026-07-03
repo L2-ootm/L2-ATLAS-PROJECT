@@ -1,9 +1,9 @@
 "use client";
 
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import { formatCurrency } from "@/lib/utils";
 
-const COLORS = ['#4F8BFF', '#4F8BFF', '#00FF94', '#FFD600', '#FF0055', '#A17BFF'];
+const COLORS = ['var(--atlas-celestial)', 'var(--atlas-celestial)', 'var(--l2-success)', 'var(--sig-amber)', 'var(--sig-crimson)', 'var(--atlas-violet)'];
 
 export default function ExplorerCharts({
   costByModel,
@@ -27,7 +27,7 @@ export default function ExplorerCharts({
         <div style={{ background: "rgba(24,28,38,0.55)", padding: 24, borderRadius: 12, border: "1px solid var(--l2-hairline)" }}>
           <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--l2-fg-1)", margin: "0 0 16px 0" }}>Custo por Modelo</h2>
           <div style={{ height: 250 }}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={250} initialDimension={{ width: 480, height: 250 }}>
               <PieChart>
                 <Pie
                   data={costByModel}
@@ -36,7 +36,7 @@ export default function ExplorerCharts({
                   cx="50%"
                   cy="50%"
                   outerRadius={80}
-                  fill="#8884d8"
+                  fill="var(--atlas-celestial)"
                   label={(props: any) => {
                     const { name, percent } = props;
                     return `${name} ${(percent * 100).toFixed(0)}%`;
@@ -56,7 +56,7 @@ export default function ExplorerCharts({
         <div style={{ background: "rgba(24,28,38,0.55)", padding: 24, borderRadius: 12, border: "1px solid var(--l2-hairline)" }}>
           <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--l2-fg-1)", margin: "0 0 16px 0" }}>Eficiência de Cache</h2>
           <div style={{ height: 250 }}>
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={250} initialDimension={{ width: 480, height: 250 }}>
               <PieChart>
                 <Pie
                   data={cacheData}
@@ -66,14 +66,14 @@ export default function ExplorerCharts({
                   cy="50%"
                   innerRadius={60}
                   outerRadius={80}
-                  fill="#8884d8"
+                  fill="var(--atlas-celestial)"
                   label={(props: any) => {
                     const { name, percent } = props;
                     return `${name} ${(percent * 100).toFixed(0)}%`;
                   }}
                 >
-                  <Cell fill="#00FF94" />
-                  <Cell fill="#FF0055" />
+                  <Cell fill="var(--l2-success)" />
+                  <Cell fill="var(--sig-crimson)" />
                 </Pie>
                 <Tooltip formatter={(val: any) => `${val.toLocaleString()} tokens`} />
               </PieChart>
@@ -102,7 +102,7 @@ export default function ExplorerCharts({
                   <td style={{ padding: "12px 0", color: "var(--l2-fg-1)", fontWeight: 500 }}>{user.user_id}</td>
                   <td style={{ padding: "12px 0", color: "var(--l2-fg-2)", textAlign: "right" }}>{user.total_events}</td>
                   <td style={{ padding: "12px 0", color: "var(--l2-fg-2)", textAlign: "right" }} className="font-mono">{(user.total_tokens || 0).toLocaleString()}</td>
-                  <td style={{ padding: "12px 0", color: "#FF0055", textAlign: "right", fontWeight: 600 }} className="font-mono">{formatCurrency(user.total_cost)}</td>
+                  <td style={{ padding: "12px 0", color: "var(--sig-crimson)", textAlign: "right", fontWeight: 600 }} className="font-mono">{formatCurrency(user.total_cost)}</td>
                 </tr>
               ))}
               {topUsers.length === 0 && (

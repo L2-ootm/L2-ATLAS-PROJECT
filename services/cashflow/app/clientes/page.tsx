@@ -59,7 +59,7 @@ export default function ClientesPage() {
                     style={{
                         display: "flex", alignItems: "center", gap: 8,
                         padding: "10px 24px",
-                        background: "rgba(79,139,255,0.14)", color: "#9CC0FF",
+                        background: "rgba(79,139,255,0.14)", color: "var(--atlas-celestial-soft)",
                         borderRadius: 8, fontWeight: 600, fontSize: 14,
                         border: "1px solid rgba(79,139,255,0.38)", cursor: "pointer",
                         boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
@@ -132,7 +132,7 @@ export default function ClientesPage() {
                                     <p className="text-xs md:hidden" style={{ color: "var(--l2-fg-3)" }}>{client.service}</p>
                                 </div>
                                 <div className="hidden md:block md:col-span-3"><p className="text-sm" style={{ color: "var(--l2-fg-2)" }}>{client.service}</p></div>
-                                <div className="md:col-span-2"><p className="text-sm font-semibold font-mono" style={{ color: "#4F8BFF" }}>{formatCurrency(client.monthlyPayment)}</p></div>
+                                <div className="md:col-span-2"><p className="text-sm font-semibold font-mono" style={{ color: "var(--atlas-celestial)" }}>{formatCurrency(client.monthlyPayment)}</p></div>
                                 <div className="md:col-span-1">
                                     {client.active
                                         ? <span className="badge-active inline-flex items-center gap-1 text-[10px] font-medium px-2 py-1 rounded-full"><CheckCircle2 className="w-3 h-3" /> Ativo</span>
@@ -149,10 +149,10 @@ export default function ClientesPage() {
                                     </button>
                                     {deleteConfirm === client.id
                                         ? <button onClick={() => handleDelete(client.id)} className="p-2 rounded-lg" title="Confirmar"
-                                            style={{ color: "#FF0055", background: "rgba(248,113,113,0.1)" }}><Trash2 className="w-4 h-4" /></button>
+                                            style={{ color: "var(--sig-crimson)", background: "rgba(248,113,113,0.1)" }}><Trash2 className="w-4 h-4" /></button>
                                         : <button onClick={() => setDeleteConfirm(client.id)} className="p-2 rounded-lg transition-colors" title="Excluir"
                                             style={{ color: "var(--l2-fg-3)" }}
-                                            onMouseEnter={(e) => { e.currentTarget.style.color = "#FF0055"; e.currentTarget.style.background = "rgba(34,40,56,0.65)"; }}
+                                            onMouseEnter={(e) => { e.currentTarget.style.color = "var(--sig-crimson)"; e.currentTarget.style.background = "rgba(34,40,56,0.65)"; }}
                                             onMouseLeave={(e) => { e.currentTarget.style.color = "var(--l2-fg-3)"; e.currentTarget.style.background = "transparent"; }}>
                                             <Trash2 className="w-4 h-4" />
                                         </button>}

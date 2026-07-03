@@ -39,7 +39,7 @@ export default function Sidebar() {
                 style={{
                     position: "fixed", top: 16, left: 16, zIndex: 50,
                     padding: 10, borderRadius: 2,
-                    background: "rgba(7,8,12,0.85)", color: "#EDEAE0",
+                    background: "rgba(7,8,12,0.85)", color: "var(--l2-fg-1)",
                     border: "1px solid rgba(79,139,255,0.20)",
                     cursor: "pointer",
                     backdropFilter: "blur(16px) saturate(140%)",
@@ -63,7 +63,7 @@ export default function Sidebar() {
                         <AtlasMark size={30} title="ATLAS" />
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
                             <h1 style={{
-                                fontSize: "1rem", fontWeight: 700, margin: 0, color: "#EDEAE0",
+                                fontSize: "1rem", fontWeight: 700, margin: 0, color: "var(--l2-fg-1)",
                                 lineHeight: 1, letterSpacing: "0.3em", textTransform: "uppercase",
                                 fontFamily: "var(--font-sans)",
                             }}>
@@ -91,7 +91,7 @@ export default function Sidebar() {
                 </div>
 
                 {/* Navigation — topo-glow links */}
-                <nav style={{
+                <nav data-topo="info" style={{
                     padding: "8px 0",
                     display: "flex", flexDirection: "column", gap: 0, flex: 1,
                     overflowY: "auto", overflowX: "hidden",

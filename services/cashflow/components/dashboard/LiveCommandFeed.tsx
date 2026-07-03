@@ -29,7 +29,7 @@ export default function LiveCommandFeed({ expenses, invoices }: LiveCommandFeedP
     ].sort((a, b) => b.date.getTime() - a.date.getTime()).slice(0, 6);
 
     return (
-        <div className="topo-surface topo-shelf p-6 h-full flex flex-col">
+        <div data-topo="good" className={`topo-surface topo-shelf dashboard-activity-panel p-5 flex flex-col ${events.length === 0 ? "is-empty" : ""}`}>
 
             <div className="flex items-center gap-2 mb-6">
                 <div className="w-2 h-2 rounded-full" style={{
@@ -48,7 +48,7 @@ export default function LiveCommandFeed({ expenses, invoices }: LiveCommandFeedP
             <div className="flex-1 overflow-y-auto pr-3 -mr-3">
                 <div className="ml-2 space-y-1">
                     {events.length === 0 ? (
-                        <div className="text-center text-sm py-10" style={{ color: "oklch(0.50 0.02 200)" }}>
+                        <div className="dashboard-empty-state text-center text-sm" style={{ color: "oklch(0.50 0.02 200)" }}>
                             Nenhuma atividade recente.
                         </div>
                     ) : (

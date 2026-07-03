@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { DollarSign, TrendingDown, TrendingUp, Users, Receipt, Wallet, AlertTriangle } from "lucide-react";
+import { DollarSign, TrendingDown, TrendingUp, Users, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import StatCard from "@/components/StatCard";
 import MonthSelector from "@/components/MonthSelector";
@@ -11,15 +11,13 @@ import LiveCommandFeed from "@/components/dashboard/LiveCommandFeed";
 import ExpenseDonutChart from "@/components/dashboard/ExpenseDonutChart";
 import TokenHeatmap from "@/components/dashboard/TokenHeatmap";
 import { getClients, getExpenses, getInvoices } from "@/app/actions";
-import { formatCurrency, getMonthYear, formatDate } from "@/lib/utils";
-import { getMonthComparison } from "@/lib/forecast";
-import { getDASValue } from "@/lib/tax";
-import { Invoice } from "@/lib/types";
+import { formatCurrency, getMonthYear } from "@/lib/utils";
+import type { Client, Expense, Invoice } from "@/lib/types";
 
 export default function DashboardPage() {
     const [month, setMonth] = useState(() => getMonthYear(new Date()));
-    const [clients, setClients] = useState<any[]>([]);
-    const [expenses, setExpenses] = useState<any[]>([]);
+    const [clients, setClients] = useState<Client[]>([]);
+    const [expenses, setExpenses] = useState<Expense[]>([]);
     const [overdueInvoices, setOverdueInvoices] = useState<Invoice[]>([]);
     const [dueSoonInvoices, setDueSoonInvoices] = useState<Invoice[]>([]);
     const [allInvoices, setAllInvoices] = useState<Invoice[]>([]);
@@ -34,8 +32,8 @@ export default function DashboardPage() {
             const todayStr = today.toISOString().split("T")[0];
             const futureDate = new Date(today.getTime() + 7 * 86400000).toISOString().split("T")[0];
 
-            setOverdueInvoices(invs.filter((i: any) => i.status === "pendente" && i.dueDate < todayStr));
-            setDueSoonInvoices(invs.filter((i: any) => i.status === "pendente" && i.dueDate >= todayStr && i.dueDate <= futureDate));
+            setOverdueInvoices(invs.filter((invoice) => invoice.status === "pendente" && invoice.dueDate < todayStr));
+            setDueSoonInvoices(invs.filter((invoice) => invoice.status === "pendente" && invoice.dueDate >= todayStr && invoice.dueDate <= futureDate));
         });
     }, []);
 
@@ -62,33 +60,12 @@ export default function DashboardPage() {
         });
     }, [activeClients]);
 
-    const recentExpenses = useMemo(() => [...expenses].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6), [expenses]);
-
-    const chartData = useMemo(() => {
-        const months: { label: string; key: string; revenue: number; expense: number }[] = [];
-        const now = new Date();
-        for (let i = 5; i >= 0; i--) {
-            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-            const key = getMonthYear(d);
-            const mExp = expenses.filter((e) => e.date.startsWith(key)).reduce((s, e) => s + e.amount, 0);
-            const labels = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-            months.push({ label: labels[d.getMonth()], key, revenue, expense: mExp });
-        }
-        return months;
-    }, [expenses, revenue]);
-
-    const maxBarValue = useMemo(() => Math.max(...chartData.flatMap((d) => [d.revenue, d.expense]), 1), [chartData]);
-
-    const comparison = useMemo(() => getMonthComparison(expenses, activeClients, month, 6), [expenses, activeClients, month]);
-
-    const getClientName = (id: string | null) => !id ? "L2 Geral" : clients.find((c) => c.id === id)?.name || "—";
-
     const alertInvoices = [...overdueInvoices, ...dueSoonInvoices];
 
     return (
-        <div className="flex flex-col xl:flex-row gap-6">
+        <div className="dashboard-layout">
             {/* Main Content Area */}
-            <div className="flex-1 flex flex-col gap-6 min-w-0">
+            <div className="dashboard-main flex flex-col gap-5 min-w-0">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
                         <h1 style={{
@@ -108,11 +85,11 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Top Grid: Goal Rings & Stats */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div className="lg:col-span-1">
+                <div className="dashboard-overview-grid">
+                    <div>
                         <GoalRings revenue={revenue} expenses={totalExpenses} goal={50000} />
                     </div>
-                    <div className="lg:col-span-2 grid grid-cols-2 gap-4">
+                    <div className="dashboard-stat-grid">
                         <StatCard title="Faturamento" value={formatCurrency(revenue)} icon={DollarSign} accentColor="cyan" />
                         <StatCard title="Despesas" value={formatCurrency(totalExpenses)} icon={TrendingDown} accentColor="red" />
                         <StatCard title="Lucro Líquido" value={formatCurrency(profit)} icon={TrendingUp}
@@ -122,7 +99,7 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Data Visualizations */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-auto min-h-[350px]">
+                <div className="dashboard-chart-grid">
                     <div className="h-full"><ExpenseDonutChart expenses={monthExpenses} /></div>
                     <div className="h-full"><TokenHeatmap clients={activeClients} invoices={allInvoices} /></div>
                 </div>
@@ -205,11 +182,11 @@ export default function DashboardPage() {
             </div>
 
             {/* Right Sidebar: Activity Feed */}
-            <div className="w-full xl:w-[320px] 2xl:w-[380px] flex-shrink-0">
-                <div className="sticky top-6 h-[calc(100vh-48px)]">
+            <aside className="dashboard-activity-rail">
+                <div>
                     <LiveCommandFeed expenses={expenses} invoices={allInvoices} />
                 </div>
-            </div>
+            </aside>
         </div>
     );
 }

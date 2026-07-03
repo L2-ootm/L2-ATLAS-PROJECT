@@ -50,13 +50,13 @@ export default async function ResearchCenterPage() {
         </div>
         <div style={{ padding: 24, background: "var(--l2-void-base)", border: "1px solid rgba(24,28,38,0.55)", borderRadius: 12 }}>
           <p style={{ color: "var(--l2-fg-2)", margin: "0 0 8px 0", fontSize: 13, textTransform: "uppercase", letterSpacing: 1 }}>Knowledge Packs Criados</p>
-          <div style={{ fontSize: 28, fontWeight: 600, color: "#00FF94" }}>
+          <div style={{ fontSize: 28, fontWeight: 600, color: "var(--l2-success)" }}>
             {stats.packsCreated}
           </div>
         </div>
         <div style={{ padding: 24, background: "var(--l2-void-base)", border: "1px solid rgba(24,28,38,0.55)", borderRadius: 12 }}>
           <p style={{ color: "var(--l2-fg-2)", margin: "0 0 8px 0", fontSize: 13, textTransform: "uppercase", letterSpacing: 1 }}>Economia Projetada (Reuso)</p>
-          <div style={{ fontSize: 28, fontWeight: 600, color: "#4F8BFF" }}>
+          <div style={{ fontSize: 28, fontWeight: 600, color: "var(--atlas-celestial)" }}>
             {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats.estimatedSavings)}
           </div>
         </div>

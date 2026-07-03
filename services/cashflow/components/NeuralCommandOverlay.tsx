@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import ExpenseModal from "./ExpenseModal";
 import InvoiceModal from "./InvoiceModal";
 import ClientModal from "./ClientModal";
-import { Client, Expense, Invoice } from "@/lib/types";
 
 export default function NeuralCommandOverlay() {
     const [open, setOpen] = useState(false);
@@ -34,7 +33,7 @@ export default function NeuralCommandOverlay() {
 
     const commands = [
         { id: "add_expense", label: "Adicionar Nova Despesa", icon: Plus, color: "text-red-400", action: () => { setOpen(false); setShowExpense(true); } },
-        { id: "add_invoice", label: "Emitir Fatura", icon: FileText, color: "text-[#46F0E0]", action: () => { setOpen(false); setShowInvoice(true); } },
+        { id: "add_invoice", label: "Emitir Fatura", icon: FileText, color: "text-[var(--atlas-cyan)]", action: () => { setOpen(false); setShowInvoice(true); } },
         { id: "add_client", label: "Cadastrar Cliente", icon: UserPlus, color: "text-indigo-400", action: () => { setOpen(false); setShowClient(true); } },
         { id: "goto_dashboard", label: "Ir para Dashboard", icon: Command, color: "text-blue-400", action: () => { setOpen(false); router.push("/dashboard"); } },
         { id: "goto_reports", label: "Abrir Relatórios", icon: Wallet, color: "text-slate-300", action: () => { setOpen(false); router.push("/relatorios"); } },
@@ -120,10 +119,10 @@ export default function NeuralCommandOverlay() {
                 <button
                     onClick={() => setOpen(true)}
                     className="fixed bottom-6 right-6 w-12 h-12 text-white rounded-full flex items-center justify-center z-50 transition-all cursor-pointer group"
-                    style={{ background: "#4F8BFF", boxShadow: "0 4px 12px rgba(99,102,241,0.3)" }}
+                    style={{ background: "var(--atlas-celestial)", boxShadow: "0 4px 12px rgba(79,139,255,0.3)" }}
                     title="Cmd+K"
-                    onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.08)"; e.currentTarget.style.background = "#7DA8FF"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; e.currentTarget.style.background = "#4F8BFF"; }}
+                    onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.08)"; e.currentTarget.style.background = "var(--color-primary-hover)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; e.currentTarget.style.background = "var(--atlas-celestial)"; }}
                 >
                     <Command className="w-5 h-5" />
                 </button>

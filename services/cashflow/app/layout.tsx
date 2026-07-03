@@ -3,6 +3,7 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import Sidebar from "@/components/Sidebar";
 import NeuralCommandOverlay from "@/components/NeuralCommandOverlay";
+import TopoField from "@/components/TopoField";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const jetbrains = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains" });
@@ -31,10 +32,13 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         suppressHydrationWarning
         className={`${inter.variable} ${jetbrains.variable} antialiased`}
       >
-        <div className="topo-field topo-lattice" style={{ minHeight: "100vh" }}>
-          <div style={{ display: "flex", minHeight: "100vh" }}>
+        <div className="topo-field" style={{ minHeight: "100vh" }}>
+          {/* Living terrain — SVG contour engine; the static CSS lattice is
+              retired in its favor (the engine draws its own resting field). */}
+          <TopoField />
+          <div className="app-shell">
             <Sidebar />
-            <main style={{ flex: 1, padding: "32px", minWidth: 0 }}>
+            <main className="app-main">
               {children}
             </main>
           </div>

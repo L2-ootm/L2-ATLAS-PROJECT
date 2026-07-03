@@ -67,9 +67,9 @@ export default function ReportsDashboard({ clientName, period, commercialRows, o
     borderRadius: 8,
     fontSize: 14,
     fontWeight: activeTab === tab ? 600 : 500,
-    color: activeTab === tab ? "#4F8BFF" : "var(--l2-fg-2)",
-    background: activeTab === tab ? "rgba(99,102,241,0.1)" : "transparent",
-    border: activeTab === tab ? "1px solid rgba(99,102,241,0.18)" : "1px solid transparent",
+    color: activeTab === tab ? "var(--atlas-celestial)" : "var(--l2-fg-2)",
+    background: activeTab === tab ? "rgba(79,139,255,0.1)" : "transparent",
+    border: activeTab === tab ? "1px solid rgba(79,139,255,0.18)" : "1px solid transparent",
     cursor: "pointer" as const,
     transition: "all 150ms"
   });
@@ -91,7 +91,7 @@ export default function ReportsDashboard({ clientName, period, commercialRows, o
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={exportCSV} style={{
             padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-            color: "#9CC0FF", background: "rgba(79,139,255,0.14)", border: "1px solid rgba(79,139,255,0.38)", cursor: "pointer",
+            color: "var(--atlas-celestial-soft)", background: "rgba(79,139,255,0.14)", border: "1px solid rgba(79,139,255,0.38)", cursor: "pointer",
             display: "flex", alignItems: "center", gap: 6
           }}>
             <Download size={14} /> Exportar CSV
@@ -133,7 +133,7 @@ export default function ReportsDashboard({ clientName, period, commercialRows, o
                   </td>
                   <td style={{
                     padding: "14px 0", textAlign: "right", fontWeight: 600,
-                    color: row.label.includes('Custo') ? "#FF0055" : row.label.includes('Margem') && row.value < 0 ? "#FF0055" : "#46F0E0"
+                    color: row.label.includes('Custo') ? "var(--sig-crimson)" : row.label.includes('Margem') && row.value < 0 ? "var(--sig-crimson)" : "var(--atlas-cyan)"
                   }} className="font-mono">
                     {row.isPercent ? `${row.value.toFixed(1)}%` : row.isCount ? row.value.toLocaleString() : formatCurrency(row.value)}
                   </td>
@@ -184,7 +184,7 @@ export default function ReportsDashboard({ clientName, period, commercialRows, o
                     <td style={{ padding: "12px 0", color: "var(--l2-fg-2)", textAlign: "right" }} className="font-mono">{m.sessions}</td>
                     <td style={{ padding: "12px 0", color: "var(--l2-fg-2)", textAlign: "right" }} className="font-mono">{(m.input_tokens || 0).toLocaleString()}</td>
                     <td style={{ padding: "12px 0", color: "var(--l2-fg-2)", textAlign: "right" }} className="font-mono">{(m.output_tokens || 0).toLocaleString()}</td>
-                    <td style={{ padding: "12px 0", color: "#FF0055", textAlign: "right", fontWeight: 600 }} className="font-mono">{formatCurrency(m.cost)}</td>
+                    <td style={{ padding: "12px 0", color: "var(--sig-crimson)", textAlign: "right", fontWeight: 600 }} className="font-mono">{formatCurrency(m.cost)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -209,7 +209,7 @@ export default function ReportsDashboard({ clientName, period, commercialRows, o
                     <td style={{ padding: "12px 0", color: "var(--l2-fg-1)", fontWeight: 500 }}>{u.user_id}</td>
                     <td style={{ padding: "12px 0", color: "var(--l2-fg-2)", textAlign: "right" }} className="font-mono">{u.sessions}</td>
                     <td style={{ padding: "12px 0", color: "var(--l2-fg-2)", textAlign: "right" }} className="font-mono">{(u.tokens || 0).toLocaleString()}</td>
-                    <td style={{ padding: "12px 0", color: "#FF0055", textAlign: "right", fontWeight: 600 }} className="font-mono">{formatCurrency(u.cost)}</td>
+                    <td style={{ padding: "12px 0", color: "var(--sig-crimson)", textAlign: "right", fontWeight: 600 }} className="font-mono">{formatCurrency(u.cost)}</td>
                   </tr>
                 ))}
               </tbody>

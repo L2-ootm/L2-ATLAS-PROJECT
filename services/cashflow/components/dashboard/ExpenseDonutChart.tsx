@@ -24,11 +24,11 @@ export default function ExpenseDonutChart({ expenses }: ExpenseDonutChartProps) 
     }, [expenses]);
 
     const COLORS: Record<string, string> = {
-        'Software': '#A17BFF',
-        'Marketing': '#FFD600',
-        'Equipamento': '#00FF94',
+        'Software': 'var(--atlas-violet)',
+        'Marketing': 'var(--sig-amber)',
+        'Equipamento': 'var(--l2-success)',
         'Infraestrutura': 'var(--l2-fg-2)',
-        'Pessoal': '#4F8BFF',
+        'Pessoal': 'var(--atlas-celestial)',
         'Outros': 'var(--l2-fg-3)',
     };
 
@@ -47,7 +47,7 @@ export default function ExpenseDonutChart({ expenses }: ExpenseDonutChartProps) 
     };
 
     return (
-        <div className="topo-surface topo-shelf p-6 h-full flex flex-col">
+        <div data-topo="warn" className="topo-surface topo-shelf dashboard-data-panel p-5 h-full flex flex-col">
 
             <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-semibold flex items-center gap-2" style={{
@@ -61,10 +61,10 @@ export default function ExpenseDonutChart({ expenses }: ExpenseDonutChartProps) 
             </div>
 
             {data.length === 0 ? (
-                <div className="flex-1 flex items-center justify-center text-sm" style={{ color: "oklch(0.50 0.02 200)" }}>Sem despesas registradas.</div>
+                <div className="dashboard-empty-state flex-1 flex items-center justify-center text-sm" style={{ color: "oklch(0.50 0.02 200)" }}>Sem despesas registradas.</div>
             ) : (
                 <div className="flex-1 min-h-[220px] relative">
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={220} initialDimension={{ width: 420, height: 220 }}>
                         <PieChart>
                             <Tooltip content={<CustomTooltip />} cursor={{ fill: 'transparent' }} />
                             <Pie

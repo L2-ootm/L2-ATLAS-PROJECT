@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Wallet, ArrowUpRight, ArrowDownRight, Users, Plus, CheckCircle2 } from "lucide-react";
-import StatCard from "@/components/StatCard";
+import { Wallet, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import {
     getPartnerWallets,
     getPartnerTransactions,
@@ -133,11 +132,12 @@ export default function SociosDashboard() {
                 </div>
                 <div style={{ display: "flex", gap: 12 }}>
                     <button
+                        data-topo="bad"
                         onClick={() => { setModalMode("withdrawal"); setDesc("Retirada"); }}
                         style={{
                             display: "flex", alignItems: "center", gap: 8,
                             padding: "10px 20px", borderRadius: 8,
-                            background: "rgba(248,113,113,0.1)", color: "#FF0055", fontWeight: 600, fontSize: 13,
+                            background: "rgba(248,113,113,0.1)", color: "var(--sig-crimson)", fontWeight: 600, fontSize: 13,
                             border: "1px solid rgba(248,113,113,0.2)", cursor: "pointer",
                             transition: "all 200ms",
                         }}
@@ -152,7 +152,7 @@ export default function SociosDashboard() {
                         style={{
                             display: "flex", alignItems: "center", gap: 8,
                             padding: "10px 24px", borderRadius: 8,
-                            background: "rgba(79,139,255,0.14)", color: "#9CC0FF", fontWeight: 600, fontSize: 14,
+                            background: "rgba(79,139,255,0.14)", color: "var(--atlas-celestial-soft)", fontWeight: 600, fontSize: 14,
                             border: "1px solid rgba(79,139,255,0.38)", cursor: "pointer",
                             boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
                             transition: "all 200ms",
@@ -171,7 +171,7 @@ export default function SociosDashboard() {
                 {/* L2 Global */}
                 <div className="l2-border" style={{ borderRadius: 16, padding: 24, display: "flex", flexDirection: "column", gap: 16, background: "rgba(24,28,38,0.55)" }}>
                     <div className="flex items-center gap-3">
-                        <div style={{ padding: 10, borderRadius: 8, background: "rgba(99,102,241,0.1)", color: "#4F8BFF" }}>
+                        <div style={{ padding: 10, borderRadius: 8, background: "rgba(79,139,255,0.1)", color: "var(--atlas-celestial)" }}>
                             <Wallet className="w-5 h-5" />
                         </div>
                         <span className="text-sm font-semibold" style={{ color: "var(--l2-fg-2)" }}>Lucro não distribuído</span>
@@ -194,7 +194,7 @@ export default function SociosDashboard() {
                         </div>
                     </div>
                     <div>
-                        <div className="text-3xl font-bold font-mono tracking-tight" style={{ color: "#4F8BFF" }}>{formatCurrency(arturWallet?.balance || 0)}</div>
+                        <div className="text-3xl font-bold font-mono tracking-tight" style={{ color: "var(--atlas-celestial)" }}>{formatCurrency(arturWallet?.balance || 0)}</div>
                         <div className="text-xs mt-2 uppercase tracking-wider" style={{ color: "var(--l2-fg-3)" }}>Saldo Disponível para Saque</div>
                     </div>
                 </div>
@@ -211,7 +211,7 @@ export default function SociosDashboard() {
                         </div>
                     </div>
                     <div>
-                        <div className="text-3xl font-bold font-mono tracking-tight" style={{ color: "#4F8BFF" }}>{formatCurrency(daviWallet?.balance || 0)}</div>
+                        <div className="text-3xl font-bold font-mono tracking-tight" style={{ color: "var(--atlas-celestial)" }}>{formatCurrency(daviWallet?.balance || 0)}</div>
                         <div className="text-xs mt-2 uppercase tracking-wider" style={{ color: "var(--l2-fg-3)" }}>Saldo Disponível para Saque</div>
                     </div>
                 </div>
@@ -245,16 +245,16 @@ export default function SociosDashboard() {
                                 <span className="text-sm font-mono" style={{ color: "var(--l2-fg-2)" }}>{formatDate(tx.date.split('T')[0])}</span>
                                 <div className="flex items-center gap-2">
                                     {tx.type === "injection" ? (
-                                        <ArrowUpRight className="w-4 h-4" style={{ color: "#46F0E0" }} />
+                                        <ArrowUpRight className="w-4 h-4" style={{ color: "var(--atlas-cyan)" }} />
                                     ) : (
-                                        <ArrowDownRight className="w-4 h-4" style={{ color: "#FF0055" }} />
+                                        <ArrowDownRight className="w-4 h-4" style={{ color: "var(--sig-crimson)" }} />
                                     )}
                                     <span className="text-sm capitalize" style={{ color: "var(--l2-fg-1)" }}>
                                         {tx.type === "injection" ? "Injeção" : "Retirada"} ({tx.partnerId})
                                     </span>
                                 </div>
                                 <span className="text-sm truncate" style={{ color: "var(--l2-fg-2)" }}>{tx.description}</span>
-                                <span className="text-sm font-mono font-semibold text-right" style={{ color: tx.type === "injection" ? "#46F0E0" : "#FF0055" }}>
+                                <span className="text-sm font-mono font-semibold text-right" style={{ color: tx.type === "injection" ? "var(--atlas-cyan)" : "var(--sig-crimson)" }}>
                                     {tx.type === "injection" ? "+" : "-"}{formatCurrency(tx.amount)}
                                 </span>
                             </div>
@@ -284,12 +284,12 @@ export default function SociosDashboard() {
                                     <div className="flex gap-2 mb-4">
                                         <button type="button" onClick={() => setSplitType("50-50")}
                                             className="flex-1 py-1.5 rounded text-sm font-medium transition-colors"
-                                            style={{ background: splitType === "50-50" ? "#4F8BFF" : "rgba(34,40,56,0.65)", color: splitType === "50-50" ? "#FFF" : "var(--l2-fg-2)" }}>
+                                            style={{ background: splitType === "50-50" ? "var(--atlas-celestial)" : "rgba(34,40,56,0.65)", color: splitType === "50-50" ? "#FFF" : "var(--l2-fg-2)" }}>
                                             50/50
                                         </button>
                                         <button type="button" onClick={() => setSplitType("custom")}
                                             className="flex-1 py-1.5 rounded text-sm font-medium transition-colors"
-                                            style={{ background: splitType === "custom" ? "#4F8BFF" : "rgba(34,40,56,0.65)", color: splitType === "custom" ? "#FFF" : "var(--l2-fg-2)" }}>
+                                            style={{ background: splitType === "custom" ? "var(--atlas-celestial)" : "rgba(34,40,56,0.65)", color: splitType === "custom" ? "#FFF" : "var(--l2-fg-2)" }}>
                                             Personalizada
                                         </button>
                                     </div>
@@ -316,16 +316,16 @@ export default function SociosDashboard() {
                                         <button type="button" onClick={() => setSelectedPartner("artur")}
                                             className="py-3 rounded-lg border transition-all"
                                             style={{
-                                                borderColor: selectedPartner === "artur" ? "#4F8BFF" : "var(--l2-hairline)",
-                                                background: selectedPartner === "artur" ? "rgba(99,102,241,0.1)" : "rgba(18,21,29,0.65)",
-                                                color: selectedPartner === "artur" ? "#4F8BFF" : "var(--l2-fg-2)"
+                                                borderColor: selectedPartner === "artur" ? "var(--atlas-celestial)" : "var(--l2-hairline)",
+                                                background: selectedPartner === "artur" ? "rgba(79,139,255,0.1)" : "rgba(18,21,29,0.65)",
+                                                color: selectedPartner === "artur" ? "var(--atlas-celestial)" : "var(--l2-fg-2)"
                                             }}>Artur</button>
                                         <button type="button" onClick={() => setSelectedPartner("davi")}
                                             className="py-3 rounded-lg border transition-all"
                                             style={{
-                                                borderColor: selectedPartner === "davi" ? "#4F8BFF" : "var(--l2-hairline)",
-                                                background: selectedPartner === "davi" ? "rgba(99,102,241,0.1)" : "rgba(18,21,29,0.65)",
-                                                color: selectedPartner === "davi" ? "#4F8BFF" : "var(--l2-fg-2)"
+                                                borderColor: selectedPartner === "davi" ? "var(--atlas-celestial)" : "var(--l2-hairline)",
+                                                background: selectedPartner === "davi" ? "rgba(79,139,255,0.1)" : "rgba(18,21,29,0.65)",
+                                                color: selectedPartner === "davi" ? "var(--atlas-celestial)" : "var(--l2-fg-2)"
                                             }}>Davi</button>
                                     </div>
                                 </div>

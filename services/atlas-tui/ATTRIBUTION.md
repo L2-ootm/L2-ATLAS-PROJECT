@@ -1,23 +1,28 @@
 # Attribution — atlas-tui
 
-This terminal workbench **reimplements patterns** from prior-art terminal agents.
-No donor runtime, configuration, auth, identity, or source code is imported or
-vendored — only UX/architecture patterns were studied (per the v1.1/v1.2
-"adapters only" constraint and the Phase 10.1 intake regime).
+This terminal workbench is an ATLAS Go/BubbleTea client whose presentation layer
+is derived from permissively licensed terminal agents. MiMo-Code is MIT
+licensed; its required copyright and permission notice is preserved in
+`docs/third-party/ATLAS_TUI_UPSTREAM_NOTICE.md`.
 
-## Pattern references (design history only)
+## Presentation donors
 
 - **opencode** — Go + Charm/BubbleTea terminal UI architecture (thin client over an
   HTTP/SSE server). Studied for component structure and the client-server split.
-- **XiaomiMiMo/MiMo-Code** (v0.1.2, MIT; TypeScript/Bun fork of opencode) — studied
-  for terminal interaction/behavior patterns. Reference checkout is gitignored under
-  `_EXTERNAL_REPOS/mimo-code/`. Note: MiMo-Code carries a `USE_RESTRICTIONS.md`
-  beyond MIT; only patterns (not code) are reused here.
+- **XiaomiMiMo/MiMo-Code** (v0.1.2, MIT; TypeScript/Bun fork of opencode) —
+  presentation donor for the home/session composition, 50 ms motion clock,
+  star/meteor cadence, breathing gradient, compact composer, and autocomplete
+  geometry. The implementation is ported to the existing Go ATLAS client rather
+  than importing MiMo-Code's Bun/Solid/OpenTUI runtime and dependency graph.
+
+No donor agent runtime, provider layer, authentication, configuration, storage,
+memory, telemetry, updater, hosted-service authority, or product identity is
+shipped in this binary.
 
 ## Direct dependencies (their own licenses apply)
 
 - github.com/charmbracelet/bubbletea (MIT)
 - github.com/charmbracelet/lipgloss (MIT)
 
-ATLAS identity, the gateway contract, the provider mesh, and all rendered copy are
-ATLAS-native. See `ATTRIBUTION.md` at the repo root for the project-wide notices.
+ATLAS identity, gateway contract, provider mesh, and rendered product copy remain
+ATLAS-owned. See `ATTRIBUTION.md` at the repo root for project-wide notices.

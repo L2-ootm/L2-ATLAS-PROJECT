@@ -10,7 +10,7 @@ interface AtlasMarkProps {
 
 export default function AtlasMark({ size = 32, title = "ATLAS" }: AtlasMarkProps) {
     const globe = "var(--atlas-celestial)";
-    const lines = "var(--atlas-mythic, #3D68FF)";
+    const lines = "var(--atlas-mythic)";
     const bronze = "var(--atlas-bronze)";
     const node = "var(--atlas-cyan)";
 

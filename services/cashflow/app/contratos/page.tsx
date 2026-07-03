@@ -15,9 +15,8 @@ export default function ContratosPage() {
     }, []);
 
     const activeClients = useMemo(() => clients.filter(c => c.active), [clients]);
-    const today = new Date();
-
     const contractsData = useMemo(() => {
+        const today = new Date();
         return activeClients.map(c => {
             if (!c.contractMonths || c.contractMonths === 0) {
                 return { ...c, status: "recorrente", endDate: null, daysRemaining: null };
@@ -62,7 +61,7 @@ export default function ContratosPage() {
                 <span style={{
                     display: "inline-block", padding: "4px 10px", borderRadius: 6,
                     fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em",
-                    background: "rgba(99,102,241,0.1)", color: "#4F8BFF",
+                    background: "rgba(79,139,255,0.1)", color: "var(--atlas-celestial)",
                 }}>
                     Mensal
                 </span>
@@ -73,7 +72,7 @@ export default function ContratosPage() {
                 <span style={{
                     display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6,
                     fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em",
-                    background: "rgba(248,113,113,0.1)", color: "#FF0055",
+                    background: "rgba(248,113,113,0.1)", color: "var(--sig-crimson)",
                 }}>
                     <AlertTriangle style={{ width: 12, height: 12 }} /> Vencido
                 </span>
@@ -84,7 +83,7 @@ export default function ContratosPage() {
                 <span style={{
                     display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6,
                     fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em",
-                    background: "rgba(251,191,36,0.1)", color: "#FFD600",
+                    background: "rgba(251,191,36,0.1)", color: "var(--sig-amber)",
                 }}>
                     <Clock style={{ width: 12, height: 12 }} /> Renovar ({days}d)
                 </span>
@@ -94,7 +93,7 @@ export default function ContratosPage() {
             <span style={{
                 display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6,
                 fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em",
-                background: "rgba(52,211,153,0.1)", color: "#46F0E0",
+                background: "rgba(52,211,153,0.1)", color: "var(--atlas-cyan)",
             }}>
                 <CheckCircle2 style={{ width: 12, height: 12 }} /> Ativo
             </span>
@@ -155,7 +154,7 @@ export default function ContratosPage() {
                             </div>
                             <span className="text-sm font-mono font-semibold text-right" style={{ color: "var(--l2-fg-1)" }}>{formatCurrency(contract.monthlyPayment)}</span>
                             <span className="text-sm font-mono text-center" style={{ color: "var(--l2-fg-2)" }}>{formatDate(contract.startDate)}</span>
-                            <span className="text-sm font-mono text-center font-semibold" style={{ color: contract.status === "recorrente" ? "var(--l2-fg-3)" : contract.status === "vencido" ? "#FF0055" : contract.status === "atencao" ? "#FFD600" : "var(--l2-fg-1)" }}>
+                            <span className="text-sm font-mono text-center font-semibold" style={{ color: contract.status === "recorrente" ? "var(--l2-fg-3)" : contract.status === "vencido" ? "var(--sig-crimson)" : contract.status === "atencao" ? "var(--sig-amber)" : "var(--l2-fg-1)" }}>
                                 {contract.endDate ? formatDate(contract.endDate) : "—"}
                             </span>
                             <span className="text-sm text-right" style={{ color: "var(--l2-fg-2)" }}>

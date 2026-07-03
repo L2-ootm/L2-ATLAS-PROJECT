@@ -211,10 +211,10 @@ SCs are human/operator actions, not codeable plans).
 ### 🔨 v1.1 ATLAS Agent Harness & Multi-Surface Workbench (Phases 10.1–10.8) — ACTIVE
 
 v1.1 turns the existing ATLAS agent/runtime into one coherent operator workbench across
-terminal and web surfaces. A third-party terminal project is used only as an implementation
-and UX reference/donor; runtime code, packages, commands, configuration, storage paths,
-environment variables, generated artifacts, and UI identity are ATLAS-native. Ethical
-provenance and required notices remain in documentation.
+terminal and web surfaces. MiMo-Code's MIT-licensed presentation source may be copied,
+ported, and modified with its notice retained. ATLAS keeps its own runtime, commands,
+configuration, storage paths, environment variables, generated artifacts, and UI identity;
+the donor supplies the terminal presentation baseline, not a second product backend.
 
 There is **no donor-specific agent runtime**. The terminal and web clients use the same
 ATLAS agent, Projects/Current Focus/mission/run model, context assembly, audit bus, policy,
@@ -227,7 +227,8 @@ configuration, and approval state.
 **Locked decisions (2026-06-23):**
 
 - one ATLAS agent/runtime, many surfaces;
-- donor TUI code is transformed into an ATLAS-owned surface, not wrapped as a branded binary;
+- MIT-licensed donor TUI presentation code may be copied, ported, and modified into the
+  ATLAS-owned surface with the required notice retained; the donor binary/runtime is not wrapped;
 - donor identity may appear only in attribution/license/design-history documentation;
 - `~/.atlas/config.yaml` is the authoritative non-secret configuration store for every surface;
 - every execution is bound to a surface session and a global or registered-project workspace;
@@ -242,6 +243,24 @@ configuration, and approval state.
 surface/workspace protocol → 10.4 global config control plane → 10.5 permission broker →
 10.6 TUI → operator-approved Go-TUI/provider-mesh follow-up (P1–P8) → 10.7 WebUI agent/queue
 UX → 10.8 cross-surface UAT and cutover.
+
+**Finish sprint overlay (2026-07-03 → 2026-07-09):**
+`docs/plans/2026-07-03-sprint-to-2026-07-09-milestone-finish.md` captures the operator-directed
+finish line. The sprint does not open new product territory; it closes the remaining polish and
+stability gaps before milestone archive:
+
+1. Polish agent configuration in both cockpit and terminal.
+2. Consolidate Settings and System into one modular control page with tabs/dynamic sections.
+3. Stabilize the Cashflow integration as an ATLAS module.
+4. Make the Models/configuration panel modular and runtime-contract driven.
+5. Create the local installation/package path.
+6. Polish the CLI command surface.
+7. Refactor the TUI using MiMoCode as the principal MIT presentation donor while preserving the
+   ATLAS runtime/provider/config/audit authority.
+
+Visual polish note: the immediate web debt is spacing/layers, not another broad redesign. Text
+must not sit at zero distance from panel edges; cards, rails, sidebars, and topo backgrounds need
+one intentional depth stack before color or animation changes.
 
 #### Phase 10.1: ATLAS TUI Harness Intake & Provenance
 
@@ -262,7 +281,7 @@ provider system, config store, memory system, telemetry path, or product identit
 
 **Plans:** 3/3 complete
 
-- [x] 10.1-01-PLAN.md — pinned-source inventory, adopt/rewrite/reject matrix, attribution, notices, and legal release gate
+- [x] 10.1-01-PLAN.md — pinned-source inventory, adopt/rewrite/reject matrix, attribution, and retained MIT notices
 - [x] 10.1-02-PLAN.md — clean ATLAS package boundary, reproducible inventory generator, and fail-closed identity/dependency/artifact scanner
 - [x] 10.1-03-PLAN.md — test-first minimal OpenTUI/Solid ATLAS shell with build, offline, startup, memory, size, and boundary baselines
 

@@ -22,6 +22,7 @@
   /* ── Primary — Atlas Celestial Blue (primary luminous accent) ── */
   --color-primary: #4F8BFF;
   --color-primary-hover: #7DA8FF;
+  --color-primary-ink: #9CC0FF;
   --color-primary-subtle: rgba(79, 139, 255, 0.14);
   --color-primary-muted: rgba(79, 139, 255, 0.06);
 
@@ -129,9 +130,14 @@
 
   /* ── Atlas brand ── */
   --atlas-celestial:  #4F8BFF;
+  --atlas-celestial-soft: #9CC0FF;
+  --atlas-mythic:     #3D68FF;
   --atlas-bronze:     #B08A57;
   --atlas-violet:     #A17BFF;
   --atlas-cyan:       #46F0E0;
+  --topo-resting-line: rgba(126, 151, 181, 0.62);
+  --panel-bg-top: rgba(17, 21, 30, 0.88);
+  --panel-bg-bottom: rgba(8, 11, 17, 0.94);
 
   /* ── Atlas geometry ── */
   --l2-radius:    2px;
@@ -191,6 +197,20 @@ body {
 }
 
 .topo-field > * { position: relative; z-index: 2; }
+.topo-field > .ambient-topo { z-index: 0; }
+
+.app-shell {
+  display: flex;
+  min-height: 100dvh;
+  position: relative;
+  z-index: 2;
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  padding: clamp(20px, 2vw, 32px);
+}
 
 /* SVG contour lattice overlay */
 .topo-lattice::after {
@@ -215,9 +235,9 @@ body {
 .topo-surface {
   position: relative;
   isolation: isolate;
-  background: linear-gradient(180deg, oklch(0.11 0.02 220 / 55%), oklch(0.07 0.015 220 / 72%));
-  backdrop-filter: blur(20px) saturate(140%);
-  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  background: linear-gradient(180deg, var(--panel-bg-top), var(--panel-bg-bottom));
+  backdrop-filter: blur(16px) saturate(125%);
+  -webkit-backdrop-filter: blur(16px) saturate(125%);
   border: 1px solid var(--topo-ring-neutral);
   border-radius: var(--l2-radius);
   box-shadow: inset 0 1px 0 oklch(1 0 0 / 6%), 0 2px 0 oklch(0 0 0 / 30%);
@@ -330,7 +350,7 @@ body {
 .btn-primary {
   position: relative;
   background: rgba(79, 139, 255, 0.12);
-  color: #9CC0FF;
+  color: var(--atlas-celestial-soft);
   border: 1px solid rgba(79, 139, 255, 0.36);
   box-shadow: 0 0 16px rgba(79, 139, 255, 0.12);
   border-radius: var(--l2-radius);
@@ -435,9 +455,9 @@ body {
 .stat-card {
   position: relative;
   isolation: isolate;
-  background: linear-gradient(180deg, oklch(0.11 0.02 220 / 55%), oklch(0.07 0.015 220 / 72%));
-  backdrop-filter: blur(20px) saturate(140%);
-  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  background: linear-gradient(180deg, var(--panel-bg-top), var(--panel-bg-bottom));
+  backdrop-filter: blur(16px) saturate(125%);
+  -webkit-backdrop-filter: blur(16px) saturate(125%);
   border: 1px solid var(--topo-ring-neutral);
   border-radius: var(--l2-radius-md);
   box-shadow: inset 0 1px 0 oklch(1 0 0 / 6%), 0 2px 0 oklch(0 0 0 / 30%);
@@ -592,6 +612,13 @@ input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; filter:
   box-shadow: 1px 0 0 rgba(0,0,0,0.6), 8px 0 32px rgba(0,0,0,0.45);
   position: relative;
   overflow: hidden;
+  display: flex;
+  flex: 0 0 248px;
+  flex-direction: column;
+  width: 248px;
+  height: 100dvh;
+  position: sticky;
+  top: 0;
 }
 
 .sidebar-wrapper::before {
@@ -607,6 +634,107 @@ input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; filter:
 .sidebar-wrapper > * { position: relative; z-index: 1; }
 
 /* ==========================================================================
+   DASHBOARD — stable operator grid
+   ========================================================================== */
+.dashboard-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+}
+
+.dashboard-overview-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.85fr) minmax(0, 1.65fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.dashboard-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.dashboard-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.goal-panel {
+  min-height: 260px;
+}
+
+.dashboard-data-panel {
+  min-height: 270px;
+}
+
+.dashboard-empty-state {
+  min-height: 150px;
+  padding: 24px;
+}
+
+.dashboard-activity-rail > div {
+  position: static;
+}
+
+.dashboard-activity-panel {
+  min-height: 220px;
+  max-height: 620px;
+}
+
+.dashboard-activity-panel:not(.is-empty) {
+  height: min(620px, calc(100dvh - 48px));
+}
+
+@media (min-width: 1536px) {
+  .dashboard-layout {
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+
+  .dashboard-activity-rail > div {
+    position: sticky;
+    top: 24px;
+  }
+}
+
+@media (min-width: 1850px) {
+  .dashboard-layout {
+    grid-template-columns: minmax(0, 1fr) 360px;
+  }
+}
+
+@media (max-width: 1199px) {
+  .dashboard-overview-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .goal-panel {
+    min-height: 250px;
+  }
+}
+
+@media (max-width: 767px) {
+  .app-main {
+    padding: 72px 16px 24px;
+  }
+
+  .dashboard-stat-grid,
+  .dashboard-chart-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .goal-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .goal-summary > div:last-child {
+    text-align: left;
+  }
+}
+
+/* ==========================================================================
    RESPONSIVE
    ========================================================================== */
 @media (max-width: 1023px) {
@@ -616,6 +744,8 @@ input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; filter:
     z-index: 40;
     transform: translateX(-100%);
     transition: transform 200ms ease-out;
+    width: min(82vw, 288px);
+    height: 100dvh;
   }
   .sidebar-wrapper.open { transform: translateX(0); }
   .mobile-menu-btn { display: block !important; }

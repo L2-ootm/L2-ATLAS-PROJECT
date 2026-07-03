@@ -23,11 +23,12 @@ function rowToTransaction(row: any): PartnerTransaction {
 export class SupabasePartnerRepository implements IPartnerRepository {
   async getWallets(): Promise<PartnerWallet[]> {
     const supabase = getSupabaseClient();
-    let { data, error } = await supabase
+    const result = await supabase
       .from('partner_wallet')
       .select('*');
+    let data = result.data;
       
-    if (error) throw error;
+    if (result.error) throw result.error;
     
     // Seed default wallets if empty (mimicking sqlite behavior)
     if (!data || data.length === 0) {

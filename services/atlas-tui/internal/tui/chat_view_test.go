@@ -48,6 +48,14 @@ func TestIdleViewIsChatFirstNotDashboardFirst(t *testing.T) {
 	assertLinesFit(t, view, 140)
 }
 
+func TestIdleComposerUsesMiMoSeventyFiveColumnMeasure(t *testing.T) {
+	for _, width := range []int{80, 120, 180} {
+		if got := idleCardWidth(width); got > 75 {
+			t.Fatalf("idle card width at terminal %d = %d, want <= 75", width, got)
+		}
+	}
+}
+
 func TestUnconfiguredIdleViewShowsProviderOnboarding(t *testing.T) {
 	m := chatReadyModel(120, 36)
 	m.status.MockMode = true

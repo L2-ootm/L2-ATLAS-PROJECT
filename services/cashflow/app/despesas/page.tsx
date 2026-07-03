@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Plus, Receipt, TrendingDown, Search, Repeat, Edit2, Trash2 } from "lucide-react";
+import { Plus, Receipt, TrendingDown, Repeat, Edit2, Trash2 } from "lucide-react";
 import StatCard from "@/components/StatCard";
 import MonthSelector from "@/components/MonthSelector";
 import ExpenseModal from "@/components/ExpenseModal";
@@ -74,7 +74,7 @@ export default function DespesasPage() {
                         style={{
                             display: "flex", alignItems: "center", gap: 8,
                             padding: "10px 24px", borderRadius: 8,
-                            background: "rgba(79,139,255,0.14)", color: "#9CC0FF", fontWeight: 600, fontSize: 14,
+                            background: "rgba(79,139,255,0.14)", color: "var(--atlas-celestial-soft)", fontWeight: 600, fontSize: 14,
                             border: "1px solid rgba(79,139,255,0.38)", cursor: "pointer",
                             boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
                             transition: "background 200ms",
@@ -100,9 +100,9 @@ export default function DespesasPage() {
                 <button onClick={() => setFilterCat("all")}
                     style={{
                         padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 500,
-                        background: filterCat === "all" ? "rgba(99,102,241,0.12)" : "transparent",
-                        color: filterCat === "all" ? "#4F8BFF" : "var(--l2-fg-2)",
-                        border: filterCat === "all" ? "1px solid rgba(99,102,241,0.25)" : "1px solid var(--l2-hairline)",
+                        background: filterCat === "all" ? "rgba(79,139,255,0.12)" : "transparent",
+                        color: filterCat === "all" ? "var(--atlas-celestial)" : "var(--l2-fg-2)",
+                        border: filterCat === "all" ? "1px solid rgba(79,139,255,0.25)" : "1px solid var(--l2-hairline)",
                         cursor: "pointer", transition: "all 200ms",
                     }}>
                     Todas
@@ -111,9 +111,9 @@ export default function DespesasPage() {
                     <button key={cat} onClick={() => setFilterCat(cat)}
                         style={{
                             padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 500,
-                            background: filterCat === cat ? "rgba(99,102,241,0.12)" : "transparent",
-                            color: filterCat === cat ? "#4F8BFF" : "var(--l2-fg-2)",
-                            border: filterCat === cat ? "1px solid rgba(99,102,241,0.25)" : "1px solid var(--l2-hairline)",
+                            background: filterCat === cat ? "rgba(79,139,255,0.12)" : "transparent",
+                            color: filterCat === cat ? "var(--atlas-celestial)" : "var(--l2-fg-2)",
+                            border: filterCat === cat ? "1px solid rgba(79,139,255,0.25)" : "1px solid var(--l2-hairline)",
                             cursor: "pointer", transition: "all 200ms",
                         }}>
                         {cat}
@@ -157,11 +157,11 @@ export default function DespesasPage() {
                         >
                             <div>
                                 <span className="text-sm truncate block" style={{ color: "var(--l2-fg-1)" }}>{exp.description}</span>
-                                {exp.recurring && <span className="text-[9px] font-mono uppercase mt-0.5 flex items-center gap-1" style={{ color: "#FFD600" }}><Repeat className="w-3 h-3" /> Recorrente</span>}
+                                {exp.recurring && <span className="text-[9px] font-mono uppercase mt-0.5 flex items-center gap-1" style={{ color: "var(--sig-amber)" }}><Repeat className="w-3 h-3" /> Recorrente</span>}
                             </div>
                             <span className="text-sm truncate" style={{ color: "var(--l2-fg-2)" }}>{getClientName(exp.clientId)}</span>
                             <div className="text-center">{catBadge(exp.category)}</div>
-                            <span className="text-sm font-mono font-semibold text-right" style={{ color: "#FF0055" }}>{formatCurrency(exp.amount)}</span>
+                            <span className="text-sm font-mono font-semibold text-right" style={{ color: "var(--sig-crimson)" }}>{formatCurrency(exp.amount)}</span>
                             <span className="text-sm font-mono text-center" style={{ color: "var(--l2-fg-2)" }}>{formatDate(exp.date)}</span>
                             <div style={{ display: "flex", gap: 4, justifyContent: "center" }}>
                                 <button onClick={() => { setEditExpense(exp); setModalOpen(true); }}
@@ -176,7 +176,7 @@ export default function DespesasPage() {
                                     title="Excluir"
                                     className="p-2 rounded-lg transition-colors"
                                     style={{ color: "var(--l2-fg-3)", background: "transparent", border: "none", cursor: "pointer" }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.color = "#FF0055"; e.currentTarget.style.background = "rgba(34,40,56,0.65)"; }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.color = "var(--sig-crimson)"; e.currentTarget.style.background = "rgba(34,40,56,0.65)"; }}
                                     onMouseLeave={(e) => { e.currentTarget.style.color = "var(--l2-fg-3)"; e.currentTarget.style.background = "transparent"; }}>
                                     <Trash2 className="w-4 h-4" />
                                 </button>

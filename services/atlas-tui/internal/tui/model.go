@@ -1,7 +1,8 @@
 // Package tui is the ATLAS terminal workbench (BubbleTea).
 //
-// Reimplements opencode/MiMo terminal patterns ATLAS-native (no donor runtime
-// imported). It is a thin client of the ATLAS gateway: a chat-first surface
+// Ports the MIT-licensed MiMo/opencode presentation grammar onto the ATLAS Go
+// client without importing a second agent runtime. It is a thin client of the
+// ATLAS gateway: a chat-first surface
 // whose composer submits a mission + drives a real run end-to-end, with the
 // provider mesh, approvals, and settings behind overlays and slash commands.
 // It holds no business logic — render + input + HTTP only (D-022).
@@ -41,7 +42,11 @@ const (
 
 const approvalPollInterval = 4 * time.Second
 const spinnerInterval = 120 * time.Millisecond
-const animInterval = 300 * time.Millisecond
+
+// MiMoCode renders ambient motion at 50 ms. The ATLAS port keeps that cadence
+// while slower effects (star twinkle and logo breathing) divide the shared
+// frame clock instead of making the whole terminal feel like a slide deck.
+const animInterval = 50 * time.Millisecond
 
 // starSeed keeps the ambient field deterministic per session (and in tests).
 const starSeed uint64 = 0x1157a5
@@ -352,8 +357,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, scheduleSpinner()
 
 	case animTickMsg:
-		// One persistent low-rate chain; the frame only advances while the
-		// idle hero is visible so other views stay render-stable.
+		// One persistent animation chain; the frame only advances while the
+		// idle hero is visible so transcript and settings views stay stable.
 		if m.idleHeroVisible() {
 			m.animFrame++
 		}

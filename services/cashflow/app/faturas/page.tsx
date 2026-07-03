@@ -116,9 +116,9 @@ export default function FaturasPage() {
 
     const statusBadge = (status: string) => {
         const styles: Record<string, { bg: string; color: string; label: string }> = {
-            pago: { bg: "rgba(52,211,153,0.1)", color: "#46F0E0", label: "Pago" },
-            pendente: { bg: "rgba(251,191,36,0.1)", color: "#FFD600", label: "Pendente" },
-            atrasado: { bg: "rgba(248,113,113,0.1)", color: "#FF0055", label: "Atrasado" },
+            pago: { bg: "rgba(52,211,153,0.1)", color: "var(--atlas-cyan)", label: "Pago" },
+            pendente: { bg: "rgba(251,191,36,0.1)", color: "var(--sig-amber)", label: "Pendente" },
+            atrasado: { bg: "rgba(248,113,113,0.1)", color: "var(--sig-crimson)", label: "Atrasado" },
         };
         const s = styles[status] || styles.pendente;
         return (
@@ -152,7 +152,7 @@ export default function FaturasPage() {
                     style={{
                         display: "flex", alignItems: "center", gap: 8,
                         padding: "10px 24px", borderRadius: 8,
-                        background: "rgba(79,139,255,0.14)", color: "#9CC0FF", fontWeight: 600, fontSize: 14,
+                        background: "rgba(79,139,255,0.14)", color: "var(--atlas-celestial-soft)", fontWeight: 600, fontSize: 14,
                         border: "1px solid rgba(79,139,255,0.38)", cursor: "pointer",
                         boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
                         transition: "background 200ms",
@@ -181,9 +181,9 @@ export default function FaturasPage() {
                         onClick={() => setFilterStatus(f.key)}
                         style={{
                             padding: "8px 20px", borderRadius: 8, fontSize: 13, fontWeight: 500,
-                            background: filterStatus === f.key ? "rgba(99,102,241,0.12)" : "transparent",
-                            color: filterStatus === f.key ? "#4F8BFF" : "var(--l2-fg-2)",
-                            border: filterStatus === f.key ? "1px solid rgba(99,102,241,0.25)" : "1px solid var(--l2-hairline)",
+                            background: filterStatus === f.key ? "rgba(79,139,255,0.12)" : "transparent",
+                            color: filterStatus === f.key ? "var(--atlas-celestial)" : "var(--l2-fg-2)",
+                            border: filterStatus === f.key ? "1px solid rgba(79,139,255,0.25)" : "1px solid var(--l2-hairline)",
                             cursor: "pointer",
                             transition: "all 200ms",
                         }}
@@ -259,7 +259,7 @@ export default function FaturasPage() {
                                         title="Marcar como pago"
                                         style={{
                                             padding: 6, borderRadius: 6, background: "rgba(52,211,153,0.1)",
-                                            border: "none", cursor: "pointer", color: "#46F0E0",
+                                            border: "none", cursor: "pointer", color: "var(--atlas-cyan)",
                                             transition: "all 200ms",
                                         }}
                                         onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(52,211,153,0.2)"; }}
@@ -271,12 +271,12 @@ export default function FaturasPage() {
                                 <button onClick={() => { setEditInvoice(inv); setModalOpen(true); }}
                                     title="Editar"
                                     style={{
-                                        padding: 6, borderRadius: 6, background: "rgba(99,102,241,0.1)",
-                                        border: "none", cursor: "pointer", color: "#4F8BFF",
+                                        padding: 6, borderRadius: 6, background: "rgba(79,139,255,0.1)",
+                                        border: "none", cursor: "pointer", color: "var(--atlas-celestial)",
                                         transition: "all 200ms",
                                     }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(99,102,241,0.2)"; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(99,102,241,0.1)"; }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(79,139,255,0.2)"; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(79,139,255,0.1)"; }}
                                 >
                                     <Edit3 style={{ width: 16, height: 16 }} />
                                 </button>
@@ -284,7 +284,7 @@ export default function FaturasPage() {
                                     title="Excluir"
                                     style={{
                                         padding: 6, borderRadius: 6, background: "rgba(248,113,113,0.1)",
-                                        border: "none", cursor: "pointer", color: "#FF0055",
+                                        border: "none", cursor: "pointer", color: "var(--sig-crimson)",
                                         transition: "all 200ms",
                                     }}
                                     onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(248,113,113,0.2)"; }}

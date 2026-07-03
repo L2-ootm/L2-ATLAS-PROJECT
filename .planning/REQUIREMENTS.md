@@ -10,6 +10,9 @@ surfaces over the same projects, context, configuration, permissions, tools, and
 
 - [x] **INTAKE-01**: Produce a file/component/license inventory classifying donor material as
   adopt, rewrite, or reject.
+- [x] **INTAKE-01A**: MIT-licensed donor presentation source may be directly copied, ported, or
+  modified when that is the fastest high-fidelity path, with copyright and permission notices
+  retained; donor runtime/backend authority remains excluded by INTAKE-02 and AGNT-01.
 - [x] **INTAKE-02**: Import no donor agent runtime, provider layer, config store, memory store,
   telemetry, updater, share service, hosted-service coupling, or product account flow.
 - [x] **INTAKE-03**: Shipped code and artifacts use only ATLAS package names, symbols, commands,
@@ -156,6 +159,29 @@ surfaces over the same projects, context, configuration, permissions, tools, and
   shared contracts.
 - [x] **WEB-06**: Queue UX is responsive, keyboard-operable, focus-safe, and screen-reader announced.
 
+### SPRINT — 2026-07-03 to 2026-07-09 Finish-Line Requirements
+
+- [ ] **UX-02**: Cockpit visual polish fixes spacing and layer hierarchy before any broad redesign:
+  no zero-distance text-to-panel edges, consistent section gaps, legible glass surfaces, and a
+  coherent sidebar/content/topographic depth stack.
+- [ ] **CFG-07**: Settings and System converge into one modular control surface with tabs or
+  equivalent dynamic sections. Existing `/settings` and `/system` routes may remain only as
+  compatibility shims or redirects to the unified surface.
+- [ ] **MOD-03**: The Models/configuration panel renders from live provider/model/config contracts,
+  including effective value, source, auth state, validation status, restart requirement,
+  probe/health result, and fallback/route policy.
+- [ ] **CASH-01**: Cashflow behaves as a stable ATLAS module: deterministic launch/handoff,
+  module health visibility, route smoke coverage, and spacing/layer polish on the cashflow
+  dashboard without another uncontrolled redesign pass.
+- [ ] **DIST-01**: A local installation package path exists with install, update, uninstall or
+  rollback notes, doctor/health check, clean-machine instructions, and a versioned artifact.
+- [ ] **CLI-01**: The CLI command surface is coherent and polished: discoverable help, consistent
+  command naming, status/doctor/config/model/cashflow coverage, script-safe output where needed,
+  and explicit handling of retained legacy/rollback paths.
+- [ ] **TUI-12**: The next TUI refactor treats MiMoCode as the principal MIT-licensed presentation
+  donor for gradient, animation cadence, composer geometry, command menu alignment, spacing, and
+  transcript ergonomics while preserving ATLAS runtime/provider/config/audit/session authority.
+
 ### AUDIT / SECURITY
 
 - [x] **AUD-01**: Every surface session, model call, retrieval, tool call, permission transition,
@@ -213,6 +239,7 @@ surfaces over the same projects, context, configuration, permissions, tools, and
 | 10.6 | TUI |
 | 10.7 | WEB |
 | 10.8 | TEST, DOC |
+| 2026-07-03→2026-07-09 finish sprint | UX-02, CFG-07, MOD-03, CASH-01, DIST-01, CLI-01, TUI-12 |
 
 ---
 *Last updated: 2026-06-30 — Phase 10.7 WEB-01–WEB-06 verified complete.*

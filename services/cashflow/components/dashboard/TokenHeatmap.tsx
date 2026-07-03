@@ -89,7 +89,7 @@ export default function TokenHeatmap({ clients, invoices }: TokenHeatmapProps) {
     };
 
     return (
-        <div className="topo-surface topo-shelf p-6 h-full flex flex-col relative overflow-hidden">
+        <div data-topo="brand" className="topo-surface topo-shelf dashboard-data-panel p-5 h-full flex flex-col relative overflow-hidden">
 
             <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-semibold flex items-center gap-2" style={{
@@ -103,11 +103,11 @@ export default function TokenHeatmap({ clients, invoices }: TokenHeatmapProps) {
                 {loading && <span className="text-[10px]" style={{ color: "oklch(0.50 0.02 200)" }}>Carregando...</span>}
             </div>
 
-            <div className="flex-1 min-h-[200px]">
+            <div className="flex-1 min-h-[180px]">
                 {data.length === 0 && !loading ? (
-                    <div className="absolute inset-0 flex items-center justify-center text-xs" style={{ color: "oklch(0.50 0.02 200)" }}>Sem dados suficientes.</div>
+                    <div className="dashboard-empty-state flex items-center justify-center text-xs" style={{ color: "oklch(0.50 0.02 200)" }}>Sem dados suficientes.</div>
                 ) : (
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={180} initialDimension={{ width: 420, height: 180 }}>
                         <ScatterChart margin={{ top: 10, right: 10, bottom: -10, left: -20 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="oklch(1 0 0 / 5%)" vertical={false} />
                             <XAxis

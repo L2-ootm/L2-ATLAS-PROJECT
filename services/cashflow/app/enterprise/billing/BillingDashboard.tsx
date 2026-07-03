@@ -71,11 +71,11 @@ export default function BillingDashboard({ totals, activeSubscriptions, recentEv
                   <td style={{ padding: "12px 0", color: "var(--l2-fg-1)", fontWeight: 500 }}>{sub.user_id}</td>
                   <td style={{ padding: "12px 0", color: "var(--l2-fg-2)" }}>{sub.plan_name}</td>
                   <td style={{ padding: "12px 0", color: "var(--l2-fg-2)", textTransform: "capitalize" }}>{sub.gateway || "—"}</td>
-                  <td style={{ padding: "12px 0", color: "#46F0E0", textAlign: "right", fontWeight: 600 }} className="font-mono">{formatCurrency(sub.price_brl)}</td>
+                  <td style={{ padding: "12px 0", color: "var(--atlas-cyan)", textAlign: "right", fontWeight: 600 }} className="font-mono">{formatCurrency(sub.price_brl)}</td>
                   <td style={{ padding: "12px 0", textAlign: "right" }}>
                     <span style={{
                       background: sub.status === 'active' ? "rgba(52,211,153,0.15)" : "rgba(248,113,113,0.15)",
-                      color: sub.status === 'active' ? "#46F0E0" : "#FF0055",
+                      color: sub.status === 'active' ? "var(--atlas-cyan)" : "var(--sig-crimson)",
                       padding: "3px 10px", borderRadius: 12, fontSize: 12, fontWeight: 600
                     }}>
                       {sub.status === 'active' ? 'Ativo' : sub.status}
@@ -114,7 +114,7 @@ export default function BillingDashboard({ totals, activeSubscriptions, recentEv
                   <td style={{ padding: "12px 0", color: "var(--l2-fg-1)" }}>
                     <span style={{
                       background: evt.event_type === 'payment_received' ? "rgba(52,211,153,0.15)" : "rgba(248,113,113,0.15)",
-                      color: evt.event_type === 'payment_received' ? "#46F0E0" : "#FF0055",
+                      color: evt.event_type === 'payment_received' ? "var(--atlas-cyan)" : "var(--sig-crimson)",
                       padding: "3px 8px", borderRadius: 8, fontSize: 11, fontWeight: 600
                     }}>
                       {evt.event_type === 'payment_received' ? 'Pagamento' : evt.event_type}
@@ -122,9 +122,9 @@ export default function BillingDashboard({ totals, activeSubscriptions, recentEv
                   </td>
                   <td style={{ padding: "12px 0", color: "var(--l2-fg-2)" }}>{evt.user_id || "—"}</td>
                   <td style={{ padding: "12px 0", color: "var(--l2-fg-1)", textAlign: "right" }} className="font-mono">{formatCurrency(evt.amount_brl)}</td>
-                  <td style={{ padding: "12px 0", color: "#FF0055", textAlign: "right" }} className="font-mono">-{formatCurrency(evt.gateway_fee_brl)}</td>
-                  <td style={{ padding: "12px 0", color: "#4F8BFF", textAlign: "right" }} className="font-mono">{formatCurrency(evt.l2_share_brl)}</td>
-                  <td style={{ padding: "12px 0", color: "#4F8BFF", textAlign: "right" }} className="font-mono">{formatCurrency(evt.client_share_brl)}</td>
+                  <td style={{ padding: "12px 0", color: "var(--sig-crimson)", textAlign: "right" }} className="font-mono">-{formatCurrency(evt.gateway_fee_brl)}</td>
+                  <td style={{ padding: "12px 0", color: "var(--atlas-celestial)", textAlign: "right" }} className="font-mono">{formatCurrency(evt.l2_share_brl)}</td>
+                  <td style={{ padding: "12px 0", color: "var(--atlas-celestial)", textAlign: "right" }} className="font-mono">{formatCurrency(evt.client_share_brl)}</td>
                 </tr>
               ))}
               {recentEvents.length === 0 && (

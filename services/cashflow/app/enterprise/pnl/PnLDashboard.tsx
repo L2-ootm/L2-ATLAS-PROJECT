@@ -21,7 +21,6 @@ interface PnLDashboardProps {
 }
 
 export default function PnLDashboard({
-  client,
   contract,
   metrics,
   aiCostForecast,
@@ -71,9 +70,9 @@ export default function PnLDashboard({
           <div style={{ flex: 1 }}>
             <p style={{ color: "var(--l2-fg-2)", fontSize: 13, marginBottom: 4 }}>Status</p>
             {marginIsHealthy ? (
-              <span style={{ background: "rgba(52,211,153,0.15)", color: "#46F0E0", padding: "4px 12px", borderRadius: 16, fontSize: 13, fontWeight: 600 }}>SAUDÁVEL</span>
+              <span style={{ background: "rgba(52,211,153,0.15)", color: "var(--atlas-cyan)", padding: "4px 12px", borderRadius: 16, fontSize: 13, fontWeight: 600 }}>SAUDÁVEL</span>
             ) : (
-              <span style={{ background: "rgba(248,113,113,0.15)", color: "#FF0055", padding: "4px 12px", borderRadius: 16, fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, width: "fit-content" }}>
+              <span style={{ background: "rgba(248,113,113,0.15)", color: "var(--sig-crimson)", padding: "4px 12px", borderRadius: 16, fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, width: "fit-content" }}>
                 <AlertTriangle size={14} /> ATENÇÃO
               </span>
             )}

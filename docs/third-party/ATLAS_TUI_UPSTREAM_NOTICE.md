@@ -1,8 +1,9 @@
 # ATLAS TUI Upstream Notice
 
-ATLAS terminal-interface research and selected independently reimplemented
-patterns were informed by XiaomiMiMo/MiMo-Code `v0.1.2`, pinned at commit
-`86d95a79bf0879bcb442ffe6b12914f6d8e68a4e`.
+The ATLAS terminal workbench presentation layer is derived from
+XiaomiMiMo/MiMo-Code `v0.1.2`, pinned at commit
+`86d95a79bf0879bcb442ffe6b12914f6d8e68a4e`. The implementation is ported to
+ATLAS's Go/BubbleTea client while preserving the following MIT notice.
 
 Upstream: `https://github.com/XiaomiMiMo/MiMo-Code`
 
@@ -29,15 +30,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-## Separate restrictions document
-
-The upstream repository also publishes `USE_RESTRICTIONS.md` and states in its
-README that use and derivatives are subject to that document:
-
-`https://github.com/XiaomiMiMo/MiMo-Code/blob/86d95a79bf0879bcb442ffe6b12914f6d8e68a4e/USE_RESTRICTIONS.md`
-
-ATLAS records that fact separately from the MIT text and makes no legal
-conclusion about their interaction. The public distribution of derivative code
-is gated on explicit review or upstream clarification. Internal technical intake
-and independent reimplementation may proceed with required notices preserved.
-This notice is a provenance record, not legal advice.
+ATLAS preserves this notice for both ported implementation details and
+presentation behavior. The MiMo-Code agent/runtime, hosted services, account
+flows, telemetry, updater, storage, and provider authority are not included.

@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:routes": "node scripts/check-routes.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

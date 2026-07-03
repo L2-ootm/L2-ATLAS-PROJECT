@@ -39,15 +39,15 @@ export default function ForecastDashboard(props: ForecastDashboardProps) {
 
   // Cores do alerta
   const alertColors: Record<string, { bg: string; text: string; label: string }> = {
-    green: { bg: "rgba(52,211,153,0.15)", text: "#46F0E0", label: "SAUDÁVEL" },
-    yellow: { bg: "rgba(251,191,36,0.15)", text: "#FFD600", label: "ATENÇÃO" },
-    red: { bg: "rgba(248,113,113,0.15)", text: "#FF0055", label: "CRÍTICO" }
+    green: { bg: "rgba(52,211,153,0.15)", text: "var(--atlas-cyan)", label: "SAUDÁVEL" },
+    yellow: { bg: "rgba(251,191,36,0.15)", text: "var(--sig-amber)", label: "ATENÇÃO" },
+    red: { bg: "rgba(248,113,113,0.15)", text: "var(--sig-crimson)", label: "CRÍTICO" }
   };
 
   const alert = alertColors[alertStatus];
 
   // Cor da barra de progresso
-  const progressColor = budgetProgress < 60 ? "#46F0E0" : budgetProgress < 85 ? "#FFD600" : "#FF0055";
+  const progressColor = budgetProgress < 60 ? "var(--atlas-cyan)" : budgetProgress < 85 ? "var(--sig-amber)" : "var(--sig-crimson)";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -128,12 +128,12 @@ export default function ForecastDashboard(props: ForecastDashboardProps) {
           <div>
             <label style={{ color: "var(--l2-fg-2)", fontSize: 13, display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
               <span>Custo por sessão</span>
-              <span style={{ color: costAdjust > 100 ? "#FF0055" : "#46F0E0", fontWeight: 600 }} className="font-mono">{costAdjust}%</span>
+              <span style={{ color: costAdjust > 100 ? "var(--sig-crimson)" : "var(--atlas-cyan)", fontWeight: 600 }} className="font-mono">{costAdjust}%</span>
             </label>
             <input
               type="range" min={50} max={200} value={costAdjust}
               onChange={e => setCostAdjust(Number(e.target.value))}
-              style={{ width: "100%", accentColor: "#4F8BFF" }}
+              style={{ width: "100%", accentColor: "var(--atlas-celestial)" }}
             />
           </div>
 
@@ -141,12 +141,12 @@ export default function ForecastDashboard(props: ForecastDashboardProps) {
           <div>
             <label style={{ color: "var(--l2-fg-2)", fontSize: 13, display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
               <span>Volume de alunos</span>
-              <span style={{ color: studentAdjust > 100 ? "#FF0055" : "#46F0E0", fontWeight: 600 }} className="font-mono">{studentAdjust}%</span>
+              <span style={{ color: studentAdjust > 100 ? "var(--sig-crimson)" : "var(--atlas-cyan)", fontWeight: 600 }} className="font-mono">{studentAdjust}%</span>
             </label>
             <input
               type="range" min={50} max={200} value={studentAdjust}
               onChange={e => setStudentAdjust(Number(e.target.value))}
-              style={{ width: "100%", accentColor: "#4F8BFF" }}
+              style={{ width: "100%", accentColor: "var(--atlas-celestial)" }}
             />
           </div>
 
@@ -154,12 +154,12 @@ export default function ForecastDashboard(props: ForecastDashboardProps) {
           <div>
             <label style={{ color: "var(--l2-fg-2)", fontSize: 13, display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
               <span>Eficiência de cache</span>
-              <span style={{ color: cacheAdjust < 100 ? "#46F0E0" : "#FF0055", fontWeight: 600 }} className="font-mono">{cacheAdjust}%</span>
+              <span style={{ color: cacheAdjust < 100 ? "var(--atlas-cyan)" : "var(--sig-crimson)", fontWeight: 600 }} className="font-mono">{cacheAdjust}%</span>
             </label>
             <input
               type="range" min={50} max={150} value={cacheAdjust}
               onChange={e => setCacheAdjust(Number(e.target.value))}
-              style={{ width: "100%", accentColor: "#4F8BFF" }}
+              style={{ width: "100%", accentColor: "var(--atlas-celestial)" }}
             />
           </div>
         </div>
@@ -177,11 +177,11 @@ export default function ForecastDashboard(props: ForecastDashboardProps) {
             </div>
             <div>
               <p style={{ color: "var(--l2-fg-2)", fontSize: 12, marginBottom: 4 }}>Margem Simulada</p>
-              <p style={{ fontSize: 20, fontWeight: 700, color: simMargin >= 0 ? "#46F0E0" : "#FF0055", margin: 0 }} className="font-mono">{formatCurrency(simMargin)}</p>
+              <p style={{ fontSize: 20, fontWeight: 700, color: simMargin >= 0 ? "var(--atlas-cyan)" : "var(--sig-crimson)", margin: 0 }} className="font-mono">{formatCurrency(simMargin)}</p>
             </div>
             <div>
               <p style={{ color: "var(--l2-fg-2)", fontSize: 12, marginBottom: 4 }}>Margem %</p>
-              <p style={{ fontSize: 20, fontWeight: 700, color: simMarginPct >= 20 ? "#46F0E0" : simMarginPct >= 0 ? "#FFD600" : "#FF0055", margin: 0 }} className="font-mono">{simMarginPct.toFixed(1)}%</p>
+              <p style={{ fontSize: 20, fontWeight: 700, color: simMarginPct >= 20 ? "var(--atlas-cyan)" : simMarginPct >= 0 ? "var(--sig-amber)" : "var(--sig-crimson)", margin: 0 }} className="font-mono">{simMarginPct.toFixed(1)}%</p>
             </div>
           </div>
         </div>

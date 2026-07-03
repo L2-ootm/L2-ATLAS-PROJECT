@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
-last_updated: "2026-07-02T23:00:00-03:00"
-last_activity: 2026-07-02 -- Complete Cashflow surface shipped ATLAS-styled + gateway /cashflow/full handoff, live-verified round trip
+last_updated: "2026-07-03"
+last_activity: 2026-07-03 -- Documented finish sprint through 2026-07-09
 progress:
   total_phases: 8
   completed_phases: 7
@@ -14,6 +14,58 @@ progress:
 ---
 
 # STATE — L2 ATLAS
+
+## Current Position — 2026-07-03: Finish sprint documented, implementation paused
+
+Operator direction changed to documentation only. No code/UI implementation was performed in this
+step. Captured the sprint to finish active milestones by **2026-07-09**:
+
+- polish agent configuration across cockpit and terminal;
+- stabilize Cashflow as an ATLAS module;
+- make Models/configuration modular and runtime-contract driven;
+- create the installation package path;
+- polish CLI commands;
+- refactor the TUI with MiMoCode as principal MIT presentation donor while keeping ATLAS runtime
+  authority;
+- correct cockpit visual debt around spacing and layers, especially zero-distance text/panel
+  padding and the redundant Settings/System split.
+
+Documentation updated:
+
+- `docs/plans/2026-07-03-sprint-to-2026-07-09-milestone-finish.md`
+- `.planning/ROADMAP.md`
+- `.planning/REQUIREMENTS.md`
+
+Next implementation should start from the sprint requirements, not from another broad visual
+redesign pass.
+
+## Current Position — 2026-07-02 (late night): Cashflow repair + MiMo presentation port ready for UAT
+
+- **Cashflow:** finished the interrupted topographic engine integration and corrected the
+  dashboard shell, responsive grids, sidebar behavior, surface opacity, empty states, chart
+  sizing, token drift, and page padding. Five Enterprise pages now fall back to the local
+  repository when Supabase is not configured instead of returning HTTP 500.
+- **Cashflow verification:** ESLint passes with zero warnings; Next production build passes
+  without Recharts sizing warnings; all 15 application routes return HTTP 200; production
+  browser checks at 1600×1000, 1280×720, and 390×844 show no horizontal overflow.
+- **TUI presentation:** retained the existing Go/BubbleTea gateway and interaction logic while
+  porting the strongest MIT-licensed MiMo-Code presentation mechanics: 50 ms render cadence,
+  200 ms star twinkle, 8 s / 3.6 s meteor cadence, 4.6 s continuous per-glyph logo gradient,
+  75-column composer measure, whole-block idle geometry, and left-anchored autocomplete.
+- **Donor rule corrected:** active planning and attribution now state that MiMo-Code's MIT
+  presentation source may be copied, ported, and modified with its notice retained. The
+  boundary excludes a second agent/runtime, provider/config/storage/telemetry authority, not
+  permissively licensed UI implementation.
+- **TUI verification:** **96 Go tests** pass; gofmt, `go vet ./...`, and root-package build pass.
+  Three direct runtime dependencies remain; no MiMo Bun/Solid/OpenTUI dependency graph was added.
+- **Finish pass:** remaining accidental cashflow inline accent colors were tokenized; the stale
+  donor-gate phrase in the archived Phase 10.1 summary was corrected. Fresh verification on
+  2026-07-03: `npm run lint -- --max-warnings=0`, `npm run build`, `npm run test:routes`,
+  `go test ./...`, `go vet ./...`, stripped TUI build size check (8,509,440 bytes), audit
+  `ruff`, stale donor-boundary scan, legacy chart-color scan, and `git diff --check`.
+
+Next: operator UAT in Windows Terminal for subjective motion/gradient feel and a real provider
+conversation; then Phase 10.8 cross-surface conformance closeout.
 
 ## Current Position — 2026-07-02 (night): Complete Cashflow surface, ATLAS-styled + gateway handoff
 
@@ -49,13 +101,13 @@ Operator-directed autonomous session on `codex/atlas-stability-warning-burn-down
 
 **TUI (Go, `services/atlas-tui`) — MiMo-grade idle experience:**
 - Deterministic starfield with twinkling glyph cycle + periodic meteor + pulsing gradient logo
-  (`starfield.go`; 300ms anim tick, frame advances only while the idle hero is visible; text
+  (`starfield.go`; 50 ms render tick / 200 ms twinkle, frame advances only while the idle hero is visible; text
   exclusion zone so stars never collide with content; ASCII fallback under legacy consoles).
 - Agent modes Build/Plan/Compose cycled with Tab (`mode.go`); Plan/Compose wrap the dispatched
   intent without leaking the wrapper into the transcript; mode color carries the composer border
   and status line ("MODE · auth/model/effort").
 - Built-in workflows `/dream /distill /deep-research /review` + `/mode` (`commands.go`),
-  rotating idle tips. 93 Go tests; gofmt/vet clean; fresh checkout binary built (launcher
+  rotating idle tips. 96 Go tests; gofmt/vet clean; fresh checkout binary built (launcher
   auto-rebuilds stale ones).
 
 **Provider mesh customization (CLI/TUI/Web parity):**
@@ -81,7 +133,7 @@ title_generation all bound to `openai-codex/gpt-5.4-mini` (stamped `managed_by: 
 **Quality passes:** entropy scan applied 105 safe ruff fixes in atlas-core
 (`.planning/reports/entropy-scan-2026-07-02.md`); ultrareview record in
 `.planning/reports/ultrareview-provider-mesh-tui-web-2026-07-02.md` (1 finding fixed, 1 verified
-non-issue). Final gates: agent-runtime **721 passed**, atlas-core **97**, Go **93**, React **33**
+non-issue). Final gates: agent-runtime **721 passed**, atlas-core **97**, Go **96**, React **33**
 + tsc/lint-zero-warning/build/bundle budgets.
 
 Next: operator UAT — interactive `atlas` (Windows Terminal feel, starfield/modes/workflows) and

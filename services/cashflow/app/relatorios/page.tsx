@@ -97,7 +97,7 @@ export default function RelatoriosPage() {
 
         const getCategoryColor = (cat: string): [number, number, number] => {
             switch (cat) {
-                case 'Software': return [99, 102, 241]; // indigo-500
+                case 'Software': return [79, 139, 255]; // Atlas celestial
                 case 'Marketing': return [245, 158, 11]; // amber-500
                 case 'Equipamento': return [16, 185, 129]; // emerald-500
                 case 'Infraestrutura': return [100, 116, 139]; // slate-500
@@ -211,7 +211,7 @@ export default function RelatoriosPage() {
                     <button onClick={exportReport} title="Copiar Resumo" className="flex items-center justify-center w-10 h-10 rounded-lg transition-colors"
                         style={{
                             background: "rgba(24,28,38,0.55)",
-                            color: copied ? "#46F0E0" : "var(--l2-fg-2)",
+                            color: copied ? "var(--atlas-cyan)" : "var(--l2-fg-2)",
                             border: copied ? "1px solid rgba(52,211,153,0.3)" : "1px solid var(--l2-hairline)"
                         }}>
                         {copied ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
@@ -234,7 +234,7 @@ export default function RelatoriosPage() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                 <div className="l2-border rounded-sm p-7" style={{ background: "rgba(24,28,38,0.55)" }}>
                     <h2 className="text-xs font-semibold mb-4 uppercase tracking-wider flex items-center gap-2" style={{ color: "var(--l2-fg-2)" }}>
-                        <Users className="w-4 h-4" style={{ color: "#4F8BFF" }} /> Lucro por Cliente
+                        <Users className="w-4 h-4" style={{ color: "var(--atlas-celestial)" }} /> Lucro por Cliente
                     </h2>
                     {clientProfitability.length === 0 ? (
                         <p className="text-sm text-center py-6" style={{ color: "var(--l2-fg-3)" }}>Nenhum cliente ativo</p>
@@ -244,16 +244,16 @@ export default function RelatoriosPage() {
                                 <div key={cp.id} className="rounded-lg p-4" style={{ background: "rgba(18,21,29,0.65)", border: "1px solid var(--l2-hairline)" }}>
                                     <div className="flex items-start justify-between mb-2">
                                         <p className="text-sm font-semibold" style={{ color: "var(--l2-fg-1)" }}>{cp.name}</p>
-                                        <p className="text-sm font-bold font-mono" style={{ color: cp.profit >= 0 ? "#46F0E0" : "#FF0055" }}>{formatCurrency(cp.profit)}</p>
+                                        <p className="text-sm font-bold font-mono" style={{ color: cp.profit >= 0 ? "var(--atlas-cyan)" : "var(--sig-crimson)" }}>{formatCurrency(cp.profit)}</p>
                                     </div>
                                     <div className="flex items-center gap-4 text-[10px] font-mono uppercase tracking-wider" style={{ color: "var(--l2-fg-2)" }}>
                                         <span>Rec: {formatCurrency(cp.revenue)}</span>
-                                        <span>Desp: <span style={{ color: "#FF0055" }}>{formatCurrency(cp.expenses)}</span></span>
-                                        <span style={{ color: parseFloat(cp.margin) >= 50 ? "#46F0E0" : parseFloat(cp.margin) >= 20 ? "#FFD600" : "#FF0055" }}>{cp.margin}%</span>
+                                        <span>Desp: <span style={{ color: "var(--sig-crimson)" }}>{formatCurrency(cp.expenses)}</span></span>
+                                        <span style={{ color: parseFloat(cp.margin) >= 50 ? "var(--atlas-cyan)" : parseFloat(cp.margin) >= 20 ? "var(--sig-amber)" : "var(--sig-crimson)" }}>{cp.margin}%</span>
                                     </div>
                                     <div className="mt-2 h-1 rounded-full overflow-hidden" style={{ background: "rgba(34,40,56,0.65)" }}>
                                         <div className={`h-full rounded-full`}
-                                            style={{ background: cp.profit >= 0 ? "#46F0E0" : "#FF0055", width: `${Math.min(Math.abs(parseFloat(cp.margin)), 100)}%` }} />
+                                            style={{ background: cp.profit >= 0 ? "var(--atlas-cyan)" : "var(--sig-crimson)", width: `${Math.min(Math.abs(parseFloat(cp.margin)), 100)}%` }} />
                                     </div>
                                 </div>
                             ))}
@@ -261,7 +261,7 @@ export default function RelatoriosPage() {
                                 <div className="rounded-lg p-4" style={{ background: "rgba(18,21,29,0.65)", border: "1px solid var(--l2-hairline)" }}>
                                     <div className="flex items-center justify-between">
                                         <p className="text-sm font-semibold" style={{ color: "var(--l2-fg-1)" }}>Despesas Gerais L2</p>
-                                        <p className="text-sm font-bold font-mono" style={{ color: "#FF0055" }}>-{formatCurrency(generalExpenses)}</p>
+                                        <p className="text-sm font-bold font-mono" style={{ color: "var(--sig-crimson)" }}>-{formatCurrency(generalExpenses)}</p>
                                     </div>
                                     <p className="text-[10px] mt-1 uppercase tracking-wider" style={{ color: "var(--l2-fg-3)" }}>Gastos não vinculados a cliente</p>
                                 </div>
@@ -272,7 +272,7 @@ export default function RelatoriosPage() {
 
                 <div className="l2-border rounded-sm p-7" style={{ background: "rgba(24,28,38,0.55)" }}>
                     <h2 className="text-xs font-semibold mb-4 uppercase tracking-wider flex items-center gap-2" style={{ color: "var(--l2-fg-2)" }}>
-                        <BarChart3 className="w-4 h-4" style={{ color: "#4F8BFF" }} /> Despesas por Categoria
+                        <BarChart3 className="w-4 h-4" style={{ color: "var(--atlas-celestial)" }} /> Despesas por Categoria
                     </h2>
                     {categoryBreakdown.length === 0 ? (
                         <p className="text-sm text-center py-6" style={{ color: "var(--l2-fg-3)" }}>Nenhuma despesa neste período</p>
@@ -284,7 +284,7 @@ export default function RelatoriosPage() {
                                         <span className="text-sm font-medium" style={{ color: "var(--l2-fg-1)" }}>{cat.category}</span>
                                         <div className="flex items-center gap-2">
                                             <span className="text-[10px] font-mono" style={{ color: "var(--l2-fg-3)" }}>{cat.percentage}%</span>
-                                            <span className="text-sm font-semibold font-mono" style={{ color: "#FF0055" }}>{formatCurrency(cat.amount)}</span>
+                                            <span className="text-sm font-semibold font-mono" style={{ color: "var(--sig-crimson)" }}>{formatCurrency(cat.amount)}</span>
                                         </div>
                                     </div>
                                     <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(34,40,56,0.65)" }}>
@@ -296,7 +296,7 @@ export default function RelatoriosPage() {
                             <div className="pt-3 mt-3" style={{ borderTop: "1px solid var(--l2-hairline)" }}>
                                 <div className="flex items-center justify-between">
                                     <span className="text-sm font-semibold" style={{ color: "var(--l2-fg-1)" }}>Total</span>
-                                    <span className="text-base font-bold font-mono" style={{ color: "#FF0055" }}>{formatCurrency(totalExpenses)}</span>
+                                    <span className="text-base font-bold font-mono" style={{ color: "var(--sig-crimson)" }}>{formatCurrency(totalExpenses)}</span>
                                 </div>
                             </div>
                         </div>
@@ -306,7 +306,7 @@ export default function RelatoriosPage() {
                 {/* Top Clientes (Faturamento) */}
                 <div className="l2-border rounded-sm p-7" style={{ background: "rgba(24,28,38,0.55)" }}>
                     <h2 className="text-xs font-semibold mb-5 uppercase tracking-wider flex items-center gap-2" style={{ color: "var(--l2-fg-2)" }}>
-                        <TrendingUp style={{ width: 16, height: 16, color: "#46F0E0" }} /> Top 5 Clientes (Receita)
+                        <TrendingUp style={{ width: 16, height: 16, color: "var(--atlas-cyan)" }} /> Top 5 Clientes (Receita)
                     </h2>
                     {activeClients.length === 0 ? (
                         <p className="text-sm text-center py-6" style={{ color: "var(--l2-fg-3)" }}>Nenhum cliente ativo</p>
@@ -319,15 +319,15 @@ export default function RelatoriosPage() {
                                     return (
                                         <div key={client.id} style={{
                                             padding: 16, borderRadius: 10,
-                                            background: index === 0 ? "rgba(99,102,241,0.05)" : "rgba(18,21,29,0.65)",
-                                            border: index === 0 ? "1px solid rgba(99,102,241,0.2)" : "1px solid var(--l2-hairline)",
+                                            background: index === 0 ? "rgba(79,139,255,0.05)" : "rgba(18,21,29,0.65)",
+                                            border: index === 0 ? "1px solid rgba(79,139,255,0.2)" : "1px solid var(--l2-hairline)",
                                             display: "flex", alignItems: "center", justifyContent: "space-between"
                                         }}>
                                             <div className="flex items-center gap-4">
                                                 <div style={{
                                                     width: 28, height: 28, borderRadius: "50%",
-                                                    background: index === 0 ? "rgba(99,102,241,0.15)" : "rgba(34,40,56,0.65)",
-                                                    color: index === 0 ? "#4F8BFF" : "var(--l2-fg-2)",
+                                                    background: index === 0 ? "rgba(79,139,255,0.15)" : "rgba(34,40,56,0.65)",
+                                                    color: index === 0 ? "var(--atlas-celestial)" : "var(--l2-fg-2)",
                                                     display: "flex", alignItems: "center", justifyContent: "center",
                                                     fontSize: 12, fontWeight: "bold"
                                                 }}>
@@ -353,7 +353,7 @@ export default function RelatoriosPage() {
             {/* ROI por Cliente */}
             <div className="l2-border rounded-sm p-7" style={{ background: "rgba(24,28,38,0.55)" }}>
                 <h2 className="text-xs font-semibold mb-5 uppercase tracking-wider flex items-center gap-2" style={{ color: "var(--l2-fg-2)" }}>
-                    <DollarSign style={{ width: 16, height: 16, color: "#46F0E0" }} /> ROI por Cliente
+                    <DollarSign style={{ width: 16, height: 16, color: "var(--atlas-cyan)" }} /> ROI por Cliente
                 </h2>
                 <p className="text-sm mb-6" style={{ color: "var(--l2-fg-2)" }}>
                     Análise de rentabilidade considerando a receita do cliente subtraída de suas despesas específicas neste mês.
@@ -378,12 +378,12 @@ export default function RelatoriosPage() {
                                         <div>
                                             <h3 className="text-sm font-bold" style={{ color: "var(--l2-fg-1)" }}>{client.name}</h3>
                                             <span className="text-[10px] px-2 py-0.5 rounded-full mt-1 inline-block"
-                                                style={{ background: "rgba(99,102,241,0.1)", color: "#4F8BFF", border: "1px solid rgba(99,102,241,0.2)" }}>
+                                                style={{ background: "rgba(79,139,255,0.1)", color: "var(--atlas-celestial)", border: "1px solid rgba(79,139,255,0.2)" }}>
                                                 {client.service}
                                             </span>
                                         </div>
                                         <div className="text-right">
-                                            <p className="text-sm font-bold font-mono" style={{ color: isPositive ? "#46F0E0" : "#FF0055" }}>
+                                            <p className="text-sm font-bold font-mono" style={{ color: isPositive ? "var(--atlas-cyan)" : "var(--sig-crimson)" }}>
                                                 {formatCurrency(profit)}
                                             </p>
                                             <p className="text-[10px] uppercase tracking-wider" style={{ color: "var(--l2-fg-2)" }}>Lucro Líquido</p>
@@ -397,20 +397,20 @@ export default function RelatoriosPage() {
                                         </div>
                                         <div className="p-3 rounded-lg" style={{ background: "rgba(34,40,56,0.65)", border: "1px solid var(--l2-hairline)" }}>
                                             <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--l2-fg-2)" }}>Custos</p>
-                                            <p className="text-sm font-mono" style={{ color: "#FF0055" }}>{formatCurrency(clientExpenses)}</p>
+                                            <p className="text-sm font-mono" style={{ color: "var(--sig-crimson)" }}>{formatCurrency(clientExpenses)}</p>
                                         </div>
                                     </div>
 
                                     <div className="flex items-center justify-between pt-3" style={{ borderTop: "1px solid var(--l2-hairline)" }}>
                                         <div className="flex items-center gap-2">
                                             <span className="text-[10px] uppercase tracking-wider" style={{ color: "var(--l2-fg-2)" }}>Margem</span>
-                                            <span className="text-xs font-bold font-mono" style={{ color: isPositive ? "#46F0E0" : "#FF0055" }}>
+                                            <span className="text-xs font-bold font-mono" style={{ color: isPositive ? "var(--atlas-cyan)" : "var(--sig-crimson)" }}>
                                                 {margin}%
                                             </span>
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <span className="text-[10px] uppercase tracking-wider" style={{ color: "var(--l2-fg-2)" }}>ROI</span>
-                                            <span className="text-xs font-bold font-mono" style={{ color: isPositive ? "#46F0E0" : "#FF0055" }}>
+                                            <span className="text-xs font-bold font-mono" style={{ color: isPositive ? "var(--atlas-cyan)" : "var(--sig-crimson)" }}>
                                                 {roi === "∞" ? "100%+" : `${roi}%`}
                                             </span>
                                         </div>
@@ -425,7 +425,7 @@ export default function RelatoriosPage() {
             {/* Margem por Serviço */}
             <div className="l2-border rounded-sm p-7" style={{ background: "rgba(24,28,38,0.55)" }}>
                 <h2 className="text-xs font-semibold mb-5 uppercase tracking-wider flex items-center gap-2" style={{ color: "var(--l2-fg-2)" }}>
-                    <Briefcase style={{ width: 16, height: 16, color: "#4F8BFF" }} /> Margem por Serviço
+                    <Briefcase style={{ width: 16, height: 16, color: "var(--atlas-celestial)" }} /> Margem por Serviço
                 </h2>
                 {serviceMargin.length === 0 ? (
                     <p className="text-sm text-center py-6" style={{ color: "var(--l2-fg-3)" }}>Nenhum serviço encontrado</p>
@@ -433,7 +433,7 @@ export default function RelatoriosPage() {
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
                         {serviceMargin.map((s) => {
                             const marginNum = parseFloat(s.margin);
-                            const barColor = marginNum >= 60 ? "#46F0E0" : marginNum >= 30 ? "#FFD600" : "#FF0055";
+                            const barColor = marginNum >= 60 ? "var(--atlas-cyan)" : marginNum >= 30 ? "var(--sig-amber)" : "var(--sig-crimson)";
                             return (
                                 <div key={s.service} style={{
                                     padding: 20, borderRadius: 10,
@@ -463,7 +463,7 @@ export default function RelatoriosPage() {
                                         }} />
                                     </div>
                                     <div style={{ marginTop: 8, textAlign: "right" }}>
-                                        <span className="text-sm font-bold font-mono" style={{ color: s.profit >= 0 ? "#46F0E0" : "#FF0055" }}>
+                                        <span className="text-sm font-bold font-mono" style={{ color: s.profit >= 0 ? "var(--atlas-cyan)" : "var(--sig-crimson)" }}>
                                             {formatCurrency(s.profit)}
                                         </span>
                                     </div>

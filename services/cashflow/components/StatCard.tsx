@@ -1,7 +1,6 @@
 "use client";
 
 import { LucideIcon } from "lucide-react";
-import { useState, useEffect } from "react";
 
 interface StatCardProps {
     title: string;
@@ -11,6 +10,13 @@ interface StatCardProps {
     accentColor?: "violet" | "red" | "yellow" | "cyan" | "primary" | "success" | "danger" | "warning";
 }
 
+// Semantic terrain context per accent — the ambient TopoField glows with this
+// meaning when the cursor rests on the card.
+const TOPO: Record<string, string> = {
+    violet: "brand", primary: "info", cyan: "good", success: "good",
+    red: "bad", danger: "bad", yellow: "warn", warning: "warn",
+};
+
 export default function StatCard({
     title,
     value,
@@ -18,18 +24,10 @@ export default function StatCard({
     trend,
     accentColor = "primary",
 }: StatCardProps) {
-    const [displayValue, setDisplayValue] = useState(value);
-
-    useEffect(() => {
-        const isNumeric = /[0-9]/.test(value);
-        if (isNumeric) {
-            setDisplayValue(value);
-        }
-    }, [value]);
-
     return (
         <div
             className={`stat-card stat-${accentColor}`}
+            data-topo={TOPO[accentColor] || "info"}
             style={{
                 padding: "20px 22px 18px 22px",
             }}
@@ -50,7 +48,7 @@ export default function StatCard({
                 fontSize: 26, fontWeight: 700, color: "oklch(0.95 0.01 200)", lineHeight: 1.1,
                 fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums",
             }}>
-                {displayValue}
+                {value}
             </p>
             {trend && (
                 <p style={{

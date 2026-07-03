@@ -26,10 +26,11 @@ The vendored Discord bot at `services/discord-bot/` is derived from L2-BOT:
 - **Vendored into ATLAS** as an ATLAS-controlled sidecar for Discord read/write
   operations. Secrets and state are gitignored.
 
-## MiMo-Code Terminal UI Reference
+## MiMo-Code Terminal UI Donor
 
-ATLAS terminal-interface research and selected independently reimplemented
-patterns reference XiaomiMiMo/MiMo-Code:
+The ATLAS terminal workbench derives presentation behavior and implementation
+details from XiaomiMiMo/MiMo-Code while retaining the ATLAS Go client,
+gateway contract, product identity, and agent runtime:
 
 - **Upstream:** https://github.com/XiaomiMiMo/MiMo-Code
 - **Release:** v0.1.2
@@ -40,14 +41,12 @@ patterns reference XiaomiMiMo/MiMo-Code:
 - **Notice:** `docs/third-party/ATLAS_TUI_UPSTREAM_NOTICE.md`
 - **Inventory:** `docs/imports/ATLAS_TUI_SOURCE_INVENTORY.csv`
 
-ATLAS does not import MiMo-Code's agent/runtime, SDK, provider layer, auth,
-configuration, storage, memory, telemetry, updater, sharing, plugin runtime, or
-hosted-service authority. The raw checkout remains external and gitignored.
-
-The upstream repository separately publishes a use-restrictions document.
-ATLAS records that fact without presenting a legal conclusion. The public
-distribution of derivative code is gated on explicit review or upstream
-clarification; required MIT notices and copyrights are retained.
+MiMo-Code is MIT licensed. That license permits use, copying, modification,
+merging, publication, distribution, sublicensing, and sale provided its notice
+is retained. ATLAS retains the notice above and in the linked third-party
+notice. It does not import MiMo-Code's agent/runtime, SDK, provider layer,
+authentication, configuration, storage, memory, telemetry, updater, sharing,
+plugin runtime, or hosted-service authority; those remain ATLAS-owned.
 
 ## Other Dependencies
 

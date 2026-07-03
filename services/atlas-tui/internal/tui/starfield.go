@@ -1,13 +1,15 @@
 package tui
 
-// starfield.go — ambient idle-screen animation reimplementing the MiMo Code
-// home patterns ATLAS-native (see ATTRIBUTION.md): a static field of
+// starfield.go — Go port of the MIT-licensed MiMo Code home presentation
+// mechanics (see ATTRIBUTION.md): a static field of
 // twinkling stars, a periodic meteor streaking down-left from the top edge,
 // and a pulsing gradient on the logo. Everything derives from one shared
 // animation frame, so there is no per-tick mutable particle state and no
 // new dependency.
 
 import (
+	"fmt"
+	"math"
 	"sort"
 	"strings"
 
@@ -21,7 +23,11 @@ type star struct {
 	accent   bool
 }
 
-// starCycle is the twinkle period in animation frames.
+// Stars update every 200 ms on the shared 50 ms render clock, matching the
+// MiMoCode home screen without slowing meteor or gradient motion.
+const starTwinkleFrames = 4
+
+// starCycle is the twinkle period in twinkle frames.
 const starCycle = 14
 
 // buildStarfield seeds a deterministic sparse particle set for a viewport.
@@ -62,7 +68,7 @@ type placedStar struct {
 // starGlyph maps a star's twinkle position to its glyph and style. The dark
 // tail of the cycle makes the field breathe instead of sitting static.
 func starGlyph(s star, frame int) (string, lipgloss.Style, bool) {
-	t := (frame + s.phase) % starCycle
+	t := (frame/starTwinkleFrames + s.phase) % starCycle
 	switch {
 	case t < 6:
 		return gl.starDim, styleDim, true
@@ -78,12 +84,12 @@ func starGlyph(s star, frame int) (string, lipgloss.Style, bool) {
 	}
 }
 
-// Meteor cadence: one streak roughly every 12s at the 300ms tick, alive for
-// the first meteorLife frames of each cycle.
+// MiMoCode reference cadence: one streak every 8 seconds, alive for 3.6
+// seconds, with a long fading tail. Values are 50 ms animation frames.
 const (
-	meteorPeriod = 40
-	meteorLife   = 16
-	meteorTail   = 6
+	meteorPeriod = 160
+	meteorLife   = 72
+	meteorTail   = 32
 )
 
 // meteorCells rasterizes the ambient meteor for one frame: a bright head
@@ -184,13 +190,18 @@ func composeRow(width int, cells []placedStar, line string, left int) string {
 	return b.String()
 }
 
-// starfieldCanvas centers the hero block vertically and each hero line
-// horizontally over the animated field, mirroring lipgloss.Place semantics
-// while keeping the field alive in the margins.
+// starfieldCanvas centers the hero as one block. Individual alignment belongs
+// to the block itself; this keeps autocomplete rows anchored to the same left
+// edge instead of independently centering every command and description.
 func starfieldCanvas(width, height int, hero string, stars []star, frame int) string {
 	lines := strings.Split(hero, "\n")
 	heroH := len(lines)
 	top := max(0, (height-heroH)/2)
+	heroW := 0
+	for _, line := range lines {
+		heroW = max(heroW, lipgloss.Width(line))
+	}
+	blockLeft := max(0, (width-heroW)/2)
 	byRow := fieldCells(stars, width, height, frame)
 	rows := make([]string, 0, height)
 	for row := 0; row < height; row++ {
@@ -198,33 +209,79 @@ func starfieldCanvas(width, height int, hero string, stars []star, frame int) st
 		left := 0
 		if row >= top && row-top < heroH {
 			line = lines[row-top]
-			left = max(0, (width-lipgloss.Width(line))/2)
+			left = blockLeft
 		}
 		rows = append(rows, composeRow(width, byRow[row], line, left))
 	}
 	return strings.Join(rows, "\n")
 }
 
-// logoPulseRamps holds the breathing gradient: dim -> base -> bright -> base.
-var logoPulseRamps = [][]lipgloss.Color{
-	{colVioletDim, colVioletDim, colViolet, colViolet, colBlueDim, colBlueDim},
-	{colViolet, colViolet, colVioletSoft, colVioletSoft, colBlue, colBlue},
-	{colVioletSoft, colVioletSoft, colVioletGlow, colVioletGlow, colBlueGlow, colBlueGlow},
-	{colViolet, colViolet, colVioletSoft, colVioletSoft, colBlue, colBlue},
+const logoPulsePeriod = 92 // 4.6 seconds at 50 ms, matching MiMoCode.
+
+type rgbColor struct {
+	r, g, b float64
 }
 
-// pulseLogoRows applies the frame-selected ramp so the idle logo breathes
-// through the violet->blue L2 voice (full period ~2.4s at the 300ms tick).
+var (
+	logoViolet = rgbColor{127, 0, 255}
+	logoCyan   = rgbColor{0, 240, 255}
+	logoWhite  = rgbColor{224, 224, 224}
+)
+
+// pulseLogoRows renders a continuous horizontal violet-to-cyan gradient with
+// a soft travelling highlight. Coloring each visible glyph removes the hard
+// row bands from the earlier version while preserving the ATLAS palette.
 func pulseLogoRows(frame int) []string {
 	rows := unicodeLogoRows
 	if gl.ascii {
 		rows = asciiLogoRows
 	}
-	ramp := logoPulseRamps[(frame/2)%len(logoPulseRamps)]
 	out := make([]string, len(rows))
 	for i, row := range rows {
-		color := ramp[min(i, len(ramp)-1)]
-		out[i] = lipgloss.NewStyle().Foreground(color).Render(row)
+		runes := []rune(row)
+		var b strings.Builder
+		for col, glyph := range runes {
+			if glyph == ' ' {
+				b.WriteRune(glyph)
+				continue
+			}
+			position := float64(col) / float64(max(1, len(runes)-1))
+			color := logoGradientColor(position, frame)
+			b.WriteString(lipgloss.NewStyle().Foreground(color).Render(string(glyph)))
+		}
+		out[i] = b.String()
 	}
 	return out
+}
+
+func logoGradientColor(position float64, frame int) lipgloss.Color {
+	base := mixRGB(logoViolet, logoCyan, clamp01(position))
+	phase := 2 * math.Pi * float64(frame%logoPulsePeriod) / logoPulsePeriod
+	center := 0.5 + 0.42*math.Sin(phase)
+	distance := (position - center) / 0.22
+	highlight := math.Exp(-(distance * distance))
+	breath := 0.08 + 0.20*(0.5+0.5*math.Sin(phase-math.Pi/2))*highlight
+	return rgbToColor(mixRGB(base, logoWhite, breath))
+}
+
+func mixRGB(a, b rgbColor, amount float64) rgbColor {
+	amount = clamp01(amount)
+	return rgbColor{
+		r: a.r + (b.r-a.r)*amount,
+		g: a.g + (b.g-a.g)*amount,
+		b: a.b + (b.b-a.b)*amount,
+	}
+}
+
+func clamp01(value float64) float64 {
+	return math.Max(0, math.Min(1, value))
+}
+
+func rgbToColor(color rgbColor) lipgloss.Color {
+	return lipgloss.Color(fmt.Sprintf(
+		"#%02X%02X%02X",
+		int(math.Round(color.r)),
+		int(math.Round(color.g)),
+		int(math.Round(color.b)),
+	))
 }

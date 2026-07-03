@@ -1,7 +1,8 @@
 # atlas-tui — ATLAS terminal workbench (Go/BubbleTea sidecar)
 
-A state-of-the-art terminal workbench for ATLAS, reimplementing opencode/MiMo-Code
-terminal patterns in Go + [BubbleTea](https://github.com/charmbracelet/bubbletea).
+A state-of-the-art terminal workbench for ATLAS, with a Go +
+[BubbleTea](https://github.com/charmbracelet/bubbletea) presentation layer
+derived from the MIT-licensed opencode/MiMo-Code family.
 It is a **thin client of the ATLAS Rust gateway** over HTTP + SSE — the same
 contract the cockpit uses. The Rust runtime and Python services stay authoritative
 (D-022); this binary only renders and takes input.
@@ -37,7 +38,7 @@ agent surface. `atlas` and `atlas tui` launch this Go sidecar. Working today:
 | Surface | Keys |
 |---|---|
 | conversation | `enter` submit · `alt+enter` newline · `ctrl+p` settings · `ctrl+o` context · `ctrl+c` cancel/exit |
-| commands | `/settings` · `/missions` · `/permissions` · `/sidebar` · `/new` · `/quit` |
+| commands | `/settings` · `/mode` · `/history` · `/permissions` · `/sidebar` · `/new` · `/quit` |
 | approval | arrows or `j`/`k` · number/`enter` select · `esc` deny |
 | settings | `tab` fields · left/right mode · `ctrl+s` save · `ctrl+t` save + probe · `esc` conversation |
 

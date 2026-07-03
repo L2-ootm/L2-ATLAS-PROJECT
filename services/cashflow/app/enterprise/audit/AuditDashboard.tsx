@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { formatCurrency } from "@/lib/utils";
-import { ShieldCheck, Activity, Users, Settings, Database, Filter } from "lucide-react";
+import { ShieldCheck, Activity, Users } from "lucide-react";
 import StatCard from "@/components/StatCard";
 
 interface AuditDashboardProps {
@@ -22,11 +21,11 @@ export default function AuditDashboard({ logs, users }: AuditDashboardProps) {
 
   const getActionIcon = (action: string) => {
     switch (action) {
-      case 'create': return <span style={{ color: "#46F0E0" }}>+ Criação</span>;
-      case 'update': return <span style={{ color: "#FFD600" }}>~ Edição</span>;
-      case 'delete': return <span style={{ color: "#FF0055" }}>- Exclusão</span>;
-      case 'login': return <span style={{ color: "#4F8BFF" }}>&gt; Login</span>;
-      case 'export': return <span style={{ color: "#A17BFF" }}>↓ Exportação</span>;
+      case 'create': return <span style={{ color: "var(--atlas-cyan)" }}>+ Criação</span>;
+      case 'update': return <span style={{ color: "var(--sig-amber)" }}>~ Edição</span>;
+      case 'delete': return <span style={{ color: "var(--sig-crimson)" }}>- Exclusão</span>;
+      case 'login': return <span style={{ color: "var(--atlas-celestial)" }}>&gt; Login</span>;
+      case 'export': return <span style={{ color: "var(--atlas-violet)" }}>↓ Exportação</span>;
       default: return <span style={{ color: "var(--l2-fg-2)" }}>{action}</span>;
     }
   };
@@ -139,8 +138,8 @@ export default function AuditDashboard({ logs, users }: AuditDashboardProps) {
                   <span style={{ color: "var(--l2-fg-1)", fontWeight: 600, fontSize: 13 }}>{u.name}</span>
                   <span style={{ 
                     fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 12,
-                    background: u.role === 'admin' ? "rgba(99,102,241,0.15)" : "rgba(156,163,180,0.1)",
-                    color: u.role === 'admin' ? "#7DA8FF" : "var(--l2-fg-2)"
+                    background: u.role === 'admin' ? "rgba(79,139,255,0.15)" : "rgba(156,163,180,0.1)",
+                    color: u.role === 'admin' ? "var(--color-primary-hover)" : "var(--l2-fg-2)"
                   }}>
                     {u.role.toUpperCase()}
                   </span>

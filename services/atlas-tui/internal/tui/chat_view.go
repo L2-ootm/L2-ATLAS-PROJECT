@@ -9,6 +9,7 @@ import (
 )
 
 const contextSidebarWidth = 32
+const mimoComposerWidth = 75
 
 func (m model) chatView() string {
 	if len(m.items) == 0 && !m.busy() {
@@ -23,41 +24,64 @@ func (m model) chatView() string {
 func (m model) idleChatView() string {
 	width := max(40, m.width)
 	height := max(18, m.height-2)
-	cardWidth := min(84, max(48, width-12))
+	cardWidth := idleCardWidth(width)
 	readiness := readinessFor(m.status, mockAllowed())
+	composer := m.composerSurface(cardWidth, readiness)
+	heroWidth := lipgloss.Width(composer)
 
 	var body strings.Builder
 	for _, row := range pulseLogoRows(m.animFrame) {
-		body.WriteString(row + "\n")
+		body.WriteString(centerLine(row, heroWidth) + "\n")
 	}
-	body.WriteString(styleHUD.Render("L2 // ATLAS "+gl.dash+" AGENT WORKBENCH") + "\n\n")
-	body.WriteString(styleMuted.Render("MESSAGE ATLAS") + "\n")
-	body.WriteString(m.composerSurface(cardWidth, readiness))
+	body.WriteString(centerLine(styleHUD.Render("L2 // ATLAS "+gl.dash+" AGENT WORKBENCH"), heroWidth) + "\n\n")
+	body.WriteString(centerLine(styleMuted.Render("MESSAGE ATLAS"), heroWidth) + "\n")
+	body.WriteString(composer)
 	body.WriteString("\n")
 	if menu := m.commandMenuView(cardWidth); menu != "" {
 		body.WriteString(menu + "\n")
 	}
 	if readiness.CanRun {
-		body.WriteString(styleVal.Render(readiness.Label) +
-			styleMuted.Render("  "+orDash(m.surface.PermissionMode)) + "\n")
-		body.WriteString(styleMuted.Render("enter submit  tab mode  / commands"))
+		body.WriteString(centerLine(
+			styleVal.Render(readiness.Label)+styleMuted.Render("  "+orDash(m.surface.PermissionMode)),
+			heroWidth,
+		) + "\n")
+		body.WriteString(centerLine(
+			styleMuted.Render("tab switch mode  ctrl+p settings  ctrl+o context  / commands"),
+			heroWidth,
+		))
 		if m.status.PrivacyWarning != nil && *m.status.PrivacyWarning != "" {
-			body.WriteString("\n" + styleWarn.Render(*m.status.PrivacyWarning))
+			body.WriteString("\n" + centerLine(styleWarn.Render(*m.status.PrivacyWarning), heroWidth))
 		}
 	} else {
-		body.WriteString(onboardingNotice(m))
+		body.WriteString(centerBlock(onboardingNotice(m), heroWidth))
 	}
-	body.WriteString("\n\n" + m.tipLine())
+	body.WriteString("\n\n" + centerLine(m.tipLine(), heroWidth))
 	if m.errMsg != "" {
-		body.WriteString("\n\n" + styleBad.Render(m.errMsg))
+		body.WriteString("\n\n" + centerLine(styleBad.Render(m.errMsg), heroWidth))
 	}
-	hero := body.String()
+	hero := strings.TrimRight(body.String(), "\n")
 	if len(m.stars) == 0 {
 		return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, hero) +
 			"\n" + m.statusBar()
 	}
 	return starfieldCanvas(width, height, hero, m.stars, m.animFrame) +
 		"\n" + m.statusBar()
+}
+
+func idleCardWidth(terminalWidth int) int {
+	return min(mimoComposerWidth, max(30, terminalWidth-12))
+}
+
+func centerLine(line string, width int) string {
+	return lipgloss.PlaceHorizontal(width, lipgloss.Center, line)
+}
+
+func centerBlock(block string, width int) string {
+	lines := strings.Split(block, "\n")
+	for i, line := range lines {
+		lines[i] = centerLine(line, width)
+	}
+	return strings.Join(lines, "\n")
 }
 
 // tipLine renders the rotating hint under the idle hero: mode-colored dot,

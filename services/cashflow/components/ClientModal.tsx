@@ -107,7 +107,7 @@ export default function ClientModal({ isOpen, onClose, onSave, client }: ClientM
                     <div className="flex items-center gap-3">
                         <label className="relative inline-flex items-center cursor-pointer">
                             <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="sr-only peer" />
-                            <div className="w-10 h-5 rounded-full peer after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full" style={{ background: active ? "#4F8BFF" : "rgba(34,40,56,0.65)" }}><div className="absolute top-[2px] rounded-full h-4 w-4 bg-white transition-all" style={{ left: active ? "22px" : "2px" }} /></div>
+                            <div className="w-10 h-5 rounded-full peer after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full" style={{ background: active ? "var(--atlas-celestial)" : "rgba(34,40,56,0.65)" }}><div className="absolute top-[2px] rounded-full h-4 w-4 bg-white transition-all" style={{ left: active ? "22px" : "2px" }} /></div>
                         </label>
                         <span className="text-sm" style={{ color: "var(--l2-fg-2)" }}>Cliente ativo</span>
                     </div>

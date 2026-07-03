@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { TrendingUp, TrendingDown, DollarSign, Target, AlertTriangle, Wallet } from "lucide-react";
+import { TrendingUp, DollarSign, Target, AlertTriangle, Wallet } from "lucide-react";
 import StatCard from "@/components/StatCard";
 import MonthSelector from "@/components/MonthSelector";
 import { getClients, getExpenses } from "@/app/actions";
@@ -46,7 +46,7 @@ export default function FluxoCaixaPage() {
         return Math.max(...vals, 1);
     }, [forecast]);
 
-    const alertColor = taxEstimate.alert === "danger" ? "#FF0055" : taxEstimate.alert === "warning" ? "#FFD600" : "#46F0E0";
+    const alertColor = taxEstimate.alert === "danger" ? "var(--sig-crimson)" : taxEstimate.alert === "warning" ? "var(--sig-amber)" : "var(--atlas-cyan)";
 
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
@@ -79,7 +79,7 @@ export default function FluxoCaixaPage() {
                                 <div style={{
                                     flex: 1,
                                     height: `${(p.revenue / maxBar) * 100}%`,
-                                    background: "#4F8BFF",
+                                    background: "var(--atlas-celestial)",
                                     borderRadius: "4px 4px 0 0",
                                     minHeight: 4,
                                     transition: "height 600ms cubic-bezier(0.22, 1, 0.36, 1)",
@@ -88,7 +88,7 @@ export default function FluxoCaixaPage() {
                                 <div style={{
                                     flex: 1,
                                     height: `${(p.recurringExpenses / maxBar) * 100}%`,
-                                    background: "#FF0055",
+                                    background: "var(--sig-crimson)",
                                     borderRadius: "4px 4px 0 0",
                                     minHeight: 4,
                                     transition: "height 600ms cubic-bezier(0.22, 1, 0.36, 1)",
@@ -100,11 +100,11 @@ export default function FluxoCaixaPage() {
                 </div>
                 <div style={{ display: "flex", gap: 24, marginTop: 16 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <div style={{ width: 10, height: 10, borderRadius: 2, background: "#4F8BFF" }} />
+                        <div style={{ width: 10, height: 10, borderRadius: 2, background: "var(--atlas-celestial)" }} />
                         <span className="text-[10px] uppercase tracking-wider" style={{ color: "var(--l2-fg-2)" }}>Receita</span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <div style={{ width: 10, height: 10, borderRadius: 2, background: "#FF0055" }} />
+                        <div style={{ width: 10, height: 10, borderRadius: 2, background: "var(--sig-crimson)" }} />
                         <span className="text-[10px] uppercase tracking-wider" style={{ color: "var(--l2-fg-2)" }}>Desp. Recorrentes</span>
                     </div>
                 </div>
@@ -116,15 +116,15 @@ export default function FluxoCaixaPage() {
                     Saldo Acumulado Projetado
                 </h2>
                 <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 160 }}>
-                    {forecast.projections.map((p, i) => (
+                    {forecast.projections.map((p) => (
                         <div key={p.month} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-                            <span className="text-[10px] font-mono" style={{ color: p.cumulativeBalance >= 0 ? "#46F0E0" : "#FF0055" }}>
+                            <span className="text-[10px] font-mono" style={{ color: p.cumulativeBalance >= 0 ? "var(--atlas-cyan)" : "var(--sig-crimson)" }}>
                                 {formatCurrency(p.cumulativeBalance)}
                             </span>
                             <div style={{
                                 width: "100%",
                                 height: `${(Math.abs(p.cumulativeBalance) / maxBalance) * 100}%`,
-                                background: p.cumulativeBalance >= 0 ? "#46F0E0" : "#FF0055",
+                                background: p.cumulativeBalance >= 0 ? "var(--atlas-cyan)" : "var(--sig-crimson)",
                                 borderRadius: "4px 4px 0 0",
                                 minHeight: 4,
                                 transition: "height 600ms cubic-bezier(0.22, 1, 0.36, 1)",
@@ -139,7 +139,7 @@ export default function FluxoCaixaPage() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                 <div className="l2-border" style={{ borderRadius: 12, padding: 28, background: "rgba(24,28,38,0.55)" }}>
                     <h2 className="text-xs font-semibold uppercase tracking-wider mb-5 flex items-center gap-2" style={{ color: "var(--l2-fg-2)" }}>
-                        <Wallet style={{ width: 16, height: 16, color: "#FFD600" }} /> Imposto MEI
+                        <Wallet style={{ width: 16, height: 16, color: "var(--sig-amber)" }} /> Imposto MEI
                     </h2>
                     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -193,7 +193,7 @@ export default function FluxoCaixaPage() {
                 {/* Projection Table */}
                 <div className="l2-border" style={{ borderRadius: 12, padding: 28, background: "rgba(24,28,38,0.55)" }}>
                     <h2 className="text-xs font-semibold uppercase tracking-wider mb-5 flex items-center gap-2" style={{ color: "var(--l2-fg-2)" }}>
-                        <TrendingUp style={{ width: 16, height: 16, color: "#46F0E0" }} /> Detalhes da Projeção
+                        <TrendingUp style={{ width: 16, height: 16, color: "var(--atlas-cyan)" }} /> Detalhes da Projeção
                     </h2>
                     <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                         {/* Header */}
@@ -210,8 +210,8 @@ export default function FluxoCaixaPage() {
                             }}>
                                 <span className="text-sm font-mono" style={{ color: "var(--l2-fg-2)" }}>{p.label}</span>
                                 <span className="text-sm font-mono text-right" style={{ color: "var(--l2-fg-1)" }}>{formatCurrency(p.revenue)}</span>
-                                <span className="text-sm font-mono text-right" style={{ color: "#FF0055" }}>{formatCurrency(p.recurringExpenses)}</span>
-                                <span className="text-sm font-bold font-mono text-right" style={{ color: p.estimatedProfit >= 0 ? "#46F0E0" : "#FF0055" }}>
+                                <span className="text-sm font-mono text-right" style={{ color: "var(--sig-crimson)" }}>{formatCurrency(p.recurringExpenses)}</span>
+                                <span className="text-sm font-bold font-mono text-right" style={{ color: p.estimatedProfit >= 0 ? "var(--atlas-cyan)" : "var(--sig-crimson)" }}>
                                     {formatCurrency(p.estimatedProfit)}
                                 </span>
                             </div>
@@ -225,10 +225,10 @@ export default function FluxoCaixaPage() {
                             <span className="text-sm font-bold font-mono text-right" style={{ color: "var(--l2-fg-1)" }}>
                                 {formatCurrency(forecast.projections.reduce((s, p) => s + p.revenue, 0))}
                             </span>
-                            <span className="text-sm font-bold font-mono text-right" style={{ color: "#FF0055" }}>
+                            <span className="text-sm font-bold font-mono text-right" style={{ color: "var(--sig-crimson)" }}>
                                 {formatCurrency(forecast.projections.reduce((s, p) => s + p.recurringExpenses, 0))}
                             </span>
-                            <span className="text-sm font-bold font-mono text-right" style={{ color: forecast.total6Months >= 0 ? "#46F0E0" : "#FF0055" }}>
+                            <span className="text-sm font-bold font-mono text-right" style={{ color: forecast.total6Months >= 0 ? "var(--atlas-cyan)" : "var(--sig-crimson)" }}>
                                 {formatCurrency(forecast.total6Months)}
                             </span>
                         </div>

@@ -63,6 +63,9 @@ configuration, audit, and surface-scoped permission queues.
 
 - Transform the donor terminal harness into ATLAS-owned code; donor identity appears only in
   attribution/license/design-history docs.
+- MiMo-Code's MIT-licensed presentation source may be copied, ported, and modified with its
+  copyright/permission notice retained. This permission does not change the one-runtime rule:
+  ATLAS keeps its own agent, gateway, providers, configuration, storage, telemetry, and identity.
 - Do not implement a donor-specific `AgentRuntime`; TUI and WebUI use the existing ATLAS agent.
 - `~/.atlas/config.yaml` is the global non-secret configuration authority for all surfaces.
 - System-prompt invariants stay stable per session; dynamic context is injected as a separately
