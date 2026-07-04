@@ -76,6 +76,52 @@ async function handleConfig(gw: string, f: typeof fetch): Promise<Response> {
 }
 
 /**
+ * ATLAS-native settings surface (not part of the donor's own API) — mirrors
+ * services/atlas-tui's internal/client contract (Config/PatchConfig/
+ * StoreAPIKey/ImportCodex/ProviderStatus) so the atlas-terminal settings
+ * dialog reuses the exact same gateway routes the working Go TUI already
+ * uses. Passed through with no shape translation — this is ATLAS's own
+ * contract end to end, not a donor-compat projection.
+ */
+async function handleAtlasConfigGet(gw: string, f: typeof fetch): Promise<Response> {
+	const res = await f(`${gw}/v1/config`);
+	if (!res.ok) return json({ error: 'gateway', status: res.status }, 502);
+	return json(await res.json());
+}
+
+async function handleAtlasConfigPatch(gw: string, f: typeof fetch, body: Record<string, unknown>): Promise<Response> {
+	const res = await f(`${gw}/v1/config`, {
+		method: 'PATCH',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify(body)
+	});
+	const payload = await res.json().catch(() => ({}));
+	return json(payload, res.status);
+}
+
+async function handleAtlasAuthProviders(gw: string, f: typeof fetch, body: Record<string, unknown>): Promise<Response> {
+	const res = await f(`${gw}/v1/auth/providers`, {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify(body)
+	});
+	const payload = await res.json().catch(() => ({}));
+	return json(payload, res.status);
+}
+
+async function handleAtlasAuthCodexImport(gw: string, f: typeof fetch): Promise<Response> {
+	const res = await f(`${gw}/v1/auth/codex/import`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+	const payload = await res.json().catch(() => ({}));
+	return json(payload, res.status);
+}
+
+async function handleAtlasProviderStatus(gw: string, f: typeof fetch): Promise<Response> {
+	const res = await f(`${gw}/v1/provider/status`);
+	if (!res.ok) return json({ error: 'gateway', status: res.status }, 502);
+	return json(await res.json());
+}
+
+/**
  * GET /config/providers — donor shape: providers with their model maps.
  * Projected from the ATLAS model registry + active provider resolution.
  */
@@ -215,6 +261,13 @@ export function createAtlasFetchHandle(opts: AtlasFetchOptions): AtlasFetchHandl
 				]);
 			}
 			if (method === 'GET' && path === '/provider') return handleProviders(gw, f);
+
+			// ── ATLAS-native settings surface (ported from services/atlas-tui) ──
+			if (method === 'GET' && path === '/atlas/config') return handleAtlasConfigGet(gw, f);
+			if (method === 'PATCH' && path === '/atlas/config') return handleAtlasConfigPatch(gw, f, await readBody());
+			if (method === 'POST' && path === '/atlas/auth/providers') return handleAtlasAuthProviders(gw, f, await readBody());
+			if (method === 'POST' && path === '/atlas/auth/codex/import') return handleAtlasAuthCodexImport(gw, f);
+			if (method === 'GET' && path === '/atlas/provider/status') return handleAtlasProviderStatus(gw, f);
 
 			// ── chat loop ──
 			if (path === '/session' && method === 'POST') {
