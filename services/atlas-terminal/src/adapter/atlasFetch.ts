@@ -135,12 +135,11 @@ async function handleAtlasFreellmapi(gw: string, f: typeof fetch, action: 'statu
 }
 
 /**
- * GET /provider — donor SDK shape: { all: Provider[], default: {...}, connected: string[] }.
- * Projected from the ATLAS model registry + active provider resolution.
+ * Shared: fetch active models + config from the ATLAS gateway and group by provider.
  */
-async function handleProviders(gw: string, f: typeof fetch): Promise<Response> {
+async function fetchProviderGroups(gw: string, f: typeof fetch) {
 	const [modelsRes, cfgRes] = await Promise.all([f(`${gw}/v1/models`), f(`${gw}/v1/config`)]);
-	if (!modelsRes.ok) return json({ error: 'gateway', status: modelsRes.status }, 502);
+	if (!modelsRes.ok) return { error: true as const, status: modelsRes.status };
 	const { models } = (await modelsRes.json()) as { models: AtlasModelEntry[] };
 	const cfg = cfgRes.ok ? ((await cfgRes.json()) as AtlasConfig) : {};
 
@@ -152,18 +151,33 @@ async function handleProviders(gw: string, f: typeof fetch): Promise<Response> {
 		if (bucket) bucket.push(m);
 		else byProvider.set(key, [m]);
 	}
-	const all = [...byProvider.entries()].map(([id, list]) => ({
+	const entries = [...byProvider.entries()].map(([id, list]) => ({
 		id,
 		name: id,
 		models: Object.fromEntries(list.map((m) => [m.model_id, { id: m.model_id, name: m.model_id }]))
 	}));
 	const active = cfg.provider;
-	const activeName = active?.name;
-	return json({
-		all,
-		default: activeName && active?.model ? { [activeName]: active.model } : {},
-		connected: activeName ? [activeName] : []
-	});
+	return { entries, default: active?.name && active?.model ? { [active.name]: active.model } : {}, activeName: active?.name };
+}
+
+/**
+ * GET /config/providers — shape { providers: [...], default: {...} }.
+ * Consumed by sync.tsx → providers.providers to populate store "provider".
+ */
+async function handleConfigProviders(gw: string, f: typeof fetch): Promise<Response> {
+	const result = await fetchProviderGroups(gw, f);
+	if ('error' in result) return json({ error: 'gateway', status: result.status }, 502);
+	return json({ providers: result.entries, default: result.default });
+}
+
+/**
+ * GET /provider — shape { all: [...], default: {...}, connected: string[] }.
+ * Consumed by sync.tsx → provider.list to populate store "provider_next".
+ */
+async function handleProviderList(gw: string, f: typeof fetch): Promise<Response> {
+	const result = await fetchProviderGroups(gw, f);
+	if ('error' in result) return json({ error: 'gateway', status: result.status }, 502);
+	return json({ all: result.entries, default: result.default, connected: result.activeName ? [result.activeName] : [] });
 }
 
 /**
@@ -287,7 +301,7 @@ export function createAtlasFetchHandle(opts: AtlasFetchOptions): AtlasFetchHandl
 
 		try {
 			if (method === 'GET' && path === '/config') return handleConfig(gw, f);
-			if (method === 'GET' && path === '/config/providers') return handleProviders(gw, f);
+			if (method === 'GET' && path === '/config/providers') return handleConfigProviders(gw, f);
 			if (method === 'GET' && (path === '/event' || path === '/global/event')) {
 				return handleEventStream(bus);
 			}
@@ -306,7 +320,7 @@ export function createAtlasFetchHandle(opts: AtlasFetchOptions): AtlasFetchHandl
 					{ name: 'claude_code', description: 'Claude Code runtime', mode: 'primary', builtIn: true }
 				]);
 			}
-			if (method === 'GET' && path === '/provider') return handleProviders(gw, f);
+			if (method === 'GET' && path === '/provider') return handleProviderList(gw, f);
 
 			// ── ATLAS-native settings surface (ported from services/atlas-tui) ──
 			if (method === 'GET' && path === '/atlas/config') return handleAtlasConfigGet(gw, f);

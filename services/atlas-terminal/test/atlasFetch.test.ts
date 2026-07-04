@@ -44,14 +44,32 @@ describe('createAtlasFetch', () => {
 		const res = await f('http://donor.local/config/providers');
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as {
+			providers: Array<{ id: string; models: Record<string, unknown> }>;
+			default: Record<string, string>;
+		};
+		expect(body.providers).toHaveLength(1);
+		expect(Object.keys(body.providers[0]!.models)).toEqual(['gpt-5.5', 'gpt-5.4-mini']);
+		expect(body.default['openai-codex']).toBe('gpt-5.5');
+	});
+
+	it('projects the model registry into donor provider_next shape via /provider', async () => {
+		const f = createAtlasFetch({ gateway: GW, fetchImpl: stubGateway({
+			'/v1/models': { models: [
+				{ model_id: 'gpt-5.5', provider: 'openai-codex', active: true },
+				{ model_id: 'gpt-5.4-mini', provider: 'openai-codex', active: true }
+			]},
+			'/v1/config': { provider: { name: 'openai-codex', model: 'gpt-5.5' } }
+		})});
+		const res = await f('http://donor.local/provider');
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as {
 			all: Array<{ id: string; models: Record<string, unknown> }>;
 			default: Record<string, string>;
 			connected: string[];
 		};
 		expect(body.all).toHaveLength(1);
-		expect(Object.keys(body.all[0]!.models)).toEqual(['gpt-5.5', 'gpt-5.4-mini']);
-		expect(body.default['openai-codex']).toBe('gpt-5.5');
 		expect(body.connected).toEqual(['openai-codex']);
+		expect(body.default['openai-codex']).toBe('gpt-5.5');
 	});
 
 	it('serves the donor SSE channel with the connected handshake', async () => {
