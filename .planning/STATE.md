@@ -4,7 +4,7 @@ milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
 last_updated: "2026-07-04"
-last_activity: 2026-07-04 -- TUI Connectivity & Auth sprint complete (7/7 tasks): session-creation bug root-caused + fixed, Codex OAuth verified live, atlas up/doctor extended, atlas-terminal wired into installer, vendor-tree scrubbed clean, Go TUI settings caching added, CLI audited. Full detail: HANDOFF.md 2026-07-04 entry.
+last_activity: 2026-07-04 -- Provider shape fix: models crash root-caused (adapter returned `providers` instead of `all`), fixed + tested. Session creation investigated (works through SDK client; likely stale gateway or cascade from provider bug). CLI gap analysis documented.
 progress:
   total_phases: 8
   completed_phases: 7
@@ -15,7 +15,26 @@ progress:
 
 # STATE — L2 ATLAS
 
-## Current Position — 2026-07-04: TUI Connectivity & Auth sprint — 7/7 tasks done
+## Current Position — 2026-07-04 (latest): Provider shape fix landed
+
+1. **Models crash fixed:** `atlasFetch.ts:handleProviders` returned `{ providers: [...] }`
+   but the SDK type `ProviderListResponse` expects `{ all: [...], connected: [...] }`.
+   `sync.data.provider_next.all` was `undefined`, causing remeda to throw on spread
+   in `dialog-provider.tsx`. Fixed adapter to return `{ all, default, connected }`.
+   Updated test. 25/25 tests pass, tsc clean, smoke live.
+2. **Session creation investigated:** Adapter POST /session works through both raw
+   fetch and SDK client. The "Creating a session failed" toast was likely caused
+   by stale gateway or cascading failure from the provider shape bug. If it persists,
+   capture console output at prompt/index.tsx:1080.
+3. **CLI gap analysis documented:** `.debug/2026-07-04-cli-gap-analysis-and-next-sprint.md`
+   covers missing commands (`atlas down`, `atlas help`, wiki stub), npm package plan,
+   vendor cleanup needs, and CLI standardization.
+4. **Next:** `atlas down` command, npm package real install path, deep vendor cleanup,
+   CLI --json standardization.
+
+Full documentation: `.debug/2026-07-04-provider-shape-fix-and-session-investigation.md`
+
+## Previous Position — 2026-07-04: TUI Connectivity & Auth sprint — 7/7 tasks done
 
 Full detail in `HANDOFF.md`'s 2026-07-04 entry (this is a pointer, not a
 duplicate). Summary:

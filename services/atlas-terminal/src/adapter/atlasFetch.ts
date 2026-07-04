@@ -135,7 +135,7 @@ async function handleAtlasFreellmapi(gw: string, f: typeof fetch, action: 'statu
 }
 
 /**
- * GET /config/providers — donor shape: providers with their model maps.
+ * GET /provider — donor SDK shape: { all: Provider[], default: {...}, connected: string[] }.
  * Projected from the ATLAS model registry + active provider resolution.
  */
 async function handleProviders(gw: string, f: typeof fetch): Promise<Response> {
@@ -152,15 +152,17 @@ async function handleProviders(gw: string, f: typeof fetch): Promise<Response> {
 		if (bucket) bucket.push(m);
 		else byProvider.set(key, [m]);
 	}
-	const providers = [...byProvider.entries()].map(([id, list]) => ({
+	const all = [...byProvider.entries()].map(([id, list]) => ({
 		id,
 		name: id,
 		models: Object.fromEntries(list.map((m) => [m.model_id, { id: m.model_id, name: m.model_id }]))
 	}));
 	const active = cfg.provider;
+	const activeName = active?.name;
 	return json({
-		providers,
-		default: active?.name && active?.model ? { [active.name]: active.model } : {}
+		all,
+		default: activeName && active?.model ? { [activeName]: active.model } : {},
+		connected: activeName ? [activeName] : []
 	});
 }
 

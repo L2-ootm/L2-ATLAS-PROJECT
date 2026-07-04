@@ -1,5 +1,45 @@
 # Handoff — L2 ATLAS Finish Sprint
 
+## Session update — 2026-07-04 (current): Provider shape fix — models crash + session investigation
+
+Two bugs reproducing live in atlas-terminal:
+
+1. **Models crash (FIXED):** `handleProviders` returned `{ providers: [...] }` but SDK type requires `{ all: [...], connected: [...] }`. `sync.data.provider_next.all` was `undefined`, causing remeda to throw on spread in `dialog-provider.tsx`. Changed adapter to return correct shape. Updated test. 25/25 tests pass, tsc clean, smoke live.
+
+2. **Session creation toast (INVESTIGATED):** Adapter POST /session works (200 OK through both raw fetch and SDK client). Root cause was likely stale gateway process or cascading failure from the provider shape bug. If toast persists after fix, capture `console.log` output at prompt/index.tsx:1080.
+
+Full documentation: `.debug/2026-07-04-provider-shape-fix-and-session-investigation.md`
+CLI gap analysis: `.debug/2026-07-04-cli-gap-analysis-and-next-sprint.md`
+
+## Session update — 2026-07-04 14:07: Command Center loop goal context wired into NativeAtlasAgent harness
+
+**Scope:** Current Focus only — "Ship the Command Center loop" / goal-model-to-native-harness slice.
+
+**What changed:**
+- `services/agent-runtime/atlas_runtime/agent_contract_service.py`
+  - `RunContractSnapshot` now persists `context_markdown`, the full secret-redacted ATLAS Operator Context assembled for the run.
+  - `selected_source_ids` now records the complete `AgentContext.sources` tuple, covering static focus/goal/project/observation sources as well as routed dynamic evidence.
+- `services/agent-runtime/atlas_runtime/agents/native.py`
+  - `NativeAtlasAgent.execute()` retains the persisted contract snapshot and passes a generated `system_message` into `agent.run_conversation(...)`.
+  - The harness system message now contains the session bootstrap, full operator context, and dynamic context envelope, so native runs receive Current Focus / Goals / Tasks / Operating Contract instead of only the raw mission prompt.
+- `services/agent-runtime/tests/test_agents.py`
+  - Added coverage proving goal/task context reaches the injected harness via `system_message`.
+- `services/agent-runtime/tests/test_agent_contract_service.py`
+  - Added readback coverage for persisted `context_markdown`.
+
+**Verification evidence:**
+- `cd services/agent-runtime && pytest tests/test_agents.py tests/test_agent_contract_service.py tests/test_context_service.py tests/test_run_executor.py tests/test_goal_service.py` — 52 passed.
+- `cd services/agent-runtime && pytest tests` — 737 passed, 2 skipped.
+
+**Known repo state / caution:**
+- Current session-modified files are the four paths listed above.
+- `docs/plans/2026-07-04-cli-gap-analysis-and-next-sprint.md` is present as an untracked file; this slice did not edit it and it is outside the current focus.
+
+**Next actions:**
+1. If continuing this exact focus, wire the Command Center/API surface to create/list/update the persisted goals/tasks/observations if not already exposed.
+2. Re-run a real native mission after operator provider capacity is available; prior evidence showed failures caused by missing/free/exhausted provider routes, not by this system-message wiring.
+3. Keep claims evidence-classified; do not treat harness self-reports as independently verified work.
+
 **Date:** 2026-07-04  
 **Sprint deadline:** 2026-07-09  
 **Current mode:** TUI Connectivity & Auth sprint — **all 7 tasks done this session.**
