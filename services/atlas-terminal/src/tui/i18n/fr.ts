@@ -286,9 +286,6 @@ export const dict = {
   "tui.command.variant.cycle.title": "Cycle de variantes",
   "tui.command.variant.list.title": "Changer de variante de modèle",
   "tui.command.agent.cycle.reverse.title": "Cycle d'agents (inverse)",
-  "tui.command.provider.login.title": "Connexion",
-  "tui.command.provider.connect.title": "Connecter un fournisseur",
-  "tui.command.provider.logout.title": "Déconnexion",
   "tui.command.console.org.switch.title": "Changer d'organisation",
   "tui.command.opencode.status.title": "Voir l'état",
   "tui.command.theme.switch.title": "Changer de thème",
@@ -367,7 +364,6 @@ export const dict = {
   "tui.command.app.toggle.animations.enable": "Activer les animations",
   "tui.command.app.toggle.diffwrap.disable": "Désactiver le retour à la ligne des diffs",
   "tui.command.app.toggle.diffwrap.enable": "Activer le retour à la ligne des diffs",
-  "tui.command.logout.toast": "Déconnecté",
 
   // Session-level commands
   "tui.command.session.share.title": "Partager la session",
@@ -453,17 +449,6 @@ export const dict = {
   "tui.command.plugins.install.title": "Installer un plugin",
 
   // ATLAS Auto (free) — TUI login dialog
-  "tui.dialog.login.mimo_free": "ATLAS Auto (free)",
-  "tui.dialog.login.mimo_free.desc": "Canal anonyme gratuit — aucune connexion requise",
-  "tui.dialog.login.mimo_free.success": "ATLAS Auto (free) est prêt — modèle par défaut défini sur mimo/mimo-auto",
-  "tui.dialog.login.mimo_free.unavailable": "Fournisseur ATLAS Auto (free) non chargé",
-  "tui.dialog.login.flow.title": "Connexion ATLAS",
-  "tui.dialog.login.flow.placeholder": "Collez le code (ou attendez le rappel du navigateur)",
-  "tui.dialog.login.flow.busy": "Connexion en cours...",
-  "tui.dialog.login.flow.manual_hint": "Le navigateur ne s'est pas ouvert ? Cliquez sur le lien ci-dessous pour copier :",
-  "tui.dialog.login.flow.waiting": "En attente de l'autorisation du navigateur...",
-  "tui.dialog.login.flow.invalid_code": "Code invalide, veuillez réessayer",
-  "tui.dialog.login.flow.copied": "Copié",
 
   // CLI: providers command (auth login)
   "cli.providers.select": "Sélectionner un fournisseur",

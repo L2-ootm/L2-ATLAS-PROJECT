@@ -298,9 +298,6 @@ export const dict = {
   "tui.command.variant.cycle.title": "Ciclo de variantes",
   "tui.command.variant.list.title": "Cambiar variante de modelo",
   "tui.command.agent.cycle.reverse.title": "Ciclo de agentes (inverso)",
-  "tui.command.provider.login.title": "Iniciar sesión",
-  "tui.command.provider.connect.title": "Conectar proveedor",
-  "tui.command.provider.logout.title": "Cerrar sesión",
   "tui.command.console.org.switch.title": "Cambiar de organización",
   "tui.command.opencode.status.title": "Ver estado",
   "tui.command.theme.switch.title": "Cambiar tema",
@@ -378,7 +375,6 @@ export const dict = {
   "tui.command.app.toggle.animations.enable": "Habilitar animaciones",
   "tui.command.app.toggle.diffwrap.disable": "Deshabilitar ajuste de diff",
   "tui.command.app.toggle.diffwrap.enable": "Habilitar ajuste de diff",
-  "tui.command.logout.toast": "Sesión cerrada",
 
   // Session-level commands
   "tui.command.session.share.title": "Compartir sesión",
@@ -499,11 +495,4 @@ export const dict = {
   "trust.dangerous.advice_root": "A menos que tengas una razón muy específica, NO confíes en la raíz del sistema de archivos.",
   "trust.dangerous.option.yes": "Entiendo los riesgos, confiar solo esta sesión",
   "trust.dangerous.option.no": "Salir (recomendado)",
-  "tui.dialog.login.flow.title": "Inicio de sesión ATLAS",
-  "tui.dialog.login.flow.placeholder": "Pega el código (o espera la devolución del navegador)",
-  "tui.dialog.login.flow.busy": "Iniciando sesión...",
-  "tui.dialog.login.flow.manual_hint": "¿El navegador no se abrió? Haz clic en el enlace para copiar:",
-  "tui.dialog.login.flow.waiting": "Esperando autorización del navegador...",
-  "tui.dialog.login.flow.invalid_code": "Código inválido, intenta de nuevo",
-  "tui.dialog.login.flow.copied": "Copiado",
 } satisfies Partial<Record<Keys, string>>

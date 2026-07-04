@@ -238,9 +238,6 @@ export const dict = {
   "tui.command.variant.cycle.title": "バリアントを循環",
   "tui.command.variant.list.title": "モデルバリアントを切り替え",
   "tui.command.agent.cycle.reverse.title": "エージェントを逆循環",
-  "tui.command.provider.login.title": "ログイン",
-  "tui.command.provider.connect.title": "プロバイダに接続",
-  "tui.command.provider.logout.title": "ログアウト",
   "tui.command.console.org.switch.title": "組織を切り替え",
   "tui.command.opencode.status.title": "ステータスを表示",
   "tui.command.theme.switch.title": "テーマを切り替え",
@@ -318,7 +315,6 @@ export const dict = {
   "tui.command.app.toggle.animations.enable": "アニメーションを有効化",
   "tui.command.app.toggle.diffwrap.disable": "diff の折り返しを無効化",
   "tui.command.app.toggle.diffwrap.enable": "diff の折り返しを有効化",
-  "tui.command.logout.toast": "ログアウトしました",
 
   // Session-level commands
   "tui.command.session.share.title": "セッションを共有",
@@ -404,17 +400,6 @@ export const dict = {
   "tui.command.plugins.install.title": "プラグインをインストール",
 
   // ATLAS Auto (free) — TUI login dialog
-  "tui.dialog.login.mimo_free": "ATLAS Auto (free)",
-  "tui.dialog.login.mimo_free.desc": "ログイン不要の匿名無料チャネル",
-  "tui.dialog.login.mimo_free.success": "ATLAS Auto (free) の準備完了 — デフォルトモデルを mimo/mimo-auto に設定しました",
-  "tui.dialog.login.mimo_free.unavailable": "ATLAS Auto (free) プロバイダーが読み込まれていません",
-  "tui.dialog.login.flow.title": "ATLAS ログイン",
-  "tui.dialog.login.flow.placeholder": "コードを貼り付け（またはブラウザコールバックを待機）",
-  "tui.dialog.login.flow.busy": "ログイン中...",
-  "tui.dialog.login.flow.manual_hint": "ブラウザが開きませんか？下のリンクをクリックしてコピー：",
-  "tui.dialog.login.flow.waiting": "ブラウザの認証を待機中...",
-  "tui.dialog.login.flow.invalid_code": "コードが無効です。再試行してください",
-  "tui.dialog.login.flow.copied": "コピー済み",
 
   // CLI: providers command (auth login)
   "cli.providers.select": "プロバイダーを選択",

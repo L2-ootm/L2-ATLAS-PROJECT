@@ -214,9 +214,6 @@ export const dict = {
   "tui.command.variant.cycle.title": "循環切換模型變體",
   "tui.command.variant.list.title": "切換模型變體",
   "tui.command.agent.cycle.reverse.title": "反向循環切換智慧代理",
-  "tui.command.provider.login.title": "登入",
-  "tui.command.provider.connect.title": "連線供應商",
-  "tui.command.provider.logout.title": "登出",
   "tui.command.console.org.switch.title": "切換組織",
   "tui.command.opencode.status.title": "檢視狀態",
   "tui.command.worktree.list.title": "工作樹",
@@ -303,7 +300,6 @@ export const dict = {
   "tui.command.app.toggle.animations.enable": "啟用動畫",
   "tui.command.app.toggle.diffwrap.disable": "停用 diff 自動換行",
   "tui.command.app.toggle.diffwrap.enable": "啟用 diff 自動換行",
-  "tui.command.logout.toast": "已登出",
 
   // Session-level commands
   "tui.command.session.share.title": "分享工作階段",
@@ -424,11 +420,4 @@ export const dict = {
   "trust.dangerous.advice_root": "除非有明確的理由，否則不要信任檔案系統根目錄。",
   "trust.dangerous.option.yes": "我了解風險，僅本次信任",
   "trust.dangerous.option.no": "退出（推薦）",
-  "tui.dialog.login.flow.title": "ATLAS 登入",
-  "tui.dialog.login.flow.placeholder": "貼上 Code（或等待瀏覽器回調）",
-  "tui.dialog.login.flow.busy": "登入中...",
-  "tui.dialog.login.flow.manual_hint": "瀏覽器未開啟？點擊下方連結以複製：",
-  "tui.dialog.login.flow.waiting": "等待瀏覽器授權中...",
-  "tui.dialog.login.flow.invalid_code": "Code 無效，請重試",
-  "tui.dialog.login.flow.copied": "已複製",
 } satisfies Partial<Record<Keys, string>>
