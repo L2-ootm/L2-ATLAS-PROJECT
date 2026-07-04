@@ -1460,3 +1460,21 @@ Full codebase analysis of the Graphify knowledge graph system completed. Documen
 
 Operator directive (2026-07-03): ATLAS must **never** treat Hermes as a black-box external executable dependency. The current workaround of injecting environment variables for the legacy TUI to call the external Hermes engine violates L2 engineering principles. The end-stage ATLAS TUI (Stage 3, based on MiMo-Code, OpenCode, and Hermes MIT-licensed logic) must natively incorporate the logic rather than shelling out to an external engine. No temporary environment-variable hacks are permitted.
 
+## STAGE 3 session — 2026-07-03 (later)
+
+Detailed narrative lives in `HANDOFF.md` (not duplicated here) — this is a
+pointer so STATE.md doesn't silently drift behind it. Summary: donor
+vendor-tree branding scrub (`src/vendor/opencode/cli/logo.ts` ATLAS
+wordmark), removed the dead donor account-login dialog, ported Go TUI's
+settings/model-readiness onto the donor shell (`/atlas/config`,
+`/atlas/provider/status`), wired the donor's built-in slash commands
+(init/review/dream/distill/goal/deep-research) to real execution, added
+FreeLLMAPI sidecar control parity, wired `scripts/tui-boundary-check.ps1` to
+services/atlas-terminal for the first time, and scaffolded the WS-B
+installer lifecycle (`packages/atlas-cli`) against a manually staged local
+bundle. Parity audit conclusion: atlas-terminal is now feature-for-feature
+at parity with `services/atlas-tui` on settings/readiness/permissions/idle/
+commands/freellmapi. **Retirement gate (switching `atlas tui` to
+atlas-terminal) is explicitly not decided — pending operator UAT**, per
+HANDOFF.md's own guardrail.
+
