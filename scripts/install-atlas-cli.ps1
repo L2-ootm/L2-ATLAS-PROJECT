@@ -90,6 +90,24 @@ if ((Get-Command npm -ErrorAction SilentlyContinue) -and (Test-Path $cockpit)) {
     Write-Host "Skipping cockpit build (npm not found)."
 }
 
+# Install + typecheck atlas-terminal (donor-based TUI surface, not yet the
+# default `atlas tui` entry — see STAGE 3 retirement gate). Skipped gracefully
+# when bun is absent, same as the go/cargo/npm steps above; like those steps,
+# a typecheck failure here aborts the rest of install ($ErrorActionPreference).
+$atlasTerminal = Join-Path $root 'services/atlas-terminal'
+if ((Get-Command bun -ErrorAction SilentlyContinue) -and (Test-Path $atlasTerminal)) {
+    Write-Host "Installing + typechecking atlas-terminal ($atlasTerminal)"
+    Push-Location $atlasTerminal
+    try {
+        bun install --silent
+        if ($LASTEXITCODE -ne 0) { throw "bun install (atlas-terminal) failed (exit $LASTEXITCODE)" }
+        bun run typecheck
+        if ($LASTEXITCODE -ne 0) { throw "bun run typecheck (atlas-terminal) failed (exit $LASTEXITCODE)" }
+    } finally { Pop-Location }
+} else {
+    Write-Host "Skipping atlas-terminal build (bun not found)."
+}
+
 # Bootstrap / migrate the DB (idempotent, non-destructive).
 & $atlasExe db init
 

@@ -459,6 +459,112 @@ func TestModelsUsesGatewayEnvelope(t *testing.T) {
 	}
 }
 
+func TestModelsCachesWithinTTL(t *testing.T) {
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"models":[{"model_id":"gpt-test","provider":"openrouter","source":"remote","active":true}],"count":1}`))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL)
+	if _, err := c.Models(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Models(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("expected 1 gateway call within the TTL window, got %d", calls)
+	}
+}
+
+func TestPatchConfigInvalidatesModelsCache(t *testing.T) {
+	var modelsCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v1/models":
+			modelsCalls++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"models":[{"model_id":"gpt-test","provider":"openrouter","source":"remote","active":true}],"count":1}`))
+		case r.URL.Path == "/v1/config" && r.Method == http.MethodPatch:
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"revision":2}`))
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL)
+	if _, err := c.Models(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.PatchConfig(context.Background(), 1, map[string]any{"provider.model": "gpt-other"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Models(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if modelsCalls != 2 {
+		t.Fatalf("expected the cache to be invalidated after PatchConfig (2 gateway calls), got %d", modelsCalls)
+	}
+}
+
+func TestModelsInFlightFetchDoesNotResurrectAfterInvalidation(t *testing.T) {
+	release := make(chan struct{})
+	var modelsCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v1/models":
+			modelsCalls++
+			if modelsCalls == 1 {
+				<-release // hold the first fetch open until the test releases it
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"models":[{"model_id":"gpt-test","provider":"openrouter","source":"remote","active":true}],"count":1}`))
+		case r.URL.Path == "/v1/config" && r.Method == http.MethodPatch:
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"revision":2}`))
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := c.Models(context.Background())
+		done <- err
+	}()
+
+	// Invalidate while the first Models() fetch is still blocked in-flight.
+	if _, err := c.PatchConfig(context.Background(), 1, map[string]any{"provider.model": "gpt-other"}); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+
+	c.modelsMu.Lock()
+	stale := c.cachedModels != nil
+	c.modelsMu.Unlock()
+	if stale {
+		t.Fatal("in-flight fetch resurrected the cache after invalidation landed first")
+	}
+
+	if _, err := c.Models(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if modelsCalls != 2 {
+		t.Fatalf("expected a fresh fetch after the fenced-off write, got %d models calls", modelsCalls)
+	}
+}
+
 func TestStoreAPIKeyReturnsMaskedStatus(t *testing.T) {
 	const secret = "stdin-only-secret-9876"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

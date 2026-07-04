@@ -19,6 +19,11 @@
 # mimo.xiaomi.com IS banned: it was only ever a "visit our docs" navigation
 # convenience (tui/app.tsx's /doc command, already repointed to the local
 # README) with no functional dependency on the donor's site.
+# opencode.ai IS banned: it was the paid-upsell/share-hosting/zen-API product
+# site (dialog-go-upsell.tsx, the /share command, unreachable opencode/
+# opencode-go provider descriptions, and the theme/tui.json $schema hints) —
+# all removed/repointed since none had a working ATLAS-side backend.
 MimoCode
 Mimo Code
 mimo.xiaomi.com
+opencode.ai

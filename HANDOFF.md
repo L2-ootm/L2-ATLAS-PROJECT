@@ -1,8 +1,256 @@
 # Handoff — L2 ATLAS Finish Sprint
 
-**Date:** 2026-07-03 (updated later the same day)  
+**Date:** 2026-07-04  
 **Sprint deadline:** 2026-07-09  
-**Current mode:** mission analysis documented; implementation resumes at donor TUI STAGE 1.
+**Current mode:** TUI Connectivity & Auth sprint — **all 7 tasks done this session.**
+Full verification suite green (see bottom of this entry). Retirement gate
+(Go TUI -> atlas-terminal default) still NOT decided — that remains the
+operator's call per the standing guardrail, unaffected by this session's
+work being complete.
+
+## Session update — 2026-07-04: all 7 tasks done — session-creation root-caused, Codex OAuth verified live, atlas up/doctor extended, installer wired, vendor-tree clean, Go TUI caching added, CLI audited
+
+**TASK 1 — session-creation bug: could NOT reproduce against a fresh live gateway.**
+Built the release gateway wrapper (`ATLAS_CLI` -> hermes venv python), started
+`native/atlas-core-rs/target/release/atlas-gateway.exe` (already newer than its
+Rust sources — not stale), then ran `bun run src/main.tsx --prompt "hello"`
+headless twice (20s and 35s) against it: no "Creating a session failed" toast,
+no error text, in either run. Also proved `sdk.client.session.create()`
+executed through the real production code path (adapter + generated SDK
+client) returns `status:200`/no error in isolation. Strong evidence the
+originally-reported toast was tied to a dead/stale gateway process at that
+specific UAT moment, not a code defect — **the retirement-blocking bug as
+reported no longer reproduces.**
+
+Found and fixed a real, separate bug on the way: `adapter/chat.ts:138` emitted
+a `session.created` bus event that the vendored donor `sync.tsx` never
+listens for (its reactive store only upserts on `session.updated` — insert if
+missing). New sessions were invisible in the reactive session list until some
+*later* event touched them. Fixed the emit to `session.updated`; updated the
+one test asserting the old event name (`test/chatLoop.test.ts:243`). 25/25
+bun tests, tsc clean, `--smoke` shows `LIVE freellmapi/mimo-v2.5`.
+
+**Recommendation:** re-run the operator UAT that originally found the toast,
+with a gateway freshly started via `atlas gateway start` (not a leftover
+process from an earlier session). If it still reproduces, the next diagnostic
+step is capturing the interactive (non-headless, real TTY) console — this
+session's headless `--prompt` harness could not fully replicate a real
+Windows Terminal session.
+
+**TASK 2 — Codex OAuth import: verified end-to-end, live.** `~/.codex/auth.json`
+present (email `l2atlasgpt3107@gomail.edu.pl`, token not expired).
+`POST /v1/auth/codex/import` -> `{"imported":true}`. Patched
+`provider.name=openai-codex`, `provider.auth_mode=oauth_import`,
+`provider.model=gpt-5.5` via `PATCH /v1/config`. Ran a real mission
+("reply with the single word: pong") through `atlas mission create/run` —
+it replied **"pong"** for real, `status:succeeded`, `agent_runtime:native`,
+~9s wall time (checked `runs` table in `~/.atlas/atlas.db` directly). This
+is a genuine live completion via the native runtime, not mock.
+
+**Flagged, not fixed** (real bug, out of scope this session): `/v1/config`'s
+`effective.auth_status` and `atlas auth doctor openai-codex` both report
+`missing_auth`/`needs_auth` even when `oauth_import` is actually live —
+they appear to only check the `api_key` auth path. `atlas provider status`
+gets it right (`[live]`, credentials present: yes) via `owned_status()`,
+which is the correct check per `codex_auth.py`'s own docstring. The other
+two callers need the same `oauth_import`-aware branch.
+
+**TASK 3 — `atlas up` + `atlas doctor` extended.**
+- `gateway_control.py`: new `binary_stale()` — compares the gateway crate's
+  newest `*.rs` mtime against the resolved binary's mtime (same pattern as
+  `go_tui._checkout_binary_stale`). `atlas up` now warns (non-fatal) if the
+  gateway binary predates its sources.
+- `atlas up` (`_up_cmd` in `cli/main.py`) now also starts the FreeLLMAPI
+  sidecar after gateway+cockpit report healthy — non-fatal if the external
+  checkout isn't present (D-015: it's an optional sidecar, never vendored).
+- `atlas doctor` extended: gateway staleness surfaced inline; three new
+  informational sidecar probes (freellmapi/cashflow/discord, 0.5s timeout,
+  each with its own remediation string, none fail the overall exit code);
+  model-registry freshness check (`MAX(last_seen)` in `model_registry_v2`,
+  flags >24h stale); `--json` flag emits the full report as one JSON object
+  (`{"check": {"status": ..., "ok": bool}}`).
+- Verified live: `atlas doctor` and `atlas doctor --json` both ran correctly
+  against the live gateway (correctly reported cockpit down / sidecars
+  offline, since neither was started this session). 134 focused pytest
+  (doctor/gateway_control/freellmapi/cli) + full suite **733 passed, 2
+  skipped** (no regression from the 732/1-skipped baseline).
+
+**TASK 4 — installer integration: done.** Added an atlas-terminal build step
+(`bun install` + `bun run typecheck`, graceful skip if `bun` absent, matching
+the existing go/cargo/npm skip pattern) to both `scripts/install-atlas-cli.ps1`
+and `scripts/setup.sh`. Added `atlas terminal status [--json]` (present/built/
+version/gateway-reachable, with remediation) to `cli/main.py`. Verified: both
+scripts parse clean (PowerShell tokenizer + `bash -n`), `atlas terminal
+status` runs correctly live, full pytest suite still 733/2. Did not run the
+full fresh-clone destructive install on this machine — mechanics verified,
+not a real clean-VM run (that's WS-B installer plan §7 step 6, still open).
+
+**TASK 5 — vendor-tree cleanup: done, boundary scanner passes clean (exit 0).**
+Removed `dialog-go-upsell.tsx` and its wiring in `routes/session/index.tsx`
+(the `session.status`/retry listener, `GO_UPSELL_*` kv constants); removed
+the `/share` command registration (dead — no adapter backend) plus its now-
+orphaned idle tips (`tui.tips.share`, `share_auto`, `share_disabled`,
+`unshare`) across all 7 locale files, since they referenced a command that
+no longer exists. Fixed `tui-migrate.ts`'s `TUI_SCHEMA_URL` and all 33
+`src/tui/context/theme/*.json` `$schema` refs off `opencode.ai`. Also found
+and fixed two adjacent leaks the sprint's item list didn't name but the
+scanner exists to catch: a literal `mimo -s <id>` continue-command string in
+the session exit banner (-> `atlas -s`), and unreachable `opencode`/
+`opencode-go` provider-description branches in `dialog-provider.tsx` (dead
+code — ATLAS's provider catalog is built from its own model registry and
+never surfaces those donor provider IDs; removed along with the now-unused
+`theme` destructure). Extended `scripts/atlas-terminal-forbidden-terms.txt`
+with `opencode.ai` (documented rationale inline) so this class of regression
+is caught mechanically going forward, and used the extended scanner to find
+2 more stray `opencode.ai` doc-comment URLs in the vendored SDK
+`types.gen.ts` files (both SDKs) — fixed. Verified:
+`scan-atlas-terminal-boundary.ps1` exits 0, 25/25 bun tests, tsc clean,
+`--smoke` still live.
+
+**TASK 6 — Go TUI caching: done.** `settings.go`'s `fetchSettings()`
+(`Config()` + `Models()`) parallelized via a plain `sync.WaitGroup` (no new
+dependency — errgroup isn't vendored and wasn't worth adding for two calls).
+`client.go`'s `Models()` gained a 5-minute in-memory TTL cache
+(`modelsCacheTTL`), invalidated by `PatchConfig` on success (a provider/model
+change can change which catalog entries are active). Added 2 new tests
+(`TestModelsCachesWithinTTL`, `TestPatchConfigInvalidatesModelsCache`) proving
+the cache actually suppresses a second gateway call and that patching
+correctly forces a re-fetch. Verified: `go test ./...` 98 passed (was 96 —
+the 2 new tests), `go vet ./...` clean, `go build ./...` clean.
+
+**TASK 7 — CLI audit + npm package plan: done (audit + status doc, not a
+refactor** — correctly scoped per the sprint's own "conditional, planning-
+weighted" framing). Full findings in
+`docs/plans/2026-07-04-cli-audit-and-npm-package-status.md`. Headline: the
+three specifically-named naming-drift spots (`purge-archived`, `config
+json`, `channels status`) are already fine — that concern looks resolved
+from an earlier session. The real, unresolved drift is a **mixed `--json`
+convention**: some groups (`auth`, `channels`, `config`) use a dedicated
+`json` subcommand, others (`doctor`, `version`, `terminal status`, `models`,
+`discord`, `surface`, `tools`, `provider`, `golden`) use a `--json` flag.
+Not fixed — standardizing touches ~9 modules + their tests, real refactor
+scope, not audit scope. Recommendation recorded in the doc: converge on
+`--json` (the majority pattern, and what every command this session added
+used). npm package: no new design needed — the existing
+`docs/plans/2026-07-03-wsb-installer-plan.md` already covers architecture/
+sequencing in full and its own progress tracking (§7) is accurate; the doc
+notes how this session's TASK 3/4 work (staleness-check pattern, atlas-
+terminal now installer-integrated) feeds directly into that plan's open
+steps 3-6, without duplicating the plan.
+
+## Post-sprint review (2026-07-04) — 8-angle parallel review, 4 real bugs found and fixed
+
+Ran a high-effort code review (8 parallel finder agents: line-by-line
+correctness, removed-behavior audit, cross-file tracer, reuse, simplification,
+efficiency, altitude, CLAUDE.md conventions) over the full session diff before
+committing. Real, verified findings and fixes:
+
+1. **`atlas doctor`'s model-registry freshness check never actually worked.**
+   `model_registry_v2.last_seen` is an ISO-8601 string
+   (`datetime.now(timezone.utc).isoformat()`), but the check did
+   `isinstance(last_seen, (int, float))` — always `False` — so `age_seconds`
+   was always `None` and the catalog was reported `"fresh"` unconditionally,
+   no matter how stale. Fixed with `datetime.fromisoformat`; verified with a
+   synthetic 3-day-old timestamp correctly computing 259200s / stale=True.
+2. **A slow in-flight `Models()` fetch could resurrect stale data after
+   `PatchConfig` invalidated the cache** (a real TOCTOU race, not just
+   theoretical — a save-provider-then-reopen-settings sequence hits exactly
+   this window). Fixed with a generation counter (`modelsGen`, bumped by
+   `invalidateModelsCache`) that fences off any in-flight fetch's write once
+   an invalidation has landed. Also fixed `Models()` returning its cached
+   slice by reference (an in-place-mutating caller would have corrupted the
+   shared cache) — both the cache-hit and cache-write paths now copy.
+   New regression test: `TestModelsInFlightFetchDoesNotResurrectAfterInvalidation`.
+3. **`atlas doctor --json`'s per-key schema was inconsistent** — the
+   `provider: skipped (config invalid)` path and the stale-gateway-binary
+   path both stored differently-shaped/wrong values (`ok=True` for a STALE
+   binary is misleading to a JSON consumer). Fixed: `echo()` now requires
+   `ok` explicitly (no more bare-string branch), every key is
+   `{"status": str, "ok": bool}`, and a stale binary reports `ok=False`
+   without flipping the overall exit code (still healthy enough to serve).
+4. **The installer comments overpromised failure-tolerance that doesn't
+   exist.** Both `setup.sh` and `install-atlas-cli.ps1`'s new atlas-terminal
+   build step said "a failure here does not abort the rest of install" —
+   false under `set -euo pipefail` / `$ErrorActionPreference='Stop'` (same as
+   every other build step in these scripts). Fixed the comment wording to
+   match the actual, pre-existing, honest behavior instead of the code.
+
+Also fixed as part of the same review pass (found by the removed-behavior
+audit, not a fabricated addition): the `/share` command removal (TASK 5) left
+`/unshare` permanently vestigial (it can never be enabled without `/share`
+ever having set a `session.share.url`) and two dangling keybind defaults
+(`session_share`/`session_unshare`, both unbound by default but referencing
+a command value that no longer exists). Removed `/unshare` and its 3 i18n
+title keys across all 7 locales, and the 2 keybind defaults, completing the
+removal properly.
+
+**Investigated and deliberately NOT changed** (reasoning recorded so it isn't
+re-litigated): `gateway_control.binary_stale()` duplicates
+`go_tui._checkout_binary_stale()`'s mtime-comparison logic in a second
+module — real duplication, but unifying it means touching a third module's
+contract right before a push; left as documented, acknowledged debt.
+`atlas doctor`'s hardcoded sidecar tuple (freellmapi/cashflow/discord) was
+flagged as possibly bypassing the `atlas module` registry — checked live,
+`atlas module list` only tracks `cashflow` and is a narrower, different
+concept, not a superset; the suggestion doesn't actually apply. The
+`opencode`/`opencode-go` provider-description removal (TASK 5) was
+re-verified against `sync.tsx`'s actual provider-list source
+(`atlasFetch.ts`'s `handleProviders()`, built purely from ATLAS's own
+`/v1/models` registry) — confirmed unreachable in ATLAS's adapter context
+despite `"opencode-go"` still appearing in a *different*, untouched
+description map in the same file (the provider-picker list, not the
+API-key-entry dialog); no regression from the removal. Fixed doctor.py's
+`__import__(..., fromlist=...)` to the more idiomatic
+`importlib.import_module` (trivial, no behavior change).
+
+Final re-verification after all review fixes: bun test 25/25, tsc clean,
+`--smoke` live, boundary scanner exit 0, pytest 736/2 (was 733 — +3 new
+`atlas up` tests covering the freellmapi/staleness paths that were
+previously exercised unmocked with zero assertions), go test 99/3 packages
+(was 98 — +1 race-fence test), go vet clean, gofmt clean, `atlas up`/
+`atlas doctor` live-verified again.
+
+## Full verification (2026-07-04, end of session) — all green
+
+- `cd services/atlas-terminal && bun test` — 25 pass, 0 fail.
+- `bunx tsc --noEmit` — clean.
+- `bun run src/main.tsx --smoke` — `ATLAS TERMINAL OK — LIVE openai-codex/gpt-5.5`.
+- `cd services/agent-runtime && pytest tests` — 733 passed, 2 skipped.
+- `cd services/atlas-tui && go test ./...` — 98 passed in 3 packages.
+- `go vet ./...` — no issues.
+- `atlas up` — gateway already running, cockpit started fresh, freellmapi
+  already running — all three healthy.
+- `atlas doctor` — db/config/gateway/cockpit/freellmapi/model_registry/
+  provider all `ok`; cashflow/discord correctly report `offline` with
+  remediation (neither installed on this machine); claude_code correctly
+  reports the missing optional SDK extra.
+- `atlas auth import-codex` — `{"imported": true}`.
+
+**Environment note:** this session started the release gateway manually
+(`native/atlas-core-rs/target/release/atlas-gateway.exe`, no PID file — it
+was NOT started via `gateway_control.start()`/`atlas gateway start`, so
+`atlas gateway stop` won't find it). Cockpit and freellmapi WERE started via
+their normal control primitives (`atlas up`), so those have proper PID/state
+tracking. If the manually-started gateway process is still running, kill it
+directly or via Task Manager before assuming a clean-slate boot for the next
+session. A scratch `atlas.cmd` wrapper (per [[atlas-local-run-recipe]]) was
+created in the session's temp scratchpad, not the repo — the next session
+needs its own per that recipe.
+
+**Residual known issues (not blocking, documented above in their task
+sections):** (1) `/v1/config`'s `effective.auth_status` and `atlas auth
+doctor openai-codex` misreport `oauth_import` as missing auth even when live
+— only `provider status` checks it correctly (TASK 2). (2) Mixed `--json`
+convention across CLI groups (TASK 7). (3) Retirement gate (Go TUI vs
+atlas-terminal as default `atlas`) still not decided — operator call,
+per the standing guardrail.
+
+**Next action:** operator UAT of `bun run dev` in an actual Windows Terminal
+session (this session's headless `--prompt` harness could not fully replicate
+a real interactive TTY) to make the final retirement-gate call; then, if
+desired, the residual issues above.
+
+## Prior session — 2026-07-03 (later): hygiene + mission analysis
 
 ## Session update — 2026-07-03 (later): hygiene + mission analysis
 

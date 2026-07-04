@@ -61,8 +61,6 @@ export const dict = {
     "Usa {highlight}/undo{/highlight} para revertir el último mensaje y los cambios en archivos",
   "tui.tips.redo":
     "Usa {highlight}/redo{/highlight} para restaurar mensajes y cambios deshechos previamente",
-  "tui.tips.share":
-    "Ejecuta {highlight}/share{/highlight} para crear un enlace público a tu conversación en opencode.ai",
   "tui.tips.drag_drop": "Arrastra y suelta imágenes o PDF en el terminal para añadirlos como contexto",
   "tui.tips.paste_image":
     "Pulsa {highlight}Ctrl+V{/highlight} para pegar imágenes desde el portapapeles en la entrada",
@@ -205,12 +203,6 @@ export const dict = {
     'Define {highlight}"mcp_*": false{/highlight} para deshabilitar todas las herramientas de un servidor MCP',
   "tui.tips.tool_override":
     "Sobrescribe la configuración global de herramientas en cada agente",
-  "tui.tips.share_auto":
-    'Define {highlight}"share": "auto"{/highlight} para compartir todas las sesiones automáticamente',
-  "tui.tips.share_disabled":
-    'Define {highlight}"share": "disabled"{/highlight} para impedir cualquier compartición de sesiones',
-  "tui.tips.unshare":
-    "Ejecuta {highlight}/unshare{/highlight} para retirar una sesión del acceso público",
   "tui.tips.doom_loop":
     "El permiso {highlight}doom_loop{/highlight} previene bucles infinitos de llamadas a herramientas",
   "tui.tips.external_dir":
@@ -377,13 +369,10 @@ export const dict = {
   "tui.command.app.toggle.diffwrap.enable": "Habilitar ajuste de diff",
 
   // Session-level commands
-  "tui.command.session.share.title": "Compartir sesión",
-  "tui.command.session.share.copy_link": "Copiar enlace para compartir",
   "tui.command.session.rename.title": "Renombrar sesión",
   "tui.command.session.timeline.title": "Saltar a un mensaje",
   "tui.command.session.fork.title": "Bifurcar sesión",
   "tui.command.session.compact.title": "Compactar sesión",
-  "tui.command.session.unshare.title": "Dejar de compartir",
   "tui.command.session.undo.title": "Deshacer mensaje anterior",
   "tui.command.session.redo.title": "Rehacer",
   "tui.command.session.sidebar.show": "Mostrar barra lateral",

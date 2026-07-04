@@ -117,6 +117,48 @@ app.add_typer(tools_app, name="tools")
 from atlas_runtime.cli.surface import surface_app
 app.add_typer(surface_app, name="surface")
 
+terminal_app = typer.Typer(name="terminal", help="atlas-terminal (donor-based TUI surface) build/reachability status.")
+app.add_typer(terminal_app, name="terminal")
+
+
+@terminal_app.command("status", help="Is atlas-terminal built, what version, is the gateway reachable.")
+def _terminal_status_cmd(
+    json_output: bool = typer.Option(False, "--json", help="Emit as JSON."),
+) -> None:
+    import pathlib
+
+    from atlas_runtime import gateway_control
+    from atlas_runtime.db import MIGRATIONS_DIR
+
+    root = MIGRATIONS_DIR.parent.parent  # infra/migrations -> infra -> repo root
+    terminal_dir = root / "services" / "atlas-terminal"
+    package_json = terminal_dir / "package.json"
+    built = (terminal_dir / "node_modules").is_dir()
+    version = None
+    if package_json.is_file():
+        try:
+            version = json.loads(package_json.read_text(encoding="utf-8")).get("version")
+        except Exception:  # noqa: BLE001
+            version = None
+    gateway_reachable = gateway_control.health_ok()
+
+    report = {
+        "present": terminal_dir.is_dir(),
+        "built": built,
+        "version": version,
+        "gateway_reachable": gateway_reachable,
+    }
+    if json_output:
+        typer.echo(json.dumps(report))
+        return
+    typer.echo(f"present: {report['present']}")
+    typer.echo(f"built (bun install ran): {built}")
+    typer.echo(f"version: {version or 'unknown'}")
+    typer.echo(f"gateway reachable: {gateway_reachable}")
+    if not report["present"] or not built:
+        typer.echo("remediation: cd services/atlas-terminal && bun install && bun run typecheck")
+
+
 import atlas_runtime.cli.go_tui as _go_tui_mod
 from atlas_runtime.cli.tui import legacy_foundation_tui
 
@@ -959,14 +1001,26 @@ def gateway_stop() -> None:
 
 
 def _up_cmd() -> None:
-    """Boot gateway + cockpit together (idempotent). Thin wrapper only — no
-    SQL/no emit() here; logic lives in gateway_control/cockpit_control."""
-    from atlas_runtime import cockpit_control, gateway_control
+    """Boot gateway + cockpit + optional sidecars (idempotent). Thin wrapper
+    only — no SQL/no emit() here; logic lives in the *_control modules."""
+    from atlas_runtime import cockpit_control, freellmapi_control, gateway_control
 
     gateway_ok, gateway_message = gateway_control.start()
     typer.echo(gateway_message)
+    if gateway_ok and gateway_control.binary_stale():
+        typer.echo(
+            "gateway: WARNING binary predates its Rust sources — "
+            "cargo build --release -p atlas-gateway"
+        )
     cockpit_ok, cockpit_message = cockpit_control.start()
     typer.echo(cockpit_message)
+
+    # FreeLLMAPI is an optional external sidecar (D-015) — start it only if
+    # gateway+cockpit are healthy, and never fail `atlas up` when it's absent.
+    if gateway_ok and cockpit_ok:
+        _, freellmapi_message = freellmapi_control.start()
+        typer.echo(f"freellmapi: {freellmapi_message}")
+
     if not (gateway_ok and cockpit_ok):
         raise typer.Exit(1)
 

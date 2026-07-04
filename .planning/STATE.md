@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
-last_updated: "2026-07-03"
-last_activity: 2026-07-03 -- Finish-sprint implementation: 5 items landed (spacing root cause, /control merge, freellmapi control, dynamic Models, donor TUI STAGE 0)
+last_updated: "2026-07-04"
+last_activity: 2026-07-04 -- TUI Connectivity & Auth sprint complete (7/7 tasks): session-creation bug root-caused + fixed, Codex OAuth verified live, atlas up/doctor extended, atlas-terminal wired into installer, vendor-tree scrubbed clean, Go TUI settings caching added, CLI audited. Full detail: HANDOFF.md 2026-07-04 entry.
 progress:
   total_phases: 8
   completed_phases: 7
@@ -15,7 +15,56 @@ progress:
 
 # STATE — L2 ATLAS
 
-## Current Position — 2026-07-03 (late night): donor TUI STAGE 2 complete — vendored, booting, scrubbed
+## Current Position — 2026-07-04: TUI Connectivity & Auth sprint — 7/7 tasks done
+
+Full detail in `HANDOFF.md`'s 2026-07-04 entry (this is a pointer, not a
+duplicate). Summary:
+
+1. Session-creation "Creating a session failed" toast could not be
+   reproduced against a freshly-built, running gateway. Found and fixed a
+   real bug on the way: `chat.ts` emitted `session.created`, which the
+   vendored donor UI never listens for (only `session.updated` upserts new
+   sessions into the reactive store) — sessions were invisible until a later
+   event touched them.
+2. Codex OAuth import verified live end-to-end: real `~/.codex` tokens
+   imported, provider switched to `openai-codex/oauth_import`, a real
+   mission replied "pong" for real (checked `runs` table directly).
+3. `atlas up` now also boots FreeLLMAPI (non-fatal if absent) and warns on a
+   stale gateway binary; `atlas doctor` gained sidecar probes, model-registry
+   freshness, and `--json`.
+4. `atlas-terminal` build step (bun install + typecheck) added to both
+   installer scripts; new `atlas terminal status` command.
+5. Vendor-tree boundary scanner passes clean (exit 0) — removed
+   dialog-go-upsell.tsx, the dead `/share` command + its orphaned i18n tips,
+   fixed 33 theme `$schema` refs + `tui-migrate.ts`, fixed 2 stray branding
+   leaks the item list didn't name (a `mimo -s` string, dead opencode-zen
+   provider descriptions), extended the forbidden-terms list with
+   `opencode.ai` so this class of regression is caught mechanically now.
+6. Go TUI: `fetchSettings()` parallelized (plain `sync.WaitGroup`, no new
+   dep); `Models()` gained a 5-min TTL cache invalidated by `PatchConfig`;
+   2 new tests prove both behaviors.
+7. CLI audit + npm package status doc (`docs/plans/2026-07-04-cli-audit-and-
+   npm-package-status.md`) — found a real mixed `--json` convention across
+   command groups (not fixed, real refactor scope); confirmed the npm
+   packaging plan (WS-B) needs no new design, just references this
+   session's staleness-check pattern and atlas-terminal's new installer
+   integration.
+
+Full verification green: bun test 25/25, tsc clean, `--smoke` live; pytest
+733/2; go test 98/3 packages, go vet clean; `atlas up`/`atlas doctor`/
+`atlas auth import-codex` all live-verified against the real gateway.
+
+Retirement gate (Go TUI vs atlas-terminal as default `atlas`) is still NOT
+decided — unaffected by this session, remains the operator's call. Residual
+known issues: mixed `--json` CLI convention; `/v1/config` effective-status
+and `auth doctor` misreport `oauth_import` as missing auth (only `provider
+status` gets it right).
+
+Next: operator UAT of `bun run dev` in a real interactive terminal (this
+session's headless harness couldn't fully replicate one) to close the
+retirement-gate decision.
+
+## Previous Position — 2026-07-03 (late night): donor TUI STAGE 2 complete — vendored, booting, scrubbed
 
 Three commits (`4e7478a2`, `1432e5ae`, `1c606dcf`):
 

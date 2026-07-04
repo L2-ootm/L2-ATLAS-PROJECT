@@ -64,8 +64,6 @@ export const dict = {
     "Используйте {highlight}/undo{/highlight}, чтобы отменить последнее сообщение и изменения файлов",
   "tui.tips.redo":
     "Используйте {highlight}/redo{/highlight}, чтобы вернуть ранее отменённые сообщения и изменения",
-  "tui.tips.share":
-    "Выполните {highlight}/share{/highlight}, чтобы получить публичную ссылку на диалог на opencode.ai",
   "tui.tips.drag_drop": "Перетащите изображения или PDF в терминал, чтобы добавить их в контекст",
   "tui.tips.paste_image":
     "Нажмите {highlight}Ctrl+V{/highlight}, чтобы вставить изображение из буфера обмена в строку ввода",
@@ -211,12 +209,6 @@ export const dict = {
     'Установите {highlight}"mcp_*": false{/highlight}, чтобы отключить все инструменты конкретного MCP-сервера',
   "tui.tips.tool_override":
     "Переопределяйте глобальные настройки инструментов в конфигурации каждого агента",
-  "tui.tips.share_auto":
-    'Установите {highlight}"share": "auto"{/highlight}, чтобы автоматически делиться всеми сессиями',
-  "tui.tips.share_disabled":
-    'Установите {highlight}"share": "disabled"{/highlight}, чтобы запретить любой шаринг сессий',
-  "tui.tips.unshare":
-    "Выполните {highlight}/unshare{/highlight}, чтобы убрать сессию из публичного доступа",
   "tui.tips.doom_loop":
     "Разрешение {highlight}doom_loop{/highlight} предотвращает бесконечные циклы вызова инструментов",
   "tui.tips.external_dir":
@@ -384,13 +376,10 @@ export const dict = {
   "tui.command.app.toggle.diffwrap.enable": "Включить перенос строк в diff",
 
   // Session-level commands
-  "tui.command.session.share.title": "Поделиться сессией",
-  "tui.command.session.share.copy_link": "Скопировать ссылку",
   "tui.command.session.rename.title": "Переименовать сессию",
   "tui.command.session.timeline.title": "Перейти к сообщению",
   "tui.command.session.fork.title": "Разветвить сессию",
   "tui.command.session.compact.title": "Сжать сессию",
-  "tui.command.session.unshare.title": "Отменить публикацию",
   "tui.command.session.undo.title": "Отменить предыдущее сообщение",
   "tui.command.session.redo.title": "Повторить",
   "tui.command.session.sidebar.show": "Показать боковую панель",

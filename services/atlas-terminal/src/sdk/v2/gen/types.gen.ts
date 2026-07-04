@@ -1902,7 +1902,7 @@ export type Config = {
   logLevel?: LogLevel
   server?: ServerConfig
   /**
-   * Command configuration, see https://opencode.ai/docs/commands
+   * Command configuration (custom slash commands)
    */
   command?: {
     [key: string]: {
@@ -1998,7 +1998,7 @@ export type Config = {
     [key: string]: AgentConfig | undefined
   }
   /**
-   * Agent configuration, see https://opencode.ai/docs/agents
+   * Agent configuration (build/plan/explore roles)
    */
   agent?: {
     plan?: AgentConfig

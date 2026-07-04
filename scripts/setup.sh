@@ -93,6 +93,18 @@ else
   echo "Skipping cockpit build (npm not found)."
 fi
 
+# Install + typecheck atlas-terminal (donor-based TUI surface, not yet the
+# default `atlas tui` entry — see STAGE 3 retirement gate). Skipped gracefully
+# when bun is absent, same as the go/cargo/npm steps above; like those steps,
+# a typecheck failure here aborts the rest of install (set -e).
+atlas_terminal="$root/services/atlas-terminal"
+if command -v bun >/dev/null 2>&1 && [ -d "$atlas_terminal" ]; then
+  echo "Installing + typechecking atlas-terminal ($atlas_terminal)"
+  (cd "$atlas_terminal" && bun install && bun run typecheck)
+else
+  echo "Skipping atlas-terminal build (bun not found)."
+fi
+
 # Bootstrap / migrate the DB (idempotent, non-destructive).
 "$atlas_exe" db init
 

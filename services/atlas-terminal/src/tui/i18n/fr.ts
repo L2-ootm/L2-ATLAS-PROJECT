@@ -59,8 +59,6 @@ export const dict = {
     "Exécutez {highlight}/background{/highlight} pour définir une image personnalisée comme fond d'écran d'accueil",
   "tui.tips.undo": "Utilisez {highlight}/undo{/highlight} pour annuler le dernier message et ses modifications",
   "tui.tips.redo": "Utilisez {highlight}/redo{/highlight} pour rétablir des messages et modifications précédemment annulés",
-  "tui.tips.share":
-    "Exécutez {highlight}/share{/highlight} pour créer un lien public vers votre conversation sur opencode.ai",
   "tui.tips.drag_drop": "Glissez-déposez des images ou PDF dans le terminal pour les ajouter au contexte",
   "tui.tips.paste_image":
     "Appuyez sur {highlight}Ctrl+V{/highlight} pour coller des images du presse-papiers dans l'invite",
@@ -195,12 +193,6 @@ export const dict = {
     'Définissez {highlight}"mcp_*": false{/highlight} pour désactiver tous les outils d\'un serveur MCP',
   "tui.tips.tool_override":
     "Remplacez les paramètres globaux des outils dans la configuration de chaque agent",
-  "tui.tips.share_auto":
-    'Définissez {highlight}"share": "auto"{/highlight} pour partager automatiquement toutes les sessions',
-  "tui.tips.share_disabled":
-    'Définissez {highlight}"share": "disabled"{/highlight} pour empêcher tout partage de session',
-  "tui.tips.unshare":
-    "Exécutez {highlight}/unshare{/highlight} pour retirer une session de l'accès public",
   "tui.tips.doom_loop":
     "La permission {highlight}doom_loop{/highlight} prévient les boucles infinies d'appels d'outils",
   "tui.tips.external_dir":
@@ -366,13 +358,10 @@ export const dict = {
   "tui.command.app.toggle.diffwrap.enable": "Activer le retour à la ligne des diffs",
 
   // Session-level commands
-  "tui.command.session.share.title": "Partager la session",
-  "tui.command.session.share.copy_link": "Copier le lien de partage",
   "tui.command.session.rename.title": "Renommer la session",
   "tui.command.session.timeline.title": "Aller à un message",
   "tui.command.session.fork.title": "Dupliquer la session",
   "tui.command.session.compact.title": "Compacter la session",
-  "tui.command.session.unshare.title": "Annuler le partage",
   "tui.command.session.undo.title": "Annuler le message précédent",
   "tui.command.session.redo.title": "Rétablir",
   "tui.command.session.sidebar.show": "Afficher la barre latérale",
