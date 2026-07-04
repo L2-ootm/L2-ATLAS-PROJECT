@@ -169,11 +169,25 @@ the "which binaries go in the manifest" question and the Bun-compile CI job unti
 
 ## 7. Sequencing / next steps
 
-1. Stand up `bin/atlas.js` launcher + `~/.atlas/versions|current` mechanism against a
-   **manually staged** local bundle first (no CI/publishing yet) — proves the
-   install/update/rollback/uninstall mechanics end-to-end without blocking on release
-   infrastructure.
-2. Wire `atlas doctor` checksum/manifest checks.
+1. **DONE (2026-07-03)** — `packages/atlas-cli/` stands up the launcher mechanics against
+   a manually staged local bundle (no CI/publishing yet): `bin/atlas.js` +
+   `src/{paths,manifest,installState,commands}.js` implement `install --from <dir>
+   --version X`, `update`, `rollback [--to X]`, `uninstall [--purge]`, `doctor`,
+   `versions` against `~/.atlas/versions/<v>/` + a plain-text `current` pointer file
+   (chosen over a symlink/junction — junctions need elevation for some operations on
+   Windows, and a pointer file makes rollback a single atomic write on every platform).
+   7 unit tests (`node --test test/commands.test.js`) plus a manual end-to-end run
+   (install → doctor → update → doctor → rollback → doctor → uninstall → doctor) all
+   pass. Bin name is `atlas-cli` for now, not `atlas` — this machine already has the
+   Python `atlas` command on PATH from `install-atlas-cli.ps1`; finalize the real `atlas`
+   name (and the coexistence/handoff story) once this package is ready to actually
+   replace that installer, not before.
+   **Not yet built**: the real release-fetch path (download + checksum-verify a
+   published bundle for `--version X --channel stable`) — `install`/`update` currently
+   only accept `--from <local dir>`, exactly matching this step's own scope ("prove the
+   mechanics... without blocking on release infrastructure").
+2. Wire `atlas doctor` checksum/manifest checks. **DONE** — `manifest.js`'s
+   `buildManifest`/`verifyManifest`; covered by the checksum-drift test case.
 3. Write the clean-machine runbook + verification script; dry-run it against the local
    staged bundle.
 4. Once STAGE 3 (WS-A) reports its TUI decision, finalize the manifest's binary list and
