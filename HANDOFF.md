@@ -64,22 +64,42 @@
      the browser/terminal console per the toast's own instruction (mission analysis notes
      it may be stale, predating STAGE 2c's identity scrub commit).
   Verified after each change: `bunx tsc --noEmit` clean, `bun test` (10/10 pass),
-  `bun run smoke` boots. No commits made yet — working tree has the above uncommitted.
+  `bun run smoke` boots. Committed as `6568574e`.
+  4. **DONE** (commit `430cd86`) — Go TUI vs donor feature-gap audit (via Explore agent)
+     found only two real gaps: **Settings** (no config-write path at all — donor's
+     `dialog-model.tsx` calls `global.config.update` but the adapter had no PATCH
+     `/config` route) and **model readiness classification** (Go TUI's
+     live/unconfigured/degraded/mock verdict had no analog). Permission bridge
+     (`chat.ts`'s pollPermissions/replyPermission + `routes/session/permission.tsx`) was
+     already a superset of the Go overlay; the idle logo shimmer in `logo.tsx` already
+     covers idle-animation intent (mechanically different from `starfield.go` but not a
+     regression). Ported: `atlasFetch.ts` gained `/atlas/config` (GET/PATCH),
+     `/atlas/auth/providers`, `/atlas/auth/codex/import`, `/atlas/provider/status` —
+     forwarding 1:1 onto the exact gateway routes `internal/client/client.go` already
+     uses (`GET/PATCH /v1/config`, `POST /v1/auth/*`, `GET /v1/provider/status`) — no new
+     gateway work needed. `src/tui/util/readiness.ts` ports `readiness.go`'s
+     `readinessFor`/`mockAllowed` verbatim (test cases mirrored from
+     `readiness_test.go`). New `/settings` command (`dialog-atlas-settings.tsx`) built
+     from the donor's existing `DialogSelect`/`DialogPrompt` primitives — provider,
+     model, auth mode, base URL, API key, reasoning effort. **Scope cut**: the Go TUI's
+     post-save connectivity probe (`startProbe`/`archiveProbe`, an ephemeral
+     mission+SSE-classify round trip) was not ported — save + a `/provider/status`
+     refresh gives the same readiness signal without the extra mission plumbing. Revisit
+     if operator UAT shows the probe step is missed.
+  Verified: `bunx tsc --noEmit` clean, `bun test` 18/18, `bun run smoke` boots.
 - **Next action — STAGE 3 (remaining):**
   1. Operator UAT: `cd services/atlas-terminal && bun run dev` in Windows Terminal
-     (mouse, dialogs, model selector, prompt loop against the live gateway) — confirms
-     the branding fix and re-checks the session-creation toast live.
+     (mouse, dialogs, model selector, prompt loop, new `/settings` dialog against the
+     live gateway) — confirms the branding fix, exercises the new settings write path,
+     and re-checks the session-creation toast live.
   2. Extend `scripts/tui-boundary-check.ps1` to services/atlas-terminal (catch future
      vendor-tree scrub regressions mechanically).
-  3. Port Go TUI's working feature logic (settings, model probing, permission bridge,
-     starfield-equivalent idle animation) into the donor presentation shell — operator's
-     explicit framing: reuse donor *presentation*, keep/port ATLAS's own *functions*
-     rather than leaving those areas as bootstrap stubs.
-  4. Identify and reuse worthwhile MimoCode command surface (distill, dream, deep
+  3. Identify and reuse worthwhile MimoCode command surface (distill, dream, deep
      research) wired to ATLAS backend equivalents, distinct from the account/login
      surface already removed.
-  5. Parity audit vs Go TUI (starfield idle, modes, workflows, /freellmapi, settings
-     overlay) → default-surface decision + Go TUI retirement gate (tested rollback).
+  4. Parity audit vs Go TUI (workflows, /freellmapi) → default-surface decision + Go TUI
+     retirement gate (tested rollback). Settings/readiness/permissions/idle are now at
+     parity per the audit above.
   Then WS-D (`atlas up` full topology), WS-C (CLI polish), WS-B (installer — plan drafted
   at `docs/plans/2026-07-03-wsb-installer-plan.md`, scaffolding not yet started), then an
   entropy-reduction pass on the working tree, per
