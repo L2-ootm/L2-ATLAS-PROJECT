@@ -36,15 +36,53 @@
   composer renders, live provider in status), identity scrubbed (flags/aliases/branding/
   i18n). tsc clean, 9 bun tests, smoke + headless boot verified. Operator ratifications
   applied: get_key.py deleted; freellmapi status api_key exposure kept (documented).
-- **Next action — STAGE 3:**
+- **STAGE 3 progress (2026-07-03, later)**:
+  1. **DONE** — vendor-tree branding scrub: `src/vendor/opencode/cli/logo.ts` still had
+     the raw MIMO/CODE block-letter wordmark (STAGE 2's scrub only covered `src/tui/**`,
+     not `src/vendor/opencode/**`). Replaced with the same ATLAS wordmark font already
+     used by `services/atlas-tui/internal/tui/theme.go` (`unicodeLogoRows`), so both TUI
+     surfaces share one identity. Also fixed `MC |`/`OC |` terminal-title prefixes and the
+     `/doc` command's external `mimo.xiaomi.com` link (now opens the repo README).
+     Note: `providerID: "xiaomi"` / model name `mimo-v2.5` are real upstream identifiers
+     for the Xiaomi MiMo model family used by the freellmapi route — NOT branding, left
+     untouched.
+  2. **DONE** — removed `dialog-mimo-login.tsx` and its `provider.login`/`provider.connect`/
+     `provider.logout` command wiring in `app.tsx`, plus orphaned `tui.dialog.login.*` /
+     `tui.command.provider.{login,connect,logout}.title` / `tui.command.logout.toast` i18n
+     keys across all 7 locales. This whole feature called `oauth.authorize`, `auth.remove`,
+     `auth.set`, `instance.dispose` — none of which the ATLAS adapter (`atlasFetch.ts`)
+     implements (all 501 `notImplemented`), so it was already dead/broken over the ATLAS
+     gateway, not just donor-branded. Consistent with the "ATLAS keeps
+     provider/auth/config authority" guardrail — no second identity system was added.
+  3. **DONE** — added `test/sdkClient.test.ts`: exercises `createOpencodeClient` (the real
+     client `src/tui/context/sdk.tsx` builds) through the adapter, asserting
+     `session.create`/`session.list` return no client-level error. Closes the gap where
+     the existing chat-loop tests only drove `handle.fetch` directly, not the generated
+     SDK client the TUI actually calls. The previously-reported "Creating a session
+     failed" toast (2026-07-03 screenshot) could NOT be reproduced against current code —
+     both the raw adapter and the SDK v2 client succeed in isolation; if it recurs, check
+     the browser/terminal console per the toast's own instruction (mission analysis notes
+     it may be stale, predating STAGE 2c's identity scrub commit).
+  Verified after each change: `bunx tsc --noEmit` clean, `bun test` (10/10 pass),
+  `bun run smoke` boots. No commits made yet — working tree has the above uncommitted.
+- **Next action — STAGE 3 (remaining):**
   1. Operator UAT: `cd services/atlas-terminal && bun run dev` in Windows Terminal
-     (mouse, dialogs, model selector, prompt loop against the live gateway).
-  2. Remove donor account-login feature (`dialog-mimo-login.tsx`, mimo_login/mimo_free
-     i18n keys) and its command wiring.
-  3. Extend `scripts/tui-boundary-check.ps1` to services/atlas-terminal.
-  4. Parity audit vs Go TUI (starfield idle, modes, workflows, /freellmapi, settings
+     (mouse, dialogs, model selector, prompt loop against the live gateway) — confirms
+     the branding fix and re-checks the session-creation toast live.
+  2. Extend `scripts/tui-boundary-check.ps1` to services/atlas-terminal (catch future
+     vendor-tree scrub regressions mechanically).
+  3. Port Go TUI's working feature logic (settings, model probing, permission bridge,
+     starfield-equivalent idle animation) into the donor presentation shell — operator's
+     explicit framing: reuse donor *presentation*, keep/port ATLAS's own *functions*
+     rather than leaving those areas as bootstrap stubs.
+  4. Identify and reuse worthwhile MimoCode command surface (distill, dream, deep
+     research) wired to ATLAS backend equivalents, distinct from the account/login
+     surface already removed.
+  5. Parity audit vs Go TUI (starfield idle, modes, workflows, /freellmapi, settings
      overlay) → default-surface decision + Go TUI retirement gate (tested rollback).
-  Then WS-D (`atlas up` full topology), WS-C (CLI polish), WS-B (installer) per
+  Then WS-D (`atlas up` full topology), WS-C (CLI polish), WS-B (installer — plan drafted
+  at `docs/plans/2026-07-03-wsb-installer-plan.md`, scaffolding not yet started), then an
+  entropy-reduction pass on the working tree, per
   `docs/plans/2026-07-03-finish-mission-analysis-and-execution-order.md`.
 
 ## Current state

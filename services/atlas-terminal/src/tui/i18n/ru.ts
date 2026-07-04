@@ -304,9 +304,6 @@ export const dict = {
   "tui.command.variant.cycle.title": "Цикл вариантов",
   "tui.command.variant.list.title": "Сменить вариант модели",
   "tui.command.agent.cycle.reverse.title": "Цикл агентов (в обратном порядке)",
-  "tui.command.provider.login.title": "Войти",
-  "tui.command.provider.connect.title": "Подключить провайдера",
-  "tui.command.provider.logout.title": "Выйти",
   "tui.command.console.org.switch.title": "Сменить организацию",
   "tui.command.opencode.status.title": "Посмотреть статус",
   "tui.command.theme.switch.title": "Сменить тему",
@@ -385,7 +382,6 @@ export const dict = {
   "tui.command.app.toggle.animations.enable": "Включить анимации",
   "tui.command.app.toggle.diffwrap.disable": "Отключить перенос строк в diff",
   "tui.command.app.toggle.diffwrap.enable": "Включить перенос строк в diff",
-  "tui.command.logout.toast": "Вы вышли из аккаунта",
 
   // Session-level commands
   "tui.command.session.share.title": "Поделиться сессией",
@@ -468,17 +464,6 @@ export const dict = {
   "tui.command.plugins.install.title": "Установить плагин",
 
   // ATLAS Auto (free) — TUI login dialog
-  "tui.dialog.login.mimo_free": "ATLAS Auto (free)",
-  "tui.dialog.login.mimo_free.desc": "Анонимный бесплатный канал — вход не требуется",
-  "tui.dialog.login.mimo_free.success": "ATLAS Auto (free) готов — модель по умолчанию: mimo/mimo-auto",
-  "tui.dialog.login.mimo_free.unavailable": "Провайдер ATLAS Auto (free) не загружен",
-  "tui.dialog.login.flow.title": "Вход в ATLAS",
-  "tui.dialog.login.flow.placeholder": "Вставьте код (или дождитесь обратного вызова браузера)",
-  "tui.dialog.login.flow.busy": "Вход...",
-  "tui.dialog.login.flow.manual_hint": "Браузер не открылся? Нажмите на ссылку ниже, чтобы скопировать:",
-  "tui.dialog.login.flow.waiting": "Ожидание авторизации в браузере...",
-  "tui.dialog.login.flow.invalid_code": "Неверный код, попробуйте ещё раз",
-  "tui.dialog.login.flow.copied": "Скопировано",
 
   // CLI: providers command (auth login)
   "cli.providers.select": "Выберите провайдера",

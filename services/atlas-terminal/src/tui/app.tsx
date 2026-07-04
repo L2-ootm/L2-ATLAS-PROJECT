@@ -18,7 +18,6 @@ import { win32DisableProcessedInput, win32InstallCtrlCGuard } from "./win32"
 import { Flag } from "@/flag/flag"
 import semver from "semver"
 import { DialogProvider, useDialog } from "@tui/ui/dialog"
-import { DialogMimoLogin } from "@tui/component/dialog-mimo-login"
 import { ErrorComponent } from "@tui/component/error-component"
 import { PluginRouteMissing } from "@tui/component/plugin-route-missing"
 import { ProjectProvider } from "@tui/context/project"
@@ -61,6 +60,7 @@ import { DialogSelect } from "./ui/dialog-select"
 import { Provider } from "@/provider"
 import { ArgsProvider, useArgs, type Args } from "./context/args"
 import open from "open"
+import path from "node:path"
 import { Process } from "@/util"
 import { PromptRefProvider, usePromptRef } from "./context/prompt"
 import { TuiConfigProvider, useTuiConfig } from "./context/tui-config"
@@ -342,12 +342,12 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
       }
 
       const title = session.title.length > 40 ? session.title.slice(0, 37) + "..." : session.title
-      renderer.setTerminalTitle(`MC | ${title}`)
+      renderer.setTerminalTitle(`ATLAS | ${title}`)
       return
     }
 
     if (route.data.type === "plugin") {
-      renderer.setTerminalTitle(`OC | ${route.data.id}`)
+      renderer.setTerminalTitle(`ATLAS | ${route.data.id}`)
     }
   })
 
@@ -606,44 +606,6 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
         local.agent.move(-1)
       },
     },
-    {
-      title: t("tui.command.provider.login.title"),
-      value: "provider.login",
-      slash: {
-        name: "login",
-      },
-      onSelect: () => {
-        dialog.replace(() => <DialogMimoLogin />)
-      },
-      category: "provider",
-    },
-    {
-      title: t("tui.command.provider.connect.title"),
-      value: "provider.connect",
-      suggested: !connected(),
-      slash: {
-        name: "connect",
-      },
-      onSelect: () => {
-        dialog.replace(() => <DialogMimoLogin />)
-      },
-      category: "provider",
-    },
-    {
-      title: t("tui.command.provider.logout.title"),
-      value: "provider.logout",
-      slash: {
-        name: "logout",
-      },
-      onSelect: async () => {
-        await sdk.client.auth.remove({ providerID: "xiaomi" })
-        await sdk.client.instance.dispose()
-        await sync.bootstrap()
-        toast.show({ message: t("tui.command.logout.toast"), variant: "info" })
-        dialog.clear()
-      },
-      category: "provider",
-    },
     ...(sync.data.console_state.switchableOrgCount > 1
       ? [
           {
@@ -772,7 +734,7 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
         aliases: ["docs"],
       },
       onSelect: () => {
-        open("https://mimo.xiaomi.com/coder/docs").catch(() => {})
+        open(path.join(process.cwd(), "..", "..", "README.md")).catch(() => {})
         dialog.clear()
       },
       category: "system",
