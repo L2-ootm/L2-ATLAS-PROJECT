@@ -23,7 +23,7 @@ export type ResolvedPaths = {
  *
  * @throws if ATLAS_TUI_HOME is set but not an absolute path
  */
-export function resolveMimocodeHome(env: NodeJS.ProcessEnv = process.env): ResolvedPaths {
+export function resolveAtlasTuiHome(env: NodeJS.ProcessEnv = process.env): ResolvedPaths {
   const home = env.ATLAS_TUI_HOME
   if (home) {
     if (!path.isAbsolute(home)) {
@@ -66,7 +66,7 @@ export namespace Global {
     Service,
     Effect.gen(function* () {
       const home = process.env.HOME || process.env.USERPROFILE || os.homedir()
-      const { data, cache, config, state } = yield* Effect.sync(() => resolveMimocodeHome())
+      const { data, cache, config, state } = yield* Effect.sync(() => resolveAtlasTuiHome())
       const bin = path.join(cache, "bin")
       const log = path.join(data, "log")
 

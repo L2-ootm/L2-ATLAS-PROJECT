@@ -3,9 +3,9 @@ import path from "path"
 import os from "os"
 import { Filesystem } from "../util"
 import { Flock } from "@atlas/shared/util/flock"
-import { resolveMimocodeHome } from "@atlas/shared/global"
+import { resolveAtlasTuiHome } from "@atlas/shared/global"
 
-const { data, cache, config, state } = resolveMimocodeHome()
+const { data, cache, config, state } = resolveAtlasTuiHome()
 
 export const Path = {
   // HOME/USERPROFILE read directly because Bun caches os.homedir() at startup.
