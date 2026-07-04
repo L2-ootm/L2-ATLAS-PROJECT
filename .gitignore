@@ -1,6 +1,9 @@
 # External repo audit copies — never commit
 _EXTERNAL_REPOS/
 
+# Local debug/session docs — never commit
+.debug/
+
 # Visual brainstorming companion (local only)
 .superpowers/
 

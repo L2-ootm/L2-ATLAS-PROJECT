@@ -44,12 +44,14 @@ describe('createAtlasFetch', () => {
 		const res = await f('http://donor.local/config/providers');
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as {
-			providers: Array<{ id: string; models: Record<string, unknown> }>;
+			all: Array<{ id: string; models: Record<string, unknown> }>;
 			default: Record<string, string>;
+			connected: string[];
 		};
-		expect(body.providers).toHaveLength(1);
-		expect(Object.keys(body.providers[0]!.models)).toEqual(['gpt-5.5', 'gpt-5.4-mini']);
+		expect(body.all).toHaveLength(1);
+		expect(Object.keys(body.all[0]!.models)).toEqual(['gpt-5.5', 'gpt-5.4-mini']);
 		expect(body.default['openai-codex']).toBe('gpt-5.5');
+		expect(body.connected).toEqual(['openai-codex']);
 	});
 
 	it('serves the donor SSE channel with the connected handshake', async () => {
