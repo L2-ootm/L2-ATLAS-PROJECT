@@ -181,3 +181,41 @@ describe('ATLAS-native settings routes', () => {
 		expect(body.status).toBe('stored');
 	});
 });
+
+// FreeLLMAPI sidecar control — mirrors services/atlas-tui's /freellmapi slash command.
+function stubFreellmapiGateway(running: boolean): typeof fetch {
+	return (async (input: RequestInfo | URL, init?: RequestInit) => {
+		const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+		const path = new URL(url).pathname;
+		const method = (init?.method ?? 'GET').toUpperCase();
+		if (method === 'GET' && path === '/v1/freellmapi/status') {
+			return Response.json({ running, base_url: 'http://127.0.0.1:3001', dir: '/tmp/freellmapi', installed: true, remediation: '' });
+		}
+		if (method === 'POST' && path === '/v1/freellmapi/start') {
+			return Response.json({ ok: true, message: 'started' });
+		}
+		if (method === 'POST' && path === '/v1/freellmapi/stop') {
+			return Response.json({ ok: true, message: 'stopped' });
+		}
+		return new Response('{}', { status: 404 });
+	}) as typeof fetch;
+}
+
+describe('ATLAS-native freellmapi routes', () => {
+	it('forwards /atlas/freellmapi/status onto GET /v1/freellmapi/status', async () => {
+		const f = createAtlasFetch({ gateway: GW, fetchImpl: stubFreellmapiGateway(true) });
+		const res = await f('http://donor.local/atlas/freellmapi/status');
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { running: boolean; base_url: string };
+		expect(body.running).toBe(true);
+		expect(body.base_url).toBe('http://127.0.0.1:3001');
+	});
+
+	it('forwards /atlas/freellmapi/start and /stop onto the matching POST routes', async () => {
+		const f = createAtlasFetch({ gateway: GW, fetchImpl: stubFreellmapiGateway(false) });
+		const startRes = await f('http://donor.local/atlas/freellmapi/start', { method: 'POST' });
+		expect((await startRes.json()) as { ok: boolean; message: string }).toEqual({ ok: true, message: 'started' });
+		const stopRes = await f('http://donor.local/atlas/freellmapi/stop', { method: 'POST' });
+		expect((await stopRes.json()) as { ok: boolean; message: string }).toEqual({ ok: true, message: 'stopped' });
+	});
+});
