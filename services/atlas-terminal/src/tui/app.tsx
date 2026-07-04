@@ -29,6 +29,7 @@ import { LocalProvider, useLocal } from "@tui/context/local"
 import { DialogModel, useConnected } from "@tui/component/dialog-model"
 import { DialogMcp } from "@tui/component/dialog-mcp"
 import { DialogStatus } from "@tui/component/dialog-status"
+import { DialogAtlasSettings } from "@tui/component/dialog-atlas-settings"
 import { DialogWorktree } from "@tui/component/dialog-worktree"
 import { DialogThemeList } from "@tui/component/dialog-theme-list"
 import { DialogImageList } from "@tui/component/dialog-image-list"
@@ -632,6 +633,17 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
       },
       onSelect: () => {
         dialog.replace(() => <DialogStatus />)
+      },
+      category: "system",
+    },
+    {
+      title: "Provider settings",
+      value: "atlas.settings",
+      slash: {
+        name: "settings",
+      },
+      onSelect: () => {
+        dialog.replace(() => <DialogAtlasSettings />)
       },
       category: "system",
     },
