@@ -57,7 +57,6 @@ export const dict: Record<string, string> = {
     "Run {highlight}/background{/highlight} to set a custom image as your home background",
   "tui.tips.undo": "Use {highlight}/undo{/highlight} to revert the last message and file changes",
   "tui.tips.redo": "Use {highlight}/redo{/highlight} to restore previously undone messages and file changes",
-  "tui.tips.share": "Run {highlight}/share{/highlight} to create a public link to your conversation at opencode.ai",
   "tui.tips.drag_drop": "Drag and drop images or PDFs into the terminal to add them as context",
   "tui.tips.paste_image": "Press {highlight}Ctrl+V{/highlight} to paste images from your clipboard into the prompt",
   "tui.tips.editor":
@@ -149,9 +148,6 @@ export const dict: Record<string, string> = {
   "tui.tips.disable_tool": 'Set {highlight}"tools": {"bash": false}{/highlight} to disable specific tools',
   "tui.tips.disable_mcp_tools": 'Set {highlight}"mcp_*": false{/highlight} to disable all tools from an MCP server',
   "tui.tips.tool_override": "Override global tool settings per agent configuration",
-  "tui.tips.share_auto": 'Set {highlight}"share": "auto"{/highlight} to automatically share all sessions',
-  "tui.tips.share_disabled": 'Set {highlight}"share": "disabled"{/highlight} to prevent any session sharing',
-  "tui.tips.unshare": "Run {highlight}/unshare{/highlight} to remove a session from public access",
   "tui.tips.doom_loop": "Permission {highlight}doom_loop{/highlight} prevents infinite tool call loops",
   "tui.tips.external_dir": "Permission {highlight}external_directory{/highlight} protects files outside project",
   "tui.tips.debug_config": "Run {highlight}atlas debug config{/highlight} to troubleshoot configuration",
@@ -313,13 +309,10 @@ export const dict: Record<string, string> = {
   "tui.command.app.toggle.diffwrap.enable": "Enable diff wrapping",
 
   // Session-level commands
-  "tui.command.session.share.title": "Share session",
-  "tui.command.session.share.copy_link": "Copy share link",
   "tui.command.session.rename.title": "Rename session",
   "tui.command.session.timeline.title": "Jump to message",
   "tui.command.session.fork.title": "Fork session",
   "tui.command.session.compact.title": "Compact session",
-  "tui.command.session.unshare.title": "Unshare session",
   "tui.command.session.undo.title": "Undo previous message",
   "tui.command.session.redo.title": "Redo",
   "tui.command.session.sidebar.show": "Show sidebar",

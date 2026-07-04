@@ -52,6 +52,32 @@ def health_ok(timeout: float = 1.0) -> bool:
         return False
 
 
+def _crate_root() -> pathlib.Path | None:
+    root = MIGRATIONS_DIR.parent.parent  # infra/migrations -> infra -> repo root
+    candidate = root / "native" / "atlas-core-rs" / "crates" / "atlas-gateway"
+    return candidate if candidate.is_dir() else None
+
+
+def binary_stale() -> bool | None:
+    """True if the resolved binary predates its own Rust sources.
+
+    Mirrors go_tui._checkout_binary_stale's mtime comparison so both native
+    sidecars use the same staleness contract. Returns None when the binary or
+    the source crate can't be resolved (nothing to compare).
+    """
+    binary = gateway_binary()
+    crate = _crate_root()
+    if not binary or not crate:
+        return None
+    binary_path = pathlib.Path(binary)
+    if not binary_path.is_file():
+        return None
+    sources = [p for p in crate.rglob("*.rs") if p.is_file()]
+    if not sources:
+        return None
+    return max(p.stat().st_mtime for p in sources) > binary_path.stat().st_mtime
+
+
 def _child_env() -> dict[str, str]:
     """Env for the spawned gateway. When the operator hasn't set ATLAS_CLI and the
     interpreter path has no spaces, inject a working multi-token ATLAS_CLI (the

@@ -17,13 +17,26 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
+
+// modelsCacheTTL bounds how long a fetched model catalog is reused before
+// Models() re-queries the gateway. Settings opens Config+Models together on
+// every visit; without this, repeat visits pay a full catalog fetch each time.
+const modelsCacheTTL = 5 * time.Minute
 
 // Client talks to one ATLAS gateway base URL.
 type Client struct {
 	BaseURL string
 	http    *http.Client
+
+	modelsMu      sync.Mutex
+	cachedModels  []Model
+	modelsFetched time.Time
+	modelsGen     uint64 // bumped by invalidateModelsCache; guards against an
+	// in-flight fetch started before an invalidation overwriting the cache
+	// with stale data after that invalidation lands.
 }
 
 // APIError preserves the gateway's structured remediation for UI surfaces.
@@ -237,16 +250,53 @@ func (c *Client) PatchConfig(
 		"changes":           changes,
 	}
 	err := c.requestJSON(ctx, http.MethodPatch, "/v1/config", body, &snapshot)
+	if err == nil {
+		c.invalidateModelsCache()
+	}
 	return snapshot, err
 }
 
-// Models lists the shared model catalog exposed by the gateway.
+// Models lists the shared model catalog exposed by the gateway, cached for
+// modelsCacheTTL. PatchConfig invalidates the cache (a provider/model change
+// can change which entries are active).
 func (c *Client) Models(ctx context.Context) ([]Model, error) {
+	c.modelsMu.Lock()
+	if c.cachedModels != nil && time.Since(c.modelsFetched) < modelsCacheTTL {
+		// Copy out: callers that sort/filter the returned slice in place must
+		// not corrupt the shared cache backing array for other callers within
+		// the TTL window.
+		models := append([]Model(nil), c.cachedModels...)
+		c.modelsMu.Unlock()
+		return models, nil
+	}
+	gen := c.modelsGen
+	c.modelsMu.Unlock()
+
 	var env modelsEnvelope
 	if err := c.getJSON(ctx, "/v1/models", &env); err != nil {
 		return nil, err
 	}
+
+	c.modelsMu.Lock()
+	// Only commit if no invalidation happened while this fetch was in flight —
+	// otherwise a slow pre-invalidation response would resurrect stale data.
+	// Cache stores its own copy so a caller mutating the returned slice in
+	// place can't corrupt it for the next cache hit.
+	if c.modelsGen == gen {
+		c.cachedModels = append([]Model(nil), env.Models...)
+		c.modelsFetched = time.Now()
+	}
+	c.modelsMu.Unlock()
 	return env.Models, nil
+}
+
+// invalidateModelsCache forces the next Models() call to re-fetch, and fences
+// off any fetch already in flight from a stale write after this point.
+func (c *Client) invalidateModelsCache() {
+	c.modelsMu.Lock()
+	c.cachedModels = nil
+	c.modelsGen++
+	c.modelsMu.Unlock()
 }
 
 // StoreAPIKey crosses the loopback HTTP boundary once; the gateway then sends

@@ -1202,7 +1202,7 @@ export type Config = {
     diff_style?: "auto" | "stacked"
   }
   /**
-   * Command configuration, see https://opencode.ai/docs/commands
+   * Command configuration (custom slash commands)
    */
   command?: {
     [key: string]: {
@@ -1259,7 +1259,7 @@ export type Config = {
     [key: string]: AgentConfig | undefined
   }
   /**
-   * Agent configuration, see https://opencode.ai/docs/agent
+   * Agent configuration (build/plan/explore roles)
    */
   agent?: {
     plan?: AgentConfig

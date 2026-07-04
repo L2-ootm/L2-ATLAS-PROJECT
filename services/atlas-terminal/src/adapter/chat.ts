@@ -135,7 +135,9 @@ export class ChatAdapter {
 		};
 		this.sessions.set(session.id, session);
 		this.messages.set(session.id, []);
-		this.bus.emit('session.created', { info: session });
+		// Donor sync.tsx has no 'session.created' case — it treats 'session.updated'
+		// as the single upsert event (insert-if-missing) for both create and update.
+		this.bus.emit('session.updated', { info: session });
 		return session;
 	}
 

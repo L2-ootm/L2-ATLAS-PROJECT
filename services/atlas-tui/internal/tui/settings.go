@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -230,12 +231,28 @@ func (f settingsForm) view(width int) string {
 
 func (m model) fetchSettings() tea.Cmd {
 	return func() tea.Msg {
-		snapshot, err := m.c.Config(context.Background())
-		if err != nil {
-			return settingsLoadedMsg{err: err}
+		ctx := context.Background()
+		var (
+			snapshot  client.ConfigSnapshot
+			models    []client.Model
+			cfgErr    error
+			modelsErr error
+			wg        sync.WaitGroup
+		)
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			snapshot, cfgErr = m.c.Config(ctx)
+		}()
+		go func() {
+			defer wg.Done()
+			models, modelsErr = m.c.Models(ctx)
+		}()
+		wg.Wait()
+		if cfgErr != nil {
+			return settingsLoadedMsg{err: cfgErr}
 		}
-		models, err := m.c.Models(context.Background())
-		return settingsLoadedMsg{snapshot: snapshot, models: models, err: err}
+		return settingsLoadedMsg{snapshot: snapshot, models: models, err: modelsErr}
 	}
 }
 

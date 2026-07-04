@@ -240,7 +240,7 @@ describe('STAGE 1 chat loop', () => {
 			text += decoder.decode(value, { stream: true });
 		}
 		expect(text).toContain('server.connected');
-		expect(text).toContain('session.created');
+		expect(text).toContain('session.updated');
 		expect(text).toContain('message.part.updated');
 		await reader.cancel();
 	});
