@@ -118,12 +118,37 @@
   `/dream` `/distill` `/goal` `/deep-research` (new), and confirm the branding fix and
   the previously-reported "Creating a session failed" toast (unreproduced against
   current code in this session's testing).
-- **Next action:** operator UAT (above) → retirement-gate decision → then WS-D (`atlas
-  up` full topology), WS-C (CLI polish), and WS-B's remaining installer steps
-  (`docs/plans/2026-07-03-wsb-installer-plan.md` §7 steps 3-6: clean-machine runbook,
-  the TUI-binary-manifest decision gated on the retirement call, real CI
-  publishing), per
-  `docs/plans/2026-07-03-finish-mission-analysis-and-execution-order.md`.
+- **Operator UAT (2026-07-03, live `bun run dev` against Windows Terminal)** —
+  screenshot evidence:
+  1. **Branding fix confirmed live**: clean ATLAS wordmark renders (violet/orange,
+     matching the Go TUI's font), no MIMO/CODE text anywhere. Status line correctly
+     shows `Native · mimo-v2.5 · freellmapi` (the real provider/model — not a leak,
+     see STAGE 3 branding-scope note above).
+  2. **"Creating a session failed" toast STILL reproduces live** on typing a prompt
+     and hitting enter, even after this session's SDK v2 client + adapter fixes. This
+     contradicts the earlier isolated testing in this same session (both the raw
+     adapter and the generated SDK v2 client succeeded standalone against a stubbed
+     gateway — see `test/sdkClient.test.ts`, `test/atlasFetch.test.ts`). The gap: those
+     tests stub the gateway; this reproduction is against the **real** ATLAS gateway
+     process. Likely next diagnostic step: open the toast's own suggested "console"
+     (browser/terminal devtools) for the actual thrown error, or check whether the
+     real gateway process was stale/not rebuilt (`cargo build --release -p
+     atlas-gateway` — the prebuilt binary going stale caused a similar-looking
+     "offline" symptom before, per [[atlas-local-run-recipe]]) or whether `atlas db
+     init` / surface-session bootstrap has a real-gateway-only failure mode the stub
+     doesn't model. **Not yet fixed — next session's first diagnostic target.**
+  Retirement-gate decision: still pending on the operator (branding + settings/
+  readiness/commands parity look good live; the session-creation bug blocks a clean
+  go/no-go until root-caused).
+- **Next action (next session):**
+  1. Root-cause "Creating a session failed" against the **live** gateway (not a stub) —
+     start with the gateway's own logs/console output at the moment of failure.
+  2. Once fixed: re-run operator UAT, then the retirement-gate decision.
+  3. Then WS-D (`atlas up` full topology), WS-C (CLI polish), and WS-B's remaining
+     installer steps (`docs/plans/2026-07-03-wsb-installer-plan.md` §7 steps 3-6:
+     clean-machine runbook, the TUI-binary-manifest decision gated on the retirement
+     call, real CI publishing), per
+     `docs/plans/2026-07-03-finish-mission-analysis-and-execution-order.md`.
 
 ## Current state
 
