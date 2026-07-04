@@ -87,22 +87,42 @@
      refresh gives the same readiness signal without the extra mission plumbing. Revisit
      if operator UAT shows the probe step is missed.
   Verified: `bunx tsc --noEmit` clean, `bun test` 18/18, `bun run smoke` boots.
-- **Next action — STAGE 3 (remaining):**
-  1. Operator UAT: `cd services/atlas-terminal && bun run dev` in Windows Terminal
-     (mouse, dialogs, model selector, prompt loop, new `/settings` dialog against the
-     live gateway) — confirms the branding fix, exercises the new settings write path,
-     and re-checks the session-creation toast live.
-  2. Extend `scripts/tui-boundary-check.ps1` to services/atlas-terminal (catch future
-     vendor-tree scrub regressions mechanically).
-  3. Identify and reuse worthwhile MimoCode command surface (distill, dream, deep
-     research) wired to ATLAS backend equivalents, distinct from the account/login
-     surface already removed.
-  4. Parity audit vs Go TUI (workflows, /freellmapi) → default-surface decision + Go TUI
-     retirement gate (tested rollback). Settings/readiness/permissions/idle are now at
-     parity per the audit above.
-  Then WS-D (`atlas up` full topology), WS-C (CLI polish), WS-B (installer — plan drafted
-  at `docs/plans/2026-07-03-wsb-installer-plan.md`, scaffolding not yet started), then an
-  entropy-reduction pass on the working tree, per
+- **STAGE 3 parity audit — CONCLUSION (2026-07-03, later)**: feature-for-feature vs
+  services/atlas-tui (the current working `atlas tui`):
+  - Settings, model readiness, permission bridge, idle animation: **at parity**
+    (settings/readiness ported this session; permissions/idle were already covered —
+    see the earlier "STAGE 3 progress" entry above).
+  - Built-in slash commands (init/review/dream/distill/goal/deep-research): **at
+    parity** — both TUIs now execute all six for real (donor side wired this session;
+    commit `f4bfa43`).
+  - FreeLLMAPI sidecar control (status/start/stop): **at parity** — was the one real
+    gap the audit found; closed in commit `cea05c6`.
+  - Workflows (`ATLAS_TUI_EXPERIMENTAL_WORKFLOW_TOOL`): experimental/flagged on both
+    sides, not a blocking gap either direction.
+  - Branding/vendor-tree scrub: swept (STAGE 2c + this session's logo.ts/app.tsx fixes)
+    and now mechanically guarded (`scripts/scan-atlas-terminal-boundary.ps1`).
+  **Flagged but NOT fixed this session** (found during the audit, out of scope for a
+  parity pass — product decisions, not bugs): `dialog-go-upsell.tsx` and the `/share`
+  command still reference `opencode.ai` (donor's own paid-upsell/share-hosting
+  product — currently dead code, `/share`'s backend route is unimplemented in the
+  adapter, so nothing is actually sent there); `tui-migrate.ts`'s `TUI_SCHEMA_URL`
+  points at `https://opencode.ai/tui.json` for TUI-config-schema migration; ~30 theme
+  JSON files carry a `$schema: https://opencode.ai/theme.json` reference (editor
+  tooling hint only, not user-facing). None of these block a retirement decision, but
+  they're real remaining vendor-tree surface if a future scrub pass runs.
+  **Retirement gate: NOT decided.** Per this file's own guardrail ("do not mark the
+  sprint complete without explicit verification and operator UAT"), whether
+  `atlas tui` actually switches to atlas-terminal is the operator's call, not something
+  claimed here. Recommended UAT before deciding: `cd services/atlas-terminal && bun run
+  dev` — exercise the prompt loop, `/settings` (new), `/freellmapi-status` (new),
+  `/dream` `/distill` `/goal` `/deep-research` (new), and confirm the branding fix and
+  the previously-reported "Creating a session failed" toast (unreproduced against
+  current code in this session's testing).
+- **Next action:** operator UAT (above) → retirement-gate decision → then WS-D (`atlas
+  up` full topology), WS-C (CLI polish), and WS-B's remaining installer steps
+  (`docs/plans/2026-07-03-wsb-installer-plan.md` §7 steps 3-6: clean-machine runbook,
+  the TUI-binary-manifest decision gated on the retirement call, real CI
+  publishing), per
   `docs/plans/2026-07-03-finish-mission-analysis-and-execution-order.md`.
 
 ## Current state
