@@ -123,6 +123,18 @@ async function handleAtlasProviderStatus(gw: string, f: typeof fetch): Promise<R
 }
 
 /**
+ * FreeLLMAPI sidecar control — mirrors services/atlas-tui's `/freellmapi
+ * status|start|stop` slash command (internal/client's FreellmapiStatus/
+ * FreellmapiStart/FreellmapiStop), the one real gap the parity audit found.
+ */
+async function handleAtlasFreellmapi(gw: string, f: typeof fetch, action: 'status' | 'start' | 'stop'): Promise<Response> {
+	const method = action === 'status' ? 'GET' : 'POST';
+	const res = await f(`${gw}/v1/freellmapi/${action}`, method === 'POST' ? { method, headers: { 'content-type': 'application/json' }, body: '{}' } : undefined);
+	const payload = await res.json().catch(() => ({}));
+	return json(payload, res.status);
+}
+
+/**
  * GET /config/providers — donor shape: providers with their model maps.
  * Projected from the ATLAS model registry + active provider resolution.
  */
@@ -301,6 +313,9 @@ export function createAtlasFetchHandle(opts: AtlasFetchOptions): AtlasFetchHandl
 			if (method === 'POST' && path === '/atlas/auth/codex/import') return handleAtlasAuthCodexImport(gw, f);
 			if (method === 'GET' && path === '/atlas/provider/status') return handleAtlasProviderStatus(gw, f);
 			if (method === 'GET' && path === '/command') return handleCommandList();
+			if (method === 'GET' && path === '/atlas/freellmapi/status') return handleAtlasFreellmapi(gw, f, 'status');
+			if (method === 'POST' && path === '/atlas/freellmapi/start') return handleAtlasFreellmapi(gw, f, 'start');
+			if (method === 'POST' && path === '/atlas/freellmapi/stop') return handleAtlasFreellmapi(gw, f, 'stop');
 
 			// ── chat loop ──
 			if (path === '/session' && method === 'POST') {

@@ -648,6 +648,44 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
       category: "system",
     },
     {
+      title: "FreeLLMAPI: check sidecar status",
+      value: "atlas.freellmapi.status",
+      slash: { name: "freellmapi-status" },
+      onSelect: async () => {
+        const res = await (sdk.fetch ?? fetch)(`${sdk.url}/atlas/freellmapi/status`)
+        const body = (await res.json().catch(() => ({}))) as { running?: boolean; base_url?: string; installed?: boolean; remediation?: string }
+        toast.show({
+          variant: res.ok && body.running ? "success" : "info",
+          message: res.ok
+            ? `FreeLLMAPI: ${body.running ? `running at ${body.base_url}` : body.installed ? "installed, not running" : body.remediation || "not installed"}`
+            : "FreeLLMAPI status check failed",
+        })
+      },
+      category: "provider",
+    },
+    {
+      title: "FreeLLMAPI: start sidecar",
+      value: "atlas.freellmapi.start",
+      slash: { name: "freellmapi-start" },
+      onSelect: async () => {
+        const res = await (sdk.fetch ?? fetch)(`${sdk.url}/atlas/freellmapi/start`, { method: "POST" })
+        const body = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string }
+        toast.show({ variant: res.ok && body.ok ? "success" : "error", message: body.message || (res.ok ? "FreeLLMAPI starting" : "failed to start FreeLLMAPI") })
+      },
+      category: "provider",
+    },
+    {
+      title: "FreeLLMAPI: stop sidecar",
+      value: "atlas.freellmapi.stop",
+      slash: { name: "freellmapi-stop" },
+      onSelect: async () => {
+        const res = await (sdk.fetch ?? fetch)(`${sdk.url}/atlas/freellmapi/stop`, { method: "POST" })
+        const body = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string }
+        toast.show({ variant: res.ok && body.ok ? "success" : "error", message: body.message || (res.ok ? "FreeLLMAPI stopped" : "failed to stop FreeLLMAPI") })
+      },
+      category: "provider",
+    },
+    {
       title: t("tui.command.worktree.list.title"),
       value: "worktree.list",
       slash: {
