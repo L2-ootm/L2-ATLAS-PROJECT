@@ -1,0 +1,24 @@
+# Forbidden terms for services/atlas-terminal (donor-vendored TUI).
+# Lines starting with # are comments; blank lines are ignored.
+#
+# Scope: literal donor-branding/product strings that must never appear in
+# ATLAS's own presentation layer or committed vendor tree — pure navigation/
+# marketing links to the donor's own product site with no functional tie to
+# ATLAS. This list deliberately excludes several xiaomimimo.com strings that
+# look similar but are NOT branding leaks:
+#   - api.xiaomimimo.com is the real Xiaomi MiMo inference/voice API host
+#     (src/tui/util/voice.ts) — freellmapi genuinely proxies to it.
+#   - platform.xiaomimimo.com appears in dialog-agreement.tsx (the required
+#     free-tier consent gate — accurate, since the free route really does
+#     proxy prompts to Xiaomi's real service) and dialog-token-plan.tsx (the
+#     real upgrade path when that real free tier rate-limits). Both are
+#     honest disclosures tied to real infrastructure ATLAS depends on, not
+#     leftover branding.
+#   - "opencode"/"xiaomi" as bare tokens are the vendored donor package
+#     namespace and the real freellmapi provider ID, respectively.
+# mimo.xiaomi.com IS banned: it was only ever a "visit our docs" navigation
+# convenience (tui/app.tsx's /doc command, already repointed to the local
+# README) with no functional dependency on the donor's site.
+MimoCode
+Mimo Code
+mimo.xiaomi.com
