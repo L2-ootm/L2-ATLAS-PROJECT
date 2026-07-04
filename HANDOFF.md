@@ -1,15 +1,24 @@
 # Handoff — L2 ATLAS Finish Sprint
 
-## Session update — 2026-07-04 (current): Provider shape fix — models crash + session investigation
+## Session update — 2026-07-04 (latest): Provider endpoint split fix + session creation investigation
 
-Two bugs reproducing live in atlas-terminal:
+**Provider shape fix (two rounds):**
 
-1. **Models crash (FIXED):** `handleProviders` returned `{ providers: [...] }` but SDK type requires `{ all: [...], connected: [...] }`. `sync.data.provider_next.all` was `undefined`, causing remeda to throw on spread in `dialog-provider.tsx`. Changed adapter to return correct shape. Updated test. 25/25 tests pass, tsc clean, smoke live.
+Round 1: `handleProviders` returned `{ providers }` but SDK expects `{ all, connected }` for `provider.list`. Fixed to return `{ all, connected }` — but this broke `config.providers` which sync.tsx reads as `providers.providers` into `store.provider`.
 
-2. **Session creation toast (INVESTIGATED):** Adapter POST /session works (200 OK through both raw fetch and SDK client). Root cause was likely stale gateway process or cascading failure from the provider shape bug. If toast persists after fix, capture `console.log` output at prompt/index.tsx:1080.
+Round 2: Split into two handlers:
+- `GET /config/providers` → `{ providers: [...], default }` → `store.provider`
+- `GET /provider` → `{ all: [...], connected: [...], default }` → `store.provider_next`
 
-Full documentation: `.debug/2026-07-04-provider-shape-fix-and-session-investigation.md`
-CLI gap analysis: `.debug/2026-07-04-cli-gap-analysis-and-next-sprint.md`
+26/26 tests pass, tsc clean, smoke live. Models dialog no longer crashes.
+
+**Session creation ("Creating a session failed") — STILL UNRESOLVED:**
+
+Adapter POST /session works in isolation (raw fetch + SDK client both return 200).
+Interactive TUI still shows the toast. Headless `--prompt` passes.
+
+Full investigation log: `.debug/2026-07-04-session-creation-failure-investigation.md`
+Next session should start by capturing the actual error object via console.error at prompt/index.tsx:1080.
 
 ## Session update — 2026-07-04 14:07: Command Center loop goal context wired into NativeAtlasAgent harness
 

@@ -4,7 +4,7 @@ milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
 last_updated: "2026-07-04"
-last_activity: 2026-07-04 -- Provider shape fix: models crash root-caused (adapter returned `providers` instead of `all`), fixed + tested. Session creation investigated (works through SDK client; likely stale gateway or cascade from provider bug). CLI gap analysis documented.
+last_activity: 2026-07-04 -- Provider endpoint split fix (models crash resolved). Session creation toast persists in interactive TUI despite adapter working in isolation. Full investigation documented in .debug/. Next session: capture actual error via console.error, test with clean gateway, trace interactive vs headless code path.
 progress:
   total_phases: 8
   completed_phases: 7
@@ -15,24 +15,20 @@ progress:
 
 # STATE — L2 ATLAS
 
-## Current Position — 2026-07-04 (latest): Provider shape fix landed
+## Current Position — 2026-07-04 (latest): Provider endpoint split fix + session investigation
 
-1. **Models crash fixed:** `atlasFetch.ts:handleProviders` returned `{ providers: [...] }`
-   but the SDK type `ProviderListResponse` expects `{ all: [...], connected: [...] }`.
-   `sync.data.provider_next.all` was `undefined`, causing remeda to throw on spread
-   in `dialog-provider.tsx`. Fixed adapter to return `{ all, default, connected }`.
-   Updated test. 25/25 tests pass, tsc clean, smoke live.
-2. **Session creation investigated:** Adapter POST /session works through both raw
-   fetch and SDK client. The "Creating a session failed" toast was likely caused
-   by stale gateway or cascading failure from the provider shape bug. If it persists,
-   capture console output at prompt/index.tsx:1080.
-3. **CLI gap analysis documented:** `.debug/2026-07-04-cli-gap-analysis-and-next-sprint.md`
-   covers missing commands (`atlas down`, `atlas help`, wiki stub), npm package plan,
-   vendor cleanup needs, and CLI standardization.
-4. **Next:** `atlas down` command, npm package real install path, deep vendor cleanup,
-   CLI --json standardization.
-
-Full documentation: `.debug/2026-07-04-provider-shape-fix-and-session-investigation.md`
+1. **Models crash fixed (two rounds):** First round fixed `{ providers }` → `{ all, connected }`
+   but broke `config.providers` which sync.tsx reads as `providers.providers`. Second round
+   split into `handleConfigProviders` (returns `{ providers, default }`) and `handleProviderList`
+   (returns `{ all, connected, default }`) with shared `fetchProviderGroups` helper. 26/26 tests.
+2. **Session creation still fails interactively:** Adapter works in isolation. Headless passes.
+   Interactive TUI shows toast. Full investigation: `.debug/2026-07-04-session-creation-failure-investigation.md`
+3. **Next session priorities:**
+   - Capture actual error via `console.error` at prompt/index.tsx:1080
+   - Test with clean-killed gateway process
+   - `atlas down` command
+   - npm package real install path
+   - Deep vendor/donor cleanup sweep
 
 ## Previous Position — 2026-07-04: TUI Connectivity & Auth sprint — 7/7 tasks done
 
