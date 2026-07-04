@@ -14,6 +14,7 @@
  */
 
 import { ChatAdapter } from './chat';
+import { ATLAS_COMMANDS, findAtlasCommand, expandCommandTemplate } from './commands';
 import { EventBus, type DonorEvent } from './events';
 import { GatewayClient } from './gateway';
 
@@ -193,9 +194,40 @@ function handleEventStream(bus: EventBus): Response {
 	});
 }
 
+/** Real command list — see src/adapter/commands.ts for the ATLAS-authored templates. */
+function handleCommandList(): Response {
+	return json(
+		ATLAS_COMMANDS.map((c) => ({
+			name: c.name,
+			description: c.description,
+			source: 'command',
+			template: c.template,
+			subtask: false,
+			hints: []
+		}))
+	);
+}
+
+/** Donor POST /session/{id}/command — expand the template, run it through the normal chat loop. */
+async function handleSessionCommand(
+	chat: ChatAdapter,
+	sessionID: string,
+	body: Record<string, unknown>
+): Promise<Response> {
+	const name = typeof body['command'] === 'string' ? body['command'] : '';
+	const args = typeof body['arguments'] === 'string' ? body['arguments'] : '';
+	const command = findAtlasCommand(name);
+	if (!command) return json({ error: 'not_found', message: `unknown command: ${name}` }, 404);
+	const text = expandCommandTemplate(command.template, args);
+	await chat.promptAsync(sessionID, { parts: [{ type: 'text', text }] });
+	return json({
+		info: { id: `msg_${name}`, sessionID, role: 'assistant', time: { created: Date.now() } },
+		parts: []
+	});
+}
+
 /** Empty-but-valid bootstrap stubs so the donor UI boots before STAGE 2 fidelity. */
 const BOOTSTRAP_STUBS: Record<string, unknown> = {
-	'/command': [],
 	'/skill': [],
 	'/lsp': [],
 	'/formatter': [],
@@ -268,6 +300,7 @@ export function createAtlasFetchHandle(opts: AtlasFetchOptions): AtlasFetchHandl
 			if (method === 'POST' && path === '/atlas/auth/providers') return handleAtlasAuthProviders(gw, f, await readBody());
 			if (method === 'POST' && path === '/atlas/auth/codex/import') return handleAtlasAuthCodexImport(gw, f);
 			if (method === 'GET' && path === '/atlas/provider/status') return handleAtlasProviderStatus(gw, f);
+			if (method === 'GET' && path === '/command') return handleCommandList();
 
 			// ── chat loop ──
 			if (path === '/session' && method === 'POST') {
@@ -290,6 +323,7 @@ export function createAtlasFetchHandle(opts: AtlasFetchOptions): AtlasFetchHandl
 					return json({ started: true });
 				}
 				if (method === 'POST' && rest === '/abort') return json(await chat.abort(sessionID));
+				if (method === 'POST' && rest === '/command') return handleSessionCommand(chat, sessionID, await readBody());
 				const permMatch = /^\/permissions\/([^/]+)$/.exec(rest);
 				if (method === 'POST' && permMatch) {
 					const body = await readBody();
