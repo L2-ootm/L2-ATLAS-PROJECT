@@ -50,6 +50,7 @@ class RunContractSnapshot(BaseModel):
     rejected_source_ids: tuple[str, ...]
     bootstrap_message: str
     context_message: str
+    context_markdown: str
     rendered_user_message: str
     created_at: str
 
@@ -147,10 +148,15 @@ def prepare_run_contract(
         "tool_catalog_sha256": catalog.catalog_sha256,
         "context_policy_version": context_ref.version,
         "instruction_source_ids": (),
-        "selected_source_ids": tuple(item.source_id for item in envelope.sources),
+        # Include both static context sources (focus/goals/project/operator observations)
+        # and routed dynamic sources. The ContextEnvelope stores only routed evidence;
+        # the markdown brief below is the full operator context actually supplied to
+        # the harness, so its provenance must be part of the immutable snapshot too.
+        "selected_source_ids": tuple(context.sources),
         "rejected_source_ids": envelope.rejected_source_ids,
         "bootstrap_message": compilation.bootstrap_message,
         "context_message": compilation.context_message,
+        "context_markdown": context.markdown,
         "rendered_user_message": redact(prompt),
         "created_at": created_at,
     }

@@ -250,3 +250,17 @@ def test_run_exec_unknown_run_exits_one(db, monkeypatch):
     monkeypatch.setattr(cli_main, "_get_connection", lambda: db)
     result = runner.invoke(app, ["run", "exec", "no-such-run"])
     assert result.exit_code == 1
+
+
+def test_help_command_prints_root_help():
+    result = runner.invoke(app, ["help"])
+
+    assert result.exit_code == 0, result.output
+    assert "ATLAS - an auditable AI operating system" in result.output
+
+
+def test_wiki_group_without_subcommand_prints_help():
+    result = runner.invoke(app, ["wiki"])
+
+    assert result.exit_code == 0, result.output
+    assert "LLM Wiki commands" in result.output

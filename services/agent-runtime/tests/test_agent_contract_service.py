@@ -35,6 +35,7 @@ def test_prepare_persist_load_and_replay_round_trip(db, run_id):
     replay = replay_contract(db, run_id)
     assert replay.contract_sha256 == snapshot.contract_sha256
     assert replay.stable_prompt_sha256 == snapshot.stable_prompt_sha256
+    assert replay.context_markdown.startswith("# ATLAS Operator Context")
 
 
 def test_snapshot_is_redacted_and_excludes_hidden_reasoning(db, run_id):

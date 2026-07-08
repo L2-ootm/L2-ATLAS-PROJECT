@@ -85,9 +85,21 @@ app.add_typer(runtime_app, name="runtime")
 
 try:
     from atlas_wiki.cli.main import wiki_app
-    app.add_typer(wiki_app, name="wiki")
+    _WIKI_CLI_AVAILABLE = True
 except ImportError:
-    pass  # wiki service not installed — skip wiki subcommands gracefully
+    _WIKI_CLI_AVAILABLE = False
+
+    @app.command("wiki", help="Wiki runtime commands (optional service).")
+    def _missing_wiki() -> None:
+        typer.echo(
+            "wiki service is not installed; install the wiki runtime package to enable "
+            "`atlas wiki` commands.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+if _WIKI_CLI_AVAILABLE:
+    app.add_typer(wiki_app, name="wiki")
 
 from atlas_runtime.cli.foundation import foundation_app
 app.add_typer(foundation_app, name="foundation")
@@ -1026,6 +1038,65 @@ def _up_cmd() -> None:
 
 
 app.command("up", help="Boot gateway + cockpit together (idempotent).")(_up_cmd)
+
+
+def _stop_result_is_idempotent_ok(message: str) -> bool:
+    normalized = message.lower()
+    return any(
+        marker in normalized
+        for marker in (
+            "not running",
+            "not managed here",
+            "no pid",
+            "no pid file",
+            "already gone",
+        )
+    )
+
+
+def _down_cmd(
+    json_out: bool = typer.Option(False, "--json", help="Emit machine-readable JSON."),
+) -> None:
+    """Stop optional sidecars, cockpit, then gateway (idempotent)."""
+    from atlas_runtime import (
+        cashflow_control,
+        cockpit_control,
+        discord_control,
+        freellmapi_control,
+        gateway_control,
+    )
+
+    stop_plan = (
+        ("freellmapi", freellmapi_control.stop),
+        ("cashflow", cashflow_control.stop),
+        ("discord", discord_control.stop),
+        ("cockpit", cockpit_control.stop),
+        ("gateway", gateway_control.stop),
+    )
+    results = []
+    failed = False
+    for component, stop in stop_plan:
+        ok, message = stop()
+        effective_ok = ok or _stop_result_is_idempotent_ok(message)
+        failed = failed or not effective_ok
+        result = {"component": component, "ok": effective_ok, "message": message}
+        results.append(result)
+        if not json_out:
+            typer.echo(f"{component}: {message}")
+
+    if json_out:
+        typer.echo(json.dumps({"ok": not failed, "components": results}))
+    if failed:
+        raise typer.Exit(1)
+
+
+app.command("down", help="Stop sidecars + cockpit + gateway together (idempotent).")(_down_cmd)
+
+
+@app.command("help", help="Show root help.")
+def _help_cmd(ctx: typer.Context) -> None:
+    parent = ctx.parent or ctx
+    typer.echo(parent.get_help())
 
 from atlas_runtime.cli.doctor import _doctor_cmd
 
