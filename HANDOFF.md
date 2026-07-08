@@ -1,5 +1,16 @@
 # Handoff — L2 ATLAS Finish Sprint
 
+> **ACCURACY NOTE (2026-07-08 review):** the `packages/atlas-cli` session
+> entries below log `npm test` as `10 → 11 → 12 → 15 → 16 passed`. Those counts
+> were recorded against a **non-Windows** run. On the operator's Windows machine
+> the suite currently reports **11 passed / 5 FAILED** (the manifest/release-tar
+> tests fail because system `tar` breaks on `C:\` paths). See
+> `.debug/2026-07-08-atlas-cli-windows-tar-defect-and-tree-review.md` (§1/§2).
+> Treat every `npm test` "passed" line here as a historical session log, not the
+> current green state. The 39-file dirty backlog these entries describe was
+> committed on 2026-07-08 (7 logical commits); `main` is 14 ahead of `origin/main`,
+> unpushed.
+
 ## Session update — 2026-07-07: CLI shutdown/help polish + context-handoff verification
 
 **Completed:**

@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
-last_updated: "2026-07-07"
-last_activity: 2026-07-07 -- CLI shutdown/help polish landed and verified; atlas-terminal session-create diagnostics added; npm release-manifest install/update path added; clean-install verifier scaffold added and dry-run passed locally; npm package naming locked to `@l2/atlas` with bin `atlas`; npm wrapper gained tested `--json` output; local release-index artifact builder added and verified with the clean-install loop; atlas-terminal user-facing donor residue cleanup completed, scanner expanded, and fallback/temp-name leaks cleaned. Next: reproduce the interactive toast in real Windows Terminal and capture `ATLAS_SESSION_CREATE_ERROR`, then publish/verify real release artifacts on clean VMs.
+last_updated: "2026-07-08"
+last_activity: 2026-07-08 -- tree review: committed the 39-file dirty backlog (7 logical commits), wrote the atlas-cli Windows tar defect + state review to .debug/, reconciled CONTRIBUTING.md and added a STATE accuracy note for the historical atlas-cli "passed" counts (actual 11 passed / 5 failed on Windows). No code fixes per operator directive. main 14 ahead of origin, unpushed.
 progress:
   total_phases: 8
   completed_phases: 7
@@ -14,6 +14,16 @@ progress:
 ---
 
 # STATE — L2 ATLAS
+
+> **ACCURACY NOTE (2026-07-08 review):** the `packages/atlas-cli` session entries
+> below historically log `npm test` as `10 → 11 → 12 → 15 → 16 passed`. Those
+> counts were recorded against a **non-Windows** run. On the operator's Windows
+> machine the suite currently reports **11 passed / 5 FAILED** — the 5 failures are
+> the manifest/release-tar tests (system `tar` breaks on `C:\` paths). See
+> `.debug/2026-07-08-atlas-cli-windows-tar-defect-and-tree-review.md` (§1/§2). The
+> counts are left in their session log form but must NOT be read as the current
+> green state. The 39-file dirty backlog described by those entries was committed
+> on 2026-07-08 (7 logical commits); `main` is 14 ahead of `origin/main`, unpushed.
 
 ## Current Position — 2026-07-07: CLI shutdown/help polish + verified native context handoff
 
