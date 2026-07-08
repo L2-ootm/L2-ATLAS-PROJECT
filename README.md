@@ -75,3 +75,13 @@ Optional retrieval research now tracked:
 - Every autonomous action is auditable.
 - LLM Wiki compounds knowledge; RAG alone is not enough.
 - Existing L2 repos are source assets, not blindly merged code.
+
+## License
+
+ATLAS is licensed under the [MIT License](LICENSE). Third-party dependency
+licenses and required attributions are tracked in
+[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md); vendored/derived-code
+provenance is tracked in [`ATTRIBUTION.md`](ATTRIBUTION.md).
+
+Contributions require signing the [Contributor License Agreement](CLA.md) —
+opening a pull request constitutes agreement to its terms.
