@@ -7,6 +7,7 @@ name = "atlas-runtime"
 version = "0.1.0"
 description = "ATLAS agent-runtime service layer"
 requires-python = ">=3.11"
+license = "MIT"
 dependencies = [
     "atlas-core",
     "typer>=0.25.0",

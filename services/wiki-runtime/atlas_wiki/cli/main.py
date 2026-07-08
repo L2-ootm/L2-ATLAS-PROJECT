@@ -24,7 +24,7 @@ from atlas_wiki import wiki_service
 # App setup
 # ---------------------------------------------------------------------------
 
-wiki_app = typer.Typer(name="wiki", help="LLM Wiki commands")
+wiki_app = typer.Typer(name="wiki", help="LLM Wiki commands", invoke_without_command=True)
 
 # Module-level lock singleton (monkeypatched in tests via _get_lock)
 _LOCK = threading.Lock()
@@ -67,6 +67,13 @@ def _get_wiki_dir() -> pathlib.Path:
 # ---------------------------------------------------------------------------
 # wiki subcommands
 # ---------------------------------------------------------------------------
+
+
+@wiki_app.callback(invoke_without_command=True)
+def wiki_root(ctx: typer.Context) -> None:
+    if ctx.invoked_subcommand is None:
+        typer.echo(ctx.get_help())
+        raise typer.Exit(0)
 
 
 @wiki_app.command("ingest")
