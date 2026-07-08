@@ -2,10 +2,17 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 
 const { atlasHome, versionsDir, versionDir, currentPointerFile, manifestFile } = require('./paths');
 const { buildManifest, readManifest, verifyManifest } = require('./manifest');
 const { readInstallState, writeInstallState } = require('./installState');
+const {
+	readReleaseIndex,
+	selectArtifact,
+	downloadVerifiedArtifact,
+	extractArchive
+} = require('./release');
 
 class CliError extends Error {}
 
@@ -108,6 +115,62 @@ function update(home, opts) {
 	});
 
 	return { version: opts.version, previous, path: dest };
+}
+
+async function stageRelease(home, opts, mode) {
+	if (!opts.manifest) throw new CliError(`${mode} requires --manifest <release index url>`);
+	const index = await readReleaseIndex(opts.manifest);
+	let selected;
+	try {
+		selected = selectArtifact(index, opts);
+	} catch (err) {
+		throw new CliError(err.message);
+	}
+
+	const previous = readCurrent(home);
+	const dest = versionDir(home, selected.version);
+	if (fs.existsSync(dest)) {
+		throw new CliError(`version ${selected.version} already exists at ${dest}`);
+	}
+
+	const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-cli-release-'));
+	try {
+		const archive = await downloadVerifiedArtifact(selected.artifact, workDir);
+		extractArchive(archive, dest);
+		const manifestPath = manifestFile(dest);
+		if (!fs.existsSync(manifestPath)) {
+			const manifest = buildManifest(dest, selected.version, {
+				commit: selected.artifact.commit || index.commit || null
+			});
+			fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
+		}
+	} catch (err) {
+		fs.rmSync(dest, { recursive: true, force: true });
+		throw new CliError(err.message);
+	} finally {
+		fs.rmSync(workDir, { recursive: true, force: true });
+	}
+
+	writeCurrent(home, selected.version);
+	writeInstallState(home, {
+		installedVersion: selected.version,
+		installMethod: 'release-manifest',
+		lastUpdateCheck: new Date().toISOString(),
+		channel: opts.channel || 'stable',
+		platform: selected.platform,
+		releaseManifest: opts.manifest,
+		previousVersion: mode === 'update' ? previous || undefined : undefined
+	});
+
+	return { version: selected.version, previous, path: dest, platform: selected.platform };
+}
+
+async function installFromRelease(home, opts) {
+	return stageRelease(home, opts, 'install');
+}
+
+async function updateFromRelease(home, opts) {
+	return stageRelease(home, opts, 'update');
 }
 
 /**
@@ -219,7 +282,9 @@ module.exports = {
 	CliError,
 	atlasHome,
 	install,
+	installFromRelease,
 	update,
+	updateFromRelease,
 	rollback,
 	uninstall,
 	doctor,
