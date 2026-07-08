@@ -7,6 +7,7 @@ name = "atlas-wiki"
 version = "0.1.0"
 description = "ATLAS wiki-runtime service layer"
 requires-python = ">=3.11"
+license = "MIT"
 dependencies = [
     "atlas-core",
     "atlas-runtime",

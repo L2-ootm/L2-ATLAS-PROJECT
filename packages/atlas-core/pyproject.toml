@@ -7,6 +7,7 @@ name = "atlas-core"
 version = "0.1.0"
 description = "ATLAS domain schemas and shared contracts"
 requires-python = ">=3.11"
+license = "MIT"
 dependencies = ["pydantic>=2.0"]
 
 [project.optional-dependencies]
