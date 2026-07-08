@@ -45,6 +45,7 @@ import { DialogWorkspaceCreate, restoreWorkspaceSession } from "../dialog-worksp
 import { DialogWorkspaceUnavailable } from "../dialog-workspace-unavailable"
 import { DialogAgreement, FREE_AGREEMENT_KEY, FREE_MODEL_IDS } from "../dialog-agreement"
 import { useArgs } from "@tui/context/args"
+import { logSessionCreateError } from "../../util/sessionError"
 
 export type PromptProps = {
   sessionID?: string
@@ -1077,7 +1078,7 @@ export function Prompt(props: PromptProps) {
       const res = await sdk.client.session.create({ workspace: props.workspaceID })
 
       if (res.error) {
-        console.log("Creating a session failed:", res.error)
+        logSessionCreateError(res.error)
 
         toast.show({
           message: "Creating a session failed. Open console for more details.",

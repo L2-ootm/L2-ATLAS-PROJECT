@@ -166,7 +166,7 @@ export const dict = {
   "tui.tips.agent_create":
     "Exécutez {highlight}atlas agent create{/highlight} pour créer un agent en mode guidé",
   "tui.tips.github_trigger":
-    "Utilisez {highlight}/opencode{/highlight} dans les issues/PR GitHub pour déclencher des actions IA",
+    "Utilisez {highlight}/atlas{/highlight} dans les issues/PR GitHub pour déclencher des actions ATLAS",
   "tui.tips.github_install":
     "Exécutez {highlight}atlas github install{/highlight} pour configurer le workflow GitHub",
   "tui.tips.github_oc":
@@ -212,7 +212,7 @@ export const dict = {
   "tui.tips.username_toggle":
     "Activez/désactivez l'affichage du nom d'utilisateur via la palette de commandes ({highlight}Ctrl+P{/highlight})",
   "tui.tips.docker":
-    "Exécutez {highlight}docker run -it --rm ghcr.io/anomalyco/opencode{/highlight} pour une utilisation conteneurisée",
+    "Exécutez {highlight}atlas doctor{/highlight} après l'installation pour vérifier le runtime local",
   "tui.tips.zen":
     "Utilisez {highlight}/connect{/highlight} avec ATLAS pour des modèles testés et sélectionnés",
   "tui.tips.agents_md":
@@ -279,7 +279,7 @@ export const dict = {
   "tui.command.variant.list.title": "Changer de variante de modèle",
   "tui.command.agent.cycle.reverse.title": "Cycle d'agents (inverse)",
   "tui.command.console.org.switch.title": "Changer d'organisation",
-  "tui.command.opencode.status.title": "Voir l'état",
+  "tui.command.atlas.status.title": "Voir l'état",
   "tui.command.theme.switch.title": "Changer de thème",
   "tui.command.logo.switch.title": "Changer le design du logo",
   "tui.dialog.logo.title": "Design du logo",

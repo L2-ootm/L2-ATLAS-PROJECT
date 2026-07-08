@@ -625,9 +625,9 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
         ]
       : []),
     {
-      title: t("tui.command.opencode.status.title"),
+      title: t("tui.command.atlas.status.title"),
       keybind: "status_view",
-      value: "opencode.status",
+      value: "atlas.status",
       slash: {
         name: "status",
       },

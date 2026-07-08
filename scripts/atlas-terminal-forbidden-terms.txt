@@ -27,3 +27,15 @@ MimoCode
 Mimo Code
 mimo.xiaomi.com
 opencode.ai
+github.com/anomalyco/opencode
+ghcr.io/anomalyco/opencode
+opencode mcp auth
+/opencode
+<b>MiMo</b>
+opencode does not support MCP authentication yet
+mimo models
+Low cost subscription for everyone
+e.g. mimorouter
+e.g. MiMo Router
+opencode-clipboard.png
+opencode-sfx
