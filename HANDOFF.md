@@ -8,7 +8,7 @@
 > `.debug/2026-07-08-atlas-cli-windows-tar-defect-and-tree-review.md` (§1/§2).
 > Treat every `npm test` "passed" line here as a historical session log, not the
 > current green state. The 39-file dirty backlog these entries describe was
-> committed on 2026-07-08 (7 logical commits); `main` is 14 ahead of `origin/main`,
+> committed on 2026-07-08 (7 logical commits); `main` is 15 ahead of `origin/main` (8 pre-existing + 7 new),
 > unpushed.
 
 ## Session update — 2026-07-07: CLI shutdown/help polish + context-handoff verification

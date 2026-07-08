@@ -4,7 +4,7 @@ milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
 last_updated: "2026-07-08"
-last_activity: 2026-07-08 -- tree review: committed the 39-file dirty backlog (7 logical commits), wrote the atlas-cli Windows tar defect + state review to .debug/, reconciled CONTRIBUTING.md and added a STATE accuracy note for the historical atlas-cli "passed" counts (actual 11 passed / 5 failed on Windows). No code fixes per operator directive. main 14 ahead of origin, unpushed.
+last_activity: 2026-07-08 -- tree review: committed the 39-file dirty backlog (7 logical commits), wrote the atlas-cli Windows tar defect + state review to .debug/, reconciled CONTRIBUTING.md and added a STATE accuracy note for the historical atlas-cli "passed" counts (actual 11 passed / 5 failed on Windows). No code fixes per operator directive. main 15 ahead of origin (8 pre-existing + 7 new), unpushed.
 progress:
   total_phases: 8
   completed_phases: 7
@@ -23,7 +23,7 @@ progress:
 > `.debug/2026-07-08-atlas-cli-windows-tar-defect-and-tree-review.md` (§1/§2). The
 > counts are left in their session log form but must NOT be read as the current
 > green state. The 39-file dirty backlog described by those entries was committed
-> on 2026-07-08 (7 logical commits); `main` is 14 ahead of `origin/main`, unpushed.
+> on 2026-07-08 (7 logical commits); `main` is 15 ahead of `origin/main` (8 pre-existing + 7 new), unpushed.
 
 ## Current Position — 2026-07-07: CLI shutdown/help polish + verified native context handoff
 
