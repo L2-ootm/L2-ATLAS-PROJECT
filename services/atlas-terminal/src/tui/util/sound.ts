@@ -12,7 +12,7 @@ import charge from "../asset/charge.wav" with { type: "file" }
 const FILE = [pulseA, pulseB, pulseC]
 
 const HUM = charge
-const DIR = join(tmpdir(), "opencode-sfx")
+const DIR = join(tmpdir(), "atlas-terminal-sfx")
 
 const LIST = [
   "ffplay",

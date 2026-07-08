@@ -181,7 +181,7 @@ export const dict = {
   "tui.tips.agent_create":
     "Выполните {highlight}atlas agent create{/highlight}, чтобы создать агента в пошаговом режиме",
   "tui.tips.github_trigger":
-    "Используйте {highlight}/opencode{/highlight} в issue/PR на GitHub, чтобы запускать AI-действия",
+    "Используйте {highlight}/atlas{/highlight} в issue/PR на GitHub, чтобы запускать действия ATLAS",
   "tui.tips.github_install":
     "Выполните {highlight}atlas github install{/highlight}, чтобы настроить GitHub-workflow",
   "tui.tips.github_oc":
@@ -228,7 +228,7 @@ export const dict = {
   "tui.tips.username_toggle":
     "Переключайте отображение имени пользователя через палитру команд ({highlight}Ctrl+P{/highlight})",
   "tui.tips.docker":
-    "Выполните {highlight}docker run -it --rm ghcr.io/anomalyco/opencode{/highlight} для контейнерного запуска",
+    "Выполните {highlight}atlas doctor{/highlight} после установки, чтобы проверить локальный runtime",
   "tui.tips.zen":
     "Используйте {highlight}/connect{/highlight} с ATLAS для подобранных и протестированных моделей",
   "tui.tips.agents_md":
@@ -297,7 +297,7 @@ export const dict = {
   "tui.command.variant.list.title": "Сменить вариант модели",
   "tui.command.agent.cycle.reverse.title": "Цикл агентов (в обратном порядке)",
   "tui.command.console.org.switch.title": "Сменить организацию",
-  "tui.command.opencode.status.title": "Посмотреть статус",
+  "tui.command.atlas.status.title": "Посмотреть статус",
   "tui.command.theme.switch.title": "Сменить тему",
   "tui.command.logo.switch.title": "Сменить дизайн логотипа",
   "tui.dialog.logo.title": "Дизайн логотипа",
