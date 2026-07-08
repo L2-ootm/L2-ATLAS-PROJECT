@@ -7,7 +7,13 @@ from __future__ import annotations
 
 from typer.testing import CliRunner
 
-from atlas_runtime import cockpit_control, freellmapi_control, gateway_control
+from atlas_runtime import (
+    cashflow_control,
+    cockpit_control,
+    discord_control,
+    freellmapi_control,
+    gateway_control,
+)
 from atlas_runtime.cli.main import app
 
 runner = CliRunner()
@@ -88,3 +94,54 @@ def test_up_warns_on_stale_gateway_binary(monkeypatch):
     result = runner.invoke(app, ["up"])
     assert result.exit_code == 0
     assert "WARNING binary predates its Rust sources" in result.output
+
+
+def test_down_stops_sidecars_then_cockpit_then_gateway(monkeypatch):
+    call_order: list[str] = []
+
+    monkeypatch.setattr(
+        freellmapi_control,
+        "stop",
+        lambda: call_order.append("freellmapi") or (True, "freellmapi stopped"),
+    )
+    monkeypatch.setattr(
+        cashflow_control,
+        "stop",
+        lambda: call_order.append("cashflow") or (True, "cashflow stopped"),
+    )
+    monkeypatch.setattr(
+        discord_control,
+        "stop",
+        lambda: call_order.append("discord") or (True, "discord stopped"),
+    )
+    monkeypatch.setattr(
+        cockpit_control,
+        "stop",
+        lambda: call_order.append("cockpit") or (True, "cockpit stopped"),
+    )
+    monkeypatch.setattr(
+        gateway_control,
+        "stop",
+        lambda: call_order.append("gateway") or (True, "gateway stopped"),
+    )
+
+    result = runner.invoke(app, ["down"])
+
+    assert result.exit_code == 0, result.output
+    assert call_order == ["freellmapi", "cashflow", "discord", "cockpit", "gateway"]
+    assert "gateway: gateway stopped" in result.output
+
+
+def test_down_json_reports_each_component(monkeypatch):
+    monkeypatch.setattr(freellmapi_control, "stop", lambda: (True, "not running"))
+    monkeypatch.setattr(cashflow_control, "stop", lambda: (True, "not running"))
+    monkeypatch.setattr(discord_control, "stop", lambda: (True, "not running"))
+    monkeypatch.setattr(cockpit_control, "stop", lambda: (True, "not running"))
+    monkeypatch.setattr(gateway_control, "stop", lambda: (True, "not running"))
+
+    result = runner.invoke(app, ["down", "--json"])
+
+    assert result.exit_code == 0, result.output
+    assert result.output.strip().startswith("{")
+    assert '"ok": true' in result.output
+    assert '"component": "gateway"' in result.output

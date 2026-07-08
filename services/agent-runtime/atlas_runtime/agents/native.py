@@ -191,11 +191,12 @@ class NativeAtlasAgent(AgentRuntime):
         # execution. Failure is fail-safe for auditability: no untracked run.
         try:
             from atlas_runtime.agent_contract_service import (  # noqa: PLC0415
+                RunContractSnapshot,
                 persist_contract,
                 prepare_run_contract,
             )
 
-            persist_contract(
+            contract_snapshot: RunContractSnapshot = persist_contract(
                 conn,
                 prepare_run_contract(
                     conn,
@@ -305,9 +306,13 @@ class NativeAtlasAgent(AgentRuntime):
         result_holder: dict[str, Any] = {}
         error_holder: dict[str, BaseException] = {}
 
+        system_message = _contract_system_message(contract_snapshot)
+
         def _drive() -> None:
             try:
-                result_holder["result"] = agent.run_conversation(prompt)
+                result_holder["result"] = agent.run_conversation(
+                    prompt, system_message=system_message
+                )
             except BaseException as exc:  # noqa: BLE001 — surfaced below
                 error_holder["error"] = exc
 
@@ -442,6 +447,24 @@ def _is_model_override(conn: sqlite3.Connection, value: str) -> bool:
         )
     except Exception:  # noqa: BLE001 — registry unavailable → not a model
         return False
+
+
+def _contract_system_message(snapshot: Any) -> str:
+    """Render the immutable run contract as the harness system message.
+
+    The foundation harness accepts a separate `system_message`; use it for the
+    generated bootstrap plus the full secret-redacted operator context so the
+    run acts on Current Focus/Goals instead of only the raw mission prompt.
+    """
+    return (
+        "# ATLAS Run Contract\n\n"
+        "## Session Bootstrap\n"
+        f"{snapshot.bootstrap_message}\n\n"
+        "## Operator Context\n"
+        f"{snapshot.context_markdown.rstrip()}\n\n"
+        "## Dynamic Context Envelope\n"
+        f"{snapshot.context_message}"
+    )
 
 
 def _contains_secret(text: str) -> bool:

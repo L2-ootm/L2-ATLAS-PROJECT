@@ -12,7 +12,7 @@ import uuid
 
 import pytest
 
-from atlas_runtime import run_service
+from atlas_runtime import focus_service, goal_service, run_service
 from atlas_runtime.agents import RunOutcome, get_agent, known_agents
 from atlas_runtime.agents.base import AgentRuntime
 from atlas_runtime.agents.claude_code import ClaudeCodeAgent
@@ -110,9 +110,11 @@ class _FakeHarness:
     def __init__(self, result: dict) -> None:
         self._result = result
         self.calls: list[str] = []
+        self.system_messages: list[str | None] = []
 
     def run_conversation(self, user_message: str, system_message=None):  # noqa: ANN001
         self.calls.append(user_message)
+        self.system_messages.append(system_message)
         return self._result
 
 
@@ -136,6 +138,35 @@ def test_native_executes_and_audits(db: sqlite3.Connection, lock: threading.Lock
     events = get_events_for_run(db, rid)
     assert any(e.event_type == "tool_call" for e in events)
     assert any(e.event_type == "llm_call" for e in events)
+
+
+def test_native_passes_goal_context_to_harness_system_message(
+    db: sqlite3.Connection, lock: threading.Lock
+) -> None:
+    focus = focus_service.create_focus(db, lock, title="Ship Command Center", framework="GSD")
+    goal = goal_service.create_goal(
+        db, lock, title="Wire NativeAtlasAgent to the harness", focus_id=focus.id
+    )
+    goal_service.create_task(db, lock, goal_id=goal.id, title="pass context as system_message")
+    mid = _pending_mission(db)
+    rid = _running_run(db, mid)
+    harness = _FakeHarness(
+        {"final_response": "ok", "api_calls": 1, "completed": True, "failed": False, "error": None}
+    )
+
+    outcome = NativeAtlasAgent(agent_factory=lambda session_id: harness).execute(
+        db, lock, mission_id=mid, run_id=rid, prompt="advance the focus"
+    )
+
+    assert outcome.status == "succeeded"
+    assert harness.calls == ["advance the focus"]
+    assert len(harness.system_messages) == 1
+    system_message = harness.system_messages[0] or ""
+    assert "# ATLAS Run Contract" in system_message
+    assert "Ship Command Center" in system_message
+    assert "Wire NativeAtlasAgent to the harness" in system_message
+    assert "pass context as system_message" in system_message
+    assert "## Operating Contract" in system_message
 
 
 def test_native_maps_failed_result(db: sqlite3.Connection, lock: threading.Lock) -> None:
