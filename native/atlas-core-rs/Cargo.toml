@@ -11,6 +11,7 @@ members = ["crates/atlas-gateway"]
 edition = "2021"
 authors = ["L2 Systems"]
 repository = "local"
+license = "MIT"
 
 [workspace.dependencies]
 axum = "0.8"

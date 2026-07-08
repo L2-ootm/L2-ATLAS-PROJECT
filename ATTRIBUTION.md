@@ -48,6 +48,17 @@ notice. It does not import MiMo-Code's agent/runtime, SDK, provider layer,
 authentication, configuration, storage, memory, telemetry, updater, sharing,
 plugin runtime, or hosted-service authority; those remain ATLAS-owned.
 
+## TEN VAD (bundled WASM asset)
+
+The voice-activity-detection asset at
+`services/atlas-terminal/src/tui/asset/ten_vad.wasm` (and its loader) is
+derived from the TEN VAD project:
+
+- **Upstream:** https://github.com/ten-framework/ten-vad
+- **License:** Apache License, Version 2.0
+- **Copyright:** © 2025 Agora
+- **Notice:** `services/atlas-terminal/src/tui/asset/TEN_VAD_LICENSE`
+
 ## Other Dependencies
 
 ATLAS references these external projects (not vendored, used as architectural
