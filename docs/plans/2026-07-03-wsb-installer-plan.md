@@ -40,7 +40,7 @@ Rejected alternatives (kept from the WS-B inventory, restated with reasoning):
 ## 3. Architecture
 
 ```
-npm i -g @l2/atlas-cli
+npm i -g @l2/atlas
         │
         ▼
   bin/atlas.js (thin Node launcher, ~200 LOC)
@@ -115,7 +115,7 @@ of leaving it in a working tree:
 
 | Command | Behavior |
 |---|---|
-| `npm i -g @l2/atlas-cli` | Installs the thin launcher only. Prints next step. |
+| `npm i -g @l2/atlas` | Installs the thin launcher only. Prints next step. |
 | `atlas install [--version X] [--channel stable\|nightly]` | First-run bootstrap: fetch bundle, verify checksums, unpack, set `current`, run `atlas db init`. |
 | `atlas update [--version X]` | Fetch newer bundle into a new `versions/<n>` dir, run any migration hooks (DB migrations already idempotent per `db init`), flip `current`, keep the previous version on disk. |
 | `atlas rollback [--to X]` | Flip `current` to a prior retained version; default = previous. Re-verify via `doctor`. |
@@ -133,7 +133,7 @@ A documented, scripted check (`docs/runbooks/clean-machine-install.md` +
 `scripts/ci/verify-clean-install.*`) that on a machine with **only** Node/npm present
 (no Go, no Rust, no Python pre-installed beyond what the bundle brings):
 
-1. `npm i -g @l2/atlas-cli`
+1. `npm i -g @l2/atlas`
 2. `atlas install`
 3. `atlas doctor` → all green
 4. `atlas up` → gateway healthy, cockpit reachable
@@ -178,21 +178,58 @@ the "which binaries go in the manifest" question and the Bun-compile CI job unti
    Windows, and a pointer file makes rollback a single atomic write on every platform).
    7 unit tests (`node --test test/commands.test.js`) plus a manual end-to-end run
    (install → doctor → update → doctor → rollback → doctor → uninstall → doctor) all
-   pass. Bin name is `atlas-cli` for now, not `atlas` — this machine already has the
-   Python `atlas` command on PATH from `install-atlas-cli.ps1`; finalize the real `atlas`
-   name (and the coexistence/handoff story) once this package is ready to actually
-   replace that installer, not before.
+   pass. The package has since been promoted to the public contract name
+   `@l2/atlas` with bin `atlas`; local source-checkout shims remain a developer
+   coexistence concern, not the published package name.
    **Not yet built**: the real release-fetch path (download + checksum-verify a
    published bundle for `--version X --channel stable`) — `install`/`update` currently
    only accept `--from <local dir>`, exactly matching this step's own scope ("prove the
    mechanics... without blocking on release infrastructure").
 2. Wire `atlas doctor` checksum/manifest checks. **DONE** — `manifest.js`'s
    `buildManifest`/`verifyManifest`; covered by the checksum-drift test case.
-3. Write the clean-machine runbook + verification script; dry-run it against the local
-   staged bundle.
+3. **PARTIAL (2026-07-07)** — clean-machine runbook + verification script added:
+   `docs/runbooks/clean-machine-install.md` and `scripts/ci/verify-clean-install.js`.
+   The script runs install → doctor → update → doctor → rollback → doctor → uninstall
+   → doctor against release-manifest artifacts. Local dry-run passed against generated
+   `file://` release indexes and tarballs. Still missing: the same gate on actual clean
+   VMs using real hosted artifacts.
 4. Once STAGE 3 (WS-A) reports its TUI decision, finalize the manifest's binary list and
    add the corresponding CI build job(s).
-5. Stand up real CI publishing (GitHub Releases or equivalent artifact host) + npm
-   package publish for `@l2/atlas-cli`.
-6. Run the clean-machine gate for real, on actual clean VMs per platform, before calling
+5. **PARTIAL (2026-07-07)** — release-manifest fetch/extract path exists in
+   `packages/atlas-cli`: `install --manifest <url> [--channel stable] [--version X]
+   [--platform os-arch]` and `update --manifest ...` can read a release index from
+   `file://`, `http://`, or `https://`, select the version/platform artifact, download
+   the `.tar/.tar.gz` bundle, verify its sha256, extract it with system `tar`, write
+   `manifest.json`, and flip the `current` pointer. This keeps the npm wrapper thin
+   and dependency-free. Covered by `node --test test/commands.test.js` with a real tarball
+   fixture and checksum-mismatch regression.
+
+   Expected release index shape:
+
+   ```json
+   {
+     "channels": { "stable": "0.1.0" },
+     "releases": {
+       "0.1.0": {
+         "platforms": {
+           "win32-x64": {
+             "url": "https://.../atlas-0.1.0-win32-x64.tar.gz",
+             "sha256": "<archive sha256>"
+           }
+         }
+       }
+     }
+   }
+   ```
+
+   **LOCAL BUILDER DONE (2026-07-07)** — `packages/atlas-cli/src/buildReleaseIndex.js`
+   and `scripts/ci/build-release-index.js` now package a staged bundle into
+   `atlas-<version>-<platform>.tar.gz`, compute sha256, and write a release index.
+   The builder output was verified by feeding two generated indexes into
+   `scripts/ci/verify-clean-install.js`; all 8 lifecycle steps passed. Still missing
+   before calling WS-B done: real GitHub Release upload/publishing, real published
+   release-index URL, and clean-machine verification against hosted artifacts.
+6. Stand up real CI publishing (GitHub Releases or equivalent artifact host) + npm
+   package publish for `@l2/atlas`.
+7. Run the clean-machine gate for real, on actual clean VMs per platform, before calling
    WS-B done.

@@ -1,5 +1,185 @@
 # Handoff — L2 ATLAS Finish Sprint
 
+## Session update — 2026-07-07: CLI shutdown/help polish + context-handoff verification
+
+**Completed:**
+- Added top-level `atlas down [--json]`, reversing `atlas up` in safe shutdown order:
+  FreeLLMAPI → Cashflow → Discord → Cockpit → Gateway.
+- Added `atlas help` as an explicit root-help alias.
+- Improved `atlas wiki` discoverability: bare `atlas wiki` now prints wiki help; if the optional
+  wiki runtime is absent, the root CLI registers an explanatory stub instead of silently hiding it.
+- Verified the existing NativeAtlasAgent context-handoff work in the dirty worktree:
+  persisted run contracts include `context_markdown`, and native harness calls receive the
+  run contract/operator context as `system_message`.
+- Updated `docs/plans/2026-07-04-cli-gap-analysis-and-next-sprint.md` with completed items,
+  remaining gaps, and anti-bloat notes.
+
+**Verification:**
+- `pytest services/agent-runtime/tests/test_cli_up.py services/agent-runtime/tests/test_cli.py -q` — 24 passed.
+- `pytest services/agent-runtime/tests/test_agent_contract_service.py services/agent-runtime/tests/test_agents.py -q` — 22 passed.
+
+**Still open next:**
+1. Capture the real interactive `atlas-terminal` session-create error object in Windows Terminal.
+2. Implement npm package remote install/update/checksum path.
+3. Run the deeper atlas-terminal vendor/donor cleanup sweep.
+
+## Session update — 2026-07-07 continuation: atlas-terminal session-create diagnostics
+
+**Completed:**
+- Added `services/atlas-terminal/src/tui/util/sessionError.ts`, a dependency-free formatter
+  for SDK/client errors that handles `Error` instances and circular objects.
+- Wired the interactive prompt session-create failure path to emit
+  `ATLAS_SESSION_CREATE_ERROR ...` via `console.error` before showing the existing toast.
+- Updated `.debug/2026-07-04-session-creation-failure-investigation.md` and
+  `docs/plans/2026-07-04-cli-gap-analysis-and-next-sprint.md`.
+
+**Verification:**
+- `cd services/atlas-terminal && bun test test/sessionError.test.ts` — 2 passed.
+- `cd services/atlas-terminal && bun test` — 28 passed.
+- `cd services/atlas-terminal && bunx tsc --noEmit` — clean.
+- `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\scan-atlas-terminal-boundary.ps1` —
+  boundary scan passed.
+
+**Important:** This is instrumentation, not the root-cause fix. Next UAT should run
+`cd services/atlas-terminal && bun run dev`, reproduce the toast, and capture the
+`ATLAS_SESSION_CREATE_ERROR` line from the terminal.
+
+## Session update — 2026-07-07 continuation: npm release-manifest installer path
+
+**Completed:**
+- Added `packages/atlas-cli/src/release.js`, a dependency-free release-index/artifact
+  helper using Node stdlib plus system `tar`.
+- Added release-manifest install/update support to `packages/atlas-cli/src/commands.js`.
+  `install --manifest <url>` and `update --manifest <url>` now select channel/version +
+  platform artifacts, verify archive sha256, extract, generate the installed
+  `manifest.json`, and update the `current` pointer.
+- Exposed `--manifest`, `--channel`, and `--platform` in `packages/atlas-cli/bin/atlas.js`.
+- Updated `docs/plans/2026-07-03-wsb-installer-plan.md` with the release-index schema
+  and remaining WS-B gaps.
+
+**Verification:**
+- `cd packages/atlas-cli && npm test` — 10 passed.
+- `cd packages/atlas-cli && node bin\atlas.js` — usage prints with `--manifest` path.
+
+**Still open for WS-B:**
+- Publish real GitHub Release artifacts and a real release index URL.
+- Decide final npm package/bin name (`@l2/atlas` + `atlas` vs current private
+  `@l2/atlas-cli` + `atlas-cli`).
+- Run clean-machine verification on real fresh VMs per platform.
+
+## Session update — 2026-07-07 continuation: clean-install verifier scaffold
+
+**Completed:**
+- Added `packages/atlas-cli/src/verifyCleanInstall.js`, a reusable verifier that runs
+  install → doctor → update → doctor → rollback → doctor → uninstall → doctor against
+  release-manifest artifacts.
+- Added `scripts/ci/verify-clean-install.js`, a CLI wrapper for CI/human dry runs.
+- Added `docs/runbooks/clean-machine-install.md`, documenting prerequisites, release-index
+  shape, local dry-run command, real gate command, and pass criteria.
+- Updated `docs/plans/2026-07-03-wsb-installer-plan.md`.
+
+**Verification:**
+- `cd packages/atlas-cli && npm test` — 11 passed.
+- `node scripts\ci\verify-clean-install.js --manifest file:///.../index-v1.json --update-manifest file:///.../index-v2.json --platform win32-x64` — all 8 steps `OK`.
+
+**Still open for WS-B:**
+- Run this verifier on actual clean VMs with real hosted release artifacts.
+- Publish/host release indexes and platform tarballs from CI.
+
+## Session update — 2026-07-07 continuation: npm package public naming locked
+
+**Completed:**
+- Promoted `packages/atlas-cli/package.json` to the public install contract:
+  package name `@l2/atlas`, bin `atlas`, and no private-package guard.
+- Updated `bin/atlas.js` usage from `atlas-cli` to `atlas`.
+- Added package metadata coverage in `packages/atlas-cli/test/commands.test.js`.
+- Updated WS-B and CLI gap docs to mark package/bin naming resolved.
+
+**Verification:**
+- `cd packages/atlas-cli && npm test` — 12 passed.
+
+**Still open for WS-B:**
+- Publish `@l2/atlas` only after real hosted artifacts and clean-machine gates exist.
+
+## Session update — 2026-07-07 continuation: npm wrapper JSON polish
+
+**Completed:**
+- Added `--json` support to the npm wrapper entrypoint (`packages/atlas-cli/bin/atlas.js`)
+  for `install`, `update`, `rollback`, `uninstall`, `doctor`, and `versions`.
+- `doctor --json` now emits the checksum/manifest health report directly for scripts.
+- `versions --json` emits the installed-version list with the `current` marker.
+- Command failures in JSON mode now return a structured object:
+  `{ "error": { "code": "atlas_cli_error", "message": "..." } }`.
+- Kept the human output unchanged when `--json` is omitted; no dependencies added.
+
+**Verification:**
+- Added failing entrypoint tests first for `doctor --json`, `versions --json`, and
+  JSON-mode command errors.
+- `cd packages/atlas-cli && npm test` — 15 passed.
+
+## Session update — 2026-07-07 continuation: local release artifact builder
+
+**Completed:**
+- Added `packages/atlas-cli/src/buildReleaseIndex.js`, a dependency-free builder that
+  packages a staged bundle into `atlas-<version>-<platform>.tar.gz`, computes sha256,
+  and writes a release index JSON compatible with `install --manifest`.
+- Added `scripts/ci/build-release-index.js` as the CI/human wrapper around that builder.
+- Proved the produced index can be consumed by the existing release install/update
+  path and clean-install verifier.
+- No new dependencies; still uses Node stdlib and system `tar`.
+
+**Verification:**
+- Added the release-index builder test first; it failed on the missing module.
+- `cd packages/atlas-cli && npm test` — 16 passed.
+- `scripts\ci\build-release-index.js` generated two temporary release indexes/tarballs,
+  then `scripts\ci\verify-clean-install.js` consumed them and all 8 steps printed `OK`.
+
+## Session update — 2026-07-07 continuation: atlas-terminal donor residue cleanup
+
+**Completed:**
+- Removed remaining confirmed user-facing donor strings from atlas-terminal:
+  sidebar footer brand (`MiMoCode` → `ATLAS Terminal`), fatal-error issue URL
+  (`anomalyco/opencode` → `L2-ATLAS-PROJECT`), status command identity
+  (`opencode.status` → `atlas.status`), MCP auth hint, GitHub trigger tips, and
+  Docker container tips.
+- Extended `scripts/atlas-terminal-forbidden-terms.txt` with exact regression rules:
+  `/opencode`, `github.com/anomalyco/opencode`, `ghcr.io/anomalyco/opencode`,
+  `opencode mcp auth`, and `<b>MiMo</b>`.
+
+**Verification:**
+- `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\scan-atlas-terminal-boundary.ps1`
+  — boundary scan passed.
+- `cd services/atlas-terminal && bun test` — 28 passed.
+- `cd services/atlas-terminal && bunx tsc --noEmit` — clean.
+- `cd services/atlas-terminal && bun run src/main.tsx --smoke` —
+  `ATLAS TERMINAL OK — gateway offline`.
+- `rg` for the cleaned exact residues returned no matches.
+
+## Session update — 2026-07-07 continuation: atlas-terminal user-facing fallback cleanup
+
+**Completed:**
+- Extended the atlas-terminal boundary scanner with exact rules for the next confirmed
+  user-facing/observable donor residues: donor MCP auth wording, `mimo models`,
+  the `opencode-go` marketing blurb, MiMo-style custom-provider examples, and
+  donor-named temp files.
+- Replaced those strings with ATLAS-neutral equivalents:
+  `ATLAS Terminal does not support MCP authentication yet`, `atlas models`,
+  `localrouter` / `Local Router`, and `atlas-terminal-*` temp names.
+- Left structural/generated identifiers alone (`@opencode/*` Effect service keys,
+  SDK provider IDs, real `xiaomi`/`mimo-v2.5` upstream names) because those require
+  deliberate source-contract replacement, not blind text churn.
+
+**Verification:**
+- Added scanner rules first and observed the boundary scan fail on the existing
+  provider example, then patched the code.
+- `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\scan-atlas-terminal-boundary.ps1`
+  — boundary scan passed.
+- `cd services/atlas-terminal && bun test` — 28 passed.
+- `cd services/atlas-terminal && bunx tsc --noEmit` — clean.
+- `cd services/atlas-terminal && bun run src/main.tsx --smoke` —
+  `ATLAS TERMINAL OK — gateway offline`.
+- `rg` for the newly guarded exact residues returned no matches.
+
 ## Session update — 2026-07-04 (latest): Provider endpoint split fix + session creation investigation
 
 **Provider shape fix (two rounds):**
