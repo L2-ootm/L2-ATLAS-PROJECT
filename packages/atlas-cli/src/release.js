@@ -3,9 +3,9 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
 
 const { hashFile } = require('./manifest');
+const { extractTarGz } = require('./tarball');
 
 function platformKey(runtime = process) {
 	return `${runtime.platform}-${runtime.arch}`;
@@ -69,11 +69,9 @@ async function downloadVerifiedArtifact(artifact, workDir) {
 }
 
 function extractArchive(archive, dest) {
-	fs.mkdirSync(dest, { recursive: true });
-	const result = spawnSync('tar', ['-xf', archive, '-C', dest], { encoding: 'utf8' });
-	if (result.status !== 0) {
-		throw new Error(`tar extraction failed: ${result.stderr || result.stdout}`);
-	}
+	// In-process extraction (src/tarball.js): system `tar` on Windows (MSYS/Git
+	// GNU tar) parses `C:\...` as a remote-host spec and fails.
+	extractTarGz(archive, dest);
 }
 
 module.exports = {

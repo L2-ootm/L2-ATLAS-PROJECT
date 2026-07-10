@@ -1,17 +1,17 @@
 {
-  "name": "@l2/atlas",
-  "version": "0.1.0",
-  "private": false,
-  "description": "Thin lifecycle launcher for ATLAS - install/update/rollback/uninstall/doctor over versioned release bundles. See docs/plans/2026-07-03-wsb-installer-plan.md.",
-  "license": "MIT",
-  "type": "commonjs",
-  "bin": {
-    "atlas": "bin/atlas.js"
-  },
-  "scripts": {
-    "test": "node --test test/commands.test.js"
-  },
-  "engines": {
-    "node": ">=18"
-  }
+	"name": "@l2/atlas",
+	"version": "0.1.0",
+	"private": false,
+	"description": "Thin lifecycle launcher for ATLAS - install/update/rollback/uninstall/doctor over versioned release bundles. See docs/plans/2026-07-03-wsb-installer-plan.md.",
+	"license": "MIT",
+	"type": "commonjs",
+	"bin": {
+		"atlas": "bin/atlas.js"
+	},
+	"scripts": {
+		"test": "node --test test/commands.test.js test/tarball.test.js"
+	},
+	"engines": {
+		"node": ">=18"
+	}
 }
