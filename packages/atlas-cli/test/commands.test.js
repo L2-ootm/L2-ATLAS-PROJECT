@@ -10,6 +10,7 @@ const test = require('node:test');
 const cmds = require('../src/commands');
 const { hashFile } = require('../src/manifest');
 const { buildReleaseIndex } = require('../src/buildReleaseIndex');
+const { createTarGz } = require('../src/tarball');
 const { verifyCleanInstall } = require('../src/verifyCleanInstall');
 
 const packageJson = require('../package.json');
@@ -29,10 +30,10 @@ function tempDir(label) {
 }
 
 function makeTarball(sourceDir, outFile) {
-	const result = spawnSync('tar', ['-czf', outFile, '-C', sourceDir, '.'], { encoding: 'utf8' });
-	if (result.status !== 0) {
-		throw new Error(`tar failed: ${result.stderr || result.stdout}`);
-	}
+	// Same engine the runtime uses (src/tarball.js) so the fixture cannot
+	// diverge from production — and no system `tar`, which breaks on
+	// Windows `C:\` paths.
+	createTarGz(sourceDir, outFile);
 }
 
 function fileUrl(p) {

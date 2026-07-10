@@ -2,9 +2,9 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
 
 const { hashFile } = require('./manifest');
+const { createTarGz } = require('./tarball');
 
 function normalizeBaseUrl(baseUrl) {
 	if (!baseUrl) return null;
@@ -18,11 +18,9 @@ function artifactUrl(baseUrl, archiveName, archivePath) {
 }
 
 function createArchive(bundleDir, archivePath) {
-	fs.mkdirSync(path.dirname(archivePath), { recursive: true });
-	const result = spawnSync('tar', ['-czf', archivePath, '-C', bundleDir, '.'], { encoding: 'utf8' });
-	if (result.status !== 0) {
-		throw new Error(`tar failed: ${result.stderr || result.stdout}`);
-	}
+	// In-process ustar+gzip (src/tarball.js): system `tar` on Windows (MSYS/Git
+	// GNU tar) parses `C:\...` as a remote-host spec and fails.
+	createTarGz(bundleDir, archivePath);
 }
 
 function buildReleaseIndex(opts) {
