@@ -135,6 +135,18 @@ def owned_status() -> dict[str, Any]:
     }
 
 
+def runtime_ready() -> bool:
+    """True when the owned store can execute an oauth_import run right now.
+
+    The single canonical check (per owned_status's own docstring): the store
+    is present and holds a refresh_token — the foundation refreshes an
+    expired access token at run time. `provider status`, `atlas auth doctor`,
+    and the /v1/config effective-status all share this predicate.
+    """
+    status = owned_status()
+    return bool(status.get("present") and status.get("has_refresh_token"))
+
+
 def codex_model_ids() -> list[str]:
     """Codex-backend-capable model slugs, operator default first.
 
@@ -207,6 +219,7 @@ __all__ = [
     "effective_codex_model",
     "import_from_codex_cli",
     "owned_status",
+    "runtime_ready",
     "resolve_codex_credentials",
     "set_foundation_loader",
 ]

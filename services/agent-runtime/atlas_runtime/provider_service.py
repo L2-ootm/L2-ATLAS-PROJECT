@@ -70,8 +70,7 @@ def active_status(config: Optional[config_service.AtlasConfig] = None) -> dict[s
 def _codex_runtime_ready() -> bool:
     """True when the foundation's owned Codex store can execute a run. A
     present refresh_token suffices — the foundation refreshes at run time."""
-    owned = codex_auth.owned_status()
-    return bool(owned.get("present") and owned.get("has_refresh_token"))
+    return codex_auth.runtime_ready()
 
 
 def _active_remediation(auth_mode: str) -> str:
