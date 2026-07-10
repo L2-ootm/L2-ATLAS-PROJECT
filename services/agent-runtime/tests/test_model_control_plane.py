@@ -212,3 +212,29 @@ def test_models_status_json_matches_shared_snapshot(
     assert result.exit_code == 0, result.output
     assert expected is not None
     assert json.loads(result.output) == expected.model_dump()
+
+
+def test_auth_status_oauth_import_uses_owned_store(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    db,
+    lock: threading.Lock,
+) -> None:
+    from atlas_runtime import codex_auth, model_control_service
+
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    monkeypatch.setattr(codex_auth, "runtime_ready", lambda: True)
+    _register(db, lock, provider="openai-codex", model="gpt-5.5")
+    config = config_service.AtlasConfig.model_validate(
+        {
+            "provider": {
+                "name": "openai-codex",
+                "model": "gpt-5.5",
+                "auth_mode": "oauth_import",
+            }
+        }
+    )
+
+    status = model_control_service.get_provider_model_status(db, config)
+
+    assert status.auth_status == "auth_present"

@@ -332,6 +332,33 @@ def doctor(
     for status in list_auth_status(config=config, include_external=False):
         if status.provider == provider:
             return status
+    # oauth_import (Codex): credentials live in the foundation's OWNED store,
+    # not the ATLAS auth store, so the scan above never finds them. Consult
+    # the same owned-store predicate `provider status` uses (codex_auth's
+    # runtime_ready) instead of misreporting a live provider as missing_auth.
+    config = config or config_service.load_config()
+    if config.provider.auth_mode == "oauth_import" and provider == config.provider.name:
+        from atlas_runtime import codex_auth  # noqa: PLC0415 — lazy, optional foundation
+
+        if codex_auth.runtime_ready():
+            return AuthStatus(
+                provider=provider,
+                auth_type="oauth_import",
+                status="auth_present",
+                source="foundation_owned_store",
+                health="available",
+            )
+        return AuthStatus(
+            provider=provider,
+            auth_type="oauth_import",
+            status="missing_auth",
+            source="foundation_owned_store",
+            health="needs_auth",
+            remediation=(
+                "run `atlas auth import-codex` (and `codex` login to refresh "
+                "if the imported token was invalidated)"
+            ),
+        )
     return AuthStatus(
         provider=provider,
         auth_type="api_key",

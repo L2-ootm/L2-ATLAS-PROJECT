@@ -33,6 +33,18 @@ def _auth_status(
     effective_provider: str,
     registry_row: dict[str, object] | None,
 ) -> str:
+    # oauth_import (Codex): credentials live in the foundation's OWNED store,
+    # invisible to auth_service.list_auth_status and the registry. Use the
+    # same owned-store predicate `provider status` uses, so /v1/config's
+    # effective.auth_status stops misreporting a live provider as missing_auth.
+    if (
+        config.provider.auth_mode == "oauth_import"
+        and effective_provider == config.provider.name
+    ):
+        from atlas_runtime import codex_auth  # noqa: PLC0415 — lazy, optional foundation
+
+        if codex_auth.runtime_ready():
+            return "auth_present"
     statuses = auth_service.list_auth_status(config=config)
     for status in statuses:
         if status.provider == effective_provider:

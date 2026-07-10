@@ -178,3 +178,42 @@ def test_external_detection_reports_unknown_error_safely(
     rendered = json.dumps(statuses["codex"].model_dump())
     assert "sensitive operating-system detail" not in rendered
     assert "credential file" in (statuses["codex"].remediation or "")
+
+
+def test_doctor_oauth_import_reports_live_via_owned_store(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    from atlas_runtime import codex_auth
+
+    monkeypatch.setattr(codex_auth, "runtime_ready", lambda: True)
+    config = config_service.AtlasConfig.model_validate(
+        {"provider": {"name": "openai-codex", "auth_mode": "oauth_import"}}
+    )
+
+    status = auth_service.doctor(provider="openai-codex", config=config)
+
+    assert status.status == "auth_present"
+    assert status.auth_type == "oauth_import"
+    assert status.health == "available"
+    assert status.source == "foundation_owned_store"
+
+
+def test_doctor_oauth_import_not_imported_gives_import_remediation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    from atlas_runtime import codex_auth
+
+    monkeypatch.setattr(codex_auth, "runtime_ready", lambda: False)
+    config = config_service.AtlasConfig.model_validate(
+        {"provider": {"name": "openai-codex", "auth_mode": "oauth_import"}}
+    )
+
+    status = auth_service.doctor(provider="openai-codex", config=config)
+
+    assert status.status == "missing_auth"
+    assert status.auth_type == "oauth_import"
+    assert "import-codex" in (status.remediation or "")
