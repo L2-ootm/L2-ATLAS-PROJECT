@@ -46,6 +46,7 @@ import { DialogWorkspaceUnavailable } from "../dialog-workspace-unavailable"
 import { DialogAgreement, FREE_AGREEMENT_KEY, FREE_MODEL_IDS } from "../dialog-agreement"
 import { useArgs } from "@tui/context/args"
 import { logSessionCreateError } from "../../util/sessionError"
+import { diagnosticLogPath } from "../../../util/diagnosticLog"
 
 export type PromptProps = {
   sessionID?: string
@@ -1081,7 +1082,7 @@ export function Prompt(props: PromptProps) {
         logSessionCreateError(res.error)
 
         toast.show({
-          message: "Creating a session failed. Open console for more details.",
+          message: `Creating a session failed. Details: ${diagnosticLogPath()}`,
           variant: "error",
         })
 

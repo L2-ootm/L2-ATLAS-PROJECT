@@ -17,6 +17,7 @@ import { ChatAdapter } from './chat';
 import { ATLAS_COMMANDS, findAtlasCommand, expandCommandTemplate } from './commands';
 import { EventBus, type DonorEvent } from './events';
 import { GatewayClient } from './gateway';
+import { appendDiagnostic } from '../util/diagnosticLog';
 
 export interface AtlasFetchOptions {
 	/** ATLAS gateway base, e.g. http://127.0.0.1:8484 */
@@ -379,7 +380,11 @@ export function createAtlasFetchHandle(opts: AtlasFetchOptions): AtlasFetchHandl
 			if (method === 'GET' && path in BOOTSTRAP_STUBS) return json(BOOTSTRAP_STUBS[path]);
 			return notImplemented(`${method} ${path}`);
 		} catch (err) {
-			return json({ error: 'adapter', message: err instanceof Error ? err.message : String(err) }, 500);
+			const message = err instanceof Error ? err.message : String(err);
+			// Persist adapter-origin failures so an interactive toast is
+			// distinguishable from SDK-client-origin errors after the fact.
+			appendDiagnostic('ATLAS_ADAPTER_ERROR', `${method} ${path} ${message}`);
+			return json({ error: 'adapter', message }, 500);
 		}
 	}) as typeof fetch;
 
