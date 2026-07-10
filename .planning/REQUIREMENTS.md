@@ -120,8 +120,8 @@ surfaces over the same projects, context, configuration, permissions, tools, and
 - [x] **PERM-01**: Approval records include requesting surface/session, run/tool call, risk,
   normalized args, workspace, expiry, decision, reason, and provenance.
 - [x] **PERM-02**: Only the initiating live surface session can resolve its actionable request.
-- [ ] **PERM-03**: TUI-owned requests use the ATLAS TUI native blocking prompt.
-- [ ] **PERM-04**: WebUI-owned requests appear in the matching conditional header/sidebar queue.
+- [x] **PERM-03**: TUI-owned requests use the ATLAS TUI native blocking prompt.
+- [x] **PERM-04**: WebUI-owned requests appear in the matching conditional header/sidebar queue.
 - [x] **PERM-05**: Headless/API `ask` decisions deny by default unless an explicit approval
   channel is registered.
 - [x] **PERM-06**: Atomic claim/decision logic guarantees at-most-once deferred execution under
@@ -131,21 +131,21 @@ surfaces over the same projects, context, configuration, permissions, tools, and
 
 ### TUI — ATLAS Terminal Workbench
 
-- [ ] **TUI-01**: `atlas` and `atlas tui` open the ATLAS terminal workbench.
-- [ ] **TUI-02**: Startup selects global workspace or a registered Project and shows canonical cwd.
-- [ ] **TUI-03**: Compact ATLAS text identity, model/auth, permission mode, context budget, Focus,
+- [x] **TUI-01**: `atlas` and `atlas tui` open the ATLAS terminal workbench.
+- [x] **TUI-02**: Startup selects global workspace or a registered Project and shows canonical cwd.
+- [x] **TUI-03**: Compact ATLAS text identity, model/auth, permission mode, context budget, Focus,
   and session state render without imported product branding.
-- [ ] **TUI-04**: Transcript and multiline composer stream normalized agent events.
-- [ ] **TUI-05**: Tool calls/results, diffs, tasks/subagents, retries, retrieval provenance, and
+- [x] **TUI-04**: Transcript and multiline composer stream normalized agent events.
+- [x] **TUI-05**: Tool calls/results, diffs, tasks/subagents, retries, retrieval provenance, and
   verification evidence have readable terminal renderers.
-- [ ] **TUI-06**: Native permission prompts support approve once, scoped allow, reject, and cancel.
-- [ ] **TUI-07**: Commands expose project/workspace, mission/focus, wiki/Brain, config/model,
+- [x] **TUI-06**: Native permission prompts support approve once, scoped allow, reject, and cancel.
+- [x] **TUI-07**: Commands expose project/workspace, mission/focus, wiki/Brain, config/model,
   permission mode, help, session/resume, and diagnostics.
-- [ ] **TUI-08**: Ctrl-C and cancel unwind model/tools/subagents without corrupting session state.
-- [ ] **TUI-09**: Resume/replay preserves workspace plus prompt/context/tool-catalog versions.
-- [ ] **TUI-10**: Layout passes narrow/wide, no-color, ASCII-safe, Unicode, Windows Terminal,
+- [x] **TUI-08**: Ctrl-C and cancel unwind model/tools/subagents without corrupting session state.
+- [x] **TUI-09**: Resume/replay preserves workspace plus prompt/context/tool-catalog versions.
+- [x] **TUI-10**: Layout passes narrow/wide, no-color, ASCII-safe, Unicode, Windows Terminal,
   PowerShell, cmd, VS Code, and WSL tests.
-- [ ] **TUI-11**: Runtime source/bundles/snapshots contain no imported product identity outside
+- [x] **TUI-11**: Runtime source/bundles/snapshots contain no imported product identity outside
   approved documentation/notices.
 
 ### WEB — Web Agent and Queue UX

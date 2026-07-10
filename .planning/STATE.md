@@ -25,7 +25,14 @@ progress:
 > green state. The 39-file dirty backlog described by those entries was committed
 > on 2026-07-08 (7 logical commits); `main` is 15 ahead of `origin/main` (8 pre-existing + 7 new), unpushed.
 
-## Current Position — 2026-07-07: CLI shutdown/help polish + verified native context handoff
+## Current Position — 2026-07-08: tree review — backlog committed, no code fixes
+
+The 39-file dirty backlog was committed as 7 logical commits; the atlas-cli
+Windows tar defect and state review were written to `.debug/`; CONTRIBUTING.md
+was reconciled. `main` is ahead of `origin/main`, unpushed. Details in the
+accuracy note above and `last_activity` in the frontmatter.
+
+## Prior Position — 2026-07-07: CLI shutdown/help polish + verified native context handoff
 
 1. **CLI quick wins completed:** Added top-level `atlas down [--json]` as the
    symmetric shutdown path for `atlas up`, stopping sidecars first and gateway last.

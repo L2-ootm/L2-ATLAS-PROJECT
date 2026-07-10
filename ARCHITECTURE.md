@@ -49,8 +49,9 @@ ToolCall, Artifact, Source, WikiPage, MemoryProvenance, DiscordApproval.
 ### 4. Gateway (`native/atlas-core-rs/`)
 
 Rust REST gateway (axum + rusqlite). Read-only against SQLite; writes go through
-the `atlas` CLI contract. 53 routes covering missions, runs, wiki, discord,
-projects, focus, goals, operations, modules, cashflow, and console.
+the `atlas` CLI contract. 79 paths / 86 endpoints covering missions, runs, wiki,
+discord, projects, focus, goals, operations, modules, cashflow, console, auth,
+provider, channels, tools, surface-sessions, freellmapi, config, graph, and host.
 
 ### 5. Cockpit (`services/web-ui-react/`)
 
