@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
-last_updated: "2026-07-08"
-last_activity: 2026-07-08 -- tree review: committed the 39-file dirty backlog (7 logical commits), wrote the atlas-cli Windows tar defect + state review to .debug/, reconciled CONTRIBUTING.md and added a STATE accuracy note for the historical atlas-cli "passed" counts (actual 11 passed / 5 failed on Windows). No code fixes per operator directive. main 15 ahead of origin (8 pre-existing + 7 new), unpushed.
+last_updated: "2026-07-10"
+last_activity: 2026-07-10 -- ULTRAREVIEW action plan executed (7 commits): F1 Brain graph wired into run loop + BrainRetriever; F2 foundation subagent auditing bridged (plugin discovery gap root-caused); F13 oauth_import misreport fixed (live-verified); F11 Windows tar defect fixed (npm test 20/20 on Windows, dependency-free tarball engine); F3-F9 dead dirs removed + docs synced; F10 Phase 10.8 planned (4 plans, 3 waves). F12 session-create toast NOT root-caused -- file-backed diagnostics landed so the next operator repro self-captures the error. main 22 ahead of origin, unpushed.
 progress:
   total_phases: 8
   completed_phases: 7
@@ -25,7 +25,17 @@ progress:
 > green state. The 39-file dirty backlog described by those entries was committed
 > on 2026-07-08 (7 logical commits); `main` is 15 ahead of `origin/main` (8 pre-existing + 7 new), unpushed.
 
-## Current Position — 2026-07-08: tree review — backlog committed, no code fixes
+## Current Position — 2026-07-10: ULTRAREVIEW action plan executed
+
+All 13 fix-queue items from `.mimocode/artifacts/ultra/ATLAS-ACTION-PLAN.md`
+addressed in 7 commits except the F12 session-create root cause (blocked on a
+real-TTY operator repro; file-backed diagnostics now self-capture the error at
+`%TEMP%\atlas-terminal-diagnostics.log`). The atlas-cli Windows tar defect in
+the accuracy note above is FIXED (npm test 20/20 on Windows). Phase 10.8 is
+planned (0/4). Full detail in HANDOFF.md's 2026-07-10 entry. `main` is 22
+ahead of `origin/main`, unpushed.
+
+## Prior Position — 2026-07-08: tree review — backlog committed, no code fixes
 
 The 39-file dirty backlog was committed as 7 logical commits; the atlas-cli
 Windows tar defect and state review were written to `.debug/`; CONTRIBUTING.md

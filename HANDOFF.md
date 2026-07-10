@@ -1,5 +1,60 @@
 # Handoff — L2 ATLAS Finish Sprint
 
+## Session update — 2026-07-10: ULTRAREVIEW action plan executed (F1-F13 minus F12 root cause)
+
+Executed `.mimocode/artifacts/ultra/ATLAS-ACTION-PLAN.md` end to end. 7 commits
+(70a44dca..c67a608f), all gates fresh:
+
+**Completed:**
+- **F3/F4** — removed 5 empty scaffold dirs (pulse-runtime, worker, atlas-sdk,
+  atlas-ui, packages/config) + apps/cockpit-web (stale SvelteKit README).
+- **F5-F9** — PROJECT.md (10.1-10.7 complete, 10.8 next), REQUIREMENTS.md
+  (TUI-01..11 + PERM-03/04 → [x]), ARCHITECTURE.md (79 paths/86 endpoints),
+  STATE.md current-position heading, RISKS.md (+7 v1.1 risks).
+- **F1** — Brain graph wired into the run loop: execute_run upserts mission/run
+  nodes + `produced` edge post-terminal (fail-open, labels redacted); new
+  BrainRetriever in default_router gated by new `context.enable_brain` config
+  key. agent-runtime 746 passed, atlas-core 97 passed at commit time.
+- **F2** — foundation subagent auditing bridged: root cause was plugin discovery
+  never running in-process AND the bundled shim being config-gated + circular-
+  import-fragile. `subagent_service.ensure_foundation_bridge()` registers the
+  real atlas_audit hooks directly on the foundation PluginManager singleton;
+  native.py calls it pre-harness; run_service now maps BOTH session keys
+  (run.id + surface session). Proven with a real invoke_hook round trip.
+- **F13** — oauth_import misreport: `codex_auth.runtime_ready()` is the single
+  predicate; auth_service.doctor + model_control_service._auth_status consult
+  it. Live-verified: `atlas auth doctor openai-codex` → auth_present.
+- **F11** — Windows tar defect: system tar replaced by dependency-free
+  `src/tarball.js` (ustar+zlib, GNU-L/PAX-aware extract, path-escape guard).
+  npm test 20/20 on Windows (was 11/5). Test script now runs both test files.
+- **F10** — Phase 10.8 planned: 4 plans, 3 waves in
+  `.planning/phases/10.8-cross-surface-conformance-uat-cutover/`; ROADMAP row
+  0/4 Planned.
+
+**F12 — NOT root-caused (still the retirement-gate blocker):**
+- Statically eliminated: session.create call shape, rewrite interceptor
+  (GET/HEAD only), dev-vs-headless entry divergence, adapter-bypassing clients.
+- Repro attempts blocked (documented in .debug log §12): piped stdin never
+  reaches the composer (opentui needs real TTY), SendKeys AppActivate denied,
+  ConPTY/node-pty blocked by npm script policy.
+- Landed instead: `src/util/diagnosticLog.ts` → every session-create error and
+  adapter-origin error now persists to `%TEMP%\atlas-terminal-diagnostics.log`;
+  the toast names the file. **Next operator UAT: reproduce once, read that
+  file — the error object is the missing evidence.**
+
+**Final verification (2026-07-10):** agent-runtime pytest 752 passed; atlas-core
+97 passed; atlas-cli npm test 20/20 (Windows); atlas-terminal bun test 29 pass,
+tsc clean, --smoke LIVE openai-codex/gpt-5.5, boundary scan exit 0.
+
+**Environment notes:** gateway was started manually for F12 diagnosis (ATLAS_CLI
+env pointing at the hermes venv python) and killed at session end. `main` is now
+22 ahead of origin, unpushed. CONTRIBUTING.md carries a pre-existing uncommitted
+modification (untouched). `.mimocode/` is untracked scratch; its action-plan
+checklist was updated in place.
+
+**Next:** operator UAT for F12 (capture the diagnostics file), then Phase 10.8
+execution per the 4 plans (10.8-01 conformance suite first).
+
 > **ACCURACY NOTE (2026-07-08 review):** the `packages/atlas-cli` session
 > entries below log `npm test` as `10 → 11 → 12 → 15 → 16 passed`. Those counts
 > were recorded against a **non-Windows** run. On the operator's Windows machine
