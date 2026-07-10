@@ -82,6 +82,7 @@ class ContextConfig(_FrozenControlPlaneModel):
     token_budget: int = Field(default=8000, ge=1)
     enable_semantic: bool = True
     enable_skills: bool = True
+    enable_brain: bool = True
 
 
 PermissionPreset = Literal["manual", "smart", "full_autonomy"]

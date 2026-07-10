@@ -19,14 +19,18 @@ left 'running': an unhandled agent error becomes a failed transition.
 """
 from __future__ import annotations
 
+import datetime
+import json
 import sqlite3
 import threading
 from typing import Callable, Optional
 
+from atlas_core.schemas.brain import BrainEdge, BrainNode
 from atlas_core.schemas.core import Run
-from atlas_runtime import goal_service
+from atlas_runtime import brain_service, goal_service, mission_service
 from atlas_runtime.agents import AgentRuntime, RunOutcome, get_agent
 from atlas_runtime.db import connect
+from atlas_runtime.memory_router import redact
 from atlas_runtime.run_service import complete_run, start_run
 
 _SUMMARY_CAP = 2000
@@ -82,6 +86,16 @@ def execute_run(
         _record_outcome_observation(conn, lock, run_id=run_id, outcome=outcome)
     except Exception:  # noqa: BLE001 — compounding feedback is best-effort
         pass
+
+    # Brain graph (CTX-01 retrieval spine): persist the outcome as evidence so
+    # the BrainRetriever can hand it to future runs. Fail-open like the
+    # observation above — a graph-write error must not affect the terminal state.
+    try:
+        _record_brain_outcome(
+            conn, lock, mission_id=mission_id, run_id=run_id, outcome=outcome
+        )
+    except Exception:  # noqa: BLE001 — brain writes are best-effort
+        pass
     return outcome
 
 
@@ -102,6 +116,66 @@ def _record_outcome_observation(
     goal_service.add_observation(
         conn, lock, body=body, run_id=run_id, source="compounding-loop"
     )
+
+
+_BRAIN_LABEL_CAP = 200
+
+
+def _record_brain_outcome(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    *,
+    mission_id: str,
+    run_id: str,
+    outcome: RunOutcome,
+) -> None:
+    """Upsert this terminal run into the Brain graph: a mission node and a run
+    node joined by a `produced` edge, project-scoped to the mission. Labels are
+    secret-redacted before storage (the router redacts again at retrieval)."""
+    mission = mission_service.get_mission(conn, mission_id)
+    if mission is None:
+        return
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    summary = redact(outcome.summary or "")[:_BRAIN_LABEL_CAP]
+    with lock:
+        brain_service.upsert_node(
+            conn,
+            BrainNode(
+                id=f"mission:{mission_id}",
+                entity_type="mission",
+                label=redact(mission.title)[:_BRAIN_LABEL_CAP] or mission_id,
+                project_id=mission.project_id,
+                source_id=f"mission:{mission_id}",
+                source_version="1",
+                updated_at=now,
+                confidence=1.0,
+            ),
+        )
+        brain_service.upsert_node(
+            conn,
+            BrainNode(
+                id=f"run:{run_id}",
+                entity_type="run",
+                label=f"run {outcome.status}: {summary}".strip(),
+                project_id=mission.project_id,
+                source_id=f"run:{run_id}",
+                source_version="1",
+                updated_at=now,
+                confidence=0.9 if outcome.status == "succeeded" else 0.5,
+                metadata_json=json.dumps(
+                    {"status": outcome.status, "stop_reason": outcome.stop_reason or ""}
+                ),
+            ),
+        )
+        brain_service.upsert_edge(
+            conn,
+            BrainEdge(
+                source_id=f"mission:{mission_id}",
+                target_id=f"run:{run_id}",
+                relation="produced",
+                project_id=mission.project_id,
+            ),
+        )
 
 
 def start_and_execute_async(
