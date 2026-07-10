@@ -616,7 +616,7 @@ milestone is activated through the normal milestone workflow.
 | 10.5 Surface-Scoped Permission Broker | v1.1 | 5/5 | Complete   | 2026-06-26 |
 | 10.6 ATLAS Terminal Workbench | v1.1 | 8/8 | Complete (human-verify deferred) | 2026-06-27 |
 | 10.7 Web Agent Surface & Permission Queue UX | v1.1 | 7/7 | Complete | 2026-06-30 |
-| 10.8 Cross-Surface Conformance, UAT & Cutover | v1.1 | 0/? | Not planned | — |
+| 10.8 Cross-Surface Conformance, UAT & Cutover | v1.1 | 0/4 | Planned (2026-07-10) | — |
 | 11. CRM via Twenty | v2.0 | 0/? | Not started | — |
 | 12. Basic Pulse Monitor | v2.0 | 0/? | Not started | — |
 | 13. STT/TTS Voice Integration | v2.0 | 0/? | Not started | — |
