@@ -1,3 +1,5 @@
+import { appendDiagnostic } from "../../util/diagnosticLog"
+
 function normalizeError(value: unknown): unknown {
   if (value instanceof Error) {
     return {
@@ -22,5 +24,9 @@ export function formatSessionCreateError(error: unknown): string {
 }
 
 export function logSessionCreateError(error: unknown): void {
-  console.error("ATLAS_SESSION_CREATE_ERROR", formatSessionCreateError(error))
+  const detail = formatSessionCreateError(error)
+  // stderr line for headless harnesses; the file for interactive runs, where
+  // the fullscreen renderer overdraws console output.
+  console.error("ATLAS_SESSION_CREATE_ERROR", detail)
+  appendDiagnostic("ATLAS_SESSION_CREATE_ERROR", detail)
 }
