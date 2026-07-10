@@ -44,6 +44,7 @@ _SETTING_METADATA: tuple[tuple[str, bool], ...] = (
     ("context.token_budget", False),
     ("context.enable_semantic", False),
     ("context.enable_skills", False),
+    ("context.enable_brain", False),
     ("permission.mode", False),
     ("permission.preset", False),
     ("permission.rules", False),

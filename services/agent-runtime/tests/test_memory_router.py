@@ -271,3 +271,32 @@ def test_failure_retriever_redacted_through_router(db, lock):
     assert "## Prior Failures (avoid repeating)" in body
     assert "sk-failleak123" not in body
     assert "[REDACTED]" in body
+
+
+def test_brain_retriever_matches_terms_and_scopes(db):
+    from atlas_core.schemas.brain import BrainNode
+    from atlas_runtime import brain_service
+
+    def node(nid, label, *, project=None, confidence=0.9):
+        return BrainNode(
+            id=nid, entity_type="run", label=label, project_id=project,
+            source_id=nid, source_version="1",
+            updated_at="2026-07-10T00:00:00+00:00", confidence=confidence,
+        )
+
+    brain_service.upsert_node(db, node("run:1", "run succeeded: wired executor"))
+    brain_service.upsert_node(db, node("run:2", "run failed: executor crash", confidence=0.5))
+    brain_service.upsert_node(db, node("run:3", "scoped elsewhere", project="p9"))
+
+    snippets = mr.BrainRetriever().retrieve(db, mr.RouterQuery(terms=("executor",), has_focus=True))
+    assert [s.source for s in snippets] == ["brain:run:1", "brain:run:2"]
+    assert all(s.source.startswith("brain:") for s in snippets)
+
+    # No terms -> no retrieval (abstain, don't dump the graph).
+    assert mr.BrainRetriever().retrieve(db, mr.RouterQuery(terms=())) == []
+
+
+def test_default_router_brain_toggle():
+    assert any(isinstance(r, mr.BrainRetriever) for r in mr.default_router().retrievers)
+    off = mr.default_router(enable_brain=False)
+    assert not any(isinstance(r, mr.BrainRetriever) for r in off.retrievers)

@@ -32,7 +32,7 @@ from typing import Protocol, runtime_checkable
 
 from atlas_core.schemas.core import SECRET_PATTERNS
 
-from atlas_runtime import goal_service
+from atlas_runtime import brain_service, goal_service
 
 # Wiki FTS retrieval budget (ported from context_service's original inline logic).
 _KNOWLEDGE_MAX_PAGES = 5
@@ -393,6 +393,55 @@ class HybridKnowledgeRetriever:
 
 
 # ---------------------------------------------------------------------------
+# Brain graph retriever (CTX-01 — the retrieval spine)
+# ---------------------------------------------------------------------------
+
+_BRAIN_MAX = 5
+_BRAIN_QUERY_TERMS = 6
+
+
+class BrainRetriever:
+    """Durable Brain evidence graph — nodes matching the Focus terms, so a run
+    inherits what prior missions/runs already established (run_executor writes
+    the graph after every terminal run). Safe on DBs without the brain schema."""
+
+    def section_lines(self, query: RouterQuery) -> list[str]:
+        return [
+            "## Brain Graph",
+            "_From the durable ATLAS Brain evidence graph, highest confidence first._",
+        ]
+
+    def retrieve(self, conn: sqlite3.Connection, query: RouterQuery) -> list[MemorySnippet]:
+        if not query.terms or not _table_exists(conn, "brain_nodes"):
+            return []
+        seen: set[str] = set()
+        nodes = []
+        for term in query.terms[:_BRAIN_QUERY_TERMS]:
+            for node in brain_service.search(
+                conn, term, project_id=query.project_id, limit=_BRAIN_MAX
+            ):
+                if node.id in seen:
+                    continue
+                seen.add(node.id)
+                nodes.append(node)
+        # Merged across terms: highest confidence first, newest breaking ties.
+        nodes.sort(key=lambda n: n.updated_at, reverse=True)
+        nodes.sort(key=lambda n: -n.confidence)
+        out: list[MemorySnippet] = []
+        for node in nodes[:_BRAIN_MAX]:
+            text = f"- **{node.label}** _({node.entity_type})_"
+            out.append(
+                MemorySnippet(
+                    text=text,
+                    score=node.confidence,
+                    source=f"brain:{node.id}",
+                    approx_tokens=estimate_tokens(text),
+                )
+            )
+        return out
+
+
+# ---------------------------------------------------------------------------
 # Skill-matching retriever (B-WP3)
 # ---------------------------------------------------------------------------
 
@@ -593,12 +642,18 @@ class MemoryRouter:
         )
 
 
-def default_router(*, enable_semantic: bool = True, enable_skills: bool = True) -> MemoryRouter:
+def default_router(
+    *,
+    enable_semantic: bool = True,
+    enable_skills: bool = True,
+    enable_brain: bool = True,
+) -> MemoryRouter:
     """The default retriever set, in brief order: runs → prior failures →
-    observations → wiki knowledge → relevant skills.
+    observations → wiki knowledge → brain graph → relevant skills.
 
     `enable_semantic` toggles the semantic blend (pure FTS5 when off);
-    `enable_skills` toggles the skill-matching section."""
+    `enable_skills` toggles the skill-matching section; `enable_brain` toggles
+    the Brain evidence-graph section."""
     knowledge: Retriever = HybridKnowledgeRetriever() if enable_semantic else WikiFtsRetriever()
     retrievers: list[Retriever] = [
         RecentRunsRetriever(),
@@ -606,6 +661,8 @@ def default_router(*, enable_semantic: bool = True, enable_skills: bool = True) 
         ObservationRetriever(),
         knowledge,
     ]
+    if enable_brain:
+        retrievers.append(BrainRetriever())
     if enable_skills:
         retrievers.append(SkillRetriever())
     return MemoryRouter(retrievers=retrievers)

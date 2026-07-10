@@ -176,7 +176,9 @@ def assemble_context(
     )
     ctx_cfg = config_service.load_config().context
     router = default_router(
-        enable_semantic=ctx_cfg.enable_semantic, enable_skills=ctx_cfg.enable_skills
+        enable_semantic=ctx_cfg.enable_semantic,
+        enable_skills=ctx_cfg.enable_skills,
+        enable_brain=ctx_cfg.enable_brain,
     )
     retrieval = router.assemble_envelope(
         conn,

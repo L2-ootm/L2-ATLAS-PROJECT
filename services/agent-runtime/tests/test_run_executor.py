@@ -167,3 +167,58 @@ def test_start_and_execute_async_returns_then_completes(file_db):
     assert run_executor.await_run(run.id, timeout=5) is True
     assert _run_status(conn, run.id) == "succeeded"
     assert run.id not in run_executor.active_run_ids()
+
+
+def test_execute_run_writes_brain_graph(file_db):
+    _, conn = file_db
+    lock = threading.Lock()
+    mid = _new_mission(conn, lock)
+    run = start_run(conn, lock, mission_id=mid)
+    run_executor.execute_run(
+        conn, lock, agent=_FakeAgent(status="succeeded", summary="brain evidence"),
+        mission_id=mid, run_id=run.id, prompt="hi",
+    )
+    from atlas_runtime import brain_service
+
+    mission_node = brain_service.explain(conn, f"mission:{mid}")
+    run_node = brain_service.explain(conn, f"run:{run.id}")
+    assert mission_node is not None and mission_node.entity_type == "mission"
+    assert run_node is not None and run_node.entity_type == "run"
+    assert "brain evidence" in run_node.label
+    edge = conn.execute(
+        "SELECT relation FROM brain_edges WHERE source_id=? AND target_id=?",
+        (f"mission:{mid}", f"run:{run.id}"),
+    ).fetchone()
+    assert edge == ("produced",)
+
+
+def test_execute_run_brain_labels_are_redacted(file_db):
+    _, conn = file_db
+    lock = threading.Lock()
+    mid = _new_mission(conn, lock)
+    run = start_run(conn, lock, mission_id=mid)
+    run_executor.execute_run(
+        conn, lock,
+        agent=_FakeAgent(status="succeeded", summary="done api_key=sk-brainleak99"),
+        mission_id=mid, run_id=run.id, prompt="hi",
+    )
+    from atlas_runtime import brain_service
+
+    run_node = brain_service.explain(conn, f"run:{run.id}")
+    assert run_node is not None
+    assert "sk-brainleak99" not in run_node.label
+    assert "[REDACTED]" in run_node.label
+
+
+def test_cancelled_run_writes_no_brain_graph(file_db):
+    _, conn = file_db
+    lock = threading.Lock()
+    mid = _new_mission(conn, lock)
+    run = start_run(conn, lock, mission_id=mid)
+    cancel_run(conn, lock, run_id=run.id, mission_id=mid)
+    run_executor.execute_run(
+        conn, lock, agent=_FakeAgent(status="succeeded"), mission_id=mid, run_id=run.id, prompt="hi",
+    )
+    from atlas_runtime import brain_service
+
+    assert brain_service.explain(conn, f"run:{run.id}") is None
