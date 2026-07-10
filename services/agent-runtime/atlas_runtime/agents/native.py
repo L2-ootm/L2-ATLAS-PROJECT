@@ -275,9 +275,14 @@ class NativeAtlasAgent(AgentRuntime):
                 # Keep foundation side-task slots (curator/auxiliary) bound to
                 # the lightest model on the active mesh (best-effort, audited
                 # config write inside the foundation's own store).
-                from atlas_runtime import function_router  # noqa: PLC0415
+                from atlas_runtime import function_router, subagent_service  # noqa: PLC0415
 
                 function_router.apply_autoconfig()
+                # Foundation delegation observer (F2): register the atlas_audit
+                # hooks with the foundation plugin manager and map this run's
+                # harness session, so delegate_tool subagent spawns emit
+                # subagent_run AuditEvents. Best-effort; never blocks the run.
+                subagent_service.ensure_foundation_bridge(conn, run_id=run_id)
                 reasoning_effort = _resolve_reasoning_effort()
                 factory = lambda session_id: _default_factory(  # noqa: E731
                     session_id,
