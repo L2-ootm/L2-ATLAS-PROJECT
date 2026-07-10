@@ -76,7 +76,12 @@ def start_run(
     try:
         import atlas_audit  # noqa: PLC0415
         atlas_audit.set_connection(conn)
-        atlas_audit.on_session_start(session_id=session_id or run.id, run_id=run.id)
+        # Map the harness session key (run.id — NativeAtlasAgent constructs the
+        # harness with session_id=run_id) AND any ATLAS surface session id, so
+        # hooks fired with either key attribute to this run.
+        atlas_audit.on_session_start(session_id=run.id, run_id=run.id)
+        if session_id and session_id != run.id:
+            atlas_audit.on_session_start(session_id=session_id, run_id=run.id)
     except ImportError:
         pass
 
