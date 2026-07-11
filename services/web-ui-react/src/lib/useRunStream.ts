@@ -4,13 +4,16 @@ import { getRun, getRunEvents, openRunStream, type AuditEvent, type Run } from '
 // useRunStream — the Run-detail data engine. Live runs consume the SSE stream;
 // finished runs page their full audit history. Guarantees:
 //   - lastCursor dedupe: a reconnect/replay never produces duplicate cursors
-//   - single transport retry per disconnection, resuming from lastCursor
+//   - up to 3 backoff transport retries per disconnection (2s/4s/8s), resuming
+//     from lastCursor; the budget re-arms on a clean open
 //   - 500-row DOM cap
 //   - newCursors set (cleared after 300ms) so the view can blur-in + sonar-ping
 
 const DOM_CAP = 500;
 const HISTORY_PAGE = 1000;
 const HISTORY_MAX_PAGES = 20; // up to 20k events on terminal-run backfill
+const MAX_STREAM_RETRIES = 3;
+const RETRY_BASE_MS = 2000;
 
 function isActive(status: string): boolean {
 	const s = status.toUpperCase();
@@ -40,7 +43,7 @@ export function useRunStream(runId: string, initialRun: Run | null): RunStreamSt
 	const lastCursor = useRef(0);
 	const sourceRef = useRef<EventSource | null>(null);
 	const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-	const retried = useRef(false);
+	const retryAttempts = useRef(0);
 
 	const appendEvent = useCallback((evt: AuditEvent) => {
 		// Dedupe guard: a reconnect must continue, never replay.
@@ -81,7 +84,7 @@ export function useRunStream(runId: string, initialRun: Run | null): RunStreamSt
 				if (!alive) return;
 				setConnected(true);
 				setStreamError(null);
-				retried.current = false; // re-arm the single-retry budget on a clean open
+				retryAttempts.current = 0; // re-arm the retry budget on a clean open
 			};
 
 			source.addEventListener('audit', (e) => {
@@ -129,16 +132,20 @@ export function useRunStream(runId: string, initialRun: Run | null): RunStreamSt
 				sourceRef.current = null;
 			});
 
-			// Transport error: retry once per disconnection, resuming from lastCursor.
+			// Transport error: exponential-backoff retries, resuming from lastCursor.
 			source.onerror = () => {
 				if (!alive) return;
 				setConnected(false);
 				source.close();
 				sourceRef.current = null;
-				if (!retried.current) {
-					retried.current = true;
-					setStreamError('STREAM INTERRUPTED — reconnecting in 2s. If this persists, check gateway health.');
-					retryTimer.current = setTimeout(() => alive && connect(id), 2000);
+				if (retryAttempts.current < MAX_STREAM_RETRIES) {
+					retryAttempts.current += 1;
+					const delay = RETRY_BASE_MS * 2 ** (retryAttempts.current - 1);
+					setStreamError(
+						`STREAM INTERRUPTED — reconnecting in ${delay / 1000}s ` +
+							`(attempt ${retryAttempts.current}/${MAX_STREAM_RETRIES}). If this persists, check gateway health.`
+					);
+					retryTimer.current = setTimeout(() => alive && connect(id), delay);
 				} else {
 					setStreamError('STREAM DISCONNECTED — refresh the page to reconnect.');
 				}
@@ -168,7 +175,7 @@ export function useRunStream(runId: string, initialRun: Run | null): RunStreamSt
 			}
 			// Reset for a fresh run id.
 			lastCursor.current = 0;
-			retried.current = false;
+			retryAttempts.current = 0;
 			setEvents([]);
 			try {
 				const { run } = initialRun && initialRun.id === runId ? { run: initialRun } : await getRun(runId);

@@ -1,0 +1,120 @@
+# ATLAS CI — test pipelines for the ATLAS-specific packages (deep-audit F7).
+# One job per package; foundation/ (vendored Hermes) is exercised by its own
+# upstream suite and its imports in atlas_runtime are lazy, so the Python jobs
+# run without it — matching how the suites run on the operator machine.
+name: ATLAS CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  agent-runtime:
+    name: agent-runtime (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: |
+          pip install -e packages/atlas-core
+          pip install -e "services/agent-runtime[dev]"
+      - name: Test
+        run: python -m pytest services/agent-runtime/tests -q
+
+  atlas-core:
+    name: atlas-core (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: |
+          pip install -e "packages/atlas-core[dev]"
+      - name: Test
+        run: python -m pytest packages/atlas-core/tests -q
+
+  atlas-cli:
+    name: atlas-cli (node, ubuntu + windows)
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Test
+        working-directory: packages/atlas-cli
+        run: npm test
+
+  atlas-terminal:
+    name: atlas-terminal (bun test + tsc)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Install
+        working-directory: services/atlas-terminal
+        run: bun install --frozen-lockfile
+      - name: Test
+        working-directory: services/atlas-terminal
+        run: bun test
+      - name: Typecheck
+        working-directory: services/atlas-terminal
+        run: bunx tsc --noEmit
+
+  atlas-tui:
+    name: atlas-tui (go test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/atlas-tui/go.mod
+          cache-dependency-path: services/atlas-tui/go.sum
+      - name: Test
+        working-directory: services/atlas-tui
+        run: go test ./...
+
+  atlas-gateway:
+    name: atlas-gateway (cargo test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native/atlas-core-rs
+      - name: Test
+        working-directory: native/atlas-core-rs
+        run: cargo test --workspace
+
+  web-ui-react:
+    name: cockpit (build + bundle budget)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: services/web-ui-react/package-lock.json
+      - name: Install
+        working-directory: services/web-ui-react
+        run: npm ci
+      - name: Build
+        working-directory: services/web-ui-react
+        run: npm run build
