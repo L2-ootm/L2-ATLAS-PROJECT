@@ -178,6 +178,10 @@ from atlas_runtime.cli.tui import legacy_foundation_tui
 @app.callback(invoke_without_command=True)
 def _root(ctx: typer.Context) -> None:
     """ATLAS — bare invocation launches the terminal workbench."""
+    # Central rotating file log for every CLI entry point (F13). Fail-open.
+    from atlas_runtime import logging_config
+
+    logging_config.configure_logging()
     if ctx.invoked_subcommand is None:
         _launch_go_tui()
 

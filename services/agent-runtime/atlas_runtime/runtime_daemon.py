@@ -92,6 +92,9 @@ def make_server(host: str, port: int, *, db_path: Optional[str] = None) -> Threa
 
 def serve(host: str = "127.0.0.1", port: int = 8585, *, db_path: Optional[str] = None) -> None:
     """Run the daemon until interrupted (blocking)."""
+    from atlas_runtime import logging_config
+
+    logging_config.configure_logging()
     server = make_server(host, port, db_path=db_path)
     try:
         server.serve_forever()

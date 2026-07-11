@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import pathlib
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
 import yaml
 from atlas_core.schemas.control_plane import (
@@ -29,6 +29,46 @@ from atlas_runtime.secure_store import (
 
 ATLAS_HOME_ENV = "ATLAS_HOME"
 CONFIG_SCHEMA_VERSION = 1
+
+# Ordered migration chain: _CONFIG_MIGRATIONS[N] upgrades a raw config dict
+# from schema version N to N+1 (in memory; the next write persists the current
+# version). Bumping CONFIG_SCHEMA_VERSION REQUIRES registering the step here —
+# the loader then upgrades old files transparently instead of hard-blocking.
+_CONFIG_MIGRATIONS: dict[int, Callable[[dict[str, object]], dict[str, object]]] = {
+    # Example for a future bump to 2:
+    # 1: _migrate_v1_to_v2,
+}
+
+
+def _migrate_raw_config(raw: dict[str, object]) -> dict[str, object]:
+    """Walk the migration chain up to CONFIG_SCHEMA_VERSION; raise when impossible."""
+    version = raw.get("schema_version", CONFIG_SCHEMA_VERSION)
+    if not isinstance(version, int) or isinstance(version, bool):
+        raise ControlPlaneError(
+            "config_schema_unsupported",
+            f"config schema version {version!r} is not an integer",
+            "repair schema_version in the config file, then retry",
+        )
+    if version > CONFIG_SCHEMA_VERSION:
+        raise ControlPlaneError(
+            "config_schema_unsupported",
+            f"config schema version {version} is newer than this ATLAS build "
+            f"(supports up to {CONFIG_SCHEMA_VERSION})",
+            "upgrade ATLAS or export the config with a compatible version",
+        )
+    migrated = dict(raw)
+    while version < CONFIG_SCHEMA_VERSION:
+        step = _CONFIG_MIGRATIONS.get(version)
+        if step is None:
+            raise ControlPlaneError(
+                "config_schema_unsupported",
+                f"no migration path from config schema version {version}",
+                "export the config with a supported version or recreate it",
+            )
+        migrated = step(migrated)
+        version += 1
+        migrated["schema_version"] = version
+    return migrated
 
 
 def atlas_home() -> pathlib.Path:
@@ -106,15 +146,7 @@ def _load_unlocked(path: pathlib.Path) -> AtlasConfig:
             "repair the preserved config so its top level is a mapping",
         )
 
-    version = raw.get("schema_version", CONFIG_SCHEMA_VERSION)
-    if version != CONFIG_SCHEMA_VERSION:
-        raise ControlPlaneError(
-            "config_schema_unsupported",
-            f"config schema version {version!r} is not supported",
-            "upgrade ATLAS or export the config with a compatible version",
-        )
-
-    migrated = dict(raw)
+    migrated = _migrate_raw_config(raw)
     migrated.setdefault("schema_version", CONFIG_SCHEMA_VERSION)
     migrated.setdefault("revision", 0)
     try:
