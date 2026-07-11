@@ -275,6 +275,15 @@ async fn purge_archived_missions(State(state): State<AppState>) -> ApiResult {
     Ok(Json(json!({ "deleted": deleted })))
 }
 
+/// GET /v1/runs — cross-mission run feed, one JOIN query (no N+1 fan-out).
+async fn runs_list(State(state): State<AppState>, Query(params): Query<ListParams>) -> ApiResult {
+    let path = state.db_path.clone();
+    let limit = clamp_limit(params.limit, 100, 500);
+    let runs = blocking(move || db::list_runs(&path, limit)).await?;
+    let count = runs.len();
+    Ok(Json(json!({ "runs": runs, "count": count })))
+}
+
 async fn run_detail(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
     let path = state.db_path.clone();
     let found = blocking(move || db::get_run(&path, &id)).await?;
@@ -2568,6 +2577,7 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/missions/{id}/run", post(start_run))
         .route("/v1/missions/{id}/retry", post(retry_mission))
         .route("/v1/missions/{id}/cancel", post(cancel_run))
+        .route("/v1/runs", get(runs_list))
         .route("/v1/runs/{id}", get(run_detail))
         .route("/v1/runs/{id}/events", get(run_events))
         .route("/v1/runs/{id}/stream", get(run_stream))
