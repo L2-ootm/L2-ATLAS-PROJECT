@@ -103,10 +103,40 @@ def start_command_hint() -> str:
     return "atlas gateway start"
 
 
+def reap_orphan_runs(ttl_seconds: float = 90.0) -> int:
+    """Cold-start sweep (SURF-05): reclaim crash-left sessions and running runs.
+
+    The daemon path (`atlas runtime serve`) already reconciles at startup, but the
+    default gateway/subprocess execution mode never did — a process kill mid-run
+    left the run stuck in 'running' forever. Called from start() only when the
+    gateway was actually down (so nothing can be legitimately executing under a
+    healthy gateway). Fail-open: startup must not break on a locked/absent DB.
+    Returns the number of reclaimed sessions (0 on any failure).
+    """
+    import threading
+
+    from atlas_runtime import db, surface_session_service
+
+    try:
+        conn = db.connect()
+        try:
+            reclaimed = surface_session_service.reconcile_orphans(
+                conn, threading.Lock(), ttl_seconds=ttl_seconds
+            )
+            return len(reclaimed)
+        finally:
+            conn.close()
+    except Exception:
+        return 0
+
+
 def start(poll_seconds: float = 15.0) -> tuple[bool, str]:
     """Start the gateway if not already healthy. Returns (ok, message)."""
     if health_ok():
         return True, "gateway already running"
+    # Gateway was down: reconcile whatever the previous process left behind
+    # before new runs can start.
+    reap_orphan_runs()
     binary = gateway_binary()
     if not binary:
         return (
@@ -138,6 +168,40 @@ def start(poll_seconds: float = 15.0) -> tuple[bool, str]:
     return False, "gateway did not become healthy in time"
 
 
+def _pid_process_name(pid: int) -> str | None:
+    """Best-effort image/command name for a live PID; None when not resolvable.
+
+    Guards stop() against PID reuse: after a crash the recorded PID may now
+    belong to an unrelated process, and killing it blind is destructive.
+    """
+    try:
+        if os.name == "nt":
+            out = subprocess.run(
+                ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+            ).stdout.strip()
+            # CSV row: "image.exe","pid",... ; "INFO: No tasks..." when dead.
+            if out.startswith('"'):
+                return out.split('","')[0].strip('"')
+            return None
+        comm = pathlib.Path(f"/proc/{pid}/comm")
+        if comm.exists():
+            return comm.read_text().strip()
+        out = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "comm="],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        ).stdout.strip()
+        return out or None
+    except Exception:
+        return None
+
+
 def stop() -> tuple[bool, str]:
     """Stop a gateway started by this primitive (via its PID file)."""
     if not PID_FILE.exists():
@@ -147,6 +211,16 @@ def stop() -> tuple[bool, str]:
     except (ValueError, OSError):
         PID_FILE.unlink(missing_ok=True)
         return False, "invalid pid file (removed)"
+    name = _pid_process_name(pid)
+    if name is None:
+        PID_FILE.unlink(missing_ok=True)
+        return False, f"pid {pid} not running (stale pid file removed)"
+    if "atlas-gateway" not in name.lower():
+        PID_FILE.unlink(missing_ok=True)
+        return False, (
+            f"pid {pid} is {name!r}, not atlas-gateway — refusing to kill "
+            "(pid reuse; stale pid file removed)"
+        )
     try:
         if os.name == "nt":
             subprocess.run(["taskkill", "/PID", str(pid), "/F"], check=False)
