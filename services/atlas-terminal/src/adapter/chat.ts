@@ -118,8 +118,20 @@ export class ChatAdapter {
 	private async ensureSurface(): Promise<SurfaceSession> {
 		if (this.surface) return this.surface;
 		// gateway SurfaceIdentity.kind literal: cli|tui|webui|api|native|test
-		this.surface = await this.gw.createSurface('tui', 'global');
-		return this.surface;
+		// Retry: a briefly unreachable gateway mid-prompt must not surface as an
+		// unhandled throw (2 retries, 1s backoff).
+		let lastErr: unknown;
+		for (let attempt = 0; attempt < 3; attempt++) {
+			if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 1000));
+			try {
+				this.surface = await this.gw.createSurface('tui', 'global');
+				return this.surface;
+			} catch (err) {
+				lastErr = err;
+			}
+		}
+		const message = lastErr instanceof Error ? lastErr.message : String(lastErr);
+		throw new Error(`gateway surface unavailable after 3 attempts: ${message}`);
 	}
 
 	// ── sessions ────────────────────────────────────────────────────────────
@@ -199,9 +211,22 @@ export class ChatAdapter {
 			this.bus.emit('session.updated', { sessionID, info: session });
 		}
 
-		const surface = await this.ensureSurface();
-		const mission = await this.gw.createMission(session.title.slice(0, 120), text);
-		const runID = await this.gw.startRun(mission.id, this.atlasAgent, surface.id);
+		let runID: string;
+		try {
+			const surface = await this.ensureSurface();
+			const mission = await this.gw.createMission(session.title.slice(0, 120), text);
+			runID = await this.gw.startRun(mission.id, this.atlasAgent, surface.id);
+		} catch (err) {
+			// Surface the failure in-session (not just as a 500 toast) and leave
+			// the session idle so the composer stays usable.
+			const message = err instanceof Error ? err.message : String(err);
+			this.bus.emit('session.error', {
+				sessionID,
+				error: { name: 'UnknownError', data: { message } }
+			});
+			this.bus.emit('session.status', { sessionID, status: { type: 'idle' } });
+			throw err;
+		}
 
 		const assistant: DonorMessage = {
 			info: {

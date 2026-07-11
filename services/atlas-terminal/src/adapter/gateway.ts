@@ -47,6 +47,9 @@ export class GatewayError extends Error {
 	}
 }
 
+/** Per-request deadline — a hung gateway must not block the caller forever. */
+const REQUEST_TIMEOUT_MS = 15_000;
+
 export class GatewayClient {
 	private readonly gw: string;
 	private readonly f: typeof fetch;
@@ -68,7 +71,8 @@ export class GatewayClient {
 		const res = await this.f(`${this.gw}${path}`, {
 			method,
 			headers,
-			body: body === undefined ? undefined : JSON.stringify(body)
+			body: body === undefined ? undefined : JSON.stringify(body),
+			signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
 		});
 		if (!res.ok) {
 			const text = await res.text().catch(() => '');
@@ -139,7 +143,8 @@ export class GatewayClient {
 	/**
 	 * Consume GET /v1/runs/{id}/stream (text/event-stream); invokes onEvent per
 	 * frame and resolves when the stream closes. "end" frames still flow to
-	 * onEvent — the caller owns terminal-state handling.
+	 * onEvent — the caller owns terminal-state handling. Deliberately NOT under
+	 * REQUEST_TIMEOUT_MS: runs stream for minutes and the gateway keepalives.
 	 */
 	async streamRun(runID: string, onEvent: (event: RunEvent) => void): Promise<void> {
 		const res = await this.f(`${this.gw}/v1/runs/${encodeURIComponent(runID)}/stream`, {
