@@ -72,6 +72,43 @@ def test_future_schema_version_fails_with_remediation(tmp_path: Path) -> None:
     assert "upgrade" in caught.value.remediation.lower()
 
 
+def test_old_schema_version_migrates_through_registered_chain(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Simulate a v0 file with a registered 0 -> 1 migration that renames a key.
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        "schema_version: 0\nrevision: 3\nlegacy_model: custom/model\n",
+        encoding="utf-8",
+    )
+
+    def migrate_v0_to_v1(raw: dict[str, object]) -> dict[str, object]:
+        out = dict(raw)
+        legacy = out.pop("legacy_model", None)
+        if isinstance(legacy, str):
+            out["provider"] = {"model": legacy}
+        return out
+
+    monkeypatch.setitem(config_service._CONFIG_MIGRATIONS, 0, migrate_v0_to_v1)
+    loaded = config_service.load_config(path)
+
+    assert loaded.schema_version == 1
+    assert loaded.revision == 3
+    assert loaded.provider.model == "custom/model"
+
+
+def test_old_schema_version_without_migration_path_fails(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text("schema_version: 0\nrevision: 1\n", encoding="utf-8")
+
+    with pytest.raises(ControlPlaneError) as caught:
+        config_service.load_config(path)
+
+    assert caught.value.code == "config_schema_unsupported"
+    assert "no migration path" in caught.value.message
+
+
 def test_patch_increments_revision_once_and_preserves_other_sections(
     tmp_path: Path,
 ) -> None:
