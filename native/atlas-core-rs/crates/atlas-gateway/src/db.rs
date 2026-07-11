@@ -132,6 +132,8 @@ const MISSION_ARCHIVE_COLS: &str =
      a.archived_at, a.delete_after";
 const RUN_COLS: &str =
     "id, mission_id, session_id, status, started_at, finished_at, summary, agent_runtime";
+const RUN_COLS_QUALIFIED: &str = "r.id, r.mission_id, r.session_id, r.status, r.started_at, \
+     r.finished_at, r.summary, r.agent_runtime";
 const PROJECT_COLS: &str = "id, name, root_path, created_at, updated_at";
 const MODULE_COLS: &str = "id, name, description, status, activated_at";
 const FOCUS_COLS: &str =
@@ -386,15 +388,27 @@ pub fn goal_tree(path: &Path, focus_id: &str) -> Result<Vec<Value>, DbError> {
         return Ok(vec![]);
     }
 
-    // Group tasks / observations by goal_id (tables co-created in 0010; tolerate absence).
+    // Group tasks / observations by goal_id, filtered to this focus's goals in
+    // SQL (tables co-created in 0010; tolerate absence). The IN-subquery keeps
+    // the scan bounded — loading whole tables grew with global dataset size.
     let tasks_by_goal = group_by_goal(
         &conn,
-        &format!("SELECT {TASK_COLS} FROM tasks ORDER BY position ASC, created_at ASC"),
+        &format!(
+            "SELECT {TASK_COLS} FROM tasks \
+             WHERE goal_id IN (SELECT id FROM goals WHERE focus_id = ?1) \
+             ORDER BY position ASC, created_at ASC"
+        ),
+        focus_id,
         task_row,
     )?;
     let obs_by_goal = group_by_goal(
         &conn,
-        &format!("SELECT {OBSERVATION_COLS} FROM observations ORDER BY created_at DESC"),
+        &format!(
+            "SELECT {OBSERVATION_COLS} FROM observations \
+             WHERE goal_id IN (SELECT id FROM goals WHERE focus_id = ?1) \
+             ORDER BY created_at DESC"
+        ),
+        focus_id,
         observation_row,
     )?;
 
@@ -403,11 +417,12 @@ pub fn goal_tree(path: &Path, focus_id: &str) -> Result<Vec<Value>, DbError> {
 
 /// Run a query whose row's column index 1 is `goal_id`, grouping mapped rows by it.
 /// `goal_id` may be NULL (run-level observations from the compounding loop carry
-/// no goal) — those rows are skipped, they belong to no goal in the tree. A
-/// missing table yields an empty map (graceful pre-0010 degradation).
+/// no goal) — those never match the focus IN-subquery, they belong to no goal in
+/// the tree. A missing table yields an empty map (graceful pre-0010 degradation).
 fn group_by_goal(
     conn: &Connection,
     sql: &str,
+    focus_id: &str,
     mapper: fn(&rusqlite::Row<'_>) -> rusqlite::Result<Value>,
 ) -> Result<HashMap<String, Vec<Value>>, DbError> {
     let mut stmt = match conn.prepare(sql) {
@@ -418,7 +433,7 @@ fn group_by_goal(
         Err(e) => return Err(e.into()),
     };
     let rows: Vec<(Option<String>, Value)> = stmt
-        .query_map([], |row| {
+        .query_map([focus_id], |row| {
             Ok((row.get::<_, Option<String>>(1)?, mapper(row)?))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -502,6 +517,26 @@ pub fn get_module(path: &Path, id: &str) -> Result<Option<Value>, DbError> {
         }
         Err(e) => Err(e.into()),
     }
+}
+
+/// Cross-mission run feed: runs joined to their mission title, newest first.
+/// One query — replaces the cockpit's listMissions -> getMission N+1 fan-out.
+pub fn list_runs(path: &Path, limit: i64) -> Result<Vec<Value>, DbError> {
+    let conn = open_ro(path)?;
+    let sql = format!(
+        "SELECT {RUN_COLS_QUALIFIED}, m.title \
+         FROM runs r JOIN missions m ON m.id = r.mission_id \
+         ORDER BY r.started_at DESC LIMIT ?1"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt
+        .query_map([limit], |row| {
+            let mut run = run_row(row)?;
+            run["mission_title"] = Value::String(row.get::<_, String>(8)?);
+            Ok(run)
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
 }
 
 pub fn get_run(path: &Path, id: &str) -> Result<Option<Value>, DbError> {

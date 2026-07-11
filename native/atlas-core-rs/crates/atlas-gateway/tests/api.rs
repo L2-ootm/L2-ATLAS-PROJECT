@@ -698,6 +698,22 @@ async fn run_detail_roundtrips() {
 }
 
 #[tokio::test]
+async fn runs_list_joins_mission_title() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_app(seeded_db(&dir));
+    let (status, body) = get_json(&router, "/v1/runs").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["count"], 1);
+    assert_eq!(body["runs"][0]["id"], "r1");
+    assert_eq!(body["runs"][0]["mission_title"], "First mission");
+    assert_eq!(body["runs"][0]["agent_runtime"], "native");
+
+    let (status, body) = get_json(&router, "/v1/runs?limit=1").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["runs"].as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
 async fn run_events_pages_by_rowid_cursor() {
     let dir = tempfile::tempdir().unwrap();
     let router = test_app(seeded_db(&dir));
