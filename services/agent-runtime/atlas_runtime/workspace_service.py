@@ -41,10 +41,11 @@ class WorkspaceError(ValueError):
 def global_root() -> pathlib.Path:
     """The ATLAS global workspace root — bound to the DB home (Pitfall 4).
 
-    Derives from `db.DEFAULT_DB_PATH.parent` dynamically so it always agrees with the
-    DB location and so tests can redirect both by monkeypatching `db.DEFAULT_DB_PATH`.
+    Derives from `db.default_db_path().parent` dynamically so it always agrees
+    with the DB location (including ATLAS_DB/ATLAS_HOME overrides) and so tests
+    can redirect both by monkeypatching `db.DEFAULT_DB_PATH`.
     """
-    return pathlib.Path(db_module.DEFAULT_DB_PATH).parent.expanduser().resolve()
+    return pathlib.Path(db_module.default_db_path()).parent.expanduser().resolve()
 
 
 def resolve_workspace(

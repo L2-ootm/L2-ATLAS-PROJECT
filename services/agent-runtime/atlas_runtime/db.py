@@ -17,6 +17,7 @@ applied_at)` contract is already portable. Not implemented yet (no creds; YAGNI)
 from __future__ import annotations
 
 import datetime
+import os
 import pathlib
 import sqlite3
 
@@ -25,9 +26,26 @@ MIGRATIONS_DIR = pathlib.Path(__file__).resolve().parents[3] / "infra" / "migrat
 DEFAULT_DB_PATH = pathlib.Path.home() / ".atlas" / "atlas.db"
 
 
+def default_db_path() -> pathlib.Path:
+    """Resolve the DB path at call time: ATLAS_DB > ATLAS_HOME/atlas.db > ~/.atlas/atlas.db.
+
+    Env-aware lazily (not a frozen import-time constant) so CLI processes the
+    gateway dispatches with ATLAS_DB/ATLAS_HOME exported write to the same DB
+    the gateway reads — previously the CLI always hit the real ~/.atlas/atlas.db,
+    which made isolated smokes/E2E against a temp home impossible.
+    """
+    env_db = os.environ.get("ATLAS_DB", "").strip()
+    if env_db:
+        return pathlib.Path(env_db).expanduser()
+    env_home = os.environ.get("ATLAS_HOME", "").strip()
+    if env_home:
+        return pathlib.Path(env_home).expanduser() / "atlas.db"
+    return DEFAULT_DB_PATH
+
+
 def connect(db_path: str | pathlib.Path | None = None) -> sqlite3.Connection:
     """File-backed SQLite connection with WAL + FK enforcement (default ~/.atlas/atlas.db)."""
-    path = pathlib.Path(db_path) if db_path else DEFAULT_DB_PATH
+    path = pathlib.Path(db_path) if db_path else default_db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path), check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL")
