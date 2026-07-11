@@ -1,5 +1,66 @@
 # Handoff — L2 ATLAS Finish Sprint
 
+## Session update — 2026-07-10 (second session): MASTER action plan executed (MAP F1-F22, F20 deferred)
+
+Executed `.mimocode/artifacts/ultra/ATLAS-MASTER-ACTION-PLAN.md` (the NEW 22-item
+queue from the 26-subagent deep audit — distinct from the older F1-F13 plan below).
+10 commits (8a2101d3..02af7adf). Checklist updated in place in the plan file.
+
+**Critical (Wave 1):**
+- **MAP F1** — atlas-terminal crashed on every event: adapter emitted bare
+  DonorEvent but the donor SDK v2 consumes GlobalEvent {directory, payload}
+  (useEvent reads event.payload.type). Wrapped at BOTH boundaries (SSE /event
+  and the direct-bus bridge in main.tsx). Also fixed emit property shapes
+  (sessionID/time on message+part events, flat PermissionRequest, requestID/
+  reply on permission.replied) and a silent-approve bug: the reply handler read
+  body['response'] but the SDK sends body['reply'] — rejects became approves.
+- **MAP F2** — decideApproval sent {owner_token}; gateway requires {nonce,scope}.
+  ToolApproval now carries nonce; donor "always" maps to scope=session.
+- **MAP F3** — migration 0019: idx_audit_events_run_id + idx_runs_mission_id.
+  NOTE: the audit's suggested (run_id, rowid) composite is INVALID SQL here
+  (TEXT pk, no rowid alias — verified); plain run_id gives the covering search.
+
+**High (Wave 2):** MAP F4 cold-start orphan reaper — gateway_control.start() now
+runs the SURF-05 reconcile sweep when the gateway was down (subprocess mode had
+no reaper; daemon path already did). F5 cockpit SSE: 3 backoff retries (was 1).
+F6 .env.example: all operator env vars. F7 .github/workflows/atlas-ci.yml (7 jobs;
+unverified until first push). F8 ensureSurface retry + session.error on prompt
+failure. F9 15s AbortSignal on gateway client (stream exempt).
+
+**Medium (Wave 3):** MAP F10 GET /v1/runs (JOIN, one query) + cockpit wiring with
+404 legacy fallback. F11 cockpit auto re-surface on 403 (retry prompt once; poll
+drops dead session). F12 config schema migration chain (_CONFIG_MIGRATIONS).
+F13 logging_config.py — rotating <ATLAS_HOME>/logs/atlas.log, ATLAS_LOG_LEVEL/DIR.
+F14 tests/e2e/test_full_pipeline.py — real gateway binary + real CLI dispatch +
+temp DB round trip; **enabled by making db.default_db_path() honor ATLAS_DB/
+ATLAS_HOME at call time** (fixes the long-standing live-DB smoke footgun).
+F15 goal_tree tasks/observations filtered by focus in SQL. F16 stop() refuses
+dead/reused PIDs (image-name check).
+
+**Low (Wave 4):** F17 ogl removed. F18 atlas-core pinned >=0.1,<0.2. F19
+graphCache 5-min TTL. F21 build+bundle budget verified green. F22 Go TUI
+/missions rows show intent + updated day (atlas-terminal has no mission list —
+its browser is a separate tracked feature). **F20 DEFERRED**: the setTimeouts
+are vendored donor TUI internals; refactoring breaks vendoring discipline for
+negligible gain (reason recorded in the plan checklist).
+
+**Verification (all fresh 2026-07-10):** agent-runtime 766 passed; atlas-core 97;
+atlas-terminal bun 29 + tsc clean + --smoke OK + boundary scan passed; atlas-cli
+20/20 (Windows); atlas-tui go test 101; cargo test 104; cockpit vitest 44 +
+`npm run build` + bundle budget green; E2E 1 passed against the rebuilt release
+gateway (native/atlas-core-rs/target/release — rebuilt this session, includes
+/v1/runs).
+
+**Environment notes:** main now 32 ahead of origin, unpushed. CONTRIBUTING.md
+still carries its pre-existing uncommitted modification (untouched). CI workflow
+is authored but can only be verified on first push.
+
+**Next:** (1) push + watch the first atlas-ci run; (2) operator UAT still owed:
+interactive atlas-terminal session (the F1 event fix likely also resolves the
+long-standing session-create toast — reproduce once and read
+%TEMP%\atlas-terminal-diagnostics.log if not); approve/reject a real tool call
+from atlas-terminal; (3) Phase 10.8 execution per its 4 plans.
+
 ## Session update — 2026-07-10: ULTRAREVIEW action plan executed (F1-F13 minus F12 root cause)
 
 Executed `.mimocode/artifacts/ultra/ATLAS-ACTION-PLAN.md` end to end. 7 commits

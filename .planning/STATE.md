@@ -4,7 +4,7 @@ milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
 last_updated: "2026-07-10"
-last_activity: 2026-07-10 -- ULTRAREVIEW action plan executed (7 commits): F1 Brain graph wired into run loop + BrainRetriever; F2 foundation subagent auditing bridged (plugin discovery gap root-caused); F13 oauth_import misreport fixed (live-verified); F11 Windows tar defect fixed (npm test 20/20 on Windows, dependency-free tarball engine); F3-F9 dead dirs removed + docs synced; F10 Phase 10.8 planned (4 plans, 3 waves). F12 session-create toast NOT root-caused -- file-backed diagnostics landed so the next operator repro self-captures the error. main 22 ahead of origin, unpushed.
+last_activity: 2026-07-10 (second session) -- MASTER action plan (26-subagent deep audit, 22 items) executed in 10 commits, F20 deferred with reason. Critical: atlas-terminal GlobalEvent envelope fix (crashed on every event) + silent reject-becomes-approve fix + nonce-bound approvals; DB indexes (0019). High: cold-start orphan reaper, cockpit SSE backoff, all env vars documented, atlas-ci.yml authored, adapter timeouts/retries. Medium: GET /v1/runs (N+1 gone, E2E-verified), 403 auto re-surface, config schema migration chain, centralized rotating log, cross-module E2E (enabled by env-aware db.default_db_path -- live-DB footgun fixed), goal_tree SQL filtering, PID-reuse guard. Low: ogl removed, atlas-core pinned, graph TTL, bundle budget green, Go TUI mission rows show intent+updated. All suites green (766/97/29/20/101/104/44/1 E2E). Release gateway rebuilt. main 32 ahead of origin, unpushed.
 progress:
   total_phases: 8
   completed_phases: 7
@@ -25,7 +25,21 @@ progress:
 > green state. The 39-file dirty backlog described by those entries was committed
 > on 2026-07-08 (7 logical commits); `main` is 15 ahead of `origin/main` (8 pre-existing + 7 new), unpushed.
 
-## Current Position — 2026-07-10: ULTRAREVIEW action plan executed
+## Current Position — 2026-07-10 (second session): MASTER action plan executed (22 items, F20 deferred)
+
+All items of `.mimocode/artifacts/ultra/ATLAS-MASTER-ACTION-PLAN.md` (the deep-audit
+queue, distinct from the older ATLAS-ACTION-PLAN.md below) executed in 10 commits
+(8a2101d3..02af7adf); F20 (vendored donor setTimeouts) deferred with reason recorded
+in the plan checklist. Headline: the atlas-terminal event-shape mismatch that crashed
+the TUI on every event is fixed at both boundaries, approval decisions are nonce-bound
+(and a reject-silently-approves bug is fixed), GET /v1/runs kills the cockpit N+1, and
+a real cross-module E2E (gateway binary + CLI dispatch + temp DB) now exists — enabled
+by making the CLI DB path honor ATLAS_DB/ATLAS_HOME. Every suite green; release gateway
+rebuilt. `main` is 32 ahead of `origin/main`, unpushed. Full detail in HANDOFF.md.
+Remaining owed: first CI run on push; interactive atlas-terminal UAT (event fix likely
+resolves the old session-create toast); Phase 10.8 execution (0/4).
+
+## Prior Position — 2026-07-10: ULTRAREVIEW action plan executed
 
 All 13 fix-queue items from `.mimocode/artifacts/ultra/ATLAS-ACTION-PLAN.md`
 addressed in 7 commits except the F12 session-create root cause (blocked on a
