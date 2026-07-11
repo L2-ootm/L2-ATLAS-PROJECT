@@ -491,8 +491,10 @@ export interface GraphData {
 }
 
 // Building the graph rescans markdown on the gateway every call, so we cache
-// per scope for the session. Switching tabs / navigating away and back reuses
-// the cached graph instantly; REBUILD passes `force` to rescan that scope.
+// per scope with a 5-minute TTL. Switching tabs / navigating away and back
+// reuses a fresh-enough graph instantly; stale entries re-fetch; REBUILD
+// passes `force` to rescan that scope.
+const GRAPH_CACHE_TTL_MS = 5 * 60 * 1000;
 const graphCache = new Map<GraphScope, { data: GraphData; fetchedAt: number }>();
 
 export function getGraphFetchedAt(scope: GraphScope = 'atlas'): number | null {
@@ -502,7 +504,8 @@ export function getGraphFetchedAt(scope: GraphScope = 'atlas'): number | null {
 export async function getGraph(scope: GraphScope = 'atlas', force = false): Promise<GraphData> {
 	if (!force) {
 		const hit = graphCache.get(scope);
-		if (hit) return hit.data;
+		if (hit && Date.now() - hit.fetchedAt < GRAPH_CACHE_TTL_MS) return hit.data;
+		if (hit) graphCache.delete(scope); // expired — drop before re-fetch
 	}
 	const data = await apiFetch<GraphData>(`/v1/graph?scope=${encodeURIComponent(scope)}`);
 	graphCache.set(scope, { data, fetchedAt: Date.now() });
@@ -793,11 +796,18 @@ export interface RunWithMission extends Run {
 }
 
 /**
- * Cross-mission run feed. INTERIM: the gateway has no `GET /v1/runs` yet
- * (HARNESS-WIRING §5), so this fans out listMissions → getMission and flattens.
- * Bounded by the mission list limit; replace with the real endpoint when it ships.
+ * Cross-mission run feed — single `GET /v1/runs` query (mission title JOINed
+ * gateway-side). Falls back to the legacy listMissions → getMission fan-out
+ * only when the running gateway binary predates the endpoint (404).
  */
 export async function listRuns(limit = 100): Promise<{ runs: RunWithMission[] }> {
+	try {
+		const { runs } = await apiFetch<{ runs: RunWithMission[] }>(`/v1/runs?limit=${limit}`);
+		return { runs };
+	} catch (err) {
+		if (!(err instanceof ApiError) || err.status !== 404) throw err;
+	}
+	// Legacy fan-out for stale gateway binaries.
 	const { missions } = await listMissions(limit);
 	const settled = await Promise.allSettled(missions.map((m) => getMission(m.id)));
 	const seen = new Set<string>();

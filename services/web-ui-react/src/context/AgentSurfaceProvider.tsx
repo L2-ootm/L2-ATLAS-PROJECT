@@ -7,6 +7,7 @@ import {
 	type ReactNode
 } from 'react';
 import {
+	ApiError,
 	approveToolCall,
 	cancelSurfaceSession,
 	createMission,
@@ -46,6 +47,11 @@ function surfaceId(): string {
 
 function withOwnerToken(next: SurfaceSession, prior: SurfaceSession): SurfaceSession {
 	return next.owner_token ? next : { ...next, owner_token: prior.owner_token };
+}
+
+/** 403 = the stored owner token no longer owns the session (expiry/reclaim). */
+function isOwnerMismatch(cause: unknown): boolean {
+	return cause instanceof ApiError && cause.status === 403;
 }
 
 export function AgentSurfaceProvider({ children }: { children: ReactNode }) {
@@ -146,15 +152,26 @@ export function AgentSurfaceProvider({ children }: { children: ReactNode }) {
 		async (prompt: string, agent: AgentRuntime, workspace: WorkspaceRequest) => {
 			setBusy(true);
 			setError(null);
-			try {
-				const current = sessionRef.current ?? (await openSurface(workspace));
+			const runWith = async (surface: SurfaceSession) => {
 				const created = await createMission(
 					prompt.split(/\r?\n/, 1)[0].slice(0, 120) || 'Agent request',
 					prompt,
 					workspace.kind === 'project' ? workspace.projectId : undefined
 				);
-				const started = await startRun(created.mission.id, agent, true, current.id);
+				const started = await startRun(created.mission.id, agent, true, surface.id);
 				return started.run.id;
+			};
+			try {
+				const current = sessionRef.current ?? (await openSurface(workspace));
+				try {
+					return await runWith(current);
+				} catch (cause) {
+					// Stale surface (expired/reclaimed owner): re-surface once and retry
+					// instead of forcing a manual re-surface.
+					if (!isOwnerMismatch(cause) || sessionRef.current === null) throw cause;
+					retainSession(null);
+					return await runWith(await openSurface(workspace));
+				}
 			} catch (cause) {
 				const message = cause instanceof Error ? cause.message : String(cause);
 				setError(message);
@@ -163,7 +180,7 @@ export function AgentSurfaceProvider({ children }: { children: ReactNode }) {
 				setBusy(false);
 			}
 		},
-		[openSurface]
+		[openSurface, retainSession]
 	);
 
 	const cancel = useCallback(async () => {
@@ -260,7 +277,15 @@ export function AgentSurfaceProvider({ children }: { children: ReactNode }) {
 			if (!current) return;
 			void Promise.all([heartbeatSurfaceSession(current), refresh()])
 				.then(([next]) => retainSession(withOwnerToken(next, current)))
-				.catch(cause => setError(cause instanceof Error ? cause.message : String(cause)));
+				.catch(cause => {
+					// Dead ownership: drop the session so the next prompt re-surfaces
+					// automatically instead of erroring until a manual re-surface.
+					if (isOwnerMismatch(cause)) {
+						retainSession(null);
+						return;
+					}
+					setError(cause instanceof Error ? cause.message : String(cause));
+				});
 		}, 2000);
 		return () => window.clearInterval(timer);
 	}, [refresh, retainSession, sessionIsLive]);
