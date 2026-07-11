@@ -36,8 +36,20 @@ _LOCK = threading.Lock()
 
 
 def _get_connection() -> sqlite3.Connection:
-    """Return a file-backed SQLite connection with WAL + FK enabled."""
-    db_path = pathlib.Path.home() / ".atlas" / "atlas.db"
+    """Return a file-backed SQLite connection with WAL + FK enabled.
+
+    Path resolution mirrors atlas_runtime.db.default_db_path (ATLAS_DB >
+    ATLAS_HOME/atlas.db > ~/.atlas/atlas.db) so gateway-dispatched and
+    isolated-home invocations hit the same DB as the rest of the system.
+    """
+    env_db = os.environ.get("ATLAS_DB", "").strip()
+    env_home = os.environ.get("ATLAS_HOME", "").strip()
+    if env_db:
+        db_path = pathlib.Path(env_db).expanduser()
+    elif env_home:
+        db_path = pathlib.Path(env_home).expanduser() / "atlas.db"
+    else:
+        db_path = pathlib.Path.home() / ".atlas" / "atlas.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path), check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL")
