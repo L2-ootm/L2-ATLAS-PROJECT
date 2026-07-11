@@ -51,7 +51,7 @@ atlas-terminal bun 29 + tsc clean + --smoke OK + boundary scan passed; atlas-cli
 gateway (native/atlas-core-rs/target/release — rebuilt this session, includes
 /v1/runs).
 
-**Environment notes:** main now 32 ahead of origin, unpushed. CONTRIBUTING.md
+**Environment notes:** main now 38 ahead of origin after this session (11 code + 2 docs commits on top of the prior 25), unpushed. CONTRIBUTING.md
 still carries its pre-existing uncommitted modification (untouched). CI workflow
 is authored but can only be verified on first push.
 

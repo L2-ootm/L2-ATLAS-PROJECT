@@ -4,7 +4,7 @@ milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
 last_updated: "2026-07-10"
-last_activity: 2026-07-10 (second session) -- MASTER action plan (26-subagent deep audit, 22 items) executed in 10 commits, F20 deferred with reason. Critical: atlas-terminal GlobalEvent envelope fix (crashed on every event) + silent reject-becomes-approve fix + nonce-bound approvals; DB indexes (0019). High: cold-start orphan reaper, cockpit SSE backoff, all env vars documented, atlas-ci.yml authored, adapter timeouts/retries. Medium: GET /v1/runs (N+1 gone, E2E-verified), 403 auto re-surface, config schema migration chain, centralized rotating log, cross-module E2E (enabled by env-aware db.default_db_path -- live-DB footgun fixed), goal_tree SQL filtering, PID-reuse guard. Low: ogl removed, atlas-core pinned, graph TTL, bundle budget green, Go TUI mission rows show intent+updated. All suites green (766/97/29/20/101/104/44/1 E2E). Release gateway rebuilt. main 32 ahead of origin, unpushed.
+last_activity: 2026-07-10 (second session) -- MASTER action plan (26-subagent deep audit, 22 items) executed in 10 commits, F20 deferred with reason. Critical: atlas-terminal GlobalEvent envelope fix (crashed on every event) + silent reject-becomes-approve fix + nonce-bound approvals; DB indexes (0019). High: cold-start orphan reaper, cockpit SSE backoff, all env vars documented, atlas-ci.yml authored, adapter timeouts/retries. Medium: GET /v1/runs (N+1 gone, E2E-verified), 403 auto re-surface, config schema migration chain, centralized rotating log, cross-module E2E (enabled by env-aware db.default_db_path -- live-DB footgun fixed), goal_tree SQL filtering, PID-reuse guard. Low: ogl removed, atlas-core pinned, graph TTL, bundle budget green, Go TUI mission rows show intent+updated. All suites green (766/97/29/20/101/104/44/1 E2E). Release gateway rebuilt. Wiki CLI DB path also made env-aware (34 passed). main 38 ahead of origin, unpushed.
 progress:
   total_phases: 8
   completed_phases: 7
@@ -35,7 +35,7 @@ the TUI on every event is fixed at both boundaries, approval decisions are nonce
 (and a reject-silently-approves bug is fixed), GET /v1/runs kills the cockpit N+1, and
 a real cross-module E2E (gateway binary + CLI dispatch + temp DB) now exists — enabled
 by making the CLI DB path honor ATLAS_DB/ATLAS_HOME. Every suite green; release gateway
-rebuilt. `main` is 32 ahead of `origin/main`, unpushed. Full detail in HANDOFF.md.
+rebuilt. `main` is 38 ahead of `origin/main`, unpushed (includes a wiki-CLI DB-path follow-through fix, 34 passed). Full detail in HANDOFF.md.
 Remaining owed: first CI run on push; interactive atlas-terminal UAT (event fix likely
 resolves the old session-create toast); Phase 10.8 execution (0/4).
 
