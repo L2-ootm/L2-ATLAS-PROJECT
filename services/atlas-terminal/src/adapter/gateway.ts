@@ -26,7 +26,11 @@ export interface ToolApproval {
 	run_id: string;
 	surface_session_id: string;
 	requested_at: string;
+	/** Replay nonce — approve/reject require it (gateway rejects without). */
+	nonce: string;
 }
+
+export type ApprovalScope = 'once' | 'session' | 'durable';
 
 export interface RunEvent {
 	name: string; // "audit" | "end" | "stream_error"
@@ -118,13 +122,16 @@ export class GatewayClient {
 
 	decideApproval(
 		session: SurfaceSession,
-		approvalID: string,
-		decision: 'approve' | 'reject'
+		approval: ToolApproval,
+		decision: 'approve' | 'reject',
+		scope: ApprovalScope = 'once'
 	): Promise<unknown> {
+		// Gateway ToolDecisionBody: {nonce, scope?, reason?}; owner rides the header.
+		const body = decision === 'approve' ? { nonce: approval.nonce, scope } : { nonce: approval.nonce };
 		return this.request(
 			'POST',
-			`/v1/surface-sessions/${encodeURIComponent(session.id)}/approvals/${encodeURIComponent(approvalID)}/${decision}`,
-			{ owner_token: session.owner_token },
+			`/v1/surface-sessions/${encodeURIComponent(session.id)}/approvals/${encodeURIComponent(approval.id)}/${decision}`,
+			body,
 			session.owner_token
 		);
 	}

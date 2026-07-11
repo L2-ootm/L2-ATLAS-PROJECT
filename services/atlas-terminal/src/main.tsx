@@ -5,6 +5,7 @@
  * `--smoke` runs headless: adapter probe only, no renderer, exit 0/1.
  */
 import { createAtlasFetch, createAtlasFetchHandle } from './adapter/atlasFetch';
+import { toGlobalEvent } from './adapter/events';
 
 const GATEWAY = process.env['ATLAS_GATEWAY_URL'] ?? 'http://127.0.0.1:8484';
 
@@ -42,7 +43,9 @@ await tui({
 	directory: process.cwd(),
 	fetch: handle.fetch,
 	events: {
-		subscribe: async (handler) => handle.bus.subscribe((event) => handler(event as never))
+		// The TUI consumes GlobalEvent {directory, payload}; bare DonorEvents
+		// crash useEvent() on `event.payload.type`.
+		subscribe: async (handler) => handle.bus.subscribe((event) => handler(toGlobalEvent(event) as never))
 	}
 });
 await handle.chat.dispose();
