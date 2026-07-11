@@ -9,7 +9,7 @@ description = "ATLAS agent-runtime service layer"
 requires-python = ">=3.11"
 license = "MIT"
 dependencies = [
-    "atlas-core",
+    "atlas-core>=0.1,<0.2",
     "typer>=0.25.0",
     # Manifest loader (Phase 10.0.4). Already resolved transitively (6.0.3) — this
     # declaration makes the `import yaml` in tools/registry.py explicit and
