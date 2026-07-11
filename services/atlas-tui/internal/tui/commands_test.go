@@ -186,3 +186,23 @@ func TestMenuDoesNotOpenMidMessage(t *testing.T) {
 		t.Fatalf("slash with args matched menu: %#v", matches)
 	}
 }
+
+func TestFormatMissionRowShowsIntentAndUpdatedDay(t *testing.T) {
+	row := formatMissionRow(client.Mission{
+		Status:    "succeeded",
+		Title:     "Fix the seam",
+		Intent:    "wire the donor TUI over the gateway adapter without a second backend",
+		UpdatedAt: "2026-07-10T14:00:00Z",
+	})
+	want := "succeeded Fix the seam — wire the donor TUI over the gateway a... (2026-07-10)"
+	if row != want {
+		t.Fatalf("row = %q, want %q", row, want)
+	}
+}
+
+func TestFormatMissionRowOmitsEmptyOrDuplicateIntent(t *testing.T) {
+	row := formatMissionRow(client.Mission{Status: "pending", Title: "t", Intent: "t"})
+	if row != "pending t" {
+		t.Fatalf("row = %q", row)
+	}
+}

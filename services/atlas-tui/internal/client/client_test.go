@@ -56,7 +56,8 @@ func TestProviderModes(t *testing.T) {
 
 func TestMissionsEnvelope(t *testing.T) {
 	srv := newTestServer(t, map[string]string{
-		"/v1/missions": `{"missions":[{"id":"m1","title":"t","status":"pending"}],"count":1}`,
+		"/v1/missions": `{"missions":[{"id":"m1","title":"t","status":"pending",` +
+			`"intent":"ship it","updated_at":"2026-06-01T11:00:00Z"}],"count":1}`,
 	})
 	defer srv.Close()
 	ms, err := New(srv.URL).Missions(context.Background())
@@ -65,6 +66,9 @@ func TestMissionsEnvelope(t *testing.T) {
 	}
 	if len(ms) != 1 || ms[0].ID != "m1" {
 		t.Fatalf("unexpected missions: %+v", ms)
+	}
+	if ms[0].Intent != "ship it" || ms[0].UpdatedAt != "2026-06-01T11:00:00Z" {
+		t.Fatalf("intent/updated_at not decoded: %+v", ms[0])
 	}
 }
 

@@ -78,11 +78,14 @@ type ProviderMode struct {
 	Remediation *string `json:"remediation"`
 }
 
-// Mission is one row of GET /v1/missions ({missions:[...]}).
+// Mission is one row of GET /v1/missions ({missions:[...]}). Intent/UpdatedAt
+// give every surface the same information density as the cockpit mission list.
 type Mission struct {
-	ID     string `json:"id"`
-	Title  string `json:"title"`
-	Status string `json:"status"`
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Status    string `json:"status"`
+	Intent    string `json:"intent"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 type missionsEnvelope struct {
