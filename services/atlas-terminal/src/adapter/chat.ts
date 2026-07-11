@@ -97,6 +97,8 @@ export class ChatAdapter {
 	private readonly seenApprovals = new Set<string>();
 	/** approvalID → donor sessionID that was busy when it surfaced. */
 	private readonly approvalSession = new Map<string, string>();
+	/** approvalID → full approval; decide requires its replay nonce. */
+	private readonly approvalByID = new Map<string, ToolApproval>();
 	private activeRuns = 0;
 	private pollTimer: ReturnType<typeof setInterval> | undefined;
 
@@ -137,7 +139,7 @@ export class ChatAdapter {
 		this.messages.set(session.id, []);
 		// Donor sync.tsx has no 'session.created' case — it treats 'session.updated'
 		// as the single upsert event (insert-if-missing) for both create and update.
-		this.bus.emit('session.updated', { info: session });
+		this.bus.emit('session.updated', { sessionID: session.id, info: session });
 		return session;
 	}
 
@@ -190,11 +192,11 @@ export class ChatAdapter {
 		};
 		userMsg.parts.push(userPart);
 		this.messages.get(sessionID)!.push(userMsg);
-		this.bus.emit('message.updated', { info: userMsg.info });
-		this.bus.emit('message.part.updated', { part: userPart });
+		this.bus.emit('message.updated', { sessionID, info: userMsg.info });
+		this.bus.emit('message.part.updated', { sessionID, part: userPart, time: Date.now() });
 		if (session.title === 'New session') {
 			session.title = text.length > 64 ? `${text.slice(0, 61)}...` : text;
-			this.bus.emit('session.updated', { info: session });
+			this.bus.emit('session.updated', { sessionID, info: session });
 		}
 
 		const surface = await this.ensureSurface();
@@ -219,7 +221,7 @@ export class ChatAdapter {
 			parts: []
 		};
 		this.messages.get(sessionID)!.push(assistant);
-		this.bus.emit('message.updated', { info: assistant.info });
+		this.bus.emit('message.updated', { sessionID, info: assistant.info });
 		this.bus.emit('session.status', { sessionID, status: { type: 'busy' } });
 
 		this.runStarted(sessionID);
@@ -232,13 +234,13 @@ export class ChatAdapter {
 				});
 				this.bus.emit('session.error', {
 					sessionID,
-					error: { name: 'StreamError', data: { message: String(err) } }
+					error: { name: 'UnknownError', data: { message: String(err) } }
 				});
 			})
 			.finally(() => {
 				if (!assistant.info.time.completed) {
 					assistant.info.time.completed = Date.now();
-					this.bus.emit('message.updated', { info: assistant.info });
+					this.bus.emit('message.updated', { sessionID, info: assistant.info });
 				}
 				this.bus.emit('session.status', { sessionID, status: { type: 'idle' } });
 				this.bus.emit('session.idle', { sessionID });
@@ -256,14 +258,14 @@ export class ChatAdapter {
 			...fields
 		};
 		message.parts.push(part);
-		this.bus.emit('message.part.updated', { part });
+		this.bus.emit('message.part.updated', { sessionID: part.sessionID, part, time: Date.now() });
 		return part;
 	}
 
 	private onRunEvent(sessionID: string, assistant: DonorMessage, event: RunEvent): void {
 		if (event.name === 'end') {
 			assistant.info.time.completed = Date.now();
-			this.bus.emit('message.updated', { info: assistant.info });
+			this.bus.emit('message.updated', { sessionID, info: assistant.info });
 			return;
 		}
 		if (event.name === 'stream_error') {
@@ -291,7 +293,7 @@ export class ChatAdapter {
 				this.appendPart(assistant, { type: 'text', text: str('summary') || str('error') || 'run failed' });
 				this.bus.emit('session.error', {
 					sessionID,
-					error: { name: 'RunFailed', data: { message: str('summary') || str('error') } }
+					error: { name: 'UnknownError', data: { message: str('summary') || str('error') || 'run failed' } }
 				});
 			} else if (transition === 'succeeded' && str('summary')) {
 				const dupe = assistant.parts.some((p) => p.type === 'text' && p.text === str('summary'));
@@ -350,7 +352,7 @@ export class ChatAdapter {
 			...(status === 'completed' ? { output } : { error: output }),
 			time: { ...(prior['time'] as Record<string, number> | undefined), end: Date.now() }
 		};
-		this.bus.emit('message.part.updated', { part });
+		this.bus.emit('message.part.updated', { sessionID: part.sessionID, part, time: Date.now() });
 	}
 
 	// ── permissions (tool approvals) ────────────────────────────────────────
@@ -379,20 +381,24 @@ export class ChatAdapter {
 		if (!this.surface) return [];
 		const pending = await this.gw.approvals(this.surface, 'pending').catch(() => []);
 		for (const approval of pending) {
+			this.approvalByID.set(approval.id, approval); // refresh even if seen — nonce may rotate
 			if (this.seenApprovals.has(approval.id)) continue;
 			this.seenApprovals.add(approval.id);
 			this.approvalSession.set(approval.id, this.lastBusySession);
+			// Donor PermissionRequest is flat: permission is the tool name string,
+			// patterns/always are arrays. sync.tsx stores event.properties directly.
 			this.bus.emit('permission.asked', {
 				id: approval.id,
 				sessionID: this.lastBusySession,
-				permission: {
-					id: approval.id,
-					type: approval.tool_name,
-					pattern: approval.args,
-					title: approval.summary || `${approval.tool_name} requires approval`,
-					metadata: { risk_level: approval.risk_level, run_id: approval.run_id },
-					time: { created: Date.parse(approval.requested_at) || Date.now() }
-				}
+				permission: approval.tool_name,
+				patterns: approval.args ? [approval.args] : [],
+				metadata: {
+					risk_level: approval.risk_level,
+					run_id: approval.run_id,
+					summary: approval.summary || `${approval.tool_name} requires approval`,
+					requested_at: approval.requested_at
+				},
+				always: []
 			});
 		}
 		return pending;
@@ -402,15 +408,23 @@ export class ChatAdapter {
 		return [...this.approvalSession.entries()].map(([id, sessionID]) => ({ id, sessionID }));
 	}
 
-	/** Donor POST /permission/{id}/reply — response "reject" rejects, else approves. */
+	/** Donor POST /permission/{id}/reply — reply "reject"/"never" rejects, else approves. */
 	async replyPermission(approvalID: string, response: string): Promise<void> {
 		const surface = await this.ensureSurface();
-		const decision = response === 'reject' || response === 'never' ? 'reject' : 'approve';
-		await this.gw.decideApproval(surface, approvalID, decision);
+		const approval = this.approvalByID.get(approvalID);
+		if (!approval) throw new Error(`unknown approval ${approvalID}`);
+		const reply = response === 'reject' || response === 'never' ? 'reject' : response === 'always' ? 'always' : 'once';
+		if (reply === 'reject') {
+			await this.gw.decideApproval(surface, approval, 'reject');
+		} else {
+			// Donor "always" means "until restart" — ATLAS scope 'session'.
+			await this.gw.decideApproval(surface, approval, 'approve', reply === 'always' ? 'session' : 'once');
+		}
+		this.approvalByID.delete(approvalID);
 		this.bus.emit('permission.replied', {
 			sessionID: this.approvalSession.get(approvalID) ?? '',
-			permissionID: approvalID,
-			response
+			requestID: approvalID,
+			reply
 		});
 	}
 

@@ -15,7 +15,7 @@
 
 import { ChatAdapter } from './chat';
 import { ATLAS_COMMANDS, findAtlasCommand, expandCommandTemplate } from './commands';
-import { EventBus, type DonorEvent } from './events';
+import { EventBus, toGlobalEvent, type DonorEvent } from './events';
 import { GatewayClient } from './gateway';
 import { appendDiagnostic } from '../util/diagnosticLog';
 
@@ -44,6 +44,17 @@ interface AtlasModelEntry {
 	model_id: string;
 	provider: string;
 	active: boolean;
+}
+
+/**
+ * Donor permission replies arrive as `{ reply }` (SDK v2 permission.reply);
+ * older donor builds sent `{ response }`. Reading only `response` silently
+ * turned every reject into the 'once' (approve) default.
+ */
+function readReply(body: Record<string, unknown>): string {
+	if (typeof body['reply'] === 'string') return body['reply'];
+	if (typeof body['response'] === 'string') return body['response'];
+	return 'once';
 }
 
 function json(body: unknown, status = 200): Response {
@@ -199,8 +210,8 @@ function handleEventStream(bus: EventBus): Response {
 					if (keepalive) clearInterval(keepalive);
 				}
 			};
-			send({ type: 'server.connected', properties: {} });
-			const forward = (event: DonorEvent) => send(event);
+			send(toGlobalEvent({ type: 'server.connected', properties: {} }));
+			const forward = (event: DonorEvent) => send(toGlobalEvent(event));
 			bus.replayRecent(forward);
 			unsubscribe = bus.subscribe(forward);
 			keepalive = setInterval(() => {
@@ -359,10 +370,7 @@ export function createAtlasFetchHandle(opts: AtlasFetchOptions): AtlasFetchHandl
 				const permMatch = /^\/permissions\/([^/]+)$/.exec(rest);
 				if (method === 'POST' && permMatch) {
 					const body = await readBody();
-					await chat.replyPermission(
-						decodeURIComponent(permMatch[1]!),
-						typeof body['response'] === 'string' ? body['response'] : 'once'
-					);
+					await chat.replyPermission(decodeURIComponent(permMatch[1]!), readReply(body));
 					return json(true);
 				}
 			}
@@ -370,10 +378,7 @@ export function createAtlasFetchHandle(opts: AtlasFetchOptions): AtlasFetchHandl
 			const replyMatch = /^\/permission\/([^/]+)\/reply$/.exec(path);
 			if (method === 'POST' && replyMatch) {
 				const body = await readBody();
-				await chat.replyPermission(
-					decodeURIComponent(replyMatch[1]!),
-					typeof body['response'] === 'string' ? body['response'] : 'once'
-				);
+				await chat.replyPermission(decodeURIComponent(replyMatch[1]!), readReply(body));
 				return json(true);
 			}
 

@@ -11,6 +11,20 @@ export interface DonorEvent {
 	properties: Record<string, unknown>;
 }
 
+/**
+ * The donor SDK v2 consumes `GlobalEvent { directory, payload }` — the TUI's
+ * useEvent() reads `event.payload.type` and filters on `event.directory`, so
+ * bare DonorEvents crash it. Wrap at every boundary that feeds the SDK.
+ */
+export interface GlobalEventEnvelope {
+	directory: string;
+	payload: DonorEvent;
+}
+
+export function toGlobalEvent(event: DonorEvent, directory = process.cwd()): GlobalEventEnvelope {
+	return { directory, payload: event };
+}
+
 export type DonorEventListener = (event: DonorEvent) => void;
 
 export class EventBus {
