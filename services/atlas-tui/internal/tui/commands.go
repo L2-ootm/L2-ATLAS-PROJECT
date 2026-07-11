@@ -32,6 +32,24 @@ var slashCommands = []slashCommand{
 	{"/quit", "close the session and exit"},
 }
 
+// formatMissionRow renders one /missions history row with the same information
+// density as the cockpit mission list: status, title, truncated intent, and
+// the updated_at day (mission timestamps are RFC3339; the date part suffices
+// in a one-line row).
+func formatMissionRow(mission client.Mission) string {
+	row := fmt.Sprintf("%s %s", mission.Status, mission.Title)
+	if intent := strings.TrimSpace(mission.Intent); intent != "" && intent != mission.Title {
+		if len(intent) > 40 {
+			intent = intent[:37] + "..."
+		}
+		row += " — " + intent
+	}
+	if len(mission.UpdatedAt) >= 10 {
+		row += " (" + mission.UpdatedAt[:10] + ")"
+	}
+	return row
+}
+
 // builtinWorkflow is a MiMo-style named workflow shipped as a first-class
 // slash command: a curated intent template dispatched as a real mission.
 type builtinWorkflow struct {
@@ -214,7 +232,7 @@ func (m model) executeSlashCommand(input string) (bool, model, tea.Cmd) {
 		limit := min(5, len(m.missions))
 		rows := make([]string, 0, limit)
 		for _, mission := range m.missions[:limit] {
-			rows = append(rows, fmt.Sprintf("%s %s", mission.Status, mission.Title))
+			rows = append(rows, formatMissionRow(mission))
 		}
 		m.appendSystem("HISTORY  " + strings.Join(rows, " | "))
 		return true, m, nil
