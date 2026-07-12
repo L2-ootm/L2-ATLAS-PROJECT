@@ -69,14 +69,27 @@ retire the Go TUI (MASTER-PLAN wave 5) in a follow-up session.
 
 **Full next-session task list:**
 1. **Retarget `atlas tui`** to atlas-terminal (above).
-2. **Operator UAT** — interactive session: approve/reject a real tool call,
+2. **TUI visual polish** — the atlas-terminal renders but is still a visual clone
+   of MiMoCode. Fix indentation/alignment issues visible in the UAT screenshot
+   (the "ATLAS" name text has layout quirks). Then differentiate the design:
+   keep MiMoCode's tech (Ink, nanostores, theme engine) but apply ATLAS's own
+   L2 Systems design tokens (Dark Prism palette from DIV-F-006, HUD voice,
+   contour-line motifs). Focus areas: sidebar styling, bottom bar layout,
+   transcript typography, header/branding area. The TUI should feel like ATLAS,
+   not MiMoCode with a label swap.
+3. **WebUI audit** — the cockpit web interface (`apps/cockpit-web`) needs a
+   completeness pass: what routes exist vs what the donor TUI / Go TUI already
+   wire. Identify missing surfaces (mission list, settings dialog, permission
+   overlay, session history). Document gaps in a short report — research on
+   direction will follow after this session.
+4. **Operator UAT** — interactive session: approve/reject a real tool call,
    confirm ATLAS identity, check diagnostics log if any toast appears.
-3. **CI watch** — first atlas-ci run after the push; fix any failures.
-4. **Repo ingestion Wave 1** — RTK + skill packs (awaits your review of the
+5. **CI watch** — first atlas-ci run after the push; fix any failures.
+6. **Repo ingestion Wave 1** — RTK + skill packs (awaits your review of the
    master plan).
-5. **MASTER-PLAN waves 4-5** — test density to 50+, donor cleanup, legacy Go
+7. **MASTER-PLAN waves 4-5** — test density to 50+, donor cleanup, legacy Go
    TUI removal (gated on UAT).
-6. **Phase 10.8** execution per its 4 plans.
+8. **Phase 10.8** execution per its 4 plans.
 
 ## Session update — 2026-07-10 (second session): MASTER action plan executed (MAP F1-F22, F20 deferred)
 

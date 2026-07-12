@@ -4,7 +4,7 @@ milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
 last_updated: "2026-07-11"
-last_activity: 2026-07-11 -- Pushed to origin (db772555..6f9c8e63, 41 commits). Next session: retarget `atlas`/`atlas tui` from Go TUI to atlas-terminal (main.py _root + _tui_cmd → _launch_atlas_terminal), operator UAT, CI watch. Prior: identity fix (DIV-F-007), atlas-terminal waves 2-3 (heartbeat, /vcs, /session/status, /project, stream watchdog, 502 normalization). Suites: foundation 210+345, agent-runtime 18, atlas-terminal 43+tsc+smoke. Critical: atlas-terminal GlobalEvent envelope fix (crashed on every event) + silent reject-becomes-approve fix + nonce-bound approvals; DB indexes (0019). High: cold-start orphan reaper, cockpit SSE backoff, all env vars documented, atlas-ci.yml authored, adapter timeouts/retries. Medium: GET /v1/runs (N+1 gone, E2E-verified), 403 auto re-surface, config schema migration chain, centralized rotating log, cross-module E2E (enabled by env-aware db.default_db_path -- live-DB footgun fixed), goal_tree SQL filtering, PID-reuse guard. Low: ogl removed, atlas-core pinned, graph TTL, bundle budget green, Go TUI mission rows show intent+updated. All suites green (766/97/29/20/101/104/44/1 E2E). Release gateway rebuilt. Wiki CLI DB path also made env-aware (34 passed). main 38 ahead of origin, unpushed.
+last_activity: 2026-07-11 -- Pushed to origin (db772555..01623abe, 42 commits). Next session: retarget `atlas`/`atlas tui` to atlas-terminal, TUI visual polish (fix indentation, differentiate from MiMoCode clone using L2 Dark Prism tokens), WebUI completeness audit, operator UAT, CI watch. Prior: identity fix (DIV-F-007), atlas-terminal waves 2-3, UAT confirmed working (ATLAS identity, /vcs, freellmapi, no event crashes). Critical: atlas-terminal GlobalEvent envelope fix (crashed on every event) + silent reject-becomes-approve fix + nonce-bound approvals; DB indexes (0019). High: cold-start orphan reaper, cockpit SSE backoff, all env vars documented, atlas-ci.yml authored, adapter timeouts/retries. Medium: GET /v1/runs (N+1 gone, E2E-verified), 403 auto re-surface, config schema migration chain, centralized rotating log, cross-module E2E (enabled by env-aware db.default_db_path -- live-DB footgun fixed), goal_tree SQL filtering, PID-reuse guard. Low: ogl removed, atlas-core pinned, graph TTL, bundle budget green, Go TUI mission rows show intent+updated. All suites green (766/97/29/20/101/104/44/1 E2E). Release gateway rebuilt. Wiki CLI DB path also made env-aware (34 passed). main 38 ahead of origin, unpushed.
 progress:
   total_phases: 8
   completed_phases: 7
@@ -1682,6 +1682,15 @@ Full codebase analysis of the Graphify knowledge graph system completed. Documen
 - Files that will change, testing evidence, operator context
 
 **Key decisions pending:** D-025 (graph storage), D-026 (update strategy), D-027 (entity schema), D-028 (visual language), Rust vs Python for graph engine
+
+## Cashflow collaboration packet - 2026-07-11
+
+- Produced a friend-facing two-document packet under `output/pdf/`: `L2-Cashflow-Visao-e-Roadmap.pdf` and `L2-Cashflow-Guia-de-Colaboracao-Paralela.pdf`.
+- The first document explains current capability, researched target state, seven-phase roadmap, accounting dependency chain, and where financial/economic review adds value.
+- The second defines parallel collaboration for a finance-domain collaborator using AI agents: shareable artifacts, privacy boundaries, workstreams, module workflow, integration gates, and a suggested pilot.
+- Added the reproducible generator at `services/cashflow/scripts/generate-collaboration-packet.py`.
+- Regenerated the X outreach sidequest as `output/pdf/ATLAS-X-Outreach-Collab-Devs.pdf` and replaced non-extractable bullet glyphs with ASCII markers.
+- QA: all 17 pages rendered to PNG and visually inspected; text extraction reported zero missing-glyph markers or replacement characters.
 
 
 ## Architectural Mandate — 2026-07-03 (Immediate Correction)
