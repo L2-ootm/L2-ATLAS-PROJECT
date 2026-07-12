@@ -1,5 +1,56 @@
 # Handoff — L2 ATLAS Finish Sprint
 
+## Session update — 2026-07-11: ATLAS identity fix + atlas-terminal waves 2-3 remainder
+
+3 commits (e96ec47e, cb81d565, 02b7735e), all gates fresh.
+
+**Identity (operator-reported: TUI agent called itself "Hermes Agent"):**
+- Root cause: `atlas_runtime/agents/native.py` builds `AIAgent(skip_context_files=True)`
+  with no SOUL.md, so the foundation's stable identity slot fell back to the upstream
+  `DEFAULT_AGENT_IDENTITY` ("You are Hermes Agent… created by Nous Research"). The
+  ATLAS contract only rode the context tier as `system_message`.
+- Fix (**DIV-F-007**, foundation/DIVERGENCE_LOG.md): `DEFAULT_AGENT_IDENTITY` +
+  `DEFAULT_SOUL_MD` rebranded to the ATLAS operator identity (mirrors
+  `atlas_runtime/prompts/atlas_core.md` line 1); `HERMES_AGENT_HELP_GUIDANCE`
+  reworded so it names the foundation without claiming the identity. 3 vendor test
+  assertions updated. Also reseeded the machine-local
+  `%LOCALAPPDATA%\hermes\SOUL.md` (was byte-identical to the old seed) so the
+  interactive `atlas-agent` CLI stops loading the Hermes persona from disk.
+- Verified: foundation test_prompt_builder+test_config 210 passed, test_run_agent
+  345 passed; agent-runtime prompt/debrand subset 18 passed.
+
+**atlas-terminal (services/atlas-terminal/research/MASTER-PLAN.md waves 2-3 remainder):**
+- Surface heartbeat: `GatewayClient.heartbeatSurface` + 30s keepalive loop in
+  ChatAdapter; definitive 401/403/404/410 drops the cached surface so the next
+  prompt re-surfaces (gateway restart / SURF-05 sweep resilience).
+- `/vcs` wired: real git branch via dependency-free `.git/HEAD` reader
+  (worktree pointer + detached HEAD aware) — donor footer shows dir:branch.
+- `/session/status` wired: real per-session idle/busy. `/project` wired
+  (single-project list). `/experimental/resource` stub kept deliberately
+  (bootstrap Promise.all consumes it; removal-plan deviation noted in code).
+- Run-stream 60s idle watchdog: silent/hung gateway stream now ends as 504
+  GatewayError instead of a forever-busy session. **Bun gotcha discovered:**
+  unref'd timers never fire on an otherwise-idle event loop (Windows, Bun
+  1.3.13) — the watchdog timer must stay ref'd; it is cleared after every read.
+- GatewayError → typed 502 `{error:'gateway', status, message}` in the adapter
+  catch-all (diagnostics tag ATLAS_GATEWAY_ERROR); 500 now means adapter bug.
+- Verified: bun test 43 pass (14 new across wave2/hardening test files), tsc
+  clean, `--smoke` LIVE.
+
+**Environment notes:** main now 41 ahead of origin, unpushed. CONTRIBUTING.md
+still carries its pre-existing uncommitted modification (untouched). Untracked
+research/scratch: `.planning/ultra/` (14-repo ingestion master plan, 12 vendable,
+Wave 1 = RTK + addyosmani/emilkowalski/loop-engineering skills — **awaits operator
+review before any vendoring**), `services/atlas-terminal/research/`, `.mimocode/`,
+`.ops/`, cashflow research dirs.
+
+**Next:** (1) push + watch first atlas-ci run; (2) operator UAT still owed:
+interactive atlas-terminal session incl. approve/reject of a real tool call and
+confirming the agent introduces itself as ATLAS; (3) operator decision on the
+repo-ingestion master plan Wave 1; (4) MASTER-PLAN waves 4-5 (test density to
+50+, donor cleanup, legacy Go TUI removal) — removal stays gated on UAT;
+(5) Phase 10.8 execution per its 4 plans.
+
 ## Session update — 2026-07-10 (second session): MASTER action plan executed (MAP F1-F22, F20 deferred)
 
 Executed `.mimocode/artifacts/ultra/ATLAS-MASTER-ACTION-PLAN.md` (the NEW 22-item
