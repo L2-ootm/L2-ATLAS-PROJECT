@@ -604,20 +604,24 @@ function generateSystem(colors: TerminalColors, mode: "dark" | "light"): ThemeJs
   const diffRemovedLineNumberBg = tint(diffContextBg, ansiColors.red, diffAlpha)
   const diffLineNumber = textMuted
 
-  const xiaomiOrange = RGBA.fromInts(255, 103, 0)
+  // L2 Dark Prism palette (DIV-F-006) — replaces the donor orange.
+  const prismViolet = RGBA.fromInts(127, 0, 255)       // #7F00FF — Electric Violet primary
+  const prismSoftViolet = RGBA.fromInts(155, 77, 255)  // #9B4DFF — softer violet accent
+  const prismCyan = RGBA.fromInts(0, 240, 255)         // #00F0FF — Cyber Blue / info
+  const prismGreen = RGBA.fromInts(0, 255, 148)        // #00FF94 — Status Green / success
 
   return {
     theme: {
-      // Primary colors using ATLAS Orange
-      primary: xiaomiOrange,
-      secondary: xiaomiOrange,
-      accent: xiaomiOrange,
+      // Primary colors — Dark Prism violet
+      primary: prismViolet,
+      secondary: prismSoftViolet,
+      accent: prismSoftViolet,
 
-      // Status colors using ANSI
+      // Status colors
       error: ansiColors.red,
       warning: ansiColors.yellow,
-      success: xiaomiOrange,
-      info: xiaomiOrange,
+      success: prismGreen,
+      info: prismCyan,
 
       // Text colors
       text: fg,
