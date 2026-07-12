@@ -27,6 +27,11 @@ jobs:
         run: |
           pip install -e packages/atlas-core
           pip install -e "services/agent-runtime[dev]"
+          # atlas_wiki: demo_seed + golden workflows import it unconditionally,
+          # so the full suite needs it (matches the operator machine). Installed
+          # last — it depends on atlas-core/atlas-runtime, which must already be
+          # present as editable installs or pip would look for them on PyPI.
+          pip install -e services/wiki-runtime
       - name: Test
         run: python -m pytest services/agent-runtime/tests -q
 
