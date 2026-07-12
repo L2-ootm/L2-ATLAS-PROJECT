@@ -27,7 +27,13 @@ use tokio::io::AsyncWriteExt;
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// SSE poll interval (PHASE_7_8_READINESS: rowid-cursor poll ≤500 ms).
-const STREAM_POLL: Duration = Duration::from_millis(500);
+///
+/// Lowered from 500ms once the Python runtime started emitting coalesced
+/// `llm_delta` audit rows (~150ms cadence, `native.py::_DeltaBuffer`) — at
+/// 500ms the deltas would still arrive in visible bursts rather than a
+/// steady stream. 200ms keeps relay latency under the delta cadence without
+/// meaningfully increasing DB poll load (single-operator, few concurrent runs).
+const STREAM_POLL: Duration = Duration::from_millis(200);
 
 #[derive(Clone)]
 pub struct AppState {
