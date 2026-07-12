@@ -14,6 +14,8 @@ success criterion 6 (CONTEXT.md).
 
 from __future__ import annotations
 
+import ntpath
+import os
 import pathlib
 import sqlite3
 import threading
@@ -195,10 +197,23 @@ def _foreign_flavor_absolute(path: str) -> bool:
     )
 
 
+def _windows_style(path: str) -> bool:
+    """Drive-lettered (C:...) or UNC (\\\\server\\share) — a Windows-flavor string."""
+    return bool(pathlib.PureWindowsPath(path).drive)
+
+
 def _within(path: str, root: str) -> bool:
     try:
-        if _foreign_flavor_absolute(path):
-            return False
+        if os.name != "nt" and (_windows_style(path) or _windows_style(root)):
+            # Windows-flavor strings on a POSIX host (frozen policy fixtures,
+            # cross-machine configs, RUNTIME-07): native resolve() would read
+            # the whole string as one relative filename — wrongly placing an
+            # absolute C:\ escape INSIDE the workspace — so containment is
+            # decided lexically in Windows semantics instead.
+            target = path if ntpath.isabs(path) else ntpath.join(root, path)
+            target_n = ntpath.normcase(ntpath.normpath(target))
+            root_n = ntpath.normcase(ntpath.normpath(root))
+            return target_n == root_n or target_n.startswith(root_n.rstrip("\\") + "\\")
         root_path = pathlib.Path(root).resolve()
         target = pathlib.Path(path)
         if not target.is_absolute():
