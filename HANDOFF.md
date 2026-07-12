@@ -1,5 +1,33 @@
 # Handoff — L2 ATLAS Finish Sprint
 
+## Session update — 2026-07-12 (later): ULTRAREVIEW fixes 4/5 + glow pulse tune
+
+4 commits (b3393712..22f1041b), executing
+`.planning/ultra/ULTRAREVIEW-integration-verification-streaming-folder-scope-2026-07-12.md`
+(fix-status table appended there).
+
+- **b3393712** — TUI idle shimmer fringe was theme.primary (#7F00FF) on the
+  #7B61FF wordmark (invisible); now primary lifted 55% toward white (lavender).
+- **059c63ba** — `ATLAS_WORK_DIR`: launcher captures operator cwd, `main.tsx`
+  chdirs back (fixes footer folder, /path, git branch, exports, permission
+  prompt paths). Plus TTY-only launch scope prompt: this folder vs
+  `workspace_service.global_root()`.
+- **b4a4ce11** — operator-context injection opt-out: `assemble_context(...,
+  include_operator_context=)` > `ATLAS_SKIP_CONTEXT` env > new
+  `context.inject_operator_context` config knob (schema + control-plane key);
+  `atlas --no-context` / `atlas tui --no-context`. Contract text now says
+  answer unrelated prompts directly. NOTE: env flag only reaches runs executed
+  in-process or in child processes; gateway-dispatched runs need the config
+  knob (gateway has its own env).
+- **22f1041b** — `atlas_core.md` verify-before-claim directive (integration
+  hallucination); prompt goldens regenerated (they hash atlas_core.md bytes).
+
+Verified: agent-runtime 775+2 passed, atlas-core 97 passed, atlas-terminal
+typecheck + 52 tests + smoke green. **Still open from that ULTRAREVIEW:**
+streaming (item 2, runtime per-token events + adapter `message.part.delta` —
+own slice). **UAT owed:** scope prompt UX, footer folder, glow pulse look,
+`--no-context` behavior in TUI.
+
 ## Session update — 2026-07-12: retarget shipped, first CI green, TUI retoken, Cmd+K palette + /v1/vcs, graph-MCP eval
 
 9 commits this session (104ef33a..2267ebf8). Executed HANDOFF priorities 1-2, CI watch,
