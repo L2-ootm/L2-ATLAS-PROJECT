@@ -22,6 +22,7 @@ Trust deltas honored (see .planning/prep/intelligence-layer-alignment.md):
 """
 from __future__ import annotations
 
+import os
 import re
 import sqlite3
 from dataclasses import dataclass, field
@@ -113,17 +114,30 @@ def assemble_context(
     mission_id: str | None = None,
     project_id: str | None = None,
     max_runs: int = 5,
+    include_operator_context: bool | None = None,
 ) -> AgentContext:
     """Build the secret-redacted operator context brief.
 
     Resolves the project from `project_id`, else from the mission's project_id.
     Always safe to call with no arguments (returns a minimal brief).
+
+    `include_operator_context` gates the Focus/Goals/Operating Contract sections
+    (the loop-engineering spine). None resolves ATLAS_SKIP_CONTEXT, then the
+    `context.inject_operator_context` config knob — so a run can opt out without
+    the agent being permanently welded to the Current Focus.
     """
+    ctx_cfg = config_service.load_config().context
+    if include_operator_context is None:
+        if os.environ.get("ATLAS_SKIP_CONTEXT", "").strip().lower() in {"1", "true", "yes"}:
+            include_operator_context = False
+        else:
+            include_operator_context = ctx_cfg.inject_operator_context
+
     sources: list[str] = []
     lines: list[str] = ["# ATLAS Operator Context", "", "_Generated for this run · secret-redacted._", ""]
     tree: list[dict] = []
 
-    focus = focus_service.get_current_focus(conn)
+    focus = focus_service.get_current_focus(conn) if include_operator_context else None
     if focus is not None:
         sources.append(f"focus:{focus.id}")
         lines.append("## Current Focus")
@@ -174,7 +188,6 @@ def assemble_context(
         project_id=resolved_project_id,
         max_runs=max_runs,
     )
-    ctx_cfg = config_service.load_config().context
     router = default_router(
         enable_semantic=ctx_cfg.enable_semantic,
         enable_skills=ctx_cfg.enable_skills,
@@ -199,6 +212,11 @@ def assemble_context(
         lines.append(
             "- Advance the Current Focus and its goals above; treat the open tasks "
             "as the actionable surface and the observations as prior learning."
+        )
+        lines.append(
+            "- Apply this context only where relevant: when the operator's prompt "
+            "is unrelated to the Current Focus, answer the prompt directly and do "
+            "not recite the Focus or its status."
         )
         lines.append(
             "- Stay within the project workspace. If the work would expand beyond "

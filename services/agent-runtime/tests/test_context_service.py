@@ -120,6 +120,27 @@ def test_no_operating_contract_without_focus(db):
     assert "## Operating Contract" not in cs.assemble_context(db).markdown
 
 
+def test_operator_context_opt_out_param(db, lock):
+    # Explicit include_operator_context=False suppresses Focus/Goals/Contract
+    # even when a Current Focus exists.
+    focus_service.create_focus(db, lock, title="Command Center Loop")
+    md = cs.assemble_context(db, include_operator_context=False).markdown
+    assert "Current Focus" not in md
+    assert "Command Center Loop" not in md
+    assert "## Operating Contract" not in md
+
+
+def test_operator_context_opt_out_env(db, lock, monkeypatch):
+    # ATLAS_SKIP_CONTEXT=1 suppresses the operator context when the caller
+    # does not pass include_operator_context.
+    focus_service.create_focus(db, lock, title="Command Center Loop")
+    monkeypatch.setenv("ATLAS_SKIP_CONTEXT", "1")
+    md = cs.assemble_context(db).markdown
+    assert "## Operating Contract" not in md
+    monkeypatch.setenv("ATLAS_SKIP_CONTEXT", "")
+    assert "## Operating Contract" in cs.assemble_context(db).markdown
+
+
 # ---------------------------------------------------------------------------
 # Memory router — FTS5 wiki retrieval into the context brief (item #1)
 # ---------------------------------------------------------------------------
