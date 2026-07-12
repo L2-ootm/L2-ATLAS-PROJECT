@@ -2167,3 +2167,92 @@ async fn config_patch_stale_second_writer_rejected_not_silently_applied() {
     assert_eq!(body["error"]["code"], "config_revision_conflict");
     assert_eq!(body["current_revision"], 1);
 }
+
+// ---------------------------------------------------------------------------
+// /v1/vcs — dependency-free git context (branch / detached / worktree)
+// ---------------------------------------------------------------------------
+
+/// Percent-encode a filesystem path for use in a URI query value.
+fn encode_path(path: &std::path::Path) -> String {
+    path.to_string_lossy()
+        .replace('\\', "%5C")
+        .replace(' ', "%20")
+}
+
+#[tokio::test]
+async fn vcs_reports_branch_from_git_head() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = dir.path().join("repo");
+    std::fs::create_dir_all(repo.join(".git")).unwrap();
+    std::fs::write(repo.join(".git").join("HEAD"), "ref: refs/heads/feature-x\n").unwrap();
+    let router = test_app(seeded_db(&dir));
+
+    let uri = format!("/v1/vcs?path={}", encode_path(&repo));
+    let (status, body) = get_json(&router, &uri).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["repo"], true);
+    assert_eq!(body["branch"], "feature-x");
+    assert_eq!(body["detached"], false);
+}
+
+#[tokio::test]
+async fn vcs_reports_detached_head_short_commit() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = dir.path().join("repo");
+    std::fs::create_dir_all(repo.join(".git")).unwrap();
+    std::fs::write(
+        repo.join(".git").join("HEAD"),
+        "0123456789abcdef0123456789abcdef01234567\n",
+    )
+    .unwrap();
+    let router = test_app(seeded_db(&dir));
+
+    let uri = format!("/v1/vcs?path={}", encode_path(&repo));
+    let (status, body) = get_json(&router, &uri).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["repo"], true);
+    assert_eq!(body["branch"], Value::Null);
+    assert_eq!(body["detached"], true);
+    assert_eq!(body["commit"], "0123456");
+}
+
+#[tokio::test]
+async fn vcs_follows_worktree_pointer_file() {
+    let dir = tempfile::tempdir().unwrap();
+    // Real gitdir elsewhere (as in `git worktree add`), worktree has a pointer file.
+    let gitdir = dir.path().join("main-repo-git").join("worktrees").join("wt");
+    std::fs::create_dir_all(&gitdir).unwrap();
+    std::fs::write(gitdir.join("HEAD"), "ref: refs/heads/wt-branch\n").unwrap();
+    let worktree = dir.path().join("wt");
+    std::fs::create_dir_all(&worktree).unwrap();
+    std::fs::write(
+        worktree.join(".git"),
+        format!("gitdir: {}\n", gitdir.display()),
+    )
+    .unwrap();
+    let router = test_app(seeded_db(&dir));
+
+    let uri = format!("/v1/vcs?path={}", encode_path(&worktree));
+    let (status, body) = get_json(&router, &uri).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["repo"], true);
+    assert_eq!(body["branch"], "wt-branch");
+}
+
+#[tokio::test]
+async fn vcs_reports_non_repo_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let plain = dir.path().join("plain");
+    std::fs::create_dir_all(&plain).unwrap();
+    let router = test_app(seeded_db(&dir));
+
+    let uri = format!("/v1/vcs?path={}", encode_path(&plain));
+    let (status, body) = get_json(&router, &uri).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["repo"], false);
+    assert_eq!(body["branch"], Value::Null);
+}
