@@ -44,11 +44,16 @@ def resolve_terminal_dir() -> pathlib.Path:
     )
 
 
-def launch(gateway_url: str | None = None) -> int:
+def launch(gateway_url: str | None = None, work_dir: str | None = None) -> int:
     """Launch atlas-terminal with inherited stdin/stdout/stderr and no shell.
 
     The gateway URL is forwarded as ATLAS_GATEWAY_URL (read by src/main.tsx);
     ATLAS_HOME and the rest of the environment pass through untouched.
+
+    The subprocess cwd must be the atlas-terminal checkout so `bun run dev`
+    resolves the package script, which would otherwise clobber the operator's
+    working directory — ATLAS_WORK_DIR carries it to src/main.tsx, which
+    chdirs back before the TUI reads process.cwd().
     """
     terminal_dir = resolve_terminal_dir()
     if not (terminal_dir / "node_modules").is_dir():
@@ -66,6 +71,11 @@ def launch(gateway_url: str | None = None) -> int:
         gateway_url
         or env.get("ATLAS_GATEWAY_URL", "").strip()
         or DEFAULT_GATEWAY_URL
+    )
+    env["ATLAS_WORK_DIR"] = (
+        work_dir
+        or env.get("ATLAS_WORK_DIR", "").strip()
+        or os.getcwd()
     )
     try:
         # `bun run dev` = `bun run --conditions=browser src/main.tsx` — the

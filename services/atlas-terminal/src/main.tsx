@@ -9,6 +9,19 @@ import { toGlobalEvent } from './adapter/events';
 
 const GATEWAY = process.env['ATLAS_GATEWAY_URL'] ?? 'http://127.0.0.1:8484';
 
+// The Python launcher must spawn bun with cwd = the atlas-terminal checkout
+// (package-script resolution), which clobbers the operator's directory.
+// ATLAS_WORK_DIR carries the real one — restore it before any process.cwd()
+// consumer (footer path, /path endpoint, git branch, exports) reads it.
+const WORK_DIR = process.env['ATLAS_WORK_DIR']?.trim();
+if (WORK_DIR) {
+	try {
+		process.chdir(WORK_DIR);
+	} catch {
+		/* missing/invalid dir: keep the launch cwd */
+	}
+}
+
 async function probe(): Promise<string> {
 	const f = createAtlasFetch({ gateway: GATEWAY });
 	try {
