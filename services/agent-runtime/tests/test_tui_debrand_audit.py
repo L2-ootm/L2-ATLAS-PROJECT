@@ -35,8 +35,13 @@ _FORBIDDEN_IDENTITY_TOKENS = ("hermes", "ink", "atlas-hermes")
 # strings across box-drawing table cells, so raw substrings never survive
 # intact in captured output — match on whitespace-collapsed text instead.
 _KNOWN_LEAK_PATTERNS = (
+    # `atlas[-\s]+hermes` (not the literal `atlas-hermes`): Rich's wrap point
+    # depends on the rendered table geometry, and on some environments (first
+    # seen on ubuntu CI) the phrase wraps INSIDE the hyphenated word, so the
+    # collapsed text reads "atlas- hermes" — the strict literal then fails to
+    # strip it and the bare "hermes" fragment false-fails the token scan.
     re.compile(
-        r"vendored\s+atlas\s+foundation\s+foundation\s+atlas-hermes",
+        r"vendored\s+atlas\s+foundation\s+foundation\s+atlas[-\s]+hermes",
         re.IGNORECASE,
     ),  # `foundation` command help text (out of scope for this phase)
 )

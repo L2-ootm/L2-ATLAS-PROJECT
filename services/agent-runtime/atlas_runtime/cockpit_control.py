@@ -23,6 +23,13 @@ import time
 import urllib.parse
 import urllib.request
 
+# Windows creationflags, with literal fallbacks (values are stable Win32 API
+# constants) so the Windows spawn path stays importable and unit-testable on
+# POSIX, where the subprocess module does not define these attributes.
+DETACHED_PROCESS = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+CREATE_NEW_PROCESS_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+
 # services/agent-runtime/atlas_runtime/cockpit_control.py -> agent-runtime -> services -> repo root
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 _COCKPIT_DIR = _REPO_ROOT / "services" / "web-ui-react"
@@ -87,9 +94,7 @@ def start(poll_seconds: float = 15.0) -> tuple[bool, str]:
         # CREATE_NEW_PROCESS_GROUP alone still flashes the shim's own console
         # (commit 62e9456's regression class, extended here per RESEARCH.md Pitfall 4).
         kwargs["creationflags"] = (
-            subprocess.DETACHED_PROCESS  # type: ignore[attr-defined]
-            | subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
-            | subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
+            DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
         )
     else:
         kwargs["start_new_session"] = True
