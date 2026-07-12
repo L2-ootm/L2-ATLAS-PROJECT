@@ -327,6 +327,38 @@ describe('STAGE 1 chat loop', () => {
 		expect(textParts[0]!.text).toBe('Hi there');
 	});
 
+	it('transition succeeded after llm_call does not create a duplicate text part', async () => {
+		const state = newState();
+		const sse = [
+			frame('audit', { event_type: 'llm_delta', data: { delta: 'Hello' } }),
+			frame('audit', { event_type: 'llm_call', data: { text: 'Hello world' } }),
+			// transition: 'succeeded' fires after llm_call with a summary that may
+			// differ (truncation, post-processing). Without the reconciledMessages
+			// guard, the exact-text dupe check fails and a second part is created.
+			frame('audit', { event_type: 'tool_call', data: { transition: 'succeeded', summary: 'Hello' } }),
+			frame('end', { status: 'succeeded' })
+		];
+		const handle = createAtlasFetchHandle({
+			gateway: GW,
+			fetchImpl: stubGateway(state, sse),
+			permissionPollMs: 0
+		});
+		const created = await handle.fetch('http://donor.local/session', { method: 'POST', body: '{}' });
+		const session = (await created.json()) as { id: string };
+		await handle.fetch(`http://donor.local/session/${session.id}/prompt_async`, {
+			method: 'POST',
+			body: JSON.stringify({ parts: [{ text: 'hey' }] })
+		});
+		await settle();
+
+		const msgs = (await (await handle.fetch(`http://donor.local/session/${session.id}/message`)).json()) as Array<{
+			parts: Array<{ type: string; text?: string }>;
+		}>;
+		const textParts = msgs[1]!.parts.filter((p) => p.type === 'text');
+		expect(textParts).toHaveLength(1);
+		expect(textParts[0]!.text).toBe('Hello world');
+	});
+
 	it('SSE /event stream replays recent chat events to late subscribers', async () => {
 		const state = newState();
 		const sse = [frame('end', { status: 'succeeded' })];
