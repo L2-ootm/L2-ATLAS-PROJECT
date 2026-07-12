@@ -34,7 +34,9 @@ def test_atlas_tui_subcommand_invokes_same_atlas_terminal(monkeypatch):
     monkeypatch.setattr(terminal_mod, "launch", launch)
     result = runner.invoke(app, ["tui", "--gateway", "http://127.0.0.1:9494"])
     assert result.exit_code == 0, result.output
-    launch.assert_called_once_with("http://127.0.0.1:9494")
+    # work_dir=None: no ATLAS_WORK_DIR override and no TTY to prompt for scope,
+    # so the launcher captures the operator cwd itself.
+    launch.assert_called_once_with("http://127.0.0.1:9494", work_dir=None)
 
 
 def test_default_path_never_reaches_go_or_hermes_launchers(monkeypatch):

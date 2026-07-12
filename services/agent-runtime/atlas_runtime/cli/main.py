@@ -175,19 +175,58 @@ from atlas_runtime.cli.tui import legacy_foundation_tui
 
 
 @app.callback(invoke_without_command=True)
-def _root(ctx: typer.Context) -> None:
+def _root(
+    ctx: typer.Context,
+    no_context: bool = typer.Option(
+        False,
+        "--no-context",
+        help="Skip operator-context injection (Current Focus / goals / Operating Contract) for runs started from this session.",
+    ),
+) -> None:
     """ATLAS — bare invocation launches the terminal workbench."""
     # Central rotating file log for every CLI entry point (F13). Fail-open.
     from atlas_runtime import logging_config
 
     logging_config.configure_logging()
+    if no_context:
+        import os
+
+        os.environ["ATLAS_SKIP_CONTEXT"] = "1"
     if ctx.invoked_subcommand is None:
-        _launch_atlas_terminal()
+        _launch_atlas_terminal(work_dir=_prompt_workspace_scope())
 
 
-def _launch_atlas_terminal(gateway: Optional[str] = None) -> None:
+def _prompt_workspace_scope() -> Optional[str]:
+    """Ask whether this session works in the current folder or the global workspace.
+
+    Returns the chosen directory, or None to defer to the launcher default
+    (ATLAS_WORK_DIR env override, else the current folder). Skipped when
+    ATLAS_WORK_DIR is already set (explicit choice), when stdio is not a TTY,
+    or when the current folder already is the global workspace root.
+    """
+    import os
+    import sys
+
+    if os.environ.get("ATLAS_WORK_DIR", "").strip():
+        return None
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return None
+    from atlas_runtime import workspace_service
+
+    cwd = os.getcwd()
+    global_root = str(workspace_service.global_root())
+    if os.path.normcase(os.path.abspath(cwd)) == os.path.normcase(global_root):
+        return None
+    typer.echo("Workspace scope:")
+    typer.echo(f"  1) this folder            {cwd}")
+    typer.echo(f"  2) default ATLAS workspace {global_root}")
+    choice = typer.prompt("Execute in", default="1").strip()
+    return global_root if choice == "2" else cwd
+
+
+def _launch_atlas_terminal(gateway: Optional[str] = None, work_dir: Optional[str] = None) -> None:
     try:
-        return_code = _atlas_terminal_mod.launch(gateway)
+        return_code = _atlas_terminal_mod.launch(gateway, work_dir=work_dir)
     except _atlas_terminal_mod.TerminalLaunchError as exc:
         typer.echo(f"terminal UI unavailable: {exc}", err=True)
         raise typer.Exit(1)
@@ -229,7 +268,7 @@ def _tui_cmd(
         help="ATLAS gateway base URL (default: ATLAS_GATEWAY_URL or loopback :8484).",
     ),
 ) -> None:
-    _launch_atlas_terminal(gateway)
+    _launch_atlas_terminal(gateway, work_dir=_prompt_workspace_scope())
 
 
 @app.command(
