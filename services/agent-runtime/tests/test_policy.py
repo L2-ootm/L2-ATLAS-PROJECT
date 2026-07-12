@@ -40,6 +40,28 @@ def test_workspace_boundary(tmp_path, target, expected_allowed):
     assert isinstance(decision, PolicyDecision)
 
 
+@pytest.mark.parametrize(
+    "target,root,expected",
+    [
+        ("C:/atlas/config.yaml", "C:/atlas", True),  # maintenance-root containment
+        ("C:/other/file.txt", "C:/work", False),
+        ("C:\\Users\\other\\file.txt", "C:/work", False),
+        ("subdir/file.txt", "C:/work", True),
+        ("../outside", "C:/work", False),
+        ("C:/workother/x", "C:/work", False),  # prefix trap: not under C:/work
+    ],
+)
+def test_within_windows_flavor_paths_on_posix(monkeypatch, target, root, expected):
+    """RUNTIME-07 regression (first seen on ubuntu CI): Windows-flavor path
+    strings must be contained/rejected correctly on a POSIX host, where native
+    pathlib would read 'C:/...' as one relative filename. Forces the POSIX
+    branch so the lexical Windows-semantics check is exercised on any host."""
+    from atlas_runtime import policy
+
+    monkeypatch.setattr(policy.os, "name", "posix")
+    assert policy._within(target, root) is expected
+
+
 def test_check_tool_allowed_in_list(db, lock):
     """check_tool_allowed() returns allowed=True when tool is in the allowlist."""
     decision = check_tool_allowed("Read", ["Read", "Write"])
