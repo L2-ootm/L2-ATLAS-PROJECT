@@ -40,7 +40,7 @@ export function Home() {
     const key = kv.get("logo_design")
     return typeof key === "string" && key in logos ? (key as LogoKey) : "thin"
   })
-  // 所有 logo 变体(含默认的 thin 纤细半块)都显示流星特效。
+  // Every logo variant (including the default thin half-block face) keeps the meteor effect.
   const showMeteor = () => true
   const placeholder = {
     get normal() {
