@@ -111,6 +111,12 @@ export class ChatAdapter {
 	 * part). Cleared when the message's run ends (`end` event).
 	 */
 	private readonly reconciledMessages = new Set<string>();
+	/** Check whether a message already has a text part — prevents multiple
+	 *  event sources (llm_call, transition, llm_delta) from each creating
+	 *  their own part for the same response. */
+	private hasTextPart(message: DonorMessage): boolean {
+		return message.parts.some((p) => p.type === 'text');
+	}
 	private readonly seenApprovals = new Set<string>();
 	/** approvalID → donor sessionID that was busy when it surfaced. */
 	private readonly approvalSession = new Map<string, string>();
@@ -394,13 +400,11 @@ export class ChatAdapter {
 					error: { name: 'UnknownError', data: { message: str('summary') || str('error') || 'run failed' } }
 				});
 			} else if (transition === 'succeeded' && str('summary')) {
-				// If llm_call already reconciled this message's text, the
+				// If llm_call already created/reconciled a text part, the
 				// transition summary may differ (truncation/post-processing)
 				// and the exact-text dupe check would fail — creating a
-				// duplicate part. Skip when reconciledMessages already covers it.
-				if (this.reconciledMessages.has(assistant.info.id)) return;
-				const dupe = assistant.parts.some((p) => p.type === 'text' && p.text === str('summary'));
-				if (!dupe) this.appendPart(assistant, { type: 'text', text: str('summary') });
+				// duplicate part. Use the structural check instead.
+				if (!this.hasTextPart(assistant)) this.appendPart(assistant, { type: 'text', text: str('summary') });
 			}
 			return;
 		}
@@ -456,7 +460,7 @@ export class ChatAdapter {
 					entry.part.text = textOrSummary;
 					this.bus.emit('message.part.updated', { sessionID, part: entry.part, time: Date.now() });
 					this.streamingText.delete(assistant.info.id);
-				} else {
+				} else if (!this.hasTextPart(assistant)) {
 					this.appendPart(assistant, { type: 'text', text: textOrSummary });
 				}
 			}
