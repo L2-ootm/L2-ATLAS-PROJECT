@@ -403,7 +403,15 @@ export class ChatAdapter {
 			const deltaText = typeof data['delta'] === 'string' ? (data['delta'] as string) : '';
 			const endOfTurn = data['end_of_turn'] === true;
 			let entry = this.streamingText.get(assistant.info.id);
-			if ((!entry || !entry.open) && deltaText) {
+			// If the entry was already closed (reconciled by a prior llm_call
+			// that deleted it), do NOT create a fresh part — that would
+			// duplicate the text the llm_call already placed.
+			if (entry && !entry.open) {
+				// Reconciled: ignore remaining deltas for this turn.
+				if (endOfTurn) this.streamingText.delete(assistant.info.id);
+				return;
+			}
+			if (!entry && deltaText) {
 				entry = { part: this.appendPart(assistant, { type: 'text', text: '' }), open: true };
 				this.streamingText.set(assistant.info.id, entry);
 			}
