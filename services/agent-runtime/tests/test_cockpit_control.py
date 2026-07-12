@@ -6,7 +6,6 @@ and PID-file-based stop.
 """
 from __future__ import annotations
 
-import subprocess
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -75,9 +74,11 @@ def test_start_on_windows_sets_console_flash_guard_flags(tmp_path, monkeypatch):
     _, kwargs = mock_popen.call_args
     assert kwargs["cwd"] == str(cockpit_control._COCKPIT_DIR)
     flags = kwargs["creationflags"]
-    assert flags & subprocess.DETACHED_PROCESS
-    assert flags & subprocess.CREATE_NEW_PROCESS_GROUP
-    assert flags & subprocess.CREATE_NO_WINDOW
+    # Module-level constants (getattr fallbacks) so this assertion also runs on
+    # POSIX CI, where subprocess lacks the Windows attributes.
+    assert flags & cockpit_control.DETACHED_PROCESS
+    assert flags & cockpit_control.CREATE_NEW_PROCESS_GROUP
+    assert flags & cockpit_control.CREATE_NO_WINDOW
 
 
 def test_start_resolves_npm_cmd_on_windows(tmp_path, monkeypatch):

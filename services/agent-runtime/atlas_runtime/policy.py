@@ -181,8 +181,24 @@ def _profile_matches(profile: PermissionPolicyProfile, facts: PolicyFacts) -> bo
     )
 
 
+def _foreign_flavor_absolute(path: str) -> bool:
+    """True when `path` is absolute only in the non-native path flavor —
+    e.g. 'C:\\x' or 'C:/x' checked on a POSIX host. Native pathlib treats
+    such a string as one odd relative filename, so a naive join+relative_to
+    check would wrongly place it inside the workspace (RUNTIME-07: the
+    boundary must reject Windows-style escapes on Linux too)."""
+    if pathlib.Path(path).is_absolute():
+        return False  # native-absolute: the normal resolve/relative_to path handles it
+    return (
+        pathlib.PureWindowsPath(path).is_absolute()
+        or pathlib.PurePosixPath(path).is_absolute()
+    )
+
+
 def _within(path: str, root: str) -> bool:
     try:
+        if _foreign_flavor_absolute(path):
+            return False
         root_path = pathlib.Path(root).resolve()
         target = pathlib.Path(path)
         if not target.is_absolute():
@@ -415,6 +431,8 @@ def check_workspace_boundary(
     a path that fails the relative_to() check — correctly rejected.
     """
     try:
+        if _foreign_flavor_absolute(target_path):
+            raise ValueError(target_path)
         resolved_root = pathlib.Path(workspace_root).resolve()
         # Pin relative paths to workspace_root to prevent CWD-escape.
         # For absolute target_path values, pathlib discards resolved_root on join,
