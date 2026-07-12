@@ -104,6 +104,13 @@ export class ChatAdapter {
 	 * reconcile onto it instead of appending a duplicate.
 	 */
 	private readonly streamingText = new Map<string, { part: DonorPart; open: boolean }>();
+	/**
+	 * assistant message id -> already reconciled by a final llm_call. Guards
+	 * against a stray llm_delta arriving after the streamingText entry was
+	 * fully deleted (map lookup would otherwise miss and create a duplicate
+	 * part). Cleared when the message's run ends (`end` event).
+	 */
+	private readonly reconciledMessages = new Set<string>();
 	private readonly seenApprovals = new Set<string>();
 	/** approvalID → donor sessionID that was busy when it surfaced. */
 	private readonly approvalSession = new Map<string, string>();
@@ -356,6 +363,7 @@ export class ChatAdapter {
 		if (event.name === 'end') {
 			assistant.info.time.completed = Date.now();
 			this.bus.emit('message.updated', { sessionID, info: assistant.info });
+			this.reconciledMessages.delete(assistant.info.id);
 			return;
 		}
 		if (event.name === 'stream_error') {
@@ -400,16 +408,20 @@ export class ChatAdapter {
 			return;
 		}
 		if (eventType === 'llm_delta') {
+			// A stray delta arriving after the final llm_call already
+			// reconciled this message (streamingText entry fully deleted) —
+			// creating a part here would duplicate the llm_call's text.
+			if (this.reconciledMessages.has(assistant.info.id)) return;
 			const deltaText = typeof data['delta'] === 'string' ? (data['delta'] as string) : '';
 			const endOfTurn = data['end_of_turn'] === true;
 			let entry = this.streamingText.get(assistant.info.id);
-			// If the entry was already closed (reconciled by a prior llm_call
-			// that deleted it), do NOT create a fresh part — that would
-			// duplicate the text the llm_call already placed.
+			// A closed-but-present entry means a PRIOR turn ended at a tool
+			// boundary (end_of_turn) without being reconciled yet. This new
+			// delta starts the NEXT turn's text — drop the stale reference so
+			// a fresh part is created below instead of the delta being lost.
 			if (entry && !entry.open) {
-				// Reconciled: ignore remaining deltas for this turn.
-				if (endOfTurn) this.streamingText.delete(assistant.info.id);
-				return;
+				this.streamingText.delete(assistant.info.id);
+				entry = undefined;
 			}
 			if (!entry && deltaText) {
 				entry = { part: this.appendPart(assistant, { type: 'text', text: '' }), open: true };
@@ -443,6 +455,10 @@ export class ChatAdapter {
 					this.appendPart(assistant, { type: 'text', text: textOrSummary });
 				}
 			}
+			// This message's final llm_call has fired; any later llm_delta
+			// for the same id is a stray (defense-in-depth against ordering
+			// violations — see ULTRAREVIEW-streaming-duplication-DEEP).
+			this.reconciledMessages.add(assistant.info.id);
 			return;
 		}
 		if (eventType === 'tool_call' || eventType === 'tool_requested') {
