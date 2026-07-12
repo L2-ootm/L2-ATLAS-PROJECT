@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Wallet, Boxes, type LucideIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, GitBranch, Wallet, Boxes, type LucideIcon } from 'lucide-react';
 import { navSections, type CockpitModule, type NavSection } from '../lib/modules';
-import { listModules } from '../lib/api';
+import { listModules, getVcsContext, type VcsContext } from '../lib/api';
 import { useGatewayHealth } from '../lib/useGatewayHealth';
 
 // Active optional modules (Decision 3b) render as a dynamic nav section. Map known
@@ -51,6 +51,27 @@ export default function Sidebar({ expanded, onToggle }: SidebarProps) {
 		}
 		void loadModules();
 		const id = setInterval(() => void loadModules(), 30_000);
+		return () => {
+			alive = false;
+			clearInterval(id);
+		};
+	}, [epoch]);
+
+	// ── VCS context — git branch of the gateway's repo root ──────────────────
+	const [vcs, setVcs] = useState<VcsContext | null>(null);
+	useEffect(() => {
+		let alive = true;
+		async function loadVcs() {
+			try {
+				const ctx = await getVcsContext();
+				if (alive) setVcs(ctx);
+			} catch {
+				// Pre-/v1/vcs gateway or offline — hide the row rather than error.
+				if (alive) setVcs(null);
+			}
+		}
+		void loadVcs();
+		const id = setInterval(() => void loadVcs(), 30_000);
 		return () => {
 			alive = false;
 			clearInterval(id);
@@ -331,6 +352,28 @@ export default function Sidebar({ expanded, onToggle }: SidebarProps) {
 						</span>
 					)}
 				</div>
+
+				{expanded && vcs?.repo && (
+					<div
+						title={vcs.detached ? 'Detached HEAD' : 'Current git branch'}
+						style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}
+					>
+						<GitBranch size={11} strokeWidth={1.7} color="var(--atlas-bronze)" aria-hidden="true" style={{ flex: 'none' }} />
+						<span
+							style={{
+								fontFamily: 'var(--l2-font-mono)',
+								fontSize: 10,
+								letterSpacing: '0.10em',
+								color: 'var(--l2-fg-2)',
+								overflow: 'hidden',
+								textOverflow: 'ellipsis',
+								whiteSpace: 'nowrap'
+							}}
+						>
+							{vcs.detached ? `DETACHED · ${vcs.commit ?? '???????'}` : vcs.branch}
+						</span>
+					</div>
+				)}
 
 				{expanded && (
 					<div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--l2-fg-3)' }}>
