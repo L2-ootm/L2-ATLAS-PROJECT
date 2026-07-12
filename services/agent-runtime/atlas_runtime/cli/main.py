@@ -137,8 +137,6 @@ app.add_typer(terminal_app, name="terminal")
 def _terminal_status_cmd(
     json_output: bool = typer.Option(False, "--json", help="Emit as JSON."),
 ) -> None:
-    import pathlib
-
     from atlas_runtime import gateway_control
     from atlas_runtime.db import MIGRATIONS_DIR
 
@@ -171,6 +169,7 @@ def _terminal_status_cmd(
         typer.echo("remediation: cd services/atlas-terminal && bun install && bun run typecheck")
 
 
+import atlas_runtime.cli.atlas_terminal as _atlas_terminal_mod
 import atlas_runtime.cli.go_tui as _go_tui_mod
 from atlas_runtime.cli.tui import legacy_foundation_tui
 
@@ -183,7 +182,17 @@ def _root(ctx: typer.Context) -> None:
 
     logging_config.configure_logging()
     if ctx.invoked_subcommand is None:
-        _launch_go_tui()
+        _launch_atlas_terminal()
+
+
+def _launch_atlas_terminal(gateway: Optional[str] = None) -> None:
+    try:
+        return_code = _atlas_terminal_mod.launch(gateway)
+    except _atlas_terminal_mod.TerminalLaunchError as exc:
+        typer.echo(f"terminal UI unavailable: {exc}", err=True)
+        raise typer.Exit(1)
+    if return_code:
+        raise typer.Exit(return_code)
 
 
 def _launch_go_tui(gateway: Optional[str] = None) -> None:
@@ -214,6 +223,21 @@ def _version_cmd(
 
 @app.command("tui", help="Launch the ATLAS terminal workbench.")
 def _tui_cmd(
+    gateway: Optional[str] = typer.Option(
+        None,
+        "--gateway",
+        help="ATLAS gateway base URL (default: ATLAS_GATEWAY_URL or loopback :8484).",
+    ),
+) -> None:
+    _launch_atlas_terminal(gateway)
+
+
+@app.command(
+    "dev-go-tui",
+    hidden=True,
+    help="Launch the legacy Go/BubbleTea TUI (fallback until atlas-terminal UAT passes).",
+)
+def _dev_go_tui_cmd(
     gateway: Optional[str] = typer.Option(
         None,
         "--gateway",
