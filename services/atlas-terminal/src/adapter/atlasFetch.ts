@@ -16,7 +16,7 @@
 import { ChatAdapter } from './chat';
 import { ATLAS_COMMANDS, findAtlasCommand, expandCommandTemplate } from './commands';
 import { EventBus, toGlobalEvent, type DonorEvent } from './events';
-import { GatewayClient } from './gateway';
+import { GatewayClient, GatewayError } from './gateway';
 import { appendDiagnostic } from '../util/diagnosticLog';
 import { readGitBranch } from '../util/gitBranch';
 
@@ -403,6 +403,13 @@ export function createAtlasFetchHandle(opts: AtlasFetchOptions): AtlasFetchHandl
 			return notImplemented(`${method} ${path}`);
 		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);
+			// Gateway-origin failures normalize to 502 so the UI (and the
+			// diagnostics log) can tell "ATLAS gateway said no" apart from a
+			// genuine adapter bug (500).
+			if (err instanceof GatewayError) {
+				appendDiagnostic('ATLAS_GATEWAY_ERROR', `${method} ${path} ${message}`);
+				return json({ error: 'gateway', status: err.status, message }, 502);
+			}
 			// Persist adapter-origin failures so an interactive toast is
 			// distinguishable from SDK-client-origin errors after the fact.
 			appendDiagnostic('ATLAS_ADAPTER_ERROR', `${method} ${path} ${message}`);
