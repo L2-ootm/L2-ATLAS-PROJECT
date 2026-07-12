@@ -37,19 +37,46 @@
 - Verified: bun test 43 pass (14 new across wave2/hardening test files), tsc
   clean, `--smoke` LIVE.
 
-**Environment notes:** main now 41 ahead of origin, unpushed. CONTRIBUTING.md
-still carries its pre-existing uncommitted modification (untouched). Untracked
-research/scratch: `.planning/ultra/` (14-repo ingestion master plan, 12 vendable,
-Wave 1 = RTK + addyosmani/emilkowalski/loop-engineering skills — **awaits operator
-review before any vendoring**), `services/atlas-terminal/research/`, `.mimocode/`,
-`.ops/`, cashflow research dirs.
+**Environment notes:** Pushed to origin (`db772555..6f9c8e63`, 41 commits).
+CONTRIBUTING.md still carries its pre-existing uncommitted modification (untouched).
+Untracked research/scratch: `.planning/ultra/` (14-repo ingestion master plan, 12
+vendable, Wave 1 = RTK + addyosmani/emilkowalski/loop-engineering skills —
+**awaits operator review before any vendoring**), `services/atlas-terminal/research/`,
+`.mimocode/`, `.ops/`, cashflow research dirs.
 
-**Next:** (1) push + watch first atlas-ci run; (2) operator UAT still owed:
-interactive atlas-terminal session incl. approve/reject of a real tool call and
-confirming the agent introduces itself as ATLAS; (3) operator decision on the
-repo-ingestion master plan Wave 1; (4) MASTER-PLAN waves 4-5 (test density to
-50+, donor cleanup, legacy Go TUI removal) — removal stays gated on UAT;
-(5) Phase 10.8 execution per its 4 plans.
+**Next session priority — retarget `atlas tui` to atlas-terminal:**
+
+The bare `atlas` command and `atlas tui` subcommand currently launch the legacy
+Go TUI via `_launch_go_tui()` → `go_tui.launch()`. The atlas-terminal (Bun/vendored
+donor TUI) is now wired enough to replace it. Retarget in
+`services/agent-runtime/atlas_runtime/cli/main.py`:
+
+1. In `_root()` (line 186): change `_launch_go_tui()` → `_launch_atlas_terminal()`.
+2. In `_tui_cmd()` (line 223): change `_launch_go_tui(gateway)` →
+   `_launch_atlas_terminal(gateway)`.
+3. Add `_launch_atlas_terminal(gateway=None)` function — run
+   `bun run src/main.tsx` from `services/atlas-terminal/` via `subprocess.run`
+   (same pattern as `go_tui.launch()` but no Go build step). Forward the
+   `--gateway` flag as `ATLAS_GATEWAY_URL` env var. Pass `ATLAS_HOME` through.
+4. Keep `go_tui.py` and `dev-foundation-tui` command intact — they're the
+   fallback until UAT passes.
+5. Update `test_tui_app_entry.py` to assert the new launcher is called for both
+   bare `atlas` and `atlas tui`.
+
+After retarget: run `atlas` from a terminal, confirm the atlas-terminal TUI
+boots, send a prompt, and verify the agent introduces itself as ATLAS. Then
+retire the Go TUI (MASTER-PLAN wave 5) in a follow-up session.
+
+**Full next-session task list:**
+1. **Retarget `atlas tui`** to atlas-terminal (above).
+2. **Operator UAT** — interactive session: approve/reject a real tool call,
+   confirm ATLAS identity, check diagnostics log if any toast appears.
+3. **CI watch** — first atlas-ci run after the push; fix any failures.
+4. **Repo ingestion Wave 1** — RTK + skill packs (awaits your review of the
+   master plan).
+5. **MASTER-PLAN waves 4-5** — test density to 50+, donor cleanup, legacy Go
+   TUI removal (gated on UAT).
+6. **Phase 10.8** execution per its 4 plans.
 
 ## Session update — 2026-07-10 (second session): MASTER action plan executed (MAP F1-F22, F20 deferred)
 
