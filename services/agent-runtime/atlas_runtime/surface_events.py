@@ -30,6 +30,7 @@ _EVENT_KINDS = frozenset(get_args(EventKind))
 # EventKind vocabulary — including `retry` — is reachable from the ledger).
 _KIND_MAP: dict[str, EventKind] = {
     "llm_call": "text",  # refined to "reasoning" by payload below
+    "llm_delta": "text",
     "tool_call": "tool_call",
     "tool_requested": "tool_call",
     "tool_completed": "tool_result",

@@ -37,10 +37,63 @@ logger = logging.getLogger(__name__)
 _SUMMARY_CAP = 2000
 _DEFAULT_MAX_RUNTIME_S = 1800.0  # 30 min
 _DEFAULT_MAX_ITERATIONS = 40
+# Delta coalescing: the gateway relays audit rows on a ~200ms poll, so
+# flushing every token as its own row would burn one SQLite write per token
+# for no visible benefit — coalesce into ~150ms/48-char chunks instead.
+_DELTA_FLUSH_INTERVAL_S = 0.15
+_DELTA_FLUSH_CHARS = 48
 
 # A harness factory: given a session_id, return an object exposing
 # `run_conversation(user_message, system_message=None) -> dict`.
 HarnessFactory = Callable[..., Any]
+
+
+class _DeltaBuffer:
+    """Coalesces a foundation `stream_delta_callback(chunk | None)` stream into
+    flush-sized `llm_delta` audit events.
+
+    The foundation invokes the callback once per token (or provider-side
+    chunk) while streaming, and once with `None` to signal the end of one
+    assistant turn (e.g. before tool execution, or at the final response).
+    Emitting an audit row per token would be one SQLite write per token; this
+    buffers text and flushes on a time/size threshold, plus always on the
+    `None` end-of-turn signal so no trailing text is dropped.
+    """
+
+    def __init__(
+        self,
+        on_flush: Callable[[str, bool], None],
+        *,
+        interval_s: float = _DELTA_FLUSH_INTERVAL_S,
+        max_chars: int = _DELTA_FLUSH_CHARS,
+    ) -> None:
+        self._on_flush = on_flush
+        self._interval_s = interval_s
+        self._max_chars = max_chars
+        self._buffer: list[str] = []
+        self._last_flush = time.monotonic()
+        self._turn_open = False
+
+    def push(self, chunk: Optional[str]) -> None:
+        if chunk is None:
+            if self._turn_open:
+                self._flush(final=True)
+                self._turn_open = False
+            return
+        self._turn_open = True
+        self._buffer.append(chunk)
+        now = time.monotonic()
+        buffered_len = sum(len(c) for c in self._buffer)
+        if now - self._last_flush >= self._interval_s or buffered_len >= self._max_chars:
+            self._flush(final=False)
+            self._last_flush = now
+
+    def _flush(self, *, final: bool) -> None:
+        text = "".join(self._buffer)
+        self._buffer.clear()
+        if not text and not final:
+            return
+        self._on_flush(text, final)
 
 
 def _find_foundation() -> Optional[Path]:
@@ -61,6 +114,7 @@ def _default_factory(
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
     reasoning_effort: str = "",
+    stream_delta_callback: Optional[Callable[[Optional[str]], None]] = None,
 ) -> Any:
     """Construct a real foundation AIAgent (lazy import; path-injected).
 
@@ -68,6 +122,11 @@ def _default_factory(
     the active Focus by the caller (A4). Empty values are omitted so the
     foundation falls back to its own resolution rather than overriding with
     blanks — preserving the honest-failure path when nothing is configured.
+
+    `stream_delta_callback` is the foundation's native streaming hook
+    (`AIAgent(stream_delta_callback=...)`): registering it makes
+    `_has_stream_consumers()` true, which the foundation's own dispatch uses
+    to prefer the streaming API path over the batch one.
     """
     foundation = _find_foundation()
     if foundation is not None:
@@ -99,6 +158,8 @@ def _default_factory(
     if reasoning_effort:
         # The foundation clamps effort per provider; empty means default.
         kwargs["reasoning_config"] = {"effort": reasoning_effort}
+    if stream_delta_callback is not None:
+        kwargs["stream_delta_callback"] = stream_delta_callback
     return AIAgent(**kwargs)
 
 
@@ -284,6 +345,14 @@ class NativeAtlasAgent(AgentRuntime):
                 # subagent_run AuditEvents. Best-effort; never blocks the run.
                 subagent_service.ensure_foundation_bridge(conn, run_id=run_id)
                 reasoning_effort = _resolve_reasoning_effort()
+
+                def _emit_delta(text: str, final: bool) -> None:
+                    data: dict[str, Any] = {"runtime": "native", "delta": text}
+                    if final:
+                        data["end_of_turn"] = True
+                    self._safe_emit(conn, lock, run_id, event_type="llm_delta", data=data)
+
+                delta_buffer = _DeltaBuffer(_emit_delta)
                 factory = lambda session_id: _default_factory(  # noqa: E731
                     session_id,
                     self._max_iterations,
@@ -292,6 +361,7 @@ class NativeAtlasAgent(AgentRuntime):
                     base_url=base_url,
                     api_key=api_key,
                     reasoning_effort=reasoning_effort,
+                    stream_delta_callback=delta_buffer.push,
                 )
         try:
             agent = factory(session_id=run_id)
