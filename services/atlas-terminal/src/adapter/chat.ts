@@ -394,6 +394,11 @@ export class ChatAdapter {
 					error: { name: 'UnknownError', data: { message: str('summary') || str('error') || 'run failed' } }
 				});
 			} else if (transition === 'succeeded' && str('summary')) {
+				// If llm_call already reconciled this message's text, the
+				// transition summary may differ (truncation/post-processing)
+				// and the exact-text dupe check would fail — creating a
+				// duplicate part. Skip when reconciledMessages already covers it.
+				if (this.reconciledMessages.has(assistant.info.id)) return;
 				const dupe = assistant.parts.some((p) => p.type === 'text' && p.text === str('summary'));
 				if (!dupe) this.appendPart(assistant, { type: 'text', text: str('summary') });
 			}
