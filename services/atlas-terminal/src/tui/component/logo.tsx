@@ -750,6 +750,10 @@ export function Logo(props: { shape?: LogoShape; ink?: RGBA; idle?: boolean; swe
     state: IdleState | undefined,
   ): JSX.Element[] => {
     const shadow = tint(theme.background, ink, 0.25)
+    // Shimmer fringe color: theme.primary (#7F00FF) sits at the same hue as the
+    // violet wordmark ink, which makes a primary-tinted fringe invisible. Lift it
+    // toward white so the pulse reads as violet -> lavender -> white.
+    const fringe = tint(theme.primary, PEAK, 0.55)
     const attrs = bold ? TextAttributes.BOLD : undefined
 
     return Array.from(line).map((char, i) => {
@@ -770,10 +774,10 @@ export function Logo(props: { shape?: LogoShape; ink?: RGBA; idle?: boolean; swe
       const peakMixBot = charLit ? Math.min(1, pulseBot.peak) : 0
       const primaryMixTop = charLit ? Math.min(1, pulseTop.primary) : 0
       const primaryMixBot = charLit ? Math.min(1, pulseBot.primary) : 0
-      // Layer primary tint first, then white peak on top — so the halo/tail pulls toward primary,
-      // while the bright core stays pure white
-      const inkTopTint = primaryMixTop > 0 ? tint(ink, theme.primary, primaryMixTop) : ink
-      const inkBotTint = primaryMixBot > 0 ? tint(ink, theme.primary, primaryMixBot) : ink
+      // Layer lavender fringe first, then white peak on top — so the halo/tail pulls toward
+      // lavender, while the bright core stays pure white
+      const inkTopTint = primaryMixTop > 0 ? tint(ink, fringe, primaryMixTop) : ink
+      const inkBotTint = primaryMixBot > 0 ? tint(ink, fringe, primaryMixBot) : ink
       const inkTop = peakMixTop > 0 ? tint(inkTopTint, PEAK, peakMixTop) : inkTopTint
       const inkBot = peakMixBot > 0 ? tint(inkBotTint, PEAK, peakMixBot) : inkBotTint
       // For the non-peak-aware brightness channels, use the average of top/bot
@@ -784,7 +788,7 @@ export function Logo(props: { shape?: LogoShape; ink?: RGBA; idle?: boolean; swe
       }
       const peakMix = charLit ? Math.min(1, pulse.peak) : 0
       const primaryMix = charLit ? Math.min(1, pulse.primary) : 0
-      const inkPrimary = primaryMix > 0 ? tint(ink, theme.primary, primaryMix) : ink
+      const inkPrimary = primaryMix > 0 ? tint(ink, fringe, primaryMix) : ink
       const inkTinted = peakMix > 0 ? tint(inkPrimary, PEAK, peakMix) : inkPrimary
       const shadowMixCfg = state?.cfg.shadowMix ?? shimmerConfig.shadowMix
       const shadowMixTop = Math.min(1, pulseTop.peak * shadowMixCfg)
@@ -904,8 +908,9 @@ export function Logo(props: { shape?: LogoShape; ink?: RGBA; idle?: boolean; swe
     }
   }
 
-  // Dark Prism violet wordmark — tinted by theme.primary (#7F00FF) during
-  // the idle shimmer, so the glow stays in the violet family end-to-end.
+  // Dark Prism violet wordmark — the idle shimmer fringe uses a lavender
+  // (primary lifted toward white) so the pulse stays visible against this ink
+  // while remaining in the violet family.
   const ATLAS_VIOLET = RGBA.fromInts(123, 97, 255) // #7B61FF
   const ATLAS_GRAY = RGBA.fromInts(160, 160, 160)
 
