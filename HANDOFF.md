@@ -1,5 +1,38 @@
 # Handoff — L2 ATLAS Finish Sprint
 
+## Session update — 2026-07-12 (latest): streaming slice (ULTRAREVIEW item 2) closed
+
+3 commits following the fixes-batch below, closing the last open ULTRAREVIEW
+item (fix-status + design writeup appended to the ULTRAREVIEW doc under
+"Streaming Slice — 2026-07-12"). All 5 of the 5 original findings now FIXED.
+
+- **Schema**: `AuditEvent.event_type` gains `"llm_delta"` (coalesced streaming
+  fragment; `data.end_of_turn=True` marks a turn's last delta) — mapped to
+  SurfaceEvent kind "text".
+- **Runtime** (`agents/native.py`): the vendored foundation already exposed
+  `stream_delta_callback` + `_has_stream_consumers()` (D-001 compliant — no
+  foundation edits). New `_DeltaBuffer` coalesces per-token callback into
+  ~150ms/48-char `llm_delta` audit rows instead of one SQLite write per token;
+  flushes early on the callback's `None` end-of-turn signal.
+- **Adapter** (`chat.ts`): new `llm_delta` branch emits `message.part.delta`
+  per chunk — the TUI's existing handler (`sync.tsx:514`, dead code per the
+  original audit) now fires. `streamingText` map `{part, open}` per assistant
+  message: `end_of_turn` closes it (next turn gets a fresh part) but keeps the
+  entry so the trailing `llm_call` reconciles onto the same part instead of
+  duplicating it.
+- **Gateway** (`lib.rs`): `STREAM_POLL` 500ms → 200ms so relay latency stays
+  under the delta cadence. Rebuilt `target/release/atlas-gateway.exe` — had to
+  `atlas gateway stop` first (Windows file lock on the running binary),
+  restarted after build. **If the operator has an older gateway process
+  running from before this session, it needs `atlas gateway stop && atlas
+  gateway start` to pick up the new binary.**
+
+Verified: agent-runtime 782 passed (4 new), atlas-core 97 passed,
+atlas-terminal typecheck + 53 tests (1 new) + live `--smoke`, `cargo test -p
+atlas-gateway` 108 passed. **UAT owed:** does the TUI visibly render
+token-by-token, reconnect-mid-stream behavior, multi-tool-round turn
+boundaries.
+
 ## Session update — 2026-07-12 (later): ULTRAREVIEW fixes 4/5 + glow pulse tune
 
 4 commits (b3393712..22f1041b), executing

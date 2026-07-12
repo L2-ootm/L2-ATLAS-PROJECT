@@ -290,7 +290,7 @@ The operator context should be:
 | Issue | Status | Commit |
 |-------|--------|--------|
 | 1. Integration hallucination | FIXED — `atlas_core.md` now requires enumerating the tool registry/skills before asserting capabilities; prompt goldens regenerated | 22f1041b |
-| 2. No streaming | **OPEN** — requires runtime per-token audit events + adapter `message.part.delta`; deferred as its own slice | — |
+| 2. No streaming | FIXED — runtime `llm_delta` audit events (coalesced, `_DeltaBuffer`) + adapter `message.part.delta` + gateway poll 500ms→200ms | see below |
 | 3. Wrong folder | FIXED — launcher exports `ATLAS_WORK_DIR`; `main.tsx` chdirs back before any `process.cwd()` read | 059c63ba |
 | 4. No workspace scope | FIXED — TTY-only prompt in `_root()`/`atlas tui`: this folder vs `workspace_service.global_root()` | 059c63ba |
 | 5. Hardcoded context | FIXED — `include_operator_context` param > `ATLAS_SKIP_CONTEXT` env > `context.inject_operator_context` config knob; `--no-context` CLI flag; contract now says don't recite Focus on unrelated prompts | b4a4ce11 |
@@ -298,3 +298,42 @@ The operator context should be:
 Verification: agent-runtime 775 passed + 2 new gating tests; atlas-core 97
 passed; atlas-terminal typecheck + 52 tests + `--smoke` (LIVE gateway) green.
 Interactive UAT still owed: scope prompt UX, footer folder, `--no-context` run.
+
+---
+
+## Streaming Slice — 2026-07-12 (item 2 close-out)
+
+Two-layer fix, exactly as scoped above, plus a gateway relay tune:
+
+1. **Schema**: `AuditEvent.event_type` gains `"llm_delta"` (packages/atlas-core);
+   mapped to `SurfaceEvent` kind `"text"` in `surface_events._KIND_MAP`.
+2. **Runtime** (`agents/native.py`): the vendored foundation already exposed
+   `stream_delta_callback` (per-token hook) and `_has_stream_consumers()`
+   (prefers its streaming API path once a consumer is registered) — D-001
+   compliant, no foundation edits needed. `native.py` now registers it in the
+   real-provider branch of `execute()`. A new `_DeltaBuffer` coalesces the
+   token-by-token callback into ~150ms/48-char `llm_delta` audit rows (one
+   SQLite write per token would be wasteful), flushing early on the
+   callback's `None` (end-of-turn) signal. The final `llm_call` (authoritative
+   full text) is unchanged.
+3. **Adapter** (`chat.ts`): new `llm_delta` branch creates the text part on
+   first delta and emits `message.part.delta {messageID, partID, field, delta}`
+   per chunk — the TUI's existing handler (`sync.tsx:514`, "exists but never
+   triggered" per the original audit) now actually fires. A `streamingText`
+   map tracks `{part, open}` per assistant message id: `end_of_turn` closes it
+   (a later turn, e.g. after a tool round, starts a fresh part) but keeps the
+   entry so the trailing `llm_call` reconciles onto the same part instead of
+   appending a duplicate.
+4. **Gateway relay** (`lib.rs`): `STREAM_POLL` 500ms → 200ms so bursts don't
+   pile up behind the poll; release binary rebuilt and gateway restarted.
+
+Commits: runtime (schema+native.py), adapter (chat.ts), gateway (lib.rs) — see
+`git log` for this session, 3 commits following the integration-fixes batch.
+
+Verification: agent-runtime 782 passed (4 new: 1 wiring test through
+`_default_factory`, 3 `_DeltaBuffer` unit tests); atlas-core 97 passed;
+atlas-terminal typecheck + 53 tests (1 new: delta-streaming + reconciliation)
++ live `--smoke`; `cargo test -p atlas-gateway` 108 passed. Interactive UAT
+still owed: does the TUI visibly render token-by-token now, does reconnect
+mid-stream behave, does a multi-tool-round response start a fresh part per
+turn correctly.
