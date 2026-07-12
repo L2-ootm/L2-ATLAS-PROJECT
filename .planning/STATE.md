@@ -3,8 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
-last_updated: "2026-07-11"
-last_activity: 2026-07-11 -- Pushed to origin (db772555..01623abe, 42 commits). Next session: retarget `atlas`/`atlas tui` to atlas-terminal, TUI visual polish (fix indentation, differentiate from MiMoCode clone using L2 Dark Prism tokens), WebUI completeness audit, operator UAT, CI watch. Prior: identity fix (DIV-F-007), atlas-terminal waves 2-3, UAT confirmed working (ATLAS identity, /vcs, freellmapi, no event crashes). Critical: atlas-terminal GlobalEvent envelope fix (crashed on every event) + silent reject-becomes-approve fix + nonce-bound approvals; DB indexes (0019). High: cold-start orphan reaper, cockpit SSE backoff, all env vars documented, atlas-ci.yml authored, adapter timeouts/retries. Medium: GET /v1/runs (N+1 gone, E2E-verified), 403 auto re-surface, config schema migration chain, centralized rotating log, cross-module E2E (enabled by env-aware db.default_db_path -- live-DB footgun fixed), goal_tree SQL filtering, PID-reuse guard. Low: ogl removed, atlas-core pinned, graph TTL, bundle budget green, Go TUI mission rows show intent+updated. All suites green (766/97/29/20/101/104/44/1 E2E). Release gateway rebuilt. Wiki CLI DB path also made env-aware (34 passed). main 38 ahead of origin, unpushed.
+last_updated: "2026-07-12"
+last_activity: 2026-07-12 -- Retarget shipped: bare `atlas`/`atlas tui` now launch atlas-terminal (Go TUI kept as hidden dev-go-tui fallback; retirement gated on operator UAT). First fully green atlas-ci run (29177170770, all 8 jobs) after 4 fix loops (wiki-runtime install order, POSIX spawn flags, flavor-aware policy _within via ntpath, ANSI-strip in debrand audit). TUI wordmark misalignment root-caused (ragged thin-logo rows) + theme retokened to L2 Dark Prism (operator visual judgment owed). Gateway /v1/vcs added (dependency-free git reader, cargo 108). Cockpit: Cmd+K command palette (six TUI slash commands, lockstep mirror of atlas-terminal commands.ts) + sidebar git-branch display (vitest 48, build+lint green). codebase-memory-mcp eval written (.planning/ultra/EVAL-codebase-memory-mcp-architecture-explorer-2026-07-12.md) -- viable backend, recommend /v1/graph gateway proxy. Next: operator UAT, Architecture Explorer v1, MASTER-PLAN waves 4-5, Phase 10.8.
+prior_activity_2026_07_11: Pushed to origin (db772555..01623abe, 42 commits). Next session: retarget `atlas`/`atlas tui` to atlas-terminal, TUI visual polish (fix indentation, differentiate from MiMoCode clone using L2 Dark Prism tokens), WebUI completeness audit, operator UAT, CI watch. Prior: identity fix (DIV-F-007), atlas-terminal waves 2-3, UAT confirmed working (ATLAS identity, /vcs, freellmapi, no event crashes). Critical: atlas-terminal GlobalEvent envelope fix (crashed on every event) + silent reject-becomes-approve fix + nonce-bound approvals; DB indexes (0019). High: cold-start orphan reaper, cockpit SSE backoff, all env vars documented, atlas-ci.yml authored, adapter timeouts/retries. Medium: GET /v1/runs (N+1 gone, E2E-verified), 403 auto re-surface, config schema migration chain, centralized rotating log, cross-module E2E (enabled by env-aware db.default_db_path -- live-DB footgun fixed), goal_tree SQL filtering, PID-reuse guard. Low: ogl removed, atlas-core pinned, graph TTL, bundle budget green, Go TUI mission rows show intent+updated. All suites green (766/97/29/20/101/104/44/1 E2E). Release gateway rebuilt. Wiki CLI DB path also made env-aware (34 passed). main 38 ahead of origin, unpushed.
 progress:
   total_phases: 8
   completed_phases: 7
@@ -25,7 +26,23 @@ progress:
 > green state. The 39-file dirty backlog described by those entries was committed
 > on 2026-07-08 (7 logical commits); `main` is 15 ahead of `origin/main` (8 pre-existing + 7 new), unpushed.
 
-## Current Position — 2026-07-10 (second session): MASTER action plan executed (22 items, F20 deferred)
+## Current Position — 2026-07-12: retarget shipped, CI green, TUI retoken, cockpit palette + /v1/vcs
+
+9 commits (104ef33a..2267ebf8). Bare `atlas` and `atlas tui` now launch the
+atlas-terminal (Bun donor TUI); the Go TUI survives only as the hidden `dev-go-tui`
+fallback until operator UAT ratifies retirement. The first atlas-ci run went fully
+green (all 8 jobs) after four POSIX-correctness fix loops. The UAT-reported wordmark
+misalignment was root-caused (default "thin" logo had ragged row widths; all logo
+shapes now uniform and test-locked) and the TUI theme was retokened to L2 Dark Prism.
+The cockpit gained the Cmd+K command palette (the six TUI slash commands, mirrored in
+lockstep from atlas-terminal's commands.ts) and a sidebar git-branch display fed by
+the new dependency-free gateway `/v1/vcs` endpoint. codebase-memory-mcp was evaluated
+as the Architecture Explorer backend (verdict: viable via a gateway `/v1/graph/*`
+proxy; report in `.planning/ultra/`). Full detail in HANDOFF.md's 2026-07-12 entry.
+Owed: operator UAT (TUI boot/identity/approval + Dark Prism judgment), Architecture
+Explorer v1, MASTER-PLAN waves 4-5, Phase 10.8 (0/4), repo ingestion Wave 1 review.
+
+## Prior Position — 2026-07-10 (second session): MASTER action plan executed (22 items, F20 deferred)
 
 All items of `.mimocode/artifacts/ultra/ATLAS-MASTER-ACTION-PLAN.md` (the deep-audit
 queue, distinct from the older ATLAS-ACTION-PLAN.md below) executed in 10 commits
@@ -1688,9 +1705,14 @@ Full codebase analysis of the Graphify knowledge graph system completed. Documen
 - Produced a friend-facing two-document packet under `output/pdf/`: `L2-Cashflow-Visao-e-Roadmap.pdf` and `L2-Cashflow-Guia-de-Colaboracao-Paralela.pdf`.
 - The first document explains current capability, researched target state, seven-phase roadmap, accounting dependency chain, and where financial/economic review adds value.
 - The second defines parallel collaboration for a finance-domain collaborator using AI agents: shareable artifacts, privacy boundaries, workstreams, module workflow, integration gates, and a suggested pilot.
-- Added the reproducible generator at `services/cashflow/scripts/generate-collaboration-packet.py`.
+- Added the reproducible collaboration-page generator at `services/cashflow/scripts/add-collaboration-worktree-page.py`.
 - Regenerated the X outreach sidequest as `output/pdf/ATLAS-X-Outreach-Collab-Devs.pdf` and replaced non-extractable bullet glyphs with ASCII markers.
-- QA: all 17 pages rendered to PNG and visually inspected; text extraction reported zero missing-glyph markers or replacement characters.
+- Follow-up: the collaboration guide now explicitly defines GitHub branches + Git worktrees as the parallel delivery model and frames Cashflow as a practical learning foundation for the collaborator's future software and automations.
+- Editorial cleanup: replaced the collaboration guide cover with a strictly institutional version, removing meta commentary about acceptance, intended reader, reading time, interpretation, and professional-review caveats from the opening page.
+- Language cleanup: revised all five pages to remove third-person references to the recipient (`ela`, `colaboradora`, `desenvolvedora`, and equivalent personal constructions); the guide now refers consistently to workstreams, responsibilities, contributions, validations, and projects.
+- Rebuilt `output/pdf/L2-Cashflow-Visao-e-Roadmap.pdf` as a 14-page evidence-based functional brief. It now distinguishes implemented, partial, planned, and research-only capabilities; inventories real UI modules, FinOps/enterprise services, five APIs, seven MCP tools, 20 SQLite tables, dual-backend architecture, workflows, quality risks, critical path, Brazil compliance, banking, enterprise, plugins, execution gates, and success criteria.
+- Verification for the expanded vision brief: Next.js production build passed with 24 generated routes; the route smoke command was documented accurately as requiring a running server after returning 15 connection failures without one.
+- QA: both Cashflow PDFs were rendered page by page and visually inspected; the packet now has 28 pages including the X outreach sidequest, with zero missing-glyph markers or replacement characters in the Cashflow text extraction.
 
 
 ## Architectural Mandate — 2026-07-03 (Immediate Correction)

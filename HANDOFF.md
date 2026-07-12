@@ -1,5 +1,78 @@
 # Handoff — L2 ATLAS Finish Sprint
 
+## Session update — 2026-07-12: retarget shipped, first CI green, TUI retoken, Cmd+K palette + /v1/vcs, graph-MCP eval
+
+9 commits this session (104ef33a..2267ebf8). Executed HANDOFF priorities 1-2, CI watch,
+and the operator's mid-session reshaped WebUI priorities (Cmd+K palette, sidebar branch,
+codebase-memory-mcp eval) from
+`.planning/ultra/ULTRARESEARCH-webui-vision-gaps-repos-2026-07-11.md`.
+
+**1. Retarget `atlas`/`atlas tui` → atlas-terminal (104ef33a):**
+- New `atlas_runtime/cli/atlas_terminal.py`: `resolve_terminal_dir()` (ATLAS_TERMINAL_DIR
+  override, repo-root walk) + `launch(gateway_url)` running `[bun, "run", "dev"]` (the dev
+  script carries the required `--conditions=browser`); `TerminalLaunchError` with
+  remediation when bun/node_modules missing.
+- `cli/main.py`: `_root()` and `_tui_cmd()` now launch atlas-terminal; Go TUI kept as
+  hidden `dev-go-tui` fallback. `test_tui_app_entry.py` rewritten (6 tests).
+- **Operator UAT still owed** (interactive boot, prompt, ATLAS identity, tool approval).
+  Go TUI retirement (MASTER-PLAN wave 5) stays gated on that UAT.
+
+**2. First fully green atlas-ci run (run 29177170770, all 8 jobs) after 4 fix loops:**
+- f4583f45 — CI never installed services/wiki-runtime; must install AFTER agent-runtime
+  (its pyproject depends on atlas-core/atlas-runtime; pip would hit PyPI otherwise).
+- fa5a35ff — POSIX correctness: cockpit spawn creationflags hoisted to module constants
+  with Win32 literal fallbacks; policy boundary rejects foreign-flavor absolute paths.
+- 37503d15 — first policy fix broke Windows-style maintenance roots on POSIX; final:
+  flavor-aware `_within()` via ntpath lexical containment when either side is
+  Windows-flavor on a POSIX host (test_policy has a 6-param regression test).
+- 362b5c70 — debrand audit 'hermes' leak was Rich force-color on GitHub Actions putting
+  ANSI inside the phrase; `_ANSI_ESCAPE` strip before whitespace collapse.
+
+**3. TUI visual polish (6abc4e57):**
+- UAT wordmark misalignment root-caused: default logo is "thin" (home.tsx falls back to
+  it) and its rows were ragged-width; renderer joins rows 1:1 off left[0]. All logo shapes
+  now uniform-width; `test/logo.test.ts` (9 tests) locks row-width uniformity.
+- `src/tui/context/theme/atlas-tui.json` retokened to L2 Dark Prism (DIV-F-006):
+  #7F00FF/#9B4DFF/#00F0FF/#E0E0E0/#00FF94/#FFD600/#FF0055 on #0a0a0a; light palette
+  same-hue readable equivalents. **Operator visual judgment owed.**
+
+**4. Gateway `/v1/vcs` (a18dc25b):** dependency-free git context reader (.git/HEAD +
+worktree pointer files + detached short sha), `?path=` override, `{repo,branch,detached,
+commit}` shape. 4 integration tests; cargo 108 passed; release binary rebuilt.
+
+**5. Cockpit Cmd+K palette + sidebar branch (1219331c, tests 2267ebf8):**
+- `src/lib/atlasCommands.ts` mirrors the TUI's six slash-command templates
+  (services/atlas-terminal/src/adapter/commands.ts) — keep the two files in lockstep.
+- `src/components/CommandPalette.tsx`: Ctrl/Cmd+K overlay; first token = command, rest =
+  $ARGUMENTS; Tab completes, Enter runs, Esc closes; busy disables execute.
+- Console.tsx: `send()` split into `dispatchPrompt(windowId, display, prompt)` — operator
+  message echoes `/review HEAD~1`, agent receives the expanded template. Palette targets
+  the active chat window.
+- Sidebar footer: git branch (or `DETACHED · <sha>`) via new `getVcsContext()`; refetch on
+  health epoch + 30s; row hidden when not a repo / pre-vcs gateway.
+- Gates: vite build + bundle budget, vitest 48 passed (4 new palette tests), eslint clean.
+
+**6. codebase-memory-mcp evaluation (priority 5) — report written:**
+`.planning/ultra/EVAL-codebase-memory-mcp-architecture-explorer-2026-07-12.md`.
+Verdict: viable as Architecture Explorer backend but not as-is — search_graph/trace_path
+are strong; get_architecture clusters drowned by vendored `foundation/`; Route nodes
+noisy. SPA can't speak MCP: recommend gateway proxy `/v1/graph/*` (search/trace v1),
+filter out foundation/_EXTERNAL_REPOS, link-out to :9749 UI only as interim.
+
+**Environment notes:** earlier commits this session already pushed (CI watch);
+6abc4e57 + a18dc25b + 1219331c + 2267ebf8 pushed at session end (see STATE for CI
+result). CONTRIBUTING.md still carries its pre-existing uncommitted modification
+(untouched). STATE.md's prior-session Cashflow-packet hunk committed with this
+session's state update. Repo ingestion Wave 1 still awaits operator review — not started.
+
+**Next session:**
+1. **Operator UAT** — `atlas` boots atlas-terminal: prompt loop, ATLAS identity, tool
+   approval; judge the Dark Prism retoken + wordmark fix; then the Go TUI retirement call.
+2. Architecture Explorer v1 per the EVAL doc (gateway `/v1/graph/*` proxy first).
+3. MASTER-PLAN waves 4-5 (test density; Go TUI retirement gated on UAT).
+4. Phase 10.8 execution per its 4 plans.
+5. Repo ingestion Wave 1 (after operator review of the master plan).
+
 ## Session update — 2026-07-11: ATLAS identity fix + atlas-terminal waves 2-3 remainder
 
 3 commits (e96ec47e, cb81d565, 02b7735e), all gates fresh.
