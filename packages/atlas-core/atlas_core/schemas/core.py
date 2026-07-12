@@ -254,6 +254,10 @@ class AuditEvent(BaseModel):
     tool_call_id: str | None = None
     event_type: Literal[
         "llm_call",
+        # Streaming token/chunk delta for a llm_call in progress — a
+        # coalesced fragment of the response, not the completed snapshot.
+        # `data.end_of_turn=True` marks the last delta for one assistant turn.
+        "llm_delta",
         "tool_call",
         "subagent_run",
         "approval",

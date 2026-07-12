@@ -16,7 +16,7 @@ from atlas_runtime import focus_service, goal_service, run_service
 from atlas_runtime.agents import RunOutcome, get_agent, known_agents
 from atlas_runtime.agents.base import AgentRuntime
 from atlas_runtime.agents.claude_code import ClaudeCodeAgent
-from atlas_runtime.agents.native import NativeAtlasAgent
+from atlas_runtime.agents.native import NativeAtlasAgent, _DeltaBuffer
 from atlas_runtime.audit_service import get_events_for_run
 
 
@@ -207,6 +207,84 @@ def test_native_collapses_html_error(db: sqlite3.Connection, lock: threading.Loc
     assert outcome.status == "failed"
     assert "<html" not in outcome.summary.lower()
     assert "HTML error page" in outcome.summary
+
+
+def test_native_streams_deltas_into_llm_delta_events(
+    db: sqlite3.Connection, lock: threading.Lock, monkeypatch
+) -> None:
+    """execute()'s real-provider branch must thread stream_delta_callback into
+    _default_factory, and the foundation's chunk/None protocol must coalesce
+    into llm_delta audit events without duplicating the final llm_call text."""
+    mid = _pending_mission(db)
+    rid = _running_run(db, mid)
+    captured: dict = {}
+
+    def fake_default_factory(session_id, max_iterations, *, stream_delta_callback=None, **kw):
+        captured["callback"] = stream_delta_callback
+
+        class _StreamingHarness:
+            def run_conversation(self, user_message, system_message=None):  # noqa: ANN001
+                stream_delta_callback("Hello")
+                stream_delta_callback(", world")
+                stream_delta_callback(None)
+                return {
+                    "final_response": "Hello, world",
+                    "api_calls": 1,
+                    "completed": True,
+                    "failed": False,
+                    "error": None,
+                }
+
+        return _StreamingHarness()
+
+    monkeypatch.setattr("atlas_runtime.agents.native._default_factory", fake_default_factory)
+    monkeypatch.setattr(
+        NativeAtlasAgent, "_resolve_provider", lambda self, conn: ("m", "p", None, "sk-real", "api_key")
+    )
+    outcome = NativeAtlasAgent().execute(db, lock, mission_id=mid, run_id=rid, prompt="hi")
+
+    assert outcome.status == "succeeded"
+    assert captured["callback"] is not None
+    events = get_events_for_run(db, rid)
+    deltas = [e for e in events if e.event_type == "llm_delta"]
+    assert len(deltas) == 1  # fast synchronous chunks coalesce into one flush-on-None
+    payload = json.loads(deltas[0].data)
+    assert payload["delta"] == "Hello, world"
+    assert payload["end_of_turn"] is True
+    llm_calls = [e for e in events if e.event_type == "llm_call"]
+    assert any(json.loads(e.data).get("text") == "Hello, world" for e in llm_calls)
+
+
+def test_delta_buffer_flushes_on_char_threshold() -> None:
+    flushes: list[tuple[str, bool]] = []
+    buf = _DeltaBuffer(lambda text, final: flushes.append((text, final)), interval_s=999, max_chars=5)
+    buf.push("ab")
+    assert flushes == []
+    buf.push("cd")
+    assert flushes == []
+    buf.push("ef")  # accumulated 6 chars >= max_chars(5)
+    assert flushes == [("abcdef", False)]
+    buf.push(None)
+    assert flushes == [("abcdef", False), ("", True)]
+
+
+def test_delta_buffer_flushes_on_interval_threshold(monkeypatch) -> None:
+    flushes: list[tuple[str, bool]] = []
+    clock = {"t": 0.0}
+    monkeypatch.setattr("atlas_runtime.agents.native.time.monotonic", lambda: clock["t"])
+    buf = _DeltaBuffer(lambda text, final: flushes.append((text, final)), interval_s=0.1, max_chars=999)
+    buf.push("a")
+    assert flushes == []
+    clock["t"] = 0.2
+    buf.push("b")
+    assert flushes == [("ab", False)]
+
+
+def test_delta_buffer_none_without_prior_push_is_noop() -> None:
+    flushes: list[tuple[str, bool]] = []
+    buf = _DeltaBuffer(lambda text, final: flushes.append((text, final)))
+    buf.push(None)
+    assert flushes == []
 
 
 def test_native_harness_unavailable_is_failed(db: sqlite3.Connection, lock: threading.Lock) -> None:
