@@ -1536,6 +1536,64 @@ async fn select_folder(_body: Option<Json<SelectFolderBody>>) -> ApiResult {
         "folder picker is only available on Windows in browser mode",
     ))
 }
+
+#[derive(Deserialize)]
+struct VcsParams {
+    /// Directory to inspect; defaults to the gateway's repo root.
+    path: Option<String>,
+}
+
+/// Git context for cockpit surfaces: current branch (or detached short sha),
+/// read dependency-free from `.git/HEAD` — worktree pointer files and detached
+/// HEAD aware. No git binary, no libgit2; mirrors the reader vendored in
+/// services/atlas-terminal so every surface reports the same identity.
+async fn vcs_context(State(state): State<AppState>, Query(params): Query<VcsParams>) -> ApiResult {
+    let dir = params
+        .path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| state.repo_root.clone());
+    Ok(Json(read_vcs_context(&dir)))
+}
+
+fn read_vcs_context(dir: &std::path::Path) -> Value {
+    let not_a_repo = json!({ "repo": false, "branch": Value::Null });
+    let git_path = dir.join(".git");
+    let git_dir = if git_path.is_file() {
+        // Linked worktree / submodule: `.git` is a pointer file "gitdir: <path>".
+        let Ok(text) = std::fs::read_to_string(&git_path) else {
+            return not_a_repo;
+        };
+        let Some(pointer) = text.trim().strip_prefix("gitdir:") else {
+            return not_a_repo;
+        };
+        let pointer = PathBuf::from(pointer.trim());
+        if pointer.is_absolute() {
+            pointer
+        } else {
+            dir.join(pointer)
+        }
+    } else if git_path.is_dir() {
+        git_path
+    } else {
+        return not_a_repo;
+    };
+    let Ok(head) = std::fs::read_to_string(git_dir.join("HEAD")) else {
+        return not_a_repo;
+    };
+    let head = head.trim();
+    if let Some(reference) = head.strip_prefix("ref:") {
+        let reference = reference.trim();
+        let branch = reference.strip_prefix("refs/heads/").unwrap_or(reference);
+        json!({ "repo": true, "branch": branch, "detached": false })
+    } else {
+        let short: String = head.chars().take(7).collect();
+        json!({ "repo": true, "branch": Value::Null, "detached": true, "commit": short })
+    }
+}
+
 #[derive(Deserialize)]
 struct GraphParams {
     /// atlas | global | projects | obsidian (defaults to atlas).
@@ -2643,6 +2701,7 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/surface-sessions/{id}/close", post(surface_close))
         .route("/v1/graph", get(graph_view))
         .route("/v1/host/select-folder", post(select_folder))
+        .route("/v1/vcs", get(vcs_context))
         .route("/v1/projects", get(projects_list).post(projects_create))
         .route("/v1/projects/register", post(projects_register))
         .route("/v1/focus", get(focus_list).post(focus_create))
