@@ -255,6 +255,49 @@ def test_native_streams_deltas_into_llm_delta_events(
     assert any(json.loads(e.data).get("text") == "Hello, world" for e in llm_calls)
 
 
+def test_native_flushes_delta_buffer_when_foundation_never_signals_end_of_turn(
+    db: sqlite3.Connection, lock: threading.Lock, monkeypatch
+) -> None:
+    """The vendored foundation only calls stream_delta_callback(None) at tool
+    boundaries — never after a final, no-tool-call response (ULTRAREVIEW-
+    streaming-duplication-DEEP finding 1). execute() must flush the buffer
+    itself once run_conversation() returns so short/simple turns still emit
+    a closing llm_delta(end_of_turn=True) instead of dropping the remainder."""
+    mid = _pending_mission(db)
+    rid = _running_run(db, mid)
+
+    def fake_default_factory(session_id, max_iterations, *, stream_delta_callback=None, **kw):
+        class _NoNoneHarness:
+            def run_conversation(self, user_message, system_message=None):  # noqa: ANN001
+                stream_delta_callback("Hey")
+                stream_delta_callback(" there")
+                # deliberately NOT calling stream_delta_callback(None) — mirrors
+                # the real foundation's final-response gap.
+                return {
+                    "final_response": "Hey there",
+                    "api_calls": 1,
+                    "completed": True,
+                    "failed": False,
+                    "error": None,
+                }
+
+        return _NoNoneHarness()
+
+    monkeypatch.setattr("atlas_runtime.agents.native._default_factory", fake_default_factory)
+    monkeypatch.setattr(
+        NativeAtlasAgent, "_resolve_provider", lambda self, conn: ("m", "p", None, "sk-real", "api_key")
+    )
+    outcome = NativeAtlasAgent().execute(db, lock, mission_id=mid, run_id=rid, prompt="hi")
+
+    assert outcome.status == "succeeded"
+    events = get_events_for_run(db, rid)
+    deltas = [e for e in events if e.event_type == "llm_delta"]
+    assert len(deltas) == 1
+    payload = json.loads(deltas[0].data)
+    assert payload["delta"] == "Hey there"
+    assert payload["end_of_turn"] is True
+
+
 def test_delta_buffer_flushes_on_char_threshold() -> None:
     flushes: list[tuple[str, bool]] = []
     buf = _DeltaBuffer(lambda text, final: flushes.append((text, final)), interval_s=999, max_chars=5)

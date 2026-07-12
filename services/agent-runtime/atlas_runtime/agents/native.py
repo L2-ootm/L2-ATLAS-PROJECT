@@ -295,6 +295,9 @@ class NativeAtlasAgent(AgentRuntime):
         # --- resolve the harness factory -----------------------------------
         # The default factory selects provider/model from ATLAS config + the
         # active Focus (A4); an injected factory (tests) bypasses resolution.
+        # Real-provider path assigns this; stays None for mock/injected
+        # factories where there is no stream_delta_callback to flush.
+        delta_buffer: Optional[_DeltaBuffer] = None
         factory = self._agent_factory
         if factory is None:
             model, provider, base_url, api_key, auth_mode = self._resolve_provider(conn)
@@ -434,6 +437,14 @@ class NativeAtlasAgent(AgentRuntime):
                 data={"runtime": "native", "error": str(exc)},
             )
             return RunOutcome(status="failed", summary=f"native error: {exc}"[:_SUMMARY_CAP])
+
+        # The foundation only signals stream_delta_callback(None) at tool
+        # boundaries (never after a final, no-tool-call response) — flush any
+        # trailing buffered text here so short/simple turns still get a
+        # closing llm_delta(end_of_turn=True) instead of the remainder being
+        # silently dropped when this function returns.
+        if delta_buffer is not None:
+            delta_buffer.push(None)
 
         return self._map_result(conn, lock, run_id, result_holder.get("result", {}))
 

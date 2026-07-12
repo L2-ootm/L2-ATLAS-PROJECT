@@ -1,5 +1,50 @@
 # Handoff — L2 ATLAS Finish Sprint
 
+## Session update — 2026-07-12 (newest): streaming DEEP-pass fixes — multi-turn drop bug + end-of-turn flush gap
+
+Resumed from the ULTRAREVIEW DEEP pass
+(`.planning/ultra/ULTRAREVIEW-streaming-duplication-DEEP-2026-07-12.md`),
+which flagged the prior session's `chat.ts` closed-entry guard (ed0c6a4a) as
+"correct but insufficient." Re-deriving the guard's lifecycle from scratch
+found it was actually catching the **wrong case** — full fix-status writeup
+appended to that DEEP report under "Fix Status — 2026-07-12 (third pass)".
+
+- **Real bug found and fixed:** the ed0c6a4a guard (`entry && !entry.open` →
+  early return) only ever fires at a legitimate tool-boundary `end_of_turn`
+  close, not the reported duplication vector (fully-deleted entry). It was
+  silently **dropping every turn's streamed text after the first tool round**
+  in multi-tool-call runs — a regression the DEEP report's own analysis
+  implied but didn't name. Fixed in `chat.ts`: a closed-but-present entry now
+  clears and lets the next turn get its own fresh part; a new
+  `reconciledMessages: Set<string>` (per the report's own recommendation) is
+  the actual defense-in-depth for the stray-delta-after-full-deletion case,
+  set on `llm_call` and cleared on `end`.
+- **Foundation end-of-turn gap closed (adapter-side, D-001-compliant):**
+  confirmed by reading `conversation_loop.py:3805-3840` directly —
+  `stream_delta_callback(None)` really is only called before tool execution,
+  never after a final no-tool-call response. Since D-001 bars editing the
+  vendored foundation, `native.py`'s `execute()` (which owns the
+  `_DeltaBuffer`) now calls `delta_buffer.push(None)` itself after
+  `run_conversation()` returns successfully, before `_map_result()`. No-op
+  when the harness already signaled `None` (buffer's own idempotency,
+  already covered by an existing test).
+- **Still open — rendering-layer hypothesis (opentui `<code>` component):**
+  `@opentui/core`'s renderables ship as a compiled bundle in this checkout
+  (no readable source under `node_modules/@opentui/core/renderables/`, only
+  `.d.ts`), so this needs a real interactive TTY session, not static reading.
+  Prior sessions repeatedly could not get a non-headless repro (piped stdin
+  doesn't reach the composer, SendKeys/ConPTY blocked). **Next operator UAT:**
+  reproduce the original "HeyHey!" duplication now that both data-flow bugs
+  above are fixed — if it persists, instrument `TextPart`
+  (`session/index.tsx:1560`) with a render counter per the DEEP report's
+  original recommendation.
+
+Verified: atlas-terminal `bunx tsc --noEmit` clean, `bun test` 55 passed (2
+new regression tests: multi-turn-after-tool-boundary, stray-delta-after-
+reconciliation). agent-runtime `pytest tests` 782 passed, 2 skipped (1 new
+regression test simulating the foundation's real end-of-turn gap). No gateway
+or foundation changes — no rebuild/restart needed for this slice.
+
 ## Session update — 2026-07-12 (latest): streaming slice (ULTRAREVIEW item 2) closed
 
 3 commits following the fixes-batch below, closing the last open ULTRAREVIEW

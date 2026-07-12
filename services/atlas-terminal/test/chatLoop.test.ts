@@ -253,6 +253,80 @@ describe('STAGE 1 chat loop', () => {
 		expect((deltaEvents[0]!.properties as { partID: string }).partID).toBe(assistantParts[0]!.id);
 	});
 
+	it('a new turn after a tool-boundary end_of_turn gets its own text part instead of being dropped', async () => {
+		const state = newState();
+		const sse = [
+			// turn 1: streams, closes at a tool boundary (end_of_turn=true before the tool call)
+			frame('audit', { event_type: 'llm_delta', data: { delta: 'Checking', end_of_turn: true } }),
+			frame('audit', {
+				event_type: 'tool_call',
+				tool_name: 'read_file',
+				tool_call_id: 'call-1',
+				data: { summary: 'read README.md' }
+			}),
+			frame('audit', {
+				event_type: 'tool_completed',
+				tool_name: 'read_file',
+				tool_call_id: 'call-1',
+				data: { summary: 'ok' }
+			}),
+			// turn 2: a fresh streamed answer after the tool round
+			frame('audit', { event_type: 'llm_delta', data: { delta: 'Done', end_of_turn: true } }),
+			frame('audit', { event_type: 'llm_call', data: { text: 'Done' } }),
+			frame('end', { status: 'succeeded' })
+		];
+		const handle = createAtlasFetchHandle({
+			gateway: GW,
+			fetchImpl: stubGateway(state, sse),
+			permissionPollMs: 0
+		});
+		const created = await handle.fetch('http://donor.local/session', { method: 'POST', body: '{}' });
+		const session = (await created.json()) as { id: string };
+		await handle.fetch(`http://donor.local/session/${session.id}/prompt_async`, {
+			method: 'POST',
+			body: JSON.stringify({ parts: [{ text: 'go' }] })
+		});
+		await settle();
+
+		const msgs = (await (await handle.fetch(`http://donor.local/session/${session.id}/message`)).json()) as Array<{
+			parts: Array<{ type: string; text?: string }>;
+		}>;
+		const textParts = msgs[1]!.parts.filter((p) => p.type === 'text');
+		// turn 1's "Checking" text must survive (not swallowed), and turn 2's
+		// "Done" must land in its own part, not be dropped or merged.
+		expect(textParts.map((p) => p.text)).toEqual(['Checking', 'Done']);
+	});
+
+	it('ignores a stray llm_delta that arrives after llm_call already reconciled the message', async () => {
+		const state = newState();
+		const sse = [
+			frame('audit', { event_type: 'llm_delta', data: { delta: 'Hi' } }),
+			frame('audit', { event_type: 'llm_call', data: { text: 'Hi there' } }),
+			// stray: arrives after reconciliation deleted the streamingText entry
+			frame('audit', { event_type: 'llm_delta', data: { delta: 'Hi' } }),
+			frame('end', { status: 'succeeded' })
+		];
+		const handle = createAtlasFetchHandle({
+			gateway: GW,
+			fetchImpl: stubGateway(state, sse),
+			permissionPollMs: 0
+		});
+		const created = await handle.fetch('http://donor.local/session', { method: 'POST', body: '{}' });
+		const session = (await created.json()) as { id: string };
+		await handle.fetch(`http://donor.local/session/${session.id}/prompt_async`, {
+			method: 'POST',
+			body: JSON.stringify({ parts: [{ text: 'hey' }] })
+		});
+		await settle();
+
+		const msgs = (await (await handle.fetch(`http://donor.local/session/${session.id}/message`)).json()) as Array<{
+			parts: Array<{ type: string; text?: string }>;
+		}>;
+		const textParts = msgs[1]!.parts.filter((p) => p.type === 'text');
+		expect(textParts).toHaveLength(1);
+		expect(textParts[0]!.text).toBe('Hi there');
+	});
+
 	it('SSE /event stream replays recent chat events to late subscribers', async () => {
 		const state = newState();
 		const sse = [frame('end', { status: 'succeeded' })];
