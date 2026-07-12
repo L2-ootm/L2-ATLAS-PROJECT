@@ -18,6 +18,7 @@ import { ATLAS_COMMANDS, findAtlasCommand, expandCommandTemplate } from './comma
 import { EventBus, toGlobalEvent, type DonorEvent } from './events';
 import { GatewayClient } from './gateway';
 import { appendDiagnostic } from '../util/diagnosticLog';
+import { readGitBranch } from '../util/gitBranch';
 
 export interface AtlasFetchOptions {
 	/** ATLAS gateway base, e.g. http://127.0.0.1:8484 */
@@ -26,6 +27,8 @@ export interface AtlasFetchOptions {
 	fetchImpl?: typeof fetch;
 	/** Approval poll cadence in ms; 0 disables the timer (tests poll manually). */
 	permissionPollMs?: number;
+	/** Surface heartbeat cadence in ms; 0 disables the timer (tests tick manually). */
+	heartbeatMs?: number;
 }
 
 interface AtlasConfig {
@@ -266,7 +269,12 @@ async function handleSessionCommand(
 	});
 }
 
-/** Empty-but-valid bootstrap stubs so the donor UI boots before STAGE 2 fidelity. */
+/**
+ * Empty-but-valid bootstrap stubs for donor surfaces ATLAS has no backing
+ * concept for. /question* would need gateway settings routes that don't
+ * exist; /experimental/resource is consumed with `x.data ?? {}` inside the
+ * bootstrap Promise.all, so a valid empty map is safer than a 501.
+ */
 const BOOTSTRAP_STUBS: Record<string, unknown> = {
 	'/skill': [],
 	'/lsp': [],
@@ -274,10 +282,7 @@ const BOOTSTRAP_STUBS: Record<string, unknown> = {
 	'/mcp': {},
 	'/question': [],
 	'/question/never-ask': [],
-	'/session/status': {},
-	'/experimental/resource': {},
-	'/vcs': { branch: null },
-	'/project': []
+	'/experimental/resource': {}
 };
 
 export interface AtlasFetchHandle {
@@ -294,7 +299,8 @@ export function createAtlasFetchHandle(opts: AtlasFetchOptions): AtlasFetchHandl
 	const chat = new ChatAdapter({
 		gateway: new GatewayClient(gw, f),
 		bus,
-		permissionPollMs: opts.permissionPollMs
+		permissionPollMs: opts.permissionPollMs,
+		heartbeatMs: opts.heartbeatMs
 	});
 
 	const atlasFetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -325,6 +331,17 @@ export function createAtlasFetchHandle(opts: AtlasFetchOptions): AtlasFetchHandl
 			}
 			if (method === 'GET' && path === '/project/current') {
 				return json({ id: 'atlas', worktree: process.cwd(), time: { created: 0 } });
+			}
+			if (method === 'GET' && path === '/project') {
+				// single-project surface: same entry /project/current serves
+				return json([{ id: 'atlas', worktree: process.cwd(), time: { created: 0 } }]);
+			}
+			if (method === 'GET' && path === '/vcs') {
+				const branch = readGitBranch(process.cwd());
+				return json(branch ? { branch } : {});
+			}
+			if (method === 'GET' && path === '/session/status') {
+				return json(chat.sessionStatuses());
 			}
 			if (method === 'GET' && path === '/agent') {
 				return json([

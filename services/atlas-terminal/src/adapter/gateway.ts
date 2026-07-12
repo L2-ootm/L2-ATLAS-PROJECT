@@ -100,6 +100,15 @@ export class GatewayClient {
 		});
 	}
 
+	/** POST heartbeat — keeps the approval channel and owner lease alive (same contract the Go TUI used). */
+	heartbeatSurface(session: SurfaceSession): Promise<SurfaceSession> {
+		return this.request<SurfaceSession>(
+			'POST',
+			`/v1/surface-sessions/${encodeURIComponent(session.id)}/heartbeat`,
+			{ owner_token: session.owner_token }
+		);
+	}
+
 	async createMission(title: string, intent: string): Promise<Mission> {
 		const env = await this.request<{ mission: Mission }>('POST', '/v1/missions', { title, intent });
 		return env.mission;

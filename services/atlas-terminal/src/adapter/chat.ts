@@ -13,7 +13,7 @@
  */
 
 import { EventBus } from './events';
-import { GatewayClient, type RunEvent, type SurfaceSession, type ToolApproval } from './gateway';
+import { GatewayClient, GatewayError, type RunEvent, type SurfaceSession, type ToolApproval } from './gateway';
 
 interface DonorTime {
 	created: number;
@@ -80,6 +80,8 @@ export interface ChatAdapterOptions {
 	atlasAgent?: string;
 	/** Poll cadence for pending approvals while a run is active (ms). */
 	permissionPollMs?: number;
+	/** Surface heartbeat cadence (ms); 0 disables (tests). */
+	heartbeatMs?: number;
 }
 
 export class ChatAdapter {
@@ -101,6 +103,10 @@ export class ChatAdapter {
 	private readonly approvalByID = new Map<string, ToolApproval>();
 	private activeRuns = 0;
 	private pollTimer: ReturnType<typeof setInterval> | undefined;
+	private heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+	private readonly heartbeatMs: number;
+	/** donor sessionIDs with a run in flight — backs GET /session/status. */
+	private readonly busySessions = new Set<string>();
 
 	constructor(opts: ChatAdapterOptions) {
 		this.gw = opts.gateway;
@@ -108,6 +114,7 @@ export class ChatAdapter {
 		this.directory = opts.directory ?? process.cwd();
 		this.atlasAgent = opts.atlasAgent ?? 'native';
 		this.permissionPollMs = opts.permissionPollMs ?? 4000;
+		this.heartbeatMs = opts.heartbeatMs ?? 30_000;
 	}
 
 	private nextID(prefix: string): string {
@@ -125,6 +132,7 @@ export class ChatAdapter {
 			if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 1000));
 			try {
 				this.surface = await this.gw.createSurface('tui', 'global');
+				this.startHeartbeat();
 				return this.surface;
 			} catch (err) {
 				lastErr = err;
@@ -132,6 +140,42 @@ export class ChatAdapter {
 		}
 		const message = lastErr instanceof Error ? lastErr.message : String(lastErr);
 		throw new Error(`gateway surface unavailable after 3 attempts: ${message}`);
+	}
+
+	// ── surface heartbeat (owner lease keepalive) ───────────────────────────
+
+	private startHeartbeat(): void {
+		if (this.heartbeatTimer || this.heartbeatMs <= 0) return;
+		const timer = setInterval(() => {
+			void this.heartbeatOnce();
+		}, this.heartbeatMs);
+		// Never hold the process open for a keepalive.
+		(timer as unknown as { unref?: () => void }).unref?.();
+		this.heartbeatTimer = timer;
+	}
+
+	private stopHeartbeat(): void {
+		if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+		this.heartbeatTimer = undefined;
+	}
+
+	/**
+	 * One heartbeat tick. A definitive owner/lease rejection (401/403/404/410 —
+	 * e.g. gateway restart or the SURF-05 orphan sweep reaped the surface) drops
+	 * the cached surface so the next prompt re-surfaces cleanly; transient
+	 * failures keep the timer and retry next tick.
+	 */
+	async heartbeatOnce(): Promise<void> {
+		const surface = this.surface;
+		if (!surface) return;
+		try {
+			await this.gw.heartbeatSurface(surface);
+		} catch (err) {
+			if (err instanceof GatewayError && [401, 403, 404, 410].includes(err.status)) {
+				this.surface = null;
+				this.stopHeartbeat();
+			}
+		}
 	}
 
 	// ── sessions ────────────────────────────────────────────────────────────
@@ -170,8 +214,18 @@ export class ChatAdapter {
 	async abort(sessionID: string): Promise<boolean> {
 		if (!this.sessions.has(sessionID) || !this.surface) return false;
 		await this.gw.cancelSurface(this.surface);
+		this.busySessions.delete(sessionID);
 		this.bus.emit('session.status', { sessionID, status: { type: 'idle' } });
 		return true;
+	}
+
+	/** Donor GET /session/status — real idle/busy per known session. */
+	sessionStatuses(): Record<string, { type: 'idle' | 'busy' }> {
+		const out: Record<string, { type: 'idle' | 'busy' }> = {};
+		for (const id of this.sessions.keys()) {
+			out[id] = { type: this.busySessions.has(id) ? 'busy' : 'idle' };
+		}
+		return out;
 	}
 
 	// ── prompt → mission/run → SSE parts ────────────────────────────────────
@@ -247,6 +301,7 @@ export class ChatAdapter {
 		};
 		this.messages.get(sessionID)!.push(assistant);
 		this.bus.emit('message.updated', { sessionID, info: assistant.info });
+		this.busySessions.add(sessionID);
 		this.bus.emit('session.status', { sessionID, status: { type: 'busy' } });
 
 		this.runStarted(sessionID);
@@ -267,6 +322,7 @@ export class ChatAdapter {
 					assistant.info.time.completed = Date.now();
 					this.bus.emit('message.updated', { sessionID, info: assistant.info });
 				}
+				this.busySessions.delete(sessionID);
 				this.bus.emit('session.status', { sessionID, status: { type: 'idle' } });
 				this.bus.emit('session.idle', { sessionID });
 				this.runFinished();
@@ -454,6 +510,7 @@ export class ChatAdapter {
 	}
 
 	async dispose(): Promise<void> {
+		this.stopHeartbeat();
 		if (this.pollTimer) clearInterval(this.pollTimer);
 		this.pollTimer = undefined;
 		if (this.surface) {
