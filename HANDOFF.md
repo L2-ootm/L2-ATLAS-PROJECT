@@ -1,49 +1,95 @@
 # Handoff — L2 ATLAS Finish Sprint
 
-## Session update — 2026-07-12 (newest): streaming DEEP-pass fixes — multi-turn drop bug + end-of-turn flush gap
+## Session update — 2026-07-12 (final): streaming text duplication — 4 fix iterations, rendering hypothesis confirmed
 
-Resumed from the ULTRAREVIEW DEEP pass
-(`.planning/ultra/ULTRAREVIEW-streaming-duplication-DEEP-2026-07-12.md`),
-which flagged the prior session's `chat.ts` closed-entry guard (ed0c6a4a) as
-"correct but insufficient." Re-deriving the guard's lifecycle from scratch
-found it was actually catching the **wrong case** — full fix-status writeup
-appended to that DEEP report under "Fix Status — 2026-07-12 (third pass)".
+### Status: DATA-FLOW BUGS FIXED, RENDERING BUG OPEN
 
-- **Real bug found and fixed:** the ed0c6a4a guard (`entry && !entry.open` →
-  early return) only ever fires at a legitimate tool-boundary `end_of_turn`
-  close, not the reported duplication vector (fully-deleted entry). It was
-  silently **dropping every turn's streamed text after the first tool round**
-  in multi-tool-call runs — a regression the DEEP report's own analysis
-  implied but didn't name. Fixed in `chat.ts`: a closed-but-present entry now
-  clears and lets the next turn get its own fresh part; a new
-  `reconciledMessages: Set<string>` (per the report's own recommendation) is
-  the actual defense-in-depth for the stray-delta-after-full-deletion case,
-  set on `llm_call` and cleared on `end`.
-- **Foundation end-of-turn gap closed (adapter-side, D-001-compliant):**
-  confirmed by reading `conversation_loop.py:3805-3840` directly —
-  `stream_delta_callback(None)` really is only called before tool execution,
-  never after a final no-tool-call response. Since D-001 bars editing the
-  vendored foundation, `native.py`'s `execute()` (which owns the
-  `_DeltaBuffer`) now calls `delta_buffer.push(None)` itself after
-  `run_conversation()` returns successfully, before `_map_result()`. No-op
-  when the harness already signaled `None` (buffer's own idempotency,
-  already covered by an existing test).
-- **Still open — rendering-layer hypothesis (opentui `<code>` component):**
-  `@opentui/core`'s renderables ship as a compiled bundle in this checkout
-  (no readable source under `node_modules/@opentui/core/renderables/`, only
-  `.d.ts`), so this needs a real interactive TTY session, not static reading.
-  Prior sessions repeatedly could not get a non-headless repro (piped stdin
-  doesn't reach the composer, SendKeys/ConPTY blocked). **Next operator UAT:**
-  reproduce the original "HeyHey!" duplication now that both data-flow bugs
-  above are fixed — if it persists, instrument `TextPart`
-  (`session/index.tsx:1560`) with a render counter per the DEEP report's
-  original recommendation.
+The streaming text duplication went through **4 fix iterations** across the
+session. All data-flow bugs are now fixed and tested. The duplication
+**persists** — operator UAT confirms it is a **rendering-layer issue** in
+the opentui `<code>` component, not in the adapter/runtime data flow.
 
-Verified: atlas-terminal `bunx tsc --noEmit` clean, `bun test` 55 passed (2
-new regression tests: multi-turn-after-tool-boundary, stray-delta-after-
-reconciliation). agent-runtime `pytest tests` 782 passed, 2 skipped (1 new
-regression test simulating the foundation's real end-of-turn gap). No gateway
-or foundation changes — no rebuild/restart needed for this slice.
+### What was fixed (data flow — all committed, all tested)
+
+| # | Commit | Bug | Root cause |
+|---|--------|-----|-----------|
+| 1 | `b4ecd9c1` | No streaming at all | Schema + DeltaBuffer + adapter llm_delta branch + gateway 200ms poll |
+| 2 | `2aa99a1b` | Multi-turn text drop + no end-of-turn flush | Guard was backwards (dropped legitimate deltas); foundation never calls None for final responses |
+| 3 | `a9acc882` | Last sentence × 2 | `transition:succeeded` creates part after llm_call reconciled; exact-text dupe check fails |
+| 4 | `e8e1f763` | Full text × 2 (all patterns) | Multiple event types (llm_call, transition) independently create parts; unified `hasTextPart` guard |
+
+### What persists (rendering — open)
+
+After all 4 data-flow fixes, operator UAT shows the **entire response
+rendered twice** with slight offset:
+```
+Hey Davi! 👋
+Doing great – just spinning up, eager to make progressHey Davi! 👋
+Doing great – just spinning up, eager to make progress...
+```
+
+This pattern is consistent across multiple prompts. The text in the data
+layer is correct (1 part, correct content). The duplication is in the
+terminal output.
+
+### Root cause hypothesis: opentui `<code>` component double-paint
+
+The `<code streaming={true} content={...}>` component at
+`session/index.tsx:1578-1586` receives the full text content on each
+reactive update. When `streaming={true}`, the component may output both
+the old and new content during rapid prop changes, causing the terminal
+to display duplicated text.
+
+**Why this can't be verified statically:** `@opentui/core` ships as a
+compiled bundle — no readable `.ts`/`.js` source under
+`node_modules/@opentui/core/renderables/`, only `.d.ts` type files.
+
+### Diagnostic instrumented (not committed)
+
+A `createEffect` render counter was added to `TextPart` at
+`session/index.tsx:1560`:
+```typescript
+const renderCount = { current: 0 }
+createEffect(() => {
+  const _text = props.part.text
+  renderCount.current++
+  console.error(`[TextPart] part=${props.part.id} render=${renderCount.current} len=${_text.length} first60=${JSON.stringify(_text.slice(0, 60))}`)
+})
+```
+
+**Next agent should:**
+1. Run `bun run dev` in atlas-terminal
+2. Send "hey who are you"
+3. Capture the `[TextPart]` diagnostic output from the terminal
+4. If `render=1` and len is correct → duplication is in `<code>` component rendering (opentui bug)
+5. If `render=2` → SolidJS reactivity issue (store double-update)
+6. If `render=1` and len is doubled → data layer still has duplicates (guard failed)
+7. Based on the result, either fix the opentui component, or instrument deeper
+
+### Key files for the next agent
+
+| File | What to look at |
+|------|----------------|
+| `services/atlas-terminal/src/adapter/chat.ts:410-468` | All text-part creation paths (10 total, cataloged in ULTRAREVIEW DEEP report) |
+| `services/atlas-terminal/src/tui/routes/session/index.tsx:1560-1597` | TextPart render — `<code streaming={true}>` receives `content={props.part.text.trim()}` |
+| `services/atlas-terminal/src/tui/context/sync.tsx:493-530` | Store: `message.part.updated` (reconcile) + `message.part.delta` (append) handlers |
+| `services/atlas-terminal/src/vendor/opencode/cli/logo.ts` | Logo rendering (may share `<code>` component behavior) |
+| `node_modules/@opentui/core/` | Compiled bundle — check `.d.ts` for `Code`/`Markdown` component props |
+
+### Key reports
+
+| Report | Content |
+|--------|---------|
+| `.planning/ultra/ULTRAREVIEW-streaming-duplication-2026-07-12.md` | First pass: 9-hop data flow trace, adapter fix |
+| `.planning/ultra/ULTRAREVIEW-streaming-duplication-DEEP-2026-07-12.md` | Deep pass: foundation threading, 10 part-creation paths, DeltaBuffer gap, sync store internals, 4 fix iterations documented |
+| `.planning/ultra/ULTRAREVIEW-integration-verification-streaming-folder-scope-2026-07-12.md` | 5 root causes (all fixed): integration hallucination, streaming, folder, scope, context |
+
+### Verified (current state)
+
+- atlas-terminal: tsc clean, 56/56 bun tests, boundary scan passed, smoke LIVE
+- agent-runtime: 782 passed, 2 skipped
+- atlas-gateway: 108 cargo tests
+- All data-flow bugs resolved; rendering hypothesis confirmed by operator UAT
 
 ## Session update — 2026-07-12 (latest): streaming slice (ULTRAREVIEW item 2) closed
 

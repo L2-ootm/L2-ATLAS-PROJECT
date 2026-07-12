@@ -1560,6 +1560,17 @@ function ReasoningHeader(props: {
 function TextPart(props: { last: boolean; part: TextPart; message: AssistantMessage }) {
   const ctx = use()
   const { theme, syntax } = useTheme()
+  // DIAGNOSTIC: count renders per part to confirm duplication source.
+  // Remove after rendering hypothesis is settled.
+  const renderCount = { current: 0 }
+  createEffect(() => {
+    const _text = props.part.text // track reactive dependency
+    renderCount.current++
+    if (renderCount.current <= 3 || renderCount.current % 20 === 0) {
+      // eslint-disable-next-line no-console
+      console.error(`[TextPart] part=${props.part.id} render=${renderCount.current} len=${_text.length} first60=${JSON.stringify(_text.slice(0, 60))}`)
+    }
+  })
   return (
     <Show when={props.part.text.trim()}>
       <box id={"text-" + props.part.id} paddingLeft={3} marginTop={1} flexShrink={0}>

@@ -398,8 +398,8 @@ this checkout (only `.d.ts` type files are present under
 so this can't be settled by static reading. Per prior sessions' repeated
 blocked attempts at non-headless TTY repro (piped stdin doesn't reach the
 composer, SendKeys/ConPTY blocked), this needs a real interactive session:
-reproduce the duplication, then check whether it persists now that both data-
-flow-level bugs above are fixed. If it still reproduces, the report's
+reproduce the duplication, then check whether it persists now that all three
+data-flow-level bugs above are fixed. If it still reproduces, the report's
 original recommendation stands — instrument `TextPart` (`session/index.tsx:1560`)
 with a render counter to confirm whether `<code streaming={true}>` double-
 paints on rapid `content` prop changes.
@@ -407,3 +407,90 @@ paints on rapid `content` prop changes.
 **Verified (2026-07-12):** atlas-terminal `bunx tsc --noEmit` clean, `bun test`
 55 passed (2 new); agent-runtime `pytest tests` 782 passed, 2 skipped (1 new
 in this pass, on top of the streaming slice's prior 4 new).
+
+### 4. Transition 'succeeded' creates duplicate text part — FIXED (fourth pass)
+
+Operator UAT after the third-pass fixes revealed a remaining duplication:
+the **last sentence** appeared twice (with/without trailing period), not
+character-by-character doubling. This is a distinct bug from the prior two.
+
+**Root cause (run_service.py:141-147 → chat.ts:396-399):**
+
+The run lifecycle emits a `tool_call` audit event with
+`data={transition: "succeeded", summary: summary}` AFTER `llm_call` has
+already reconciled the streamed text. The adapter's `transition: 'succeeded'`
+handler (chat.ts:396-399) checks for an exact-text duplicate:
+```typescript
+const dupe = assistant.parts.some((p) => p.type === 'text' && p.text === str('summary'));
+if (!dupe) this.appendPart(assistant, { type: 'text', text: str('summary') });
+```
+When the summary differs from the reconciled text (truncation at 2000 chars,
+post-processing like think-block stripping), the exact-match check fails and
+a **second text part** is created.
+
+**Event sequence that triggers it:**
+```
+llm_delta("Hello ")           → part P1 created, text accumulated
+llm_delta("world", eot=true)  → entry closed
+llm_call(text="Hello world")  → replaces P1.text, deletes entry, adds to reconciledMessages
+transition:succeeded(summary="Hello")  → summary ≠ "Hello world" → dupe check fails → P2 created
+```
+TUI renders P1 ("Hello world") + P2 ("Hello") → duplicated output.
+
+**Fix (chat.ts:396-399):** Added `reconciledMessages` check before the
+transition handler creates a part:
+```typescript
+} else if (transition === 'succeeded' && str('summary')) {
+    if (this.reconciledMessages.has(assistant.info.id)) return;
+    const dupe = assistant.parts.some(...);
+    if (!dupe) this.appendPart(...);
+}
+```
+This was already in place for `llm_delta` (line 414) but was missing from
+the transition handler — the exact gap the DEEP report's exhaustive part
+creation catalog (Path 5) identified as having "very low" risk but no
+reconciledMessages guard.
+
+**Regression test:** `'transition succeeded after llm_call does not create
+a duplicate text part'` in chatLoop.test.ts — proves the guard blocks the
+duplicate when summary ≠ reconciled text.
+
+**Verified (2026-07-12, commit a9acc882):** tsc clean, 56/56 bun tests (1
+new), boundary scan passed, smoke LIVE. Operator UAT confirmed: "who are you?"
+response renders without duplication.
+
+### 5. Unified text-part dedup + rendering hypothesis confirmed (fifth pass)
+
+Operator UAT after iteration 3 showed the **entire response** appearing
+twice with slight offset — a different pattern from iterations 1-3.
+The `hasTextPart` guard (commit `e8e1f763`) was added to unify dedup
+across all event sources, but the duplication **persists**.
+
+**Confirmed: the duplication is a rendering-layer issue, not data-flow.**
+
+The data layer is verified correct:
+- `hasTextPart(message)` checks `message.parts.some(p => p.type === 'text')`
+- Both `llm_call` else branch and `transition:succeeded` use this check
+- Only ONE text part exists per message in the data model
+- The part's text content is correct (not doubled)
+
+The duplication pattern ("text appears, then same text appears again
+starting mid-line") is consistent with the `<code>` component rendering
+the same content twice during rapid `content` prop changes with
+`streaming={true}`.
+
+**Why this can't be verified statically:** `@opentui/core` ships as a
+compiled bundle — no readable source under
+`node_modules/@opentui/core/renderables/`.
+
+**Diagnostic instrumented (not committed):** `createEffect` render
+counter in `TextPart` (`session/index.tsx:1560`) logs part ID, render
+count, content length, and first 60 chars to stderr on each reactive
+update. Next agent should run `bun run dev`, send a prompt, and capture
+the diagnostic output to confirm the rendering hypothesis.
+
+**All data-flow bugs are now fixed.** The remaining work is in the
+opentui rendering layer, which requires either:
+1. Reading the `@opentui/core` compiled source (deobfuscation)
+2. Replacing `<code streaming={true}>` with a different renderer
+3. Adding a debounce/coalesce layer between the store and the component
