@@ -83,6 +83,10 @@ class ContextConfig(_FrozenControlPlaneModel):
     enable_semantic: bool = True
     enable_skills: bool = True
     enable_brain: bool = True
+    # Inject the operator context (Current Focus, goal tree, Operating Contract)
+    # into agent runs. Off = runs start from the bare prompt; per-run override
+    # via ATLAS_SKIP_CONTEXT=1 or `atlas --no-context`.
+    inject_operator_context: bool = True
 
 
 PermissionPreset = Literal["manual", "smart", "full_autonomy"]

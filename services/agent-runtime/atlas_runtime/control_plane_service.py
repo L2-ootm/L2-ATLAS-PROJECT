@@ -45,6 +45,7 @@ _SETTING_METADATA: tuple[tuple[str, bool], ...] = (
     ("context.enable_semantic", False),
     ("context.enable_skills", False),
     ("context.enable_brain", False),
+    ("context.inject_operator_context", False),
     ("permission.mode", False),
     ("permission.preset", False),
     ("permission.rules", False),
