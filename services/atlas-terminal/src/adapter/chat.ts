@@ -96,6 +96,14 @@ export class ChatAdapter {
 	private readonly sessions = new Map<string, DonorSession>();
 	private readonly messages = new Map<string, DonorMessage[]>();
 	private readonly partsByCall = new Map<string, DonorPart>();
+	/**
+	 * assistant message id -> the text part fed by llm_delta chunks. `open`
+	 * stays true while a turn's deltas are arriving; end_of_turn flips it to
+	 * false so a later turn (e.g. after a tool round) starts a fresh part,
+	 * while the entry itself survives so the trailing llm_call can still
+	 * reconcile onto it instead of appending a duplicate.
+	 */
+	private readonly streamingText = new Map<string, { part: DonorPart; open: boolean }>();
 	private readonly seenApprovals = new Set<string>();
 	/** approvalID → donor sessionID that was busy when it surfaced. */
 	private readonly approvalSession = new Map<string, string>();
@@ -318,6 +326,7 @@ export class ChatAdapter {
 				});
 			})
 			.finally(() => {
+				this.streamingText.delete(assistant.info.id);
 				if (!assistant.info.time.completed) {
 					assistant.info.time.completed = Date.now();
 					this.bus.emit('message.updated', { sessionID, info: assistant.info });
@@ -390,8 +399,42 @@ export class ChatAdapter {
 			}
 			return;
 		}
+		if (eventType === 'llm_delta') {
+			const deltaText = typeof data['delta'] === 'string' ? (data['delta'] as string) : '';
+			const endOfTurn = data['end_of_turn'] === true;
+			let entry = this.streamingText.get(assistant.info.id);
+			if ((!entry || !entry.open) && deltaText) {
+				entry = { part: this.appendPart(assistant, { type: 'text', text: '' }), open: true };
+				this.streamingText.set(assistant.info.id, entry);
+			}
+			if (entry?.open && deltaText) {
+				entry.part.text = (entry.part.text ?? '') + deltaText;
+				this.bus.emit('message.part.delta', {
+					sessionID,
+					messageID: assistant.info.id,
+					partID: entry.part.id,
+					field: 'text',
+					delta: deltaText
+				});
+			}
+			if (endOfTurn && entry) entry.open = false;
+			return;
+		}
 		if (eventType === 'llm_call' || eventType === 'model_call_end') {
-			if (textOrSummary) this.appendPart(assistant, { type: 'text', text: textOrSummary });
+			if (textOrSummary) {
+				// A streamed part already carries this turn's text incrementally;
+				// reconcile it to the authoritative final text (post-processing
+				// like think-block stripping can differ from the raw stream)
+				// instead of appending a duplicate part.
+				const entry = this.streamingText.get(assistant.info.id);
+				if (entry) {
+					entry.part.text = textOrSummary;
+					this.bus.emit('message.part.updated', { sessionID, part: entry.part, time: Date.now() });
+					this.streamingText.delete(assistant.info.id);
+				} else {
+					this.appendPart(assistant, { type: 'text', text: textOrSummary });
+				}
+			}
 			return;
 		}
 		if (eventType === 'tool_call' || eventType === 'tool_requested') {

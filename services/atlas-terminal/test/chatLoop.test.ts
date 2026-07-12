@@ -212,6 +212,47 @@ describe('STAGE 1 chat loop', () => {
 		expect(msgs[1]!.parts.some((p) => p.text === 'provider 401')).toBe(true);
 	});
 
+	it('streams llm_delta chunks incrementally and reconciles the final llm_call onto the same part', async () => {
+		const state = newState();
+		const sse = [
+			frame('audit', { event_type: 'llm_delta', data: { delta: 'Hel' } }),
+			frame('audit', { event_type: 'llm_delta', data: { delta: 'lo, ' } }),
+			frame('audit', { event_type: 'llm_delta', data: { delta: 'world', end_of_turn: true } }),
+			frame('audit', { event_type: 'llm_call', data: { text: 'Hello, world' } }),
+			frame('end', { status: 'succeeded' })
+		];
+		const handle = createAtlasFetchHandle({
+			gateway: GW,
+			fetchImpl: stubGateway(state, sse),
+			permissionPollMs: 0
+		});
+		const events: DonorEvent[] = [];
+		handle.bus.subscribe((e) => events.push(e));
+
+		const created = await handle.fetch('http://donor.local/session', { method: 'POST', body: '{}' });
+		const session = (await created.json()) as { id: string };
+		await handle.fetch(`http://donor.local/session/${session.id}/prompt_async`, {
+			method: 'POST',
+			body: JSON.stringify({ parts: [{ text: 'stream it' }] })
+		});
+		await settle();
+
+		// exactly one text part for the assistant turn — no duplicate from the
+		// final llm_call reconciling onto the already-streamed part.
+		const msgs = (await (await handle.fetch(`http://donor.local/session/${session.id}/message`)).json()) as Array<{
+			parts: Array<{ id: string; type: string; text?: string }>;
+		}>;
+		const assistantParts = msgs[1]!.parts.filter((p) => p.type === 'text');
+		expect(assistantParts).toHaveLength(1);
+		expect(assistantParts[0]!.text).toBe('Hello, world');
+
+		// incremental delta events actually rode the bus (not just the final part.updated).
+		const deltaEvents = events.filter((e) => e.type === 'message.part.delta');
+		expect(deltaEvents.length).toBe(3);
+		expect((deltaEvents[0]!.properties as { delta: string }).delta).toBe('Hel');
+		expect((deltaEvents[0]!.properties as { partID: string }).partID).toBe(assistantParts[0]!.id);
+	});
+
 	it('SSE /event stream replays recent chat events to late subscribers', async () => {
 		const state = newState();
 		const sse = [frame('end', { status: 'succeeded' })];
