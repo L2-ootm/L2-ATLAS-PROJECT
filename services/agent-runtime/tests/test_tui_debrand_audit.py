@@ -47,14 +47,20 @@ _KNOWN_LEAK_PATTERNS = (
 )
 
 
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
 def _collapse_whitespace(text: str) -> str:
-    """Normalize for substring/pattern matching: keep only ASCII letters, digits,
-    and hyphens, collapsing everything else (whitespace, Rich box-drawing border
-    glyphs, punctuation) to a single space. This makes a help phrase wrapped
-    across a table cell boundary (e.g. "...foundation │ (foundation/atlas-
-    hermes)...") read as one contiguous phrase for pattern matching, since the
-    box-drawing glyphs that separate wrapped cells are themselves collapsed."""
-    return re.sub(r"[^A-Za-z0-9-]+", " ", text)
+    """Normalize for substring/pattern matching: drop ANSI escape sequences,
+    then keep only ASCII letters, digits, and hyphens, collapsing everything
+    else (whitespace, Rich box-drawing border glyphs, punctuation) to a single
+    space. ANSI stripping must come first: on GitHub Actions Rich force-enables
+    color, and a raw '\\x1b[2m' would otherwise collapse to a stray '2m' token
+    INSIDE the known phrase, defeating the strip pattern (first seen on ubuntu
+    CI). The collapse also makes a help phrase wrapped across a table cell
+    boundary (e.g. "...foundation │ (foundation/atlas- hermes)...") read as one
+    contiguous phrase for pattern matching."""
+    return re.sub(r"[^A-Za-z0-9-]+", " ", _ANSI_ESCAPE.sub("", text))
 
 
 def _strip_known_pre_existing_leaks(text: str) -> str:
