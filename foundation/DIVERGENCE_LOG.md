@@ -103,3 +103,31 @@ Every change to `foundation/atlas-hermes/` relative to upstream SHA
   DIV-F-003).
 - **Migration impact:** Same as DIV-F-003 — additive dict entry; no upstream
   lines touched beyond the docstring built-in list.
+
+## DIV-F-007 — Agent identity rebranded to ATLAS (2026-07-11)
+
+- **What:** `agent/prompt_builder.py` — `DEFAULT_AGENT_IDENTITY` changed from
+  "You are Hermes Agent, an intelligent AI assistant created by Nous
+  Research…" to the ATLAS operator identity ("You are ATLAS, the operator
+  agent inside L2 ATLAS…", one-identity-across-surfaces sentence added,
+  behavioral sentences retained). `HERMES_AGENT_HELP_GUIDANCE` reworded so it
+  refers to "the underlying agent runtime (the Hermes Agent foundation this
+  system is built on)" instead of implying the agent IS Hermes Agent; skill
+  pointer and docs URL unchanged. `hermes_cli/default_soul.py` —
+  `DEFAULT_SOUL_MD` seed template rebranded with the same text so freshly
+  seeded homes get the ATLAS persona. Test assertions updated:
+  `tests/agent/test_prompt_builder.py` (seeded-soul check) and
+  `tests/run_agent/test_run_agent.py` (two cached-system-prompt checks) now
+  assert "You are ATLAS".
+- **Why:** Runs dispatched through `atlas_runtime.agents.native` construct
+  `AIAgent(skip_context_files=True)` with no SOUL.md, so the stable identity
+  slot fell back to the upstream Hermes constant and the agent introduced
+  itself as "Hermes Agent" in the atlas-terminal TUI and every other ATLAS
+  surface. D-021 two-layer branding: the vendored foundation carries the
+  ATLAS brand; upstream attribution stays in ATTRIBUTION.md and this log.
+  Identity text mirrors `atlas_runtime/prompts/atlas_core.md` line 1 so the
+  harness identity and the ATLAS prompt-compiler L1 layer agree.
+- **Classification:** ATLAS-only (branding).
+- **Migration impact:** Two constant hunks + one guidance string + three test
+  assertions. Rebase conflict only if upstream rewords the same constants;
+  resolution is "keep ours".
