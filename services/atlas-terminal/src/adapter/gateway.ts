@@ -49,14 +49,22 @@ export class GatewayError extends Error {
 
 /** Per-request deadline — a hung gateway must not block the caller forever. */
 const REQUEST_TIMEOUT_MS = 15_000;
+/**
+ * Run-stream inactivity deadline. The gateway keepalives every few seconds
+ * while a run streams, so a minute of total silence means the stream is dead
+ * (gateway hang/kill) — without this the session stays busy forever.
+ */
+const STREAM_IDLE_TIMEOUT_MS = 60_000;
 
 export class GatewayClient {
 	private readonly gw: string;
 	private readonly f: typeof fetch;
+	private readonly streamIdleMs: number;
 
-	constructor(gateway: string, fetchImpl?: typeof fetch) {
+	constructor(gateway: string, fetchImpl?: typeof fetch, streamIdleMs = STREAM_IDLE_TIMEOUT_MS) {
 		this.gw = gateway.replace(/\/+$/, '');
 		this.f = fetchImpl ?? fetch;
+		this.streamIdleMs = streamIdleMs;
 	}
 
 	private async request<T>(
@@ -165,10 +173,33 @@ export class GatewayClient {
 		const reader = res.body.getReader();
 		const decoder = new TextDecoder();
 		let buffer = '';
+		// Inactivity watchdog: each read races the idle deadline; any chunk
+		// (frames AND keepalive comments) restarts it. A pending read() cannot
+		// be relied on to settle after reader.cancel(), so the race — not the
+		// cancel — is what actually enforces the deadline.
+		const IDLE = Symbol('stream-idle');
 		for (;;) {
-			const { done, value } = await reader.read();
-			if (done) break;
-			buffer += decoder.decode(value, { stream: true });
+			let timer: ReturnType<typeof setTimeout> | undefined;
+			const result = await (this.streamIdleMs > 0
+				? Promise.race([
+						reader.read(),
+						new Promise<typeof IDLE>((resolve) => {
+							// deliberately ref'd: Bun skips unref'd timers on an
+							// otherwise-idle loop, which would disarm the watchdog
+							// exactly when the stream hangs; it is cleared after
+							// every read so it never outlives the stream.
+							timer = setTimeout(() => resolve(IDLE), this.streamIdleMs);
+						})
+					]).finally(() => {
+						if (timer) clearTimeout(timer);
+					})
+				: reader.read());
+			if (result === IDLE) {
+				void reader.cancel().catch(() => undefined);
+				throw new GatewayError(504, `/v1/runs/${runID}/stream`, `no stream activity for ${this.streamIdleMs}ms`);
+			}
+			if (result.done) break;
+			buffer += decoder.decode(result.value, { stream: true });
 			let sep: number;
 			while ((sep = buffer.indexOf('\n\n')) >= 0) {
 				const frame = buffer.slice(0, sep);
