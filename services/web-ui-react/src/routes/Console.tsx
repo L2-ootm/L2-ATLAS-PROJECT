@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { Page } from '../components/Page';
 import { GlassPanel } from '../components/GlassFx';
+import CommandPalette from '../components/CommandPalette';
 import { TopoScroll } from '../components/TopoScroll';
 import {
 	agentRuntimeLabel,
@@ -127,6 +128,26 @@ export default function Console() {
 	const windowsRef = useRef(windows);
 	windowsRef.current = windows;
 	const busyWindow = activeTurn?.windowId ?? null;
+
+	// ── Cmd+K / Ctrl+K slash-command palette (TUI parity) ────────────────────
+	const [paletteOpen, setPaletteOpen] = useState(false);
+	useEffect(() => {
+		function onKey(e: KeyboardEvent) {
+			if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+				e.preventDefault();
+				setPaletteOpen((open) => !open);
+			}
+		}
+		window.addEventListener('keydown', onKey);
+		return () => window.removeEventListener('keydown', onKey);
+	}, []);
+
+	/** Palette runs land on the active chat window, else the first chat window. */
+	function paletteTargetWindow(): string | null {
+		const wins = windowsRef.current;
+		const active = wins.find((w) => w.id === activeWindow && w.kind === 'chat');
+		return (active ?? wins.find((w) => w.kind === 'chat'))?.id ?? null;
+	}
 
 	// BSP auto-tiling needs the live canvas size to compute window rects.
 	const canvasRef = useRef<HTMLDivElement>(null);
@@ -382,13 +403,22 @@ export default function Console() {
 	async function send(windowId: string) {
 		const draft = (draftByWindow[windowId] ?? '').trim();
 		if (!draft || activeTurn) return;
+		setDraftByWindow((prev) => ({ ...prev, [windowId]: '' }));
+		await dispatchPrompt(windowId, draft, draft);
+	}
+
+	/** Submit a prompt on a chat window. `display` is what the transcript shows
+	 * as the operator message (e.g. `/review HEAD~1` for palette runs), `prompt`
+	 * is the text actually sent to the agent (the expanded command template). */
+	async function dispatchPrompt(windowId: string, display: string, prompt: string) {
+		if (activeTurn) return;
 		const win = windows.find((item) => item.id === windowId);
 		const windowAgent = win?.kind === 'chat' ? win.agent ?? 'native' : 'native';
 		const operator: ConsoleMessage = {
 			id: `${Date.now()}-operator`,
 			role: 'operator',
 			label: 'OPERATOR',
-			body: draft,
+			body: display,
 			time: nowLabel()
 		};
 		// Live agent turn — events stream in and render as tool-cards in real time.
@@ -402,7 +432,6 @@ export default function Console() {
 			status: 'pending',
 			events: []
 		};
-		setDraftByWindow((prev) => ({ ...prev, [windowId]: '' }));
 		setMessagesByWindow((prev) => ({
 			...prev,
 			[windowId]: [...(prev[windowId] ?? []), operator, liveTurn]
@@ -418,7 +447,7 @@ export default function Console() {
 				bindingMode === 'project' && projectId
 					? ({ kind: 'project', projectId } as const)
 					: ({ kind: 'global' } as const);
-			const runId = await agentSurface.submitPrompt(draft, windowAgent, workspace);
+			const runId = await agentSurface.submitPrompt(prompt, windowAgent, workspace);
 			setActiveTurn((current) =>
 				current?.turnId === turnId ? { ...current, runId } : current
 			);
@@ -752,6 +781,15 @@ export default function Console() {
 					))}
 				</div>
 			</GlassPanel>
+			<CommandPalette
+				open={paletteOpen}
+				onClose={() => setPaletteOpen(false)}
+				busy={!!activeTurn}
+				onRun={(display, prompt) => {
+					const target = paletteTargetWindow();
+					if (target) void dispatchPrompt(target, display, prompt);
+				}}
+			/>
 		</Page>
 	);
 }

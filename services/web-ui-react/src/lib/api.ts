@@ -209,6 +209,23 @@ export async function listProjects(limit = 100): Promise<{ projects: Project[]; 
 	}
 }
 
+// ── VCS context (/v1/vcs — dependency-free git reader in the gateway) ─────────
+
+export interface VcsContext {
+	/** False when the directory is not inside a git repository. */
+	repo: boolean;
+	/** Current branch name; null when detached or not a repo. */
+	branch: string | null;
+	detached?: boolean;
+	/** Short commit sha, present only on a detached HEAD. */
+	commit?: string;
+}
+
+export async function getVcsContext(path?: string): Promise<VcsContext> {
+	const qs = path ? `?path=${encodeURIComponent(path)}` : '';
+	return apiFetch<VcsContext>(`/v1/vcs${qs}`);
+}
+
 // ── Focus endpoints (WP-2 — Command Center Current Focus) ─────────────────────
 
 export async function listFocus(limit = 50): Promise<{ focus: Focus[]; count: number }> {
