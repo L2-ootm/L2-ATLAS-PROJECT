@@ -904,7 +904,9 @@ export function Logo(props: { shape?: LogoShape; ink?: RGBA; idle?: boolean; swe
     }
   }
 
-  const ATLAS_ORANGE = RGBA.fromInts(251, 129, 71)
+  // Dark Prism violet wordmark — tinted by theme.primary (#7F00FF) during
+  // the idle shimmer, so the glow stays in the violet family end-to-end.
+  const ATLAS_VIOLET = RGBA.fromInts(123, 97, 255) // #7B61FF
   const ATLAS_GRAY = RGBA.fromInts(160, 160, 160)
 
   return (
@@ -932,7 +934,7 @@ export function Logo(props: { shape?: LogoShape; ink?: RGBA; idle?: boolean; swe
           return (
             <box flexDirection="row" gap={1}>
               <box flexDirection="row">
-                {renderLine(line, index(), props.ink ?? ATLAS_ORANGE, true, 0, frame(), dusk(), idleState())}
+                {renderLine(line, index(), props.ink ?? ATLAS_VIOLET, true, 0, frame(), dusk(), idleState())}
               </box>
               <box flexDirection="row">
                 {renderLine(
