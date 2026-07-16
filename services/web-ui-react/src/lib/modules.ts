@@ -5,6 +5,7 @@ import {
 	Map,
 	Activity,
 	MessageSquare,
+	MessagesSquare,
 	ScrollText,
 	BookOpen,
 	Boxes,
@@ -49,6 +50,7 @@ export const navSections: NavSection[] = [
 			{ id: 'command', label: 'COMMAND', route: '/command', icon: Crosshair, status: 'active', ariaLabel: 'Command Center' },
 			{ id: 'missions', label: 'MISSIONS', route: '/missions', icon: Map, status: 'active', ariaLabel: 'Missions' },
 			{ id: 'runs', label: 'RUNS', route: '/runs', icon: Activity, status: 'active', ariaLabel: 'Runs' },
+			{ id: 'chat', label: 'CHAT', route: '/chat', icon: MessagesSquare, status: 'active', ariaLabel: 'Chat' },
 			{ id: 'console', label: 'CONSOLE', route: '/console', icon: MessageSquare, status: 'active', ariaLabel: 'Console' }
 		]
 	},

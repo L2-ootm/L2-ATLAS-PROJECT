@@ -399,12 +399,27 @@ export default function Console() {
 	const watchedRunId = activeTurn?.runId ?? null;
 	const watchedTurnId = activeTurn?.turnId ?? null;
 	const watchedWindowId = activeTurn?.windowId ?? null;
+	// Grace pass: the run record goes terminal BEFORE the tail surface events
+	// (last deltas + the final text reconcile) have been polled and applied.
+	// Finalizing on the first terminal observation froze answers mid-chunk
+	// (observed live: a response cut at "Bril" while the audit ledger held the
+	// full text). First terminal sighting only marks the run and forces an
+	// event refresh; the turn finalizes on the NEXT tick if the terminal
+	// surface event still hasn't landed by then.
+	const terminalSeenRef = useRef<string | null>(null);
+	const refreshSurfaceEvents = agentSurface.refresh;
 	useEffect(() => {
 		if (!watchedRunId || !watchedTurnId || !watchedWindowId) return;
+		terminalSeenRef.current = null;
 		const timer = window.setInterval(async () => {
 			try {
 				const { run } = await getRun(watchedRunId);
 				if (!['succeeded', 'failed', 'cancelled'].includes(run.status)) return;
+				if (terminalSeenRef.current !== watchedRunId) {
+					terminalSeenRef.current = watchedRunId;
+					void refreshSurfaceEvents().catch(() => undefined);
+					return;
+				}
 				const failed = run.status !== 'succeeded';
 				setMessagesByWindow((prev) => ({
 					...prev,
@@ -430,6 +445,7 @@ export default function Console() {
 		watchedRunId,
 		watchedTurnId,
 		watchedWindowId,
+		refreshSurfaceEvents,
 		setActiveTurn,
 		setMessagesByWindow
 	]);
@@ -1233,6 +1249,48 @@ function ChatPane({
 	onDraft: (value: string) => void;
 	onSend: () => void;
 }) {
+	// Stick-to-bottom follow: track whether the operator is pinned at the
+	// bottom of the transcript; only then does new streamed content auto-follow.
+	// Scrolling up detaches (reading history must never be yanked away); the
+	// jump pill re-pins.
+	const viewportRef = useRef<HTMLDivElement | null>(null);
+	const pinnedRef = useRef(true);
+	const [unpinned, setUnpinned] = useState(false);
+	const onViewportScroll = useCallback((el: HTMLDivElement) => {
+		const pinned = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+		pinnedRef.current = pinned;
+		setUnpinned(!pinned);
+	}, []);
+	useEffect(() => {
+		const el = viewportRef.current;
+		if (el && pinnedRef.current) el.scrollTop = el.scrollHeight;
+	}, [messages]);
+	// While a turn streams, content height also grows between message-state
+	// updates (paced reveal) — keep following via rAF as long as we're pinned.
+	useEffect(() => {
+		if (!busy) return;
+		let raf = 0;
+		const follow = () => {
+			const el = viewportRef.current;
+			if (el && pinnedRef.current && el.scrollHeight - el.scrollTop - el.clientHeight > 1) {
+				el.scrollTop = el.scrollHeight;
+			}
+			raf = requestAnimationFrame(follow);
+		};
+		raf = requestAnimationFrame(follow);
+		return () => cancelAnimationFrame(raf);
+	}, [busy]);
+	const jumpToLatest = useCallback(() => {
+		const el = viewportRef.current;
+		if (!el) return;
+		pinnedRef.current = true;
+		setUnpinned(false);
+		el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+	}, []);
+	// Run receipts (run started · runtime · privacy notice) repeat identically
+	// on every turn of a session — show a receipt only when it differs from the
+	// previous agent turn's (first turn, or the runtime/privacy line changed).
+	let lastReceipt: string | null = null;
 	return (
 		<div style={chatPaneStyle} data-testid={`chat-pane-${windowId}`}>
 			<div style={chatTopStyle}>
@@ -1246,15 +1304,31 @@ function ChatPane({
 					title={boundCwd ?? undefined}
 				/>
 			</div>
-			<TopoScroll tone={agent === 'claude_code' ? 'atlas' : 'info'} style={{ minHeight: 0 }} viewportStyle={messageListStyle}>
-				{messages.map((message) =>
-					message.role === 'agent' && (message.events?.length || message.status === 'pending') ? (
-						<AgentTurn key={message.id} message={message} />
-					) : (
-						<MessageBubble key={message.id} message={message} />
-					)
+			<div style={{ position: 'relative', minHeight: 0, display: 'grid' }}>
+				<TopoScroll
+					tone={agent === 'claude_code' ? 'atlas' : 'info'}
+					style={{ minHeight: 0 }}
+					viewportStyle={messageListStyle}
+					viewportRef={viewportRef}
+					onViewportScroll={onViewportScroll}
+				>
+					{messages.map((message) => {
+						if (message.role === 'agent' && (message.events?.length || message.status === 'pending')) {
+							const receipt = turnReceiptSignature(message);
+							const hideStatus = receipt !== null && receipt === lastReceipt;
+							if (receipt !== null) lastReceipt = receipt;
+							return <AgentTurn key={message.id} message={message} hideStatus={hideStatus} />;
+						}
+						return <MessageBubble key={message.id} message={message} />;
+					})}
+				</TopoScroll>
+				{unpinned && (
+					<button type="button" onClick={jumpToLatest} className="atlas-jump-latest" title="Follow the live response">
+						<ChevronDown size={13} strokeWidth={2} />
+						LATEST
+					</button>
 				)}
-			</TopoScroll>
+			</div>
 			<div style={composerWrapStyle}>
 				<textarea
 					className="atlas-console-composer"
@@ -1706,7 +1780,16 @@ export function SmoothStreamText({ text }: { text: string }) {
 	);
 }
 
-function AgentTurn({ message }: { message: ConsoleMessage }) {
+/** Stable signature of a turn's run-boundary receipt (run started · runtime ·
+ * privacy notice). Used to suppress receipts that repeat the previous turn's
+ * verbatim — the information is session-level, not per-message. */
+export function turnReceiptSignature(message: ConsoleMessage): string | null {
+	const statuses = (message.events ?? []).filter((e) => e.type === 'status');
+	if (statuses.length === 0) return null;
+	return statuses.map((e) => e.text ?? '').join(' · ');
+}
+
+function AgentTurn({ message, hideStatus = false }: { message: ConsoleMessage; hideStatus?: boolean }) {
 	const events = useMemo(() => message.events ?? [], [message.events]);
 	// 'text_delta' (streamed chunk) and 'text' (the run's final authoritative
 	// reconcile) both need to land in ONE rendered block per streaming run,
@@ -1810,6 +1893,7 @@ function AgentTurn({ message }: { message: ConsoleMessage }) {
 				}
 				if (event.type === 'result' || event.type === 'tool_result') return null;
 				if (event.type === 'status') {
+					if (hideStatus) return null;
 					return (
 						<div key={idx} style={statusLineStyle}>
 							{event.text}
