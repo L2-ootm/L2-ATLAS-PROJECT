@@ -28,7 +28,7 @@ from atlas_runtime.cli.interactive_select import _read_key
 # (tab label, top-level command names in that tab, in display order).
 # Names not listed here still show up, grouped under a trailing "Other" tab.
 _CATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("Getting Started", ("setup", "doctor", "version", "up", "down", "tui", "logs")),
+    ("Getting Started", ("setup", "doctor", "version", "up", "down", "restart", "tui", "logs")),
     ("Missions & Runs", ("mission", "run", "golden", "runtime")),
     ("Command Center", ("focus", "goal", "task", "observe", "operation")),
     ("Services & Sidecars", ("gateway", "cashflow", "freellmapi", "discord", "module", "terminal")),

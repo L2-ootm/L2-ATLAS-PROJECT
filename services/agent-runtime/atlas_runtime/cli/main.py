@@ -1307,6 +1307,32 @@ def _down_cmd(
 app.command("down", help="Stop sidecars + cockpit + gateway together (idempotent).")(_down_cmd)
 
 
+def _restart_cmd(
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="Skip the picker; start the default set (gateway, cockpit, freellmapi)."
+    ),
+    services: str = typer.Option(
+        "", "--services", help="Comma-separated service keys to start, skipping the picker (e.g. gateway,cockpit)."
+    ),
+    json_out: bool = typer.Option(False, "--json", help="Emit machine-readable JSON (implies --yes)."),
+) -> None:
+    """Stop everything (atlas down), then boot again (atlas up). The up phase
+    keeps its normal behavior: interactive picker on a TTY, or the default
+    set with --yes/--services/--json. A failed down aborts before starting."""
+    if not json_out:
+        typer.echo("— stopping —")
+    _down_cmd(json_out=json_out)
+    if not json_out:
+        typer.echo("— starting —")
+    _up_cmd(yes=yes, services=services, json_out=json_out)
+
+
+app.command(
+    "restart",
+    help="Restart ATLAS services: down, then the normal up flow (interactive picker on a TTY).",
+)(_restart_cmd)
+
+
 @app.command("help", help="Browse all ATLAS commands interactively (tabs, search, drill-down).")
 def _help_cmd(
     plain: bool = typer.Option(
