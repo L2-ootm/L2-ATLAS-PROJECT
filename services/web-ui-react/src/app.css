@@ -997,3 +997,62 @@ body,
 	.agent-session-header,
 	.permission-queue { animation: none !important; transition: none !important; }
 }
+
+/* ── Chat markdown syntax highlighting (rehype-highlight / hljs) ──────────────
+   No stock highlight.js theme is imported — a stock theme hardcodes its own
+   background and foreground hexes and fights the token system. Instead the
+   hljs token classes map onto the existing L2 Dark Prism palette. The code
+   block's background/padding live inline in ChatMarkdown.tsx. */
+.hljs {
+	color: var(--l2-fg-1);
+	background: transparent;
+}
+.hljs-comment,
+.hljs-quote,
+.hljs-meta {
+	color: var(--l2-fg-3);
+	font-style: italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-doctag,
+.hljs-tag,
+.hljs-name {
+	color: var(--atlas-celestial);
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-addition {
+	color: rgba(70, 240, 160, 0.85);
+}
+.hljs-number,
+.hljs-literal,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-link {
+	color: rgba(255, 214, 0, 0.85);
+}
+.hljs-title,
+.hljs-section,
+.hljs-function,
+.hljs-selector-id,
+.hljs-selector-class {
+	color: var(--atlas-violet);
+}
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-type,
+.hljs-built_in {
+	color: var(--atlas-cyan);
+}
+.hljs-deletion {
+	color: rgba(255, 77, 125, 0.95);
+}
+.hljs-emphasis {
+	font-style: italic;
+}
+.hljs-strong {
+	font-weight: 700;
+}

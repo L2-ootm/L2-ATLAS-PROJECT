@@ -5,6 +5,7 @@ import {
 	AlertTriangle,
 	Bot,
 	BoxSelect,
+	Brain,
 	Check,
 	ChevronDown,
 	ChevronRight,
@@ -35,6 +36,7 @@ import { Page } from '../components/Page';
 import { GlassPanel } from '../components/GlassFx';
 import CommandPalette from '../components/CommandPalette';
 import { TopoScroll } from '../components/TopoScroll';
+import { ChatMarkdown } from '../components/ChatMarkdown';
 import {
 	agentRuntimeLabel,
 	getRun,
@@ -50,6 +52,7 @@ import {
 } from '../lib/consoleEvents';
 import { useAgentSurface } from '../context/AgentSurfaceContext';
 import {
+	type BindingMode,
 	type ConsoleMessage,
 	type ConsoleWindow,
 	type LayoutMode,
@@ -58,9 +61,14 @@ import {
 } from '../context/ConsoleSessionContext';
 import { selectFolder } from '../lib/host';
 import { computeDwindle, type Rect } from '../lib/bspLayout';
+import {
+	addRecentFolder,
+	loadConsoleSnapshot,
+	loadRecentFolders,
+	saveConsoleSnapshot
+} from '../lib/consolePersistence';
 
 type Load = { s: 'loading' } | { s: 'ready'; projects: Project[] } | { s: 'error' };
-type BindingMode = 'project' | 'folder';
 type DragState = { id: string; pointerId?: number; startX: number; startY: number; x: number; y: number } | null;
 type ResizeState = { id: string; pointerId?: number; startX: number; startY: number; w: number; h: number } | null;
 
@@ -109,14 +117,17 @@ export default function Console() {
 		layout,
 		setLayout,
 		activeTurn,
-		setActiveTurn
+		setActiveTurn,
+		bindingMode,
+		setBindingMode,
+		folderPath,
+		setFolderPath
 	} = useConsoleSession();
 	const [params, setParams] = useSearchParams();
 	const projectId = params.get('project') ?? '';
 	const [load, setLoad] = useState<Load>({ s: 'loading' });
-	const [bindingMode, setBindingMode] = useState<BindingMode>(projectId ? 'project' : 'folder');
-	const [folderPath, setFolderPath] = useState('');
 	const [folderErr, setFolderErr] = useState<string | null>(null);
+	const [recentFolders, setRecentFolders] = useState<string[]>(loadRecentFolders);
 	const [drag, setDrag] = useState<DragState>(null);
 	const [resize, setResize] = useState<ResizeState>(null);
 	const [tileDragId, setTileDragId] = useState<string | null>(null);
@@ -179,6 +190,26 @@ export default function Console() {
 		};
 	}, []);
 
+	// One-time (mount-only) binding reconciliation: an explicit `?project=` in
+	// the URL always wins (matches a fresh "open in console" link). Otherwise,
+	// if we landed on a bare /console and the persisted snapshot remembers a
+	// project binding, restore its id into the URL — the Provider already
+	// hydrated `bindingMode` from the same snapshot, so this just brings the
+	// URL back in sync with it.
+	useEffect(() => {
+		if (projectId) {
+			setBindingMode('project');
+			return;
+		}
+		const restored = loadConsoleSnapshot()?.binding;
+		if (restored?.bindingMode === 'project' && restored.projectId) {
+			setParams({ project: restored.projectId }, { replace: true });
+		}
+		// Mount-only: re-checking on every projectId change would fight the
+		// operator's own later folder/project switches.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
+
 	const projects = load.s === 'ready' ? load.projects : [];
 	const activeProject = useMemo(() => {
 		if (load.s !== 'ready' || !projectId) return null;
@@ -224,6 +255,26 @@ export default function Console() {
 		});
 	}, [activeProject, boundCwd, setMessagesByWindow, windows]);
 
+	// MRU of bound folder paths — tracks any successful binding (project roots
+	// included, since they're still a filesystem path worth resurfacing), not
+	// just explicit "Change folder…" picks.
+	useEffect(() => {
+		if (!boundCwd) return;
+		setRecentFolders(addRecentFolder(boundCwd));
+	}, [boundCwd]);
+
+	// Single debounced writer for the whole console snapshot. `auditEvents` and
+	// `activeTurn` are intentionally excluded — see consolePersistence.ts.
+	useEffect(() => {
+		saveConsoleSnapshot({
+			windows,
+			messagesByWindow,
+			draftByWindow,
+			layout,
+			binding: { bindingMode, folderPath, projectId }
+		});
+	}, [windows, messagesByWindow, draftByWindow, layout, bindingMode, folderPath, projectId]);
+
 	useEffect(() => {
 		const pendingSurfaceEvents = surfaceEventsForTurn(agentSurface.events, activeTurn);
 		if (!activeTurn || pendingSurfaceEvents.length === 0) return;
@@ -245,26 +296,41 @@ export default function Console() {
 		setMessagesByWindow((prev) => {
 			let messages = prev[windowId] ?? [];
 			for (const event of projectedEvents) {
-				messages = messages.map((message) =>
-					message.id === turnId
-						? {
-								...message,
-								events: [...(message.events ?? []), event],
-								body:
-									event.type === 'text'
-										? `${message.body}${event.text ?? ''}`
-										: message.body,
-								status:
-									event.type === 'failure' && !event.tool_call_id
+				messages = messages.map((message) => {
+					if (message.id !== turnId) return message;
+					// 'text_delta' (streamed chunk) and 'text' (the turn's final
+					// authoritative reconcile) can both arrive for the same run —
+					// appending both would duplicate the response. Append deltas
+					// while a run streams; when the reconcile lands, replace just
+					// that run's provisional text (tracked via streamDeltaStart)
+					// with the authoritative value instead of appending after it.
+					let body = message.body;
+					let streamDeltaStart = message.streamDeltaStart;
+					if (event.type === 'text_delta') {
+						if (streamDeltaStart === undefined) streamDeltaStart = body.length;
+						body = `${body}${event.text ?? ''}`;
+					} else if (event.type === 'text') {
+						body =
+							streamDeltaStart !== undefined
+								? `${body.slice(0, streamDeltaStart)}${event.text ?? ''}`
+								: `${body}${event.text ?? ''}`;
+						streamDeltaStart = undefined;
+					}
+					return {
+						...message,
+						events: [...(message.events ?? []), event],
+						body,
+						streamDeltaStart,
+						status:
+							event.type === 'failure' && !event.tool_call_id
+								? 'failed'
+								: event.type === 'result'
+									? event.is_error
 										? 'failed'
-										: event.type === 'result'
-											? event.is_error
-												? 'failed'
-												: 'succeeded'
-											: message.status
-							}
-						: message
-				);
+										: 'succeeded'
+									: message.status
+					};
+				});
 			}
 			return { ...prev, [windowId]: messages };
 		});
@@ -317,9 +383,39 @@ export default function Console() {
 		setMessagesByWindow
 	]);
 
+	// Selecting a project/folder from the session switcher (or the pre-existing
+	// project list) starts a fresh session: chat transcripts and drafts reset
+	// to a plain boot receipt for the new binding, window/pane layout is left
+	// untouched. Clearing to `[]` (rather than hand-building the boot message
+	// here) lets the boot-reset effect above regenerate it once `activeProject`
+	// / `boundCwd` actually settle to the new values — same content, no fight.
+	function resetChatSessions() {
+		setMessagesByWindow((prev) => {
+			const next = { ...prev };
+			for (const win of windows) {
+				if (win.kind === 'chat') next[win.id] = [];
+			}
+			return next;
+		});
+		setDraftByWindow((prev) => {
+			const next = { ...prev };
+			for (const win of windows) {
+				if (win.kind === 'chat') next[win.id] = '';
+			}
+			return next;
+		});
+	}
+
 	function pickProject(project: Project) {
 		setBindingMode('project');
 		setParams({ project: project.id });
+		resetChatSessions();
+	}
+
+	function pickRecentFolder(path: string) {
+		setBindingMode('folder');
+		setFolderPath(path);
+		resetChatSessions();
 	}
 
 	async function chooseFolder() {
@@ -654,6 +750,18 @@ export default function Console() {
 				<>
 					<SessionLaunchers onSpawn={(sessionAgent) => addWindow('chat', sessionAgent)} disabled={!!busyWindow} />
 					<StatePill tone={projectState.tone}>{projectState.label}</StatePill>
+					<SessionSwitcher
+						recentFolders={recentFolders}
+						projects={projects}
+						activeProjectId={projectId}
+						bindingMode={bindingMode}
+						boundCwd={boundCwd}
+						onPickFolder={pickRecentFolder}
+						onPickProject={pickProject}
+					/>
+					<IconAction title="Change bound folder" onClick={() => void chooseFolder()}>
+						<FolderSearch size={15} strokeWidth={1.7} />
+					</IconAction>
 					<IconAction title="Spawn native chat" onClick={() => addWindow('chat', 'native')}>
 						<CopyPlus size={15} strokeWidth={1.7} />
 					</IconAction>
@@ -1022,7 +1130,7 @@ function ChatPane({
 	onSend: () => void;
 }) {
 	return (
-		<div style={chatPaneStyle}>
+		<div style={chatPaneStyle} data-testid={`chat-pane-${windowId}`}>
 			<div style={chatTopStyle}>
 				<div style={{ minWidth: 0 }}>
 					<div style={monoLabelStyle}>{agentRuntimeLabel(agent)} · {windowId.toUpperCase()}</div>
@@ -1306,6 +1414,23 @@ function clip(text: string, max = 4000): string {
 	return text.length > max ? `${text.slice(0, max)}\n… (${text.length - max} more chars)` : text;
 }
 
+/** Tool output is markdown-rendered only when it reads as prose: not JSON,
+ * and carrying at least one visible markdown structure (heading, fence, list,
+ * emphasis, table). Raw command output / file dumps stay in the mono <pre>. */
+function looksLikeProse(text: string): boolean {
+	const trimmed = text.trim();
+	if (!trimmed) return false;
+	if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+		try {
+			JSON.parse(trimmed);
+			return false;
+		} catch {
+			// not JSON — fall through to the markdown-signal check
+		}
+	}
+	return /(^|\n)#{1,6} |(^|\n)```|(^|\n)[-*] |(^|\n)\d+\. |\*\*[^*\n]+\*\*|(^|\n)\|.+\|/.test(trimmed);
+}
+
 function DiffView({ oldStr, newStr }: { oldStr: string; newStr: string }) {
 	const oldLines = oldStr ? oldStr.split('\n') : [];
 	const newLines = newStr ? newStr.split('\n') : [];
@@ -1374,7 +1499,13 @@ export function ToolCallCard({ event, result }: { event: ConsoleChatEvent; resul
 					{resultText && (
 						<>
 							<div style={toolFieldLabelStyle}>OUTPUT</div>
-							<pre style={toolPreStyle}>{resultText}</pre>
+							{!isEdit && looksLikeProse(resultText) ? (
+								<div style={toolOutputProseStyle}>
+									<ChatMarkdown text={resultText} style={{ fontSize: 12 }} />
+								</div>
+							) : (
+								<pre style={toolPreStyle}>{resultText}</pre>
+							)}
 						</>
 					)}
 				</div>
@@ -1383,8 +1514,63 @@ export function ToolCallCard({ event, result }: { event: ConsoleChatEvent; resul
 	);
 }
 
+/** Collapsed-by-default reasoning ("thinking") block. Deliberately dimmer and
+ * quieter than the final answer — same chevron/expand pattern as ToolCallCard. */
+export function ReasoningBlock({ text }: { text: string }) {
+	const [open, setOpen] = useState(false);
+	const Chevron = open ? ChevronDown : ChevronRight;
+	return (
+		<div style={reasoningBlockStyle} data-topo="muted">
+			<button type="button" style={toolCardHeaderStyle} onClick={() => setOpen((v) => !v)}>
+				<Chevron size={13} strokeWidth={1.8} style={{ color: 'var(--l2-fg-3)', flex: '0 0 auto' }} />
+				<Brain size={13} strokeWidth={1.7} style={{ color: 'var(--l2-fg-3)', flex: '0 0 auto' }} />
+				<span style={reasoningLabelStyle}>THINKING</span>
+			</button>
+			{open && (
+				<div style={reasoningBodyStyle}>
+					<ChatMarkdown text={text} style={{ color: 'var(--l2-fg-2)', fontSize: 12.5 }} />
+				</div>
+			)}
+		</div>
+	);
+}
+
 function AgentTurn({ message }: { message: ConsoleMessage }) {
 	const events = useMemo(() => message.events ?? [], [message.events]);
+	// 'text_delta' (streamed chunk) and 'text' (the run's final authoritative
+	// reconcile) both need to land in ONE rendered block per streaming run,
+	// not one div each — otherwise every delta plus the final reconcile shows
+	// up as its own stacked line, which reads as the response being repeated.
+	// Collapse: deltas extend the currently-open run in place; the reconcile
+	// replaces that open run's (provisional) text instead of appending a new
+	// block. `_open` marks a run that's still streaming so an unrelated later
+	// 'text' event (a fresh, non-streamed round) doesn't overwrite it.
+	const displayEvents = useMemo(() => {
+		const out: Array<ConsoleChatEvent & { _open?: boolean }> = [];
+		for (const event of events) {
+			if (event.type === 'text_delta') {
+				const last = out[out.length - 1];
+				if (last?._open) {
+					last.text = `${last.text ?? ''}${event.text ?? ''}`;
+					continue;
+				}
+				out.push({ type: 'text', text: event.text ?? '', _open: true });
+				continue;
+			}
+			if (event.type === 'text') {
+				const last = out[out.length - 1];
+				if (last?._open) {
+					last.text = event.text;
+					last._open = false;
+					continue;
+				}
+				out.push({ ...event, _open: false });
+				continue;
+			}
+			out.push(event);
+		}
+		return out;
+	}, [events]);
 	const resultsByCall = useMemo(() => {
 		const map: Record<string, ConsoleChatEvent> = {};
 		for (const e of events) {
@@ -1404,13 +1590,12 @@ function AgentTurn({ message }: { message: ConsoleMessage }) {
 			{events.length === 0 && message.status === 'pending' && (
 				<div style={{ ...agentTextStyle, opacity: 0.6 }}>Working…</div>
 			)}
-			{events.map((event, idx) => {
+			{displayEvents.map((event, idx) => {
 				if (event.type === 'text') {
-					return event.text ? (
-						<div key={idx} style={agentTextStyle}>
-							{event.text}
-						</div>
-					) : null;
+					return event.text ? <ChatMarkdown key={idx} text={event.text} /> : null;
+				}
+				if (event.type === 'reasoning') {
+					return event.text ? <ReasoningBlock key={idx} text={event.text} /> : null;
 				}
 				if (event.type === 'tool_call') {
 					return (
@@ -1485,8 +1670,96 @@ function MessageBubble({ message }: { message: ConsoleMessage }) {
 					<span style={{ ...pathTextStyle, fontSize: 10 }}>{message.time}</span>
 					{pending && <span style={liveBadgeStyle}>LIVE</span>}
 				</div>
-				<div style={{ color: 'var(--l2-fg-1)', fontSize: 13.5, lineHeight: 1.55, overflowWrap: 'anywhere' }}>{message.body}</div>
+				{message.role === 'agent' ? (
+					<ChatMarkdown text={message.body} />
+				) : (
+					<div style={{ color: 'var(--l2-fg-1)', fontSize: 13.5, lineHeight: 1.55, overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
+						{message.body}
+					</div>
+				)}
 			</div>
+		</div>
+	);
+}
+
+/** In-context session switcher — recent folders + known projects, reachable
+ * from inside an active chat without leaving the page (unlike the global
+ * Sidebar, which only supports app-wide back-navigation to /projects). */
+function SessionSwitcher({
+	recentFolders,
+	projects,
+	activeProjectId,
+	bindingMode,
+	boundCwd,
+	onPickFolder,
+	onPickProject
+}: {
+	recentFolders: string[];
+	projects: Project[];
+	activeProjectId: string;
+	bindingMode: BindingMode;
+	boundCwd: string | null;
+	onPickFolder: (path: string) => void;
+	onPickProject: (project: Project) => void;
+}) {
+	const [open, setOpen] = useState(false);
+	return (
+		<div style={{ position: 'relative' }}>
+			<button
+				type="button"
+				onClick={() => setOpen((v) => !v)}
+				style={sessionSwitcherButtonStyle}
+				title="Switch session"
+			>
+				<ListTree size={14} strokeWidth={1.7} />
+				<ChevronDown size={12} />
+			</button>
+			{open && (
+				<div style={sessionSwitcherPanelStyle} data-topo="info">
+					<SectionTitle>Recent folders</SectionTitle>
+					{recentFolders.length === 0 && <div style={emptyTinyStyle}>No recent folders</div>}
+					{recentFolders.map((path) => {
+						const selected = bindingMode === 'folder' && boundCwd === path;
+						return (
+							<button
+								key={path}
+								type="button"
+								title={path}
+								onClick={() => {
+									onPickFolder(path);
+									setOpen(false);
+								}}
+								style={sessionSwitcherItemStyle}
+							>
+								<Folder size={13} />
+								<span style={sessionSwitcherItemLabelStyle}>{shortPath(path)}</span>
+								<Check size={13} style={{ color: selected ? 'var(--atlas-emerald)' : 'transparent' }} />
+							</button>
+						);
+					})}
+					<SectionTitle>Projects</SectionTitle>
+					{projects.length === 0 && <div style={emptyTinyStyle}>No projects loaded</div>}
+					{projects.map((project) => {
+						const selected = bindingMode === 'project' && activeProjectId === project.id;
+						return (
+							<button
+								key={project.id}
+								type="button"
+								title={project.root_path}
+								onClick={() => {
+									onPickProject(project);
+									setOpen(false);
+								}}
+								style={sessionSwitcherItemStyle}
+							>
+								<FolderOpen size={13} />
+								<span style={sessionSwitcherItemLabelStyle}>{project.name}</span>
+								<Check size={13} style={{ color: selected ? 'var(--atlas-emerald)' : 'transparent' }} />
+							</button>
+						);
+					})}
+				</div>
+			)}
 		</div>
 	);
 }
@@ -2075,6 +2348,41 @@ const toolPreStyle: React.CSSProperties = {
 	overflowWrap: 'anywhere'
 };
 
+/** Prose-shaped tool OUTPUT rendered as markdown — same framed box as
+ * toolPreStyle, minus the mono/pre treatment (ChatMarkdown supplies type). */
+const toolOutputProseStyle: React.CSSProperties = {
+	maxHeight: 280,
+	overflow: 'auto',
+	background: 'rgba(5,6,10,0.5)',
+	border: '1px solid rgba(237,234,224,0.06)',
+	borderRadius: 2,
+	padding: '8px 9px'
+};
+
+/** Reasoning ("thinking") block: dashed hairline + reduced opacity keep it
+ * visually subordinate to the answer text and tool cards. */
+const reasoningBlockStyle: React.CSSProperties = {
+	border: '1px dashed rgba(237,234,224,0.14)',
+	borderRadius: 2,
+	background: 'rgba(13,16,24,0.35)',
+	overflow: 'hidden',
+	opacity: 0.85
+};
+
+const reasoningLabelStyle: React.CSSProperties = {
+	fontFamily: 'var(--l2-font-mono)',
+	fontSize: 10.5,
+	letterSpacing: '0.14em',
+	color: 'var(--l2-fg-3)'
+};
+
+const reasoningBodyStyle: React.CSSProperties = {
+	borderTop: '1px dashed rgba(237,234,224,0.10)',
+	padding: '9px 10px',
+	maxHeight: 320,
+	overflow: 'auto'
+};
+
 const diffWrapStyle: React.CSSProperties = {
 	fontFamily: 'var(--l2-font-mono)',
 	fontSize: 11.5,
@@ -2198,6 +2506,61 @@ const miniMenuStyle: React.CSSProperties = {
 	background: 'rgba(8,10,15,0.98)',
 	boxShadow: '0 18px 50px rgba(0,0,0,0.5)',
 	overflow: 'hidden'
+};
+
+const sessionSwitcherButtonStyle: React.CSSProperties = {
+	height: 34,
+	display: 'inline-flex',
+	alignItems: 'center',
+	gap: 5,
+	padding: '0 9px',
+	borderRadius: 2,
+	border: '1px solid var(--l2-hairline)',
+	background: 'rgba(237,234,224,0.025)',
+	color: 'var(--l2-fg-2)',
+	cursor: 'pointer'
+};
+
+const sessionSwitcherPanelStyle: React.CSSProperties = {
+	position: 'absolute',
+	top: 38,
+	right: 0,
+	zIndex: 90,
+	minWidth: 260,
+	maxWidth: 340,
+	maxHeight: 420,
+	overflowY: 'auto',
+	borderRadius: 2,
+	border: '1px solid var(--l2-hairline)',
+	background: 'rgba(8,10,15,0.98)',
+	boxShadow: '0 18px 50px rgba(0,0,0,0.5)',
+	padding: '2px 10px 12px'
+};
+
+const sessionSwitcherItemStyle: React.CSSProperties = {
+	width: '100%',
+	display: 'grid',
+	gridTemplateColumns: '16px minmax(0,1fr) 16px',
+	alignItems: 'center',
+	gap: 8,
+	minWidth: 0,
+	marginBottom: 5,
+	border: '1px solid rgba(237,234,224,0.06)',
+	background: 'rgba(237,234,224,0.025)',
+	color: 'var(--l2-fg-2)',
+	fontFamily: 'var(--l2-font-mono)',
+	fontSize: 11,
+	textAlign: 'left',
+	padding: '7px 9px',
+	borderRadius: 2,
+	cursor: 'pointer'
+};
+
+const sessionSwitcherItemLabelStyle: React.CSSProperties = {
+	minWidth: 0,
+	overflow: 'hidden',
+	textOverflow: 'ellipsis',
+	whiteSpace: 'nowrap'
 };
 
 const miniMenuItemStyle: React.CSSProperties = {

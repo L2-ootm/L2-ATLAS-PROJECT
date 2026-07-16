@@ -29,6 +29,19 @@ export function surfaceConsoleEvent(event: SurfaceEvent): ConsoleChatEvent {
 	const toolCallId = stringField(payload, 'call_id', 'tool_call_id') ?? null;
 	const isError = payload.is_error === true;
 
+	// `llm_delta` audit rows (native.py's _DeltaBuffer, ~150ms/48-char coalesced
+	// chunks) and the turn's final `llm_call` reconcile both project to
+	// SurfaceEventKind 'text' (surface_events.py's _KIND_MAP) — the kind alone
+	// can't tell them apart. The raw payload can: a delta chunk carries only
+	// `delta`, never `text`/`summary`. Surface it as a distinct synthetic
+	// 'text_delta' type so the caller can APPEND deltas while a turn streams,
+	// then REPLACE with the authoritative final text on the real 'text' event
+	// — appending both would duplicate the response (the same bug class fixed
+	// in atlas-terminal's chat.ts reconcile guard).
+	if (event.kind === 'text' && text === undefined && typeof payload.delta === 'string') {
+		return { type: 'text_delta', text: payload.delta, content: payload };
+	}
+
 	if (event.kind === 'error') {
 		return {
 			type: 'failure',
