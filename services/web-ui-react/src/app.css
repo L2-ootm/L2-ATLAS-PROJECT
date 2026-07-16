@@ -83,6 +83,60 @@ body,
 	}
 }
 
+/* Streaming inference wake — while an agent turn is generating, a slow
+   emerald wave travels a hairline rail beside the turn: the visible
+   "thinking" of the machine. It exists only while status is pending and
+   resolves to stillness (class removed) on completion — light is earned,
+   moment to moment. */
+@keyframes atlas-inference-wake {
+	0% { background-position: 0 -140%; }
+	100% { background-position: 0 240%; }
+}
+.atlas-inference-wake {
+	position: relative;
+	padding-left: 12px;
+}
+.atlas-inference-wake::before {
+	content: '';
+	position: absolute;
+	left: 0;
+	top: 2px;
+	bottom: 2px;
+	width: 2px;
+	background:
+		linear-gradient(
+			180deg,
+			rgba(70, 240, 160, 0) 0%,
+			rgba(70, 240, 160, 0.85) 42%,
+			rgba(140, 255, 205, 1) 50%,
+			rgba(70, 240, 160, 0.85) 58%,
+			rgba(70, 240, 160, 0) 100%
+		)
+		0 0 / 100% 55% no-repeat,
+		rgba(70, 240, 160, 0.16);
+	animation: atlas-inference-wake 2.6s var(--l2-ease) infinite;
+}
+
+/* Console send — the operator transmits into the system: brightens on
+   approach, presses with weight, and reads inert while a turn is in flight. */
+.atlas-console-send {
+	transition: background 160ms var(--l2-ease), border-color 160ms var(--l2-ease),
+		box-shadow 200ms var(--l2-ease), transform 120ms var(--l2-ease), opacity 160ms var(--l2-ease);
+}
+.atlas-console-send:hover:not(:disabled) {
+	background: rgba(79, 139, 255, 0.22);
+	border-color: rgba(79, 139, 255, 0.7);
+	box-shadow: 0 0 18px rgba(79, 139, 255, 0.18);
+}
+.atlas-console-send:active:not(:disabled) {
+	transform: translateY(1px);
+	box-shadow: none;
+}
+.atlas-console-send:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
 /* Console composer: quiet at rest, a soft celestial ring while focused. */
 .atlas-console-composer {
 	transition: border-color 160ms var(--l2-ease), box-shadow 220ms var(--l2-ease);

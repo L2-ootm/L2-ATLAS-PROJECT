@@ -109,7 +109,9 @@ describe('Console route continuation', () => {
 		fireEvent.click(screen.getByTitle('Send'));
 		expect(screen.getByTestId('active-run')).toHaveTextContent('resolving');
 		expect(screen.getByTestId('turn-status')).toHaveTextContent('pending');
-		expect(screen.getByPlaceholderText('Message ATLAS')).toBeDisabled();
+		// While a turn is in flight the composer is disabled and speaks the
+		// system voice instead of the idle prompt.
+		expect(screen.getByPlaceholderText('Turn in progress — streaming')).toBeDisabled();
 		expect(
 			screen.getByTitle('Cannot close the window owning the active run')
 		).toBeDisabled();
@@ -148,7 +150,7 @@ describe('Console route continuation', () => {
 		fireEvent.click(screen.getByTitle('Send'));
 		await act(async () => {});
 		expect(screen.getByTestId('turn-status')).toHaveTextContent('pending');
-		expect(screen.getByPlaceholderText('Message ATLAS')).toBeDisabled();
+		expect(screen.getByPlaceholderText('Turn in progress — streaming')).toBeDisabled();
 
 		await act(async () => {
 			await vi.advanceTimersByTimeAsync(8_000);
