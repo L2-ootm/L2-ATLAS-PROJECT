@@ -1,9 +1,9 @@
 {
   "bootstrap_message_sha256": "6a0b1915a23058ee701292ba0b4037ced786af4db3ab5d2b71d9625ad1a78f46",
   "context_message_sha256": "8247ba9751b436e8164c42cb6a5e7e17b8bb9568f1f85dd1ebf251cf77b4facb",
-  "estimated_stable_tokens": 511,
+  "estimated_stable_tokens": 567,
   "prompt_version": "1.0.0",
   "provider": "anthropic-compatible",
-  "stable_prompt_sha256": "9cadd1736e72651cde9b36a9540bf6507ec1fa1b3d8cbddfb7961115862d2acb",
+  "stable_prompt_sha256": "2661567c82b4f5e8a514862d60a6aae57133069c69774aea700ecc1a5b53bc3a",
   "surface": "api"
 }

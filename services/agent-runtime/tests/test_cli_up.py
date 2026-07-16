@@ -205,3 +205,53 @@ def test_down_json_reports_each_component(monkeypatch):
     assert result.output.strip().startswith("{")
     assert '"ok": true' in result.output
     assert '"component": "gateway"' in result.output
+
+
+def _patch_all_stops(monkeypatch, order):
+    for name, module in (
+        ("freellmapi", freellmapi_control),
+        ("cashflow", cashflow_control),
+        ("discord", discord_control),
+        ("cockpit", cockpit_control),
+        ("gateway", gateway_control),
+    ):
+        monkeypatch.setattr(module, "stop", (lambda n: lambda: order.append(f"stop:{n}") or (True, f"{n} stopped"))(name))
+
+
+def test_restart_runs_down_then_up(monkeypatch):
+    order: list[str] = []
+    _patch_all_stops(monkeypatch, order)
+    _patch_no_op_sidecar(monkeypatch)
+    monkeypatch.setattr(gateway_control, "start", lambda: order.append("start:gateway") or (True, "gateway started"))
+    monkeypatch.setattr(cockpit_control, "start", lambda: order.append("start:cockpit") or (True, "cockpit started"))
+    result = runner.invoke(app, ["restart", "--yes"])
+    assert result.exit_code == 0, result.output
+    assert order.index("stop:gateway") < order.index("start:gateway")
+    assert "gateway started" in result.output
+    assert "cockpit started" in result.output
+
+
+def test_restart_aborts_up_when_down_fails(monkeypatch):
+    started: list[str] = []
+    monkeypatch.setattr(freellmapi_control, "stop", lambda: (True, "stopped"))
+    monkeypatch.setattr(cashflow_control, "stop", lambda: (True, "stopped"))
+    monkeypatch.setattr(discord_control, "stop", lambda: (True, "stopped"))
+    monkeypatch.setattr(cockpit_control, "stop", lambda: (True, "stopped"))
+    monkeypatch.setattr(gateway_control, "stop", lambda: (False, "kill failed: access denied"))
+    monkeypatch.setattr(gateway_control, "start", lambda: started.append("gateway") or (True, "gateway started"))
+    result = runner.invoke(app, ["restart", "--yes"])
+    assert result.exit_code == 1
+    assert started == [], "up phase must not run after a hard down failure"
+
+
+def test_restart_forwards_services_selection(monkeypatch):
+    order: list[str] = []
+    _patch_all_stops(monkeypatch, order)
+    _patch_no_op_sidecar(monkeypatch)
+    started: list[str] = []
+    monkeypatch.setattr(gateway_control, "start", lambda: started.append("gateway") or (True, "gateway started"))
+    monkeypatch.setattr(cockpit_control, "start", lambda: started.append("cockpit") or (True, "cockpit started"))
+    result = runner.invoke(app, ["restart", "--services", "gateway"])
+    assert result.exit_code == 0, result.output
+    assert started == ["gateway"]
+    assert "cockpit: skipped" in result.output
