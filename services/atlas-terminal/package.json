@@ -43,5 +43,8 @@
 		"@types/pngjs": "^6.0.5",
 		"@types/semver": "^7.7.1",
 		"typescript": "5.9.2"
+	},
+	"patchedDependencies": {
+		"@opentui/core@0.1.99": "patches/@opentui%2Fcore@0.1.99.patch"
 	}
 }
