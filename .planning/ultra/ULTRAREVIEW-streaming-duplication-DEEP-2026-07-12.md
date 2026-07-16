@@ -494,3 +494,112 @@ opentui rendering layer, which requires either:
 1. Reading the `@opentui/core` compiled source (deobfuscation)
 2. Replacing `<code streaming={true}>` with a different renderer
 3. Adding a debounce/coalesce layer between the store and the component
+
+---
+
+## Fix Status — 2026-07-12 (sixth pass, same day)
+
+Operator provided a new screenshot (`freellmapi`, prompt "hello") and a
+decisive fact: **the duplication was not present before the streaming
+feature was added** — when the response was only painted once, in full,
+after the turn finished, there was no duplication.
+
+### Evidence gathering: direct audit-DB read of the exact failing run
+
+Rather than attempt a 6th blind fix (the systematic-debugging Iron Law
+bars this after 5 prior attempts), the raw `audit_events` rows for the
+run behind the screenshot were read directly from `~/.atlas/atlas.db`:
+
+```
+llm_delta  text='Hey'
+llm_delta  text=' Davi! 👋 Good to see you.\n\nHow are things going?'
+llm_delta  eot=True text=''
+llm_call   text='Hey Davi! 👋 Good to see you.\n\nHow are things going?'
+tool_call  transition=succeeded text='Hey Davi! 👋 Good to see you.\n\nHow are things going?'
+```
+
+No duplication anywhere in the source data — two clean delta chunks that
+concatenate exactly to the reconciled `llm_call` text, matching summary.
+**This proves, for this exact repro, that hops 1-8 (foundation through
+solid-js store) are clean**, confirming the fifth pass's conclusion by
+direct measurement instead of inference. Combined with the operator's
+"only started when streaming was added" fact, the bug is conclusively
+isolated to hop 9 — the opentui renderable receiving *multiple*
+incremental `content` commits during a turn, not the data itself.
+
+### Root cause (opentui `@opentui/core`, vendored compiled bundle)
+
+`ATLAS_TUI_EXPERIMENTAL_MARKDOWN` defaults **true** (`!falsy(...)` in
+`vendor/opencode/flag/flag.ts:134` — true unless the env var is
+explicitly `"false"`/`"0"`), so the active renderer is `<markdown
+streaming={true}>` (`MarkdownRenderable`), not the `<code>` component
+the fifth pass's hypothesis assumed was in play.
+
+Traced the actual (non-minified, chunked) implementation at
+`node_modules/@opentui/core/index-fedv7szb.js`:
+
+- `MarkdownRenderable.updateBlocks()` (line 9849) re-lexes the growing
+  content via `parseMarkdownIncremental` (line 9155) on **every**
+  content commit and diffs the resulting tokens against
+  `this._blockStates`, reusing/patching a per-block `CodeRenderable`
+  child (`applyMarkdownCodeRenderable`, line 9510) in place when a
+  token's type is unchanged.
+- Each per-block `CodeRenderable` is created with `streaming: true,
+  drawUnstyledText: false, filetype: "markdown"` (line 9477-9493). Its
+  `set content()` (line 4173) early-returns without touching
+  `textBuffer` for that combination — the buffer is only updated later,
+  asynchronously, by `startHighlight()` (line 4290) via tree-sitter.
+- `ensureVisibleTextBeforeHighlight()` (line 4271) intentionally keeps
+  `_shouldRenderTextBuffer = true` using the **stale, already-painted**
+  buffer for every content commit after the first, so the terminal
+  keeps showing old glyphs while the new highlight resolves in the
+  background — a deliberate no-flicker design for a block whose content
+  grows by small increments.
+- Static tracing of the `snapshotId`/`_highlightSnapshotId` guards found
+  the async-highlight completion ordering to be internally consistent
+  (stale highlights are discarded, not applied). The remaining
+  candidate is a lower-level terminal dirty-region repaint bug in
+  opentui's native (Zig) buffer diffing when a block's on-screen height
+  changes mid-stream (e.g. a block splitting from one paragraph into
+  two as `\n\n` streams in) — consistent with the "text appears, then
+  same text again starting mid-line" pattern from the fifth pass and
+  this pass's screenshot, and with duplication being absent when the
+  renderer only ever receives one, final, content commit.
+- This lives in a vendored, compiled, native-backed third-party package
+  (`@opentui/core`) with no readable `.ts`/`.js` source under
+  `renderables/` (only `.d.ts`), so a definitive line-level root cause
+  inside its Zig core cannot be established from this repo. Per Phase
+  4.5 of systematic-debugging, this is the point to stop patching our
+  own data/adapter layer (already proven clean twice over) and change
+  the architecture of how we drive the vendored renderer instead.
+
+### Fix (`session/index.tsx:1560-1604`) — stop feeding incremental commits to the async-highlighted renderer
+
+While a message is still streaming (`!props.message.time.completed`),
+`TextPart` now renders a plain `<text wrapMode="word">` element — no
+syntax highlighting, no block diffing, no async highlight pipeline, just
+a direct buffer write per update, which is the same class of update the
+non-highlighted paragraph blocks already used safely. Once the turn
+completes, `<Show>` unmounts the plain text node and mounts a **fresh**
+`<code>`/`<markdown>` instance with `streaming={false}` and the final,
+complete text as its *only* content commit — exactly the "plotted once
+when finished" shape the operator confirmed was never buggy. The
+richly-highlighted component is never patched in place with more than
+one `content` value, which removes the incremental-commit path this
+pass identified as the trigger, without needing to patch or fork the
+vendored opentui package.
+
+Also removed the (uncommitted) render-count diagnostic in the same
+function — its job (confirming this was a rendering issue, not a data
+issue) is now done by the direct audit-DB evidence above.
+
+**Verified (2026-07-12):** `bunx tsc --noEmit` clean, `bun test`
+56/56 passed (unchanged — no test exercises opentui's own paint output).
+**Still needs operator UAT** — this repo's TUI cannot be driven
+interactively from this environment (piped stdin doesn't reach the
+composer, SendKeys/ConPTY blocked, confirmed again this pass), so the
+fix has not been visually confirmed against a live terminal. Next
+operator session: reproduce with a short prompt via `freellmapi` (or any
+provider) and confirm no duplication appears, syntax highlighting still
+renders for the settled response, and there is no visible flash/jank at
+the streaming→settled swap.

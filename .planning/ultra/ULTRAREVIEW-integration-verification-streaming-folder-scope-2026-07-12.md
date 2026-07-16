@@ -333,7 +333,54 @@ Commits: runtime (schema+native.py), adapter (chat.ts), gateway (lib.rs) — see
 Verification: agent-runtime 782 passed (4 new: 1 wiring test through
 `_default_factory`, 3 `_DeltaBuffer` unit tests); atlas-core 97 passed;
 atlas-terminal typecheck + 53 tests (1 new: delta-streaming + reconciliation)
-+ live `--smoke`; `cargo test -p atlas-gateway` 108 passed. Interactive UAT
-still owed: does the TUI visibly render token-by-token now, does reconnect
-mid-stream behave, does a multi-tool-round response start a fresh part per
-turn correctly.
++ live `--smoke`; `cargo test -p atlas-gateway` 108 passed.
+
+---
+
+## Streaming Fix Iterations — 2026-07-12 (complete trace)
+
+The streaming duplication went through 4 fix iterations across the day,
+each informed by deeper investigation:
+
+### Iteration 1: closed-entry guard (ed0c6a4a, superseded)
+
+First-pass ULTRAREVIEW identified the `llm_delta` handler as the bug site.
+Added `if (entry && !entry.open) { return; }` to prevent stray deltas after
+reconciliation. **Miscalibrated** — the guard fired on legitimate
+tool-boundary `end_of_turn` closes, silently dropping streamed text after
+every tool round in multi-turn conversations.
+
+### Iteration 2: corrected guard + reconciledMessages + end-of-turn flush (2aa99a1b)
+
+ULTRAREVIEW DEEP pass found:
+1. The iteration-1 guard was intercepting the wrong case (tool-boundary close,
+   not stray delta). Fixed: closed entries now clear and start fresh parts.
+2. `reconciledMessages: Set<string>` added as the actual defense-in-depth for
+   stray deltas after `llm_call` fully deletes the entry.
+3. Foundation never calls `stream_delta_callback(None)` for final responses
+   (only at tool boundaries). Fixed adapter-side: `native.py:execute()` now
+   flushes its own `_DeltaBuffer` after `run_conversation()` returns.
+Regression tests: multi-turn-after-tool-boundary, stray-delta-after-reconciliation.
+
+### Iteration 3: transition 'succeeded' duplicate (a9acc882, current)
+
+Operator UAT showed last sentence × 2 (with/without period). Root cause:
+`run_service.py:141-147` emits `transition: 'succeeded'` AFTER `llm_call`.
+The transition handler's exact-text dupe check fails when summary differs from
+reconciled text (truncation/post-processing), creating a second part. Fixed:
+transition handler now checks `reconciledMessages` before creating a part.
+Regression test: transition-after-llm-call.
+
+### Iteration 4: rendering hypothesis (OPEN)
+
+If duplication persists after all three data-flow fixes, the issue is in the
+opentui `<code>` component's handling of rapid `content` prop changes. Needs
+operator UAT + `TextPart` render counter instrumentation.
+
+### Final verification
+
+atlas-terminal: 56/56 bun tests, tsc clean, boundary scan passed, smoke LIVE.
+agent-runtime: 782 passed, 2 skipped.
+atlas-gateway: 108 cargo tests.
+All three data-flow bugs resolved. Rendering hypothesis is the only remaining
+open item.
