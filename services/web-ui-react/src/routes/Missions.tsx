@@ -14,6 +14,12 @@ import sealMark from '../brand/assets/seal.webp';
 type Load = { s: 'loading' } | { s: 'ready'; missions: Mission[]; count: number } | { s: 'error' };
 
 const STATUSES = ['ALL', 'PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED', 'ARCHIVED'];
+// useGatewayHealth's `epoch` only bumps on a reconnect transition, so a
+// mission/session created elsewhere (another surface, the TUI, Discord)
+// while the gateway stays up never triggered a refetch — the list looked
+// stuck until a manual page refresh. Poll on a steady interval too, same
+// pattern as Sidebar.tsx's module-nav/VCS polling.
+const MISSIONS_POLL_MS = 8000;
 
 function rel(iso: string): string {
 	const t = Date.parse(iso);
@@ -44,6 +50,10 @@ export default function Missions() {
 	useEffect(() => {
 		void refresh();
 	}, [epoch]);
+	useEffect(() => {
+		const id = setInterval(() => void refresh(), MISSIONS_POLL_MS);
+		return () => clearInterval(id);
+	}, []);
 
 	const filtered = useMemo(() => {
 		if (load.s !== 'ready') return [];

@@ -2,11 +2,13 @@ import { useState, type ReactNode } from 'react';
 import {
 	ConsoleSessionContext,
 	type ActiveConsoleTurn,
+	type BindingMode,
 	type ConsoleMessage,
 	type ConsoleWindow,
 	type LayoutMode
 } from './ConsoleSessionContext';
 import type { ConsoleChatEvent } from '../lib/api';
+import { loadConsoleSnapshot } from '../lib/consolePersistence';
 
 const INITIAL_WINDOWS: ConsoleWindow[] = [
 	{ id: 'chat-1', kind: 'chat', title: 'atlas.chat', agent: 'native', x: 260, y: 54, w: 540, h: 430 },
@@ -16,13 +18,31 @@ const INITIAL_WINDOWS: ConsoleWindow[] = [
 ];
 
 export function ConsoleSessionProvider({ children }: { children: ReactNode }) {
-	const [windows, setWindows] = useState<ConsoleWindow[]>(INITIAL_WINDOWS);
-	const [activeWindow, setActiveWindow] = useState('chat-1');
-	const [messagesByWindow, setMessagesByWindow] = useState<Record<string, ConsoleMessage[]>>({});
+	// Read the persisted snapshot exactly once per mount (lazy `useState`
+	// initializer — never re-invoked on re-render) and share it across every
+	// slice's own lazy initializer below. Using lazy initializers rather than
+	// a hydration `useEffect` avoids a first-paint flash of empty state.
+	const [initialSnapshot] = useState(loadConsoleSnapshot);
+
+	const [windows, setWindows] = useState<ConsoleWindow[]>(() =>
+		initialSnapshot && initialSnapshot.windows.length > 0 ? initialSnapshot.windows : INITIAL_WINDOWS
+	);
+	const [activeWindow, setActiveWindow] = useState(() => windows[0]?.id ?? 'chat-1');
+	const [messagesByWindow, setMessagesByWindow] = useState<Record<string, ConsoleMessage[]>>(
+		() => initialSnapshot?.messagesByWindow ?? {}
+	);
+	// Live/derived — never persisted (see consolePersistence.ts).
 	const [auditEvents, setAuditEvents] = useState<ConsoleChatEvent[]>([]);
-	const [draftByWindow, setDraftByWindow] = useState<Record<string, string>>({ 'chat-1': '' });
-	const [layout, setLayout] = useState<LayoutMode>('tile');
+	const [draftByWindow, setDraftByWindow] = useState<Record<string, string>>(
+		() => initialSnapshot?.draftByWindow ?? { 'chat-1': '' }
+	);
+	const [layout, setLayout] = useState<LayoutMode>(() => initialSnapshot?.layout ?? 'tile');
+	// A run in flight has no run to reconnect to after a reload — never persisted.
 	const [activeTurn, setActiveTurn] = useState<ActiveConsoleTurn | null>(null);
+	const [bindingMode, setBindingMode] = useState<BindingMode>(
+		() => initialSnapshot?.binding.bindingMode ?? 'folder'
+	);
+	const [folderPath, setFolderPath] = useState<string>(() => initialSnapshot?.binding.folderPath ?? '');
 
 	return (
 		<ConsoleSessionContext.Provider
@@ -40,7 +60,11 @@ export function ConsoleSessionProvider({ children }: { children: ReactNode }) {
 				layout,
 				setLayout,
 				activeTurn,
-				setActiveTurn
+				setActiveTurn,
+				bindingMode,
+				setBindingMode,
+				folderPath,
+				setFolderPath
 			}}
 		>
 			{children}

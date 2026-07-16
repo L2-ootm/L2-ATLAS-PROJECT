@@ -38,6 +38,16 @@ export default defineConfig({
 					) {
 						return 'vendor-force-graph';
 					}
+					// The chat-markdown stack (react-markdown + unified/remark/rehype
+					// pipeline + curated highlight.js grammars) — split out so the
+					// entry chunk stays inside its bundle budget.
+					if (
+						/\/node_modules\/(?:react-markdown|remark-[^/]+|rehype-[^/]+|micromark[^/]*|mdast-util-[^/]+|hast-util-[^/]+|unist-util-[^/]+|unified|vfile[^/]*|highlight\.js|lowlight|bail|trough|zwitch|ccount|longest-streak|markdown-table|devlop|decode-named-character-reference|character-entities[^/]*|character-reference-invalid|is-(?:decimal|hexadecimal|alphanumerical|alphabetical|plain-obj)|property-information|space-separated-tokens|comma-separated-tokens|html-url-attributes|trim-lines|extend|style-to-js|style-to-object|inline-style-parser|estree-util-is-identifier-name|escape-string-regexp)\//.test(
+							normalized
+						)
+					) {
+						return 'vendor-markdown';
+					}
 				}
 			}
 		}

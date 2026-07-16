@@ -8,6 +8,7 @@ import type { AgentRuntime, ConsoleChatEvent } from '../lib/api';
 
 export type LayoutMode = 'tile' | 'free' | 'tabs' | 'bsp';
 export type WindowKind = 'chat' | 'audit' | 'tools' | 'context';
+export type BindingMode = 'project' | 'folder';
 
 export type ConsoleWindow = {
 	id: string;
@@ -28,6 +29,12 @@ export type ConsoleMessage = {
 	time: string;
 	status?: 'pending' | 'failed' | 'succeeded';
 	events?: ConsoleChatEvent[];
+	/** Index into `body` where the current open `text_delta` streaming run
+	 * started (undefined when no run is open). Lets the eventual `text`
+	 * reconcile REPLACE just that run's provisional content with the
+	 * authoritative final text instead of appending after it, which would
+	 * duplicate the response — see Console.tsx's message-merge effect. */
+	streamDeltaStart?: number;
 };
 
 export type ActiveConsoleTurn = {
@@ -52,6 +59,13 @@ export type ConsoleSessionContextValue = {
 	setLayout: Dispatch<SetStateAction<LayoutMode>>;
 	activeTurn: ActiveConsoleTurn | null;
 	setActiveTurn: Dispatch<SetStateAction<ActiveConsoleTurn | null>>;
+	/** Folder/project binding — lifted here (not just page-local state) so it
+	 * survives navigating away from and back to Console, and so it can hydrate
+	 * from the persisted snapshot the same way windows/messages do. */
+	bindingMode: BindingMode;
+	setBindingMode: Dispatch<SetStateAction<BindingMode>>;
+	folderPath: string;
+	setFolderPath: Dispatch<SetStateAction<string>>;
 };
 
 export const ConsoleSessionContext = createContext<ConsoleSessionContextValue | null>(null);
