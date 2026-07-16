@@ -43,6 +43,19 @@ _DEFAULT_MAX_ITERATIONS = 40
 _DELTA_FLUSH_INTERVAL_S = 0.15
 _DELTA_FLUSH_CHARS = 48
 
+# The foundation's mid-tool-call silent stream retry (chat_completion_helpers.py
+# ~2144-2186, D-001 vendored — not editable here) intentionally re-streams a
+# turn's preamble from scratch after a transient connection drop, firing this
+# exact marker text through stream_delta_callback with NO end-of-turn signal
+# in between (documented tradeoff: losing the in-flight tool call is worse
+# than a duplicated preamble). Detecting it here lets ATLAS close the
+# pre-drop segment as its own part instead of letting the regenerated text
+# concatenate seamlessly onto it — the client already knows how to start a
+# fresh part on an end_of_turn boundary (see chat.ts's streamingText.open
+# handling), so this turns silent, garbled-looking duplication into two
+# clearly separated segments with the reconnect notice between them.
+_STREAM_RETRY_MARKER = "Connection dropped mid tool-call"
+
 # A harness factory: given a session_id, return an object exposing
 # `run_conversation(user_message, system_message=None) -> dict`.
 HarnessFactory = Callable[..., Any]
@@ -80,6 +93,12 @@ class _DeltaBuffer:
                 self._flush(final=True)
                 self._turn_open = False
             return
+        if self._turn_open and _STREAM_RETRY_MARKER in chunk:
+            # Mid-turn silent retry: close the pre-drop segment as its own
+            # part before the reconnect marker + regenerated text start a
+            # new one (see _STREAM_RETRY_MARKER comment above).
+            self._flush(final=True)
+            self._turn_open = False
         self._turn_open = True
         self._buffer.append(chunk)
         now = time.monotonic()
