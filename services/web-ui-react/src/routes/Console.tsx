@@ -92,6 +92,14 @@ function shortPath(path: string): string {
 	return `...${path.slice(-61)}`;
 }
 
+/** Last segment of a filesystem path — the binding truth an operator scans
+ * for ("which repo is this chat in"), shown where a generic BOUND badge
+ * would carry no information. */
+function pathTail(path: string): string {
+	const tail = path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? path;
+	return tail.length > 24 ? `${tail.slice(0, 23)}…` : tail;
+}
+
 function bootMessage(project: Project | null, cwd: string | null): ConsoleMessage {
 	const body = project
 		? `Console bound to ${project.name}. Workspace root: ${project.root_path}`
@@ -1136,7 +1144,11 @@ function ChatPane({
 					<div style={monoLabelStyle}>{agentRuntimeLabel(agent)} · {windowId.toUpperCase()}</div>
 					<div style={titleTextStyle}>{projectName}</div>
 				</div>
-				<WorkbenchBadge icon={<GitBranch size={13} />} label={boundCwd ? 'BOUND' : 'UNBOUND'} />
+				<WorkbenchBadge
+					icon={<GitBranch size={13} />}
+					label={boundCwd ? pathTail(boundCwd) : 'UNBOUND'}
+					title={boundCwd ?? undefined}
+				/>
 			</div>
 			<TopoScroll tone={agent === 'claude_code' ? 'atlas' : 'info'} style={{ minHeight: 0 }} viewportStyle={messageListStyle}>
 				{messages.map((message) =>
@@ -1159,11 +1171,24 @@ function ChatPane({
 							onSend();
 						}
 					}}
-					placeholder={agent === 'claude_code' ? 'Ask Claude Code in this folder' : 'Message ATLAS'}
+					placeholder={
+						busy
+							? 'Turn in progress — streaming'
+							: agent === 'claude_code'
+								? 'Ask Claude Code in this folder'
+								: 'Message ATLAS'
+					}
 					rows={3}
 					style={composerStyle}
 				/>
-				<button type="button" onClick={onSend} disabled={!draft.trim() || busy} style={sendButtonStyle} title="Send">
+				<button
+					type="button"
+					className="atlas-console-send"
+					onClick={onSend}
+					disabled={!draft.trim() || busy}
+					style={sendButtonStyle}
+					title="Send"
+				>
 					<SendHorizontal size={16} strokeWidth={1.8} />
 				</button>
 			</div>
@@ -1580,7 +1605,11 @@ function AgentTurn({ message }: { message: ConsoleMessage }) {
 	}, [events]);
 	const summary = events.find((e) => e.type === 'result');
 	return (
-		<div style={agentTurnStyle} data-topo={message.status === 'failed' ? 'bad' : 'good'}>
+		<div
+			style={agentTurnStyle}
+			className={message.status === 'pending' ? 'atlas-inference-wake' : undefined}
+			data-topo={message.status === 'failed' ? 'bad' : 'good'}
+		>
 			<div style={agentTurnHeaderStyle}>
 				<Bot size={13} strokeWidth={1.7} style={{ color: 'rgba(70,240,160,0.95)' }} />
 				<span style={monoLabelStyle}>{message.label}</span>
@@ -1644,6 +1673,18 @@ function MessageBubble({ message }: { message: ConsoleMessage }) {
 	const operator = message.role === 'operator';
 	const failed = message.status === 'failed';
 	const pending = message.status === 'pending';
+	// The system states; it does not chat. Binding receipts and boot notices
+	// render as flat mono ledger lines, not conversation bubbles — they are
+	// records of what the system did, and must not compete with the dialogue.
+	if (message.role === 'system') {
+		return (
+			<div style={systemReceiptStyle} data-topo="muted">
+				<span style={{ ...monoLabelStyle, color: 'var(--atlas-bronze)' }}>▸ {message.label}</span>
+				<span style={systemReceiptBodyStyle}>{message.body}</span>
+				<span style={{ ...pathTextStyle, fontSize: 10, flex: '0 0 auto' }}>{message.time}</span>
+			</div>
+		);
+	}
 	return (
 		<div style={{ display: 'flex', justifyContent: operator ? 'flex-end' : 'flex-start' }}>
 			<div
@@ -1900,9 +1941,9 @@ function StatePill({ children, tone }: { children: React.ReactNode; tone: 'muted
 	);
 }
 
-function WorkbenchBadge({ icon, label }: { icon: React.ReactNode; label: string }) {
+function WorkbenchBadge({ icon, label, title }: { icon: React.ReactNode; label: string; title?: string }) {
 	return (
-		<span style={workbenchBadgeStyle}>
+		<span style={workbenchBadgeStyle} title={title}>
 			{icon}
 			{label}
 		</span>
@@ -2247,6 +2288,26 @@ const auditRowStyle: React.CSSProperties = {
 };
 
 // ── Tool-call card + agent-turn styles ──────────────────────────────────────
+
+const systemReceiptStyle: React.CSSProperties = {
+	display: 'flex',
+	alignItems: 'baseline',
+	gap: 10,
+	padding: '6px 10px',
+	borderLeft: '2px solid rgba(176,138,87,0.4)',
+	background: 'rgba(237,234,224,0.02)',
+	animation: 'atlas-window-in 240ms var(--l2-ease)'
+};
+
+const systemReceiptBodyStyle: React.CSSProperties = {
+	flex: '1 1 auto',
+	minWidth: 0,
+	fontFamily: 'var(--l2-font-mono)',
+	fontSize: 11.5,
+	lineHeight: 1.5,
+	color: 'var(--l2-fg-2)',
+	overflowWrap: 'anywhere'
+};
 
 const agentTurnStyle: React.CSSProperties = {
 	display: 'flex',

@@ -99,3 +99,28 @@ DiffView's diff logic are untouched.
   (`.hljs` token colors), `vite.config.ts` (vendor-markdown chunk),
   `package.json` / `package-lock.json` (react-markdown, remark-gfm,
   rehype-highlight)
+
+---
+
+## Addendum (2026-07-16): operator design pass ("temper")
+
+Four signal-carrying touches applied on top of the redesign, each traceable to
+L2 doctrine (PHILOSOPHY.md / EFFECTS.md):
+
+1. **Streaming inference wake** (effect catalog #9) — while an agent turn is
+   pending, a 2px left rail beside the turn runs a slow emerald traveling wave
+   (`.atlas-inference-wake`, 2.6s, the one easing curve). It exists only while
+   generating and resolves to stillness on completion — Law 5: nothing stays
+   lit without cause.
+2. **System receipts** — system-role messages (boot/binding notices) render as
+   flat mono ledger lines with a bronze hairline, not conversation bubbles.
+   HUD discipline: the system states; it does not chat.
+3. **Binding truth** — the chat header badge shows the bound directory's tail
+   name (full path on hover) instead of a no-information "BOUND".
+4. **Transmit affordance** — send button brightens on approach, presses with
+   weight, dims while a turn is in flight; the disabled composer speaks the
+   system voice ("Turn in progress — streaming").
+
+Plus: Console route is now lazy-loaded (same pattern as Graph), moving the
+markdown stack out of the eager path — entry chunk 349.7KB → 289.8KB
+(60KB budget headroom restored), Console 61.5KB lazy chunk.

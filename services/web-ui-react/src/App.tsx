@@ -6,7 +6,6 @@ import Missions from './routes/Missions';
 import MissionDetail from './routes/MissionDetail';
 import Runs from './routes/Runs';
 import RunDetail from './routes/RunDetail';
-import Console from './routes/Console';
 import Command from './routes/Command';
 import Projects from './routes/Projects';
 import Control from './routes/Control';
@@ -20,6 +19,8 @@ import Migrating from './routes/Migrating';
 
 // Lazy — pulls three.js, kept out of the main bundle.
 const Graph = lazy(() => import('./routes/Graph'));
+// Lazy — pulls the markdown/highlight stack, kept out of the main bundle.
+const Console = lazy(() => import('./routes/Console'));
 
 const router = createBrowserRouter([
 	{
@@ -32,7 +33,7 @@ const router = createBrowserRouter([
 			{ path: 'missions/:id', element: <MissionDetail /> },
 			{ path: 'runs', element: <Runs /> },
 			{ path: 'runs/:id', element: <RunDetail /> },
-			{ path: 'console', element: <Console /> },
+			{ path: 'console', element: <Suspense fallback={null}><Console /></Suspense> },
 			{ path: 'graph', element: <Suspense fallback={null}><Graph /></Suspense> },
 			{ path: 'projects', element: <Projects /> },
 			{ path: 'cashflow', element: <Cashflow /> },
