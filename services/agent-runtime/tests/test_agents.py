@@ -330,6 +330,40 @@ def test_delta_buffer_none_without_prior_push_is_noop() -> None:
     assert flushes == []
 
 
+def test_delta_buffer_splits_on_mid_tool_call_retry_marker() -> None:
+    """R3 fix: the foundation's mid-tool-call silent stream retry
+    (chat_completion_helpers.py ~2144-2186) re-streams a turn's preamble from
+    scratch after a transient connection drop, firing the "Connection dropped
+    mid tool-call" marker through stream_delta_callback with no end-of-turn
+    signal in between — without the split, the pre-drop and retried preambles
+    would concatenate into one seamless, garbled-looking duplicate part.
+    """
+    flushes: list[tuple[str, bool]] = []
+    buf = _DeltaBuffer(lambda text, final: flushes.append((text, final)), interval_s=999, max_chars=999)
+    buf.push("Let me check that for you")
+    assert flushes == []
+    buf.push("\n\n⚠ Connection dropped mid tool-call; reconnecting…\n\n")
+    # The pre-drop segment closes as its own final part...
+    assert flushes == [("Let me check that for you", True)]
+    buf.push("Let me check that for you again")
+    buf.push(None)
+    # ...and the marker + regenerated text form a distinct second part.
+    assert flushes == [
+        ("Let me check that for you", True),
+        ("\n\n⚠ Connection dropped mid tool-call; reconnecting…\n\nLet me check that for you again", True),
+    ]
+
+
+def test_delta_buffer_retry_marker_without_open_turn_is_not_split() -> None:
+    """A marker-shaped chunk arriving as the FIRST chunk of a turn (no prior
+    open segment) is just normal text — nothing to split."""
+    flushes: list[tuple[str, bool]] = []
+    buf = _DeltaBuffer(lambda text, final: flushes.append((text, final)), interval_s=999, max_chars=999)
+    buf.push("\n\n⚠ Connection dropped mid tool-call; reconnecting…\n\n")
+    buf.push(None)
+    assert flushes == [("\n\n⚠ Connection dropped mid tool-call; reconnecting…\n\n", True)]
+
+
 def test_native_harness_unavailable_is_failed(db: sqlite3.Connection, lock: threading.Lock) -> None:
     mid = _pending_mission(db)
     rid = _running_run(db, mid)
