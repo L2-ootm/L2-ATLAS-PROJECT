@@ -522,8 +522,15 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             produce((draft) => {
               const part = draft[result.index]
               const field = event.properties.field as keyof typeof part
-              const existing = part[field] as string | undefined
-              ;(part[field] as string) = (existing ?? "") + event.properties.delta
+              const existing = (part[field] as string | undefined) ?? ""
+              // Idempotency guard: `offset` is the emitter's text length before
+              // this append. A mismatch means duplicate delivery (event-ring
+              // replay across an /event reconnect) or an ordering violation —
+              // appending anyway duplicates streamed text on screen. Drop it;
+              // the final message.part.updated reconcile carries full text.
+              const offset = (event.properties as { offset?: number }).offset
+              if (typeof offset === "number" && existing.length !== offset) return
+              ;(part[field] as string) = existing + event.properties.delta
             }),
           )
           break

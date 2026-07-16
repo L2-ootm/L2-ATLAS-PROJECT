@@ -437,13 +437,19 @@ export class ChatAdapter {
 				this.streamingText.set(assistant.info.id, entry);
 			}
 			if (entry?.open && deltaText) {
+				// `offset` = authoritative text length BEFORE this append. Lets
+				// consumers detect and drop duplicate deliveries (event-ring
+				// replay after an /event reconnect) instead of blindly appending
+				// the same delta twice — the streaming-duplication bug class.
+				const offset = (entry.part.text ?? '').length;
 				entry.part.text = (entry.part.text ?? '') + deltaText;
 				this.bus.emit('message.part.delta', {
 					sessionID,
 					messageID: assistant.info.id,
 					partID: entry.part.id,
 					field: 'text',
-					delta: deltaText
+					delta: deltaText,
+					offset
 				});
 			}
 			if (endOfTurn && entry) entry.open = false;
