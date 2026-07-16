@@ -1,0 +1,13 @@
+diff --git a/index-fedv7szb.js b/index-fedv7szb.js
+index 23ae50ad18b24366a5a3aca03d99320441693fc5..8686f55f551f6a507ee195d9e63b7267d7f68851 100644
+--- a/index-fedv7szb.js
++++ b/index-fedv7szb.js
+@@ -9515,7 +9515,7 @@ class MarkdownRenderable extends Renderable {
+     renderable.bg = this._bg;
+     renderable.conceal = this._conceal;
+     renderable.drawUnstyledText = false;
+-    renderable.streaming = true;
++    renderable.streaming = this._streaming;
+     renderable.marginBottom = marginBottom;
+   }
+   applyCodeBlockRenderable(renderable, token, marginBottom) {

@@ -1500,7 +1500,7 @@ function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: Ass
             <code
               filetype="markdown"
               drawUnstyledText={false}
-              streaming={true}
+              streaming={!isDone()}
               syntaxStyle={subtleSyntax()}
               content={summary().body}
               conceal={ctx.conceal()}
@@ -1560,17 +1560,17 @@ function ReasoningHeader(props: {
 function TextPart(props: { last: boolean; part: TextPart; message: AssistantMessage }) {
   const ctx = use()
   const { theme, syntax } = useTheme()
-  // DIAGNOSTIC: count renders per part to confirm duplication source.
-  // Remove after rendering hypothesis is settled.
-  const renderCount = { current: 0 }
-  createEffect(() => {
-    const _text = props.part.text // track reactive dependency
-    renderCount.current++
-    if (renderCount.current <= 3 || renderCount.current % 20 === 0) {
-      // eslint-disable-next-line no-console
-      console.error(`[TextPart] part=${props.part.id} render=${renderCount.current} len=${_text.length} first60=${JSON.stringify(_text.slice(0, 60))}`)
-    }
-  })
+  // opentui's <code>/<markdown> renderables are documented (Markdown.d.ts) to be
+  // driven as ONE persistent instance: keep `streaming=true` while chunks are
+  // still appending, then flip it to `false` once to finalize trailing token
+  // parsing. Their prose-paragraph highlighting resolves asynchronously via
+  // tree-sitter and only gets retried on each incremental `content` commit —
+  // a persistent instance gets many chances to land a correct highlight before
+  // the turn ends. Unmounting and remounting a *fresh* instance only at
+  // completion (the prior approach here) skips those retries: the new
+  // instance's first async highlight pass has no fallback if it resolves late
+  // or empty, which is what produced literal unhighlighted "**" markers and a
+  // visible flash at turn-completion.
   return (
     <Show when={props.part.text.trim()}>
       <box id={"text-" + props.part.id} paddingLeft={3} marginTop={1} flexShrink={0}>
@@ -1578,7 +1578,7 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
           <Match when={Flag.ATLAS_TUI_EXPERIMENTAL_MARKDOWN}>
             <markdown
               syntaxStyle={syntax()}
-              streaming={true}
+              streaming={!props.message.time.completed}
               content={props.part.text.trim()}
               conceal={ctx.conceal()}
               fg={theme.markdownText}
@@ -1589,7 +1589,7 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
             <code
               filetype="markdown"
               drawUnstyledText={false}
-              streaming={true}
+              streaming={!props.message.time.completed}
               syntaxStyle={syntax()}
               content={props.part.text.trim()}
               conceal={ctx.conceal()}

@@ -41,7 +41,6 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
 
     let queue: GlobalEvent[] = []
     let timer: Timer | undefined
-    let last = 0
     const retryDelay = 1000
     const maxRetryDelay = 30000
 
@@ -50,7 +49,6 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
       const events = queue
       queue = []
       timer = undefined
-      last = Date.now()
       // Batch all event emissions so all store updates result in a single render
       batch(() => {
         for (const event of events) {
@@ -61,16 +59,17 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
 
     const handleEvent = (event: GlobalEvent) => {
       queue.push(event)
-      const elapsed = Date.now() - last
-
-      if (timer) return
-      // If we just flushed recently (within 16ms), batch this with future events
-      // Otherwise, process immediately to avoid latency
-      if (elapsed < 16) {
-        timer = setTimeout(flush, 16)
-        return
-      }
-      flush()
+      // Always debounce on a trailing 16ms window (reset on every new event)
+      // instead of flushing isolated events immediately. A same-turn pair like
+      // the final text reconcile + the completion signal often arrives a few
+      // ms apart rather than in the exact same tick — flushing the first one
+      // immediately (the old "idle -> flush now" fast path) split them into
+      // two separate SolidJS batches, producing two render passes and a
+      // visible intermediate paragraph-boundary state (streaming duplication
+      // bug; see ULTRAREVIEW-streaming-duplication-v2). The flat 16ms delay
+      // this adds to isolated events is one frame — imperceptible.
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(flush, 16)
     }
 
     function startSSE() {
