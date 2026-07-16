@@ -276,3 +276,31 @@ def test_wiki_group_without_subcommand_prints_help():
 
     assert result.exit_code == 0, result.output
     assert "LLM Wiki commands" in result.output
+
+
+def test_mission_workdir_resolves_bound_project_root(db, lock, tmp_path):
+    """A mission bound to a registered project resolves to that project's root."""
+    from atlas_runtime import mission_service, project_service
+    from atlas_runtime.cli.main import _mission_workdir
+
+    root = tmp_path / "bound-repo"
+    root.mkdir()
+    project = project_service.register_project(db, lock, name="bound", root_path=str(root))
+    mission = mission_service.create_mission(db, lock, title="Scoped", project_id=project.id)
+    assert _mission_workdir(db, mission.id) == str(root)
+
+
+def test_mission_workdir_none_without_binding_or_missing_root(db, lock, tmp_path):
+    """Unbound missions and vanished project roots both resolve to None."""
+    from atlas_runtime import mission_service, project_service
+    from atlas_runtime.cli.main import _mission_workdir
+
+    unbound = mission_service.create_mission(db, lock, title="Global")
+    assert _mission_workdir(db, unbound.id) is None
+
+    root = tmp_path / "gone-repo"
+    root.mkdir()
+    project = project_service.register_project(db, lock, name="gone", root_path=str(root))
+    bound = mission_service.create_mission(db, lock, title="Gone", project_id=project.id)
+    root.rmdir()
+    assert _mission_workdir(db, bound.id) is None

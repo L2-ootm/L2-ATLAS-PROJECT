@@ -601,3 +601,18 @@ def test_start_run_records_claude_code(db: sqlite3.Connection, lock: threading.L
     row = db.execute("SELECT agent_runtime FROM runs WHERE id=?", (run.id,)).fetchone()
     assert row[0] == "claude_code"
     assert run.agent_runtime == "claude_code"
+
+
+def test_json_safe_preview_caps_and_roundtrips() -> None:
+    from atlas_runtime.agents.native import _json_safe_preview
+
+    assert _json_safe_preview("x" * 50, 10) == "x" * 10
+    assert _json_safe_preview({"cmd": "ls", "n": 3}, 2000) == {"cmd": "ls", "n": 3}
+    # Non-serializable values degrade to strings instead of failing the run.
+    class Weird:
+        def __str__(self) -> str:
+            return "weird"
+    assert "weird" in json.dumps(_json_safe_preview({"o": Weird()}, 2000))
+    # Oversized structures degrade to a capped JSON string.
+    big = _json_safe_preview({"k": "y" * 5000}, 100)
+    assert isinstance(big, str) and len(big) == 100

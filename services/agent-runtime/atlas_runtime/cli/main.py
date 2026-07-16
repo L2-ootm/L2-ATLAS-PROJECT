@@ -12,6 +12,7 @@ Design:
 
 from __future__ import annotations
 
+import os
 import pathlib
 import sqlite3
 import threading
@@ -675,6 +676,30 @@ def project_list() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _mission_workdir(conn: sqlite3.Connection, mission_id: str) -> Optional[str]:
+    """The registered project root this mission is bound to, or None.
+
+    A mission carries `project_id` when the operator bound a workspace
+    (console binding, `mission create --project`). Runs must execute INSIDE
+    that root — without this, every agent runs in whatever cwd the gateway
+    happened to be started from, and the binding is cosmetic.
+    """
+    row = conn.execute(
+        "SELECT project_id FROM missions WHERE id=?", (mission_id,)
+    ).fetchone()
+    project_id = row[0] if row else None
+    if not project_id:
+        return None
+    try:
+        project = project_service.get_project(conn, project_id)
+    except Exception:  # noqa: BLE001 — a broken project must not block the run
+        return None
+    if project is None:
+        return None
+    root = pathlib.Path(project.root_path).expanduser()
+    return str(root) if root.is_dir() else None
+
+
 def _run_prompt(conn: sqlite3.Connection, mission_id: str) -> str:
     """Assemble the secret-redacted operator context + mission intent."""
     ctx = context_service.assemble_context(conn, mission_id=mission_id)
@@ -721,6 +746,12 @@ def run_exec(
         typer.echo(f"Error: run is {status!r}, not running", err=True)
         raise typer.Exit(1)
     prompt = _run_prompt(conn, mission_id)
+    # Execute inside the mission's bound project root. Safe process-wide:
+    # this CLI command is spawned as a dedicated detached subprocess per run
+    # (see docstring), so chdir cannot leak across runs.
+    workdir = _mission_workdir(conn, mission_id)
+    if workdir:
+        os.chdir(workdir)
     outcome = run_executor.execute_run(
         conn, lock, agent=get_agent(agent), mission_id=mission_id, run_id=run_id, prompt=prompt
     )
