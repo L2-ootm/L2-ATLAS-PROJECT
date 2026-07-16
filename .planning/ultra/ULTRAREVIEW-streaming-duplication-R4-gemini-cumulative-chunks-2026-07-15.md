@@ -227,3 +227,40 @@ incremental-delta contract is the correct and only place to enforce that
 contract; every downstream layer should (and, per the byte-identical
 `sync.tsx` comparison, correctly does) trust it unconditionally rather than
 re-implementing defensive diffing at every consumption point.
+
+---
+
+## Addendum (2026-07-16): ATLAS is the primary fix — final_response repair added
+
+Operator directive: the freellmapi patch is a tape fix; ATLAS itself must handle
+malformed token streams. Follow-up investigation found a third exposure the
+`_DeltaBuffer` guard did not cover:
+
+- The vendored foundation builds the assistant message by appending every raw
+  `delta.content` chunk (`agent/chat_completion_helpers.py:1814`, D-001 — not
+  editable). With a cumulative-chunk provider, `result["final_response"]` is
+  therefore corrupted BEFORE ATLAS ever sees it, and it feeds the `llm_call`
+  reconcile event (`native.py::_map_result`) and the RunOutcome summary — so
+  the duplication would have reappeared at final reconcile even with clean
+  streaming deltas.
+
+Fix (ATLAS-owned, `services/agent-runtime/atlas_runtime/agents/native.py`):
+
+- `_DeltaBuffer.last_turn_text` — normalized ground truth of the last closed turn.
+- `_repair_cumulative_final(final_text, streamed_turn_text)` — repairs the
+  foundation string only when it carries the exact cumulative-concatenation
+  fingerprint: ends with the streamed truth and the leftover head decomposes
+  entirely into stale prefixes of it. Footers, think-block stripping, retry
+  re-streams, and non-streaming paths fail the fingerprint and pass through.
+- `_map_result` applies the repair (with a warning log) before emitting.
+
+Defense summary, in priority order:
+1. **Primary — ATLAS `_DeltaBuffer._diff_cumulative_chunk`**: normalizes every
+   streamed chunk at the single choke point all surfaces consume through.
+2. **Primary — ATLAS `_repair_cumulative_final`**: repairs the foundation's
+   independently-corrupted final message at the consumption boundary.
+3. **Secondary hardening — freellmapi `google.ts diffCumulativeText`**: fixes
+   the proxy for all of its consumers; ATLAS does not depend on it.
+
+Tests: 5 new (`test_delta_buffer_records_last_turn_text`,
+`test_repair_cumulative_final_*`), suite `tests/test_agents.py` 32 passed.

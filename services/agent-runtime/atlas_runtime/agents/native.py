@@ -86,6 +86,38 @@ def _diff_cumulative_chunk(previous_text: str, chunk_text: str) -> str:
     return chunk_text
 
 
+def _repair_cumulative_final(final_text: str, streamed_turn_text: str) -> str:
+    """Repairs a `final_response` corrupted by cumulative-chunk concatenation.
+
+    The foundation builds the assistant message by appending every raw
+    `delta.content` chunk (chat_completion_helpers.py ~1814, D-001 vendored —
+    not editable here), so a provider that resends cumulative text produces a
+    final string like ``p1 + p2 + ... + truth`` where each ``p_i`` is a stale
+    prefix of the true text. `_DeltaBuffer` already normalized the same chunk
+    stream, so its per-turn text is the ground truth for what the final turn
+    actually said. Repair triggers only when the foundation text ends with the
+    streamed truth AND the leftover head decomposes entirely into prefixes of
+    it — the exact fingerprint of cumulative concatenation. Anything else
+    (think-block stripping, appended footers, retry re-streams, non-streaming
+    paths) fails that check and passes through untouched.
+    """
+    truth = streamed_turn_text.strip()
+    if not truth or not final_text or final_text == truth:
+        return final_text
+    if len(final_text) <= len(truth) or not final_text.endswith(truth):
+        return final_text
+    head = final_text[: len(final_text) - len(truth)]
+    i = 0
+    while i < len(head):
+        j = 0
+        while i + j < len(head) and j < len(truth) and head[i + j] == truth[j]:
+            j += 1
+        if j == 0:
+            return final_text
+        i += j
+    return truth
+
+
 class _DeltaBuffer:
     """Coalesces a foundation `stream_delta_callback(chunk | None)` stream into
     flush-sized `llm_delta` audit events.
@@ -111,15 +143,20 @@ class _DeltaBuffer:
         self._buffer: list[str] = []
         self._last_flush = time.monotonic()
         self._turn_open = False
-        # Raw cumulative text seen for the currently-open turn, pre-dedup —
-        # what incoming chunks are diffed against (see _diff_cumulative_chunk).
+        # Normalized text accumulated for the currently-open turn — what
+        # incoming chunks are diffed against (see _diff_cumulative_chunk).
         self._turn_text = ""
+        # Normalized text of the most recently CLOSED turn. For the final
+        # assistant turn this is the ground truth used to repair a
+        # cumulative-corrupted foundation final_response (_repair_cumulative_final).
+        self.last_turn_text = ""
 
     def push(self, chunk: Optional[str]) -> None:
         if chunk is None:
             if self._turn_open:
                 self._flush(final=True)
                 self._turn_open = False
+                self.last_turn_text = self._turn_text
             self._turn_text = ""
             return
         if self._turn_open and _STREAM_RETRY_MARKER in chunk:
@@ -128,6 +165,7 @@ class _DeltaBuffer:
             # new one (see _STREAM_RETRY_MARKER comment above).
             self._flush(final=True)
             self._turn_open = False
+            self.last_turn_text = self._turn_text
             self._turn_text = ""
         normalized = _diff_cumulative_chunk(self._turn_text, chunk)
         self._turn_text += normalized
@@ -499,7 +537,10 @@ class NativeAtlasAgent(AgentRuntime):
         if delta_buffer is not None:
             delta_buffer.push(None)
 
-        return self._map_result(conn, lock, run_id, result_holder.get("result", {}))
+        return self._map_result(
+            conn, lock, run_id, result_holder.get("result", {}),
+            streamed_final=delta_buffer.last_turn_text if delta_buffer is not None else "",
+        )
 
     # -- internal ----------------------------------------------------------
 
@@ -509,9 +550,18 @@ class NativeAtlasAgent(AgentRuntime):
         lock: threading.Lock,
         run_id: str,
         result: dict[str, Any],
+        *,
+        streamed_final: str = "",
     ) -> RunOutcome:
         """Map the harness result dict → audit event + RunOutcome with claims."""
         final_response = (result.get("final_response") or "").strip()
+        repaired = _repair_cumulative_final(final_response, streamed_final)
+        if repaired != final_response:
+            logger.warning(
+                "cumulative-chunk corruption repaired in final_response "
+                "(run %s: %d chars -> %d)", run_id[:8], len(final_response), len(repaired),
+            )
+            final_response = repaired
         api_calls = result.get("api_calls") or 0
         completed = bool(result.get("completed"))
         failed = bool(result.get("failed"))
