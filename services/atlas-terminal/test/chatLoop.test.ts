@@ -391,4 +391,69 @@ describe('STAGE 1 chat loop', () => {
 		expect(text).toContain('message.part.updated');
 		await reader.cancel();
 	});
+
+	it('delta events carry the pre-append offset so consumers can drop duplicate deliveries', async () => {
+		const state = newState();
+		const sse = [
+			frame('audit', { event_type: 'llm_delta', data: { delta: 'Hel' } }),
+			frame('audit', { event_type: 'llm_delta', data: { delta: 'lo, ' } }),
+			frame('audit', { event_type: 'llm_delta', data: { delta: 'world', end_of_turn: true } }),
+			frame('audit', { event_type: 'llm_call', data: { text: 'Hello, world' } }),
+			frame('end', { status: 'succeeded' })
+		];
+		const handle = createAtlasFetchHandle({
+			gateway: GW,
+			fetchImpl: stubGateway(state, sse),
+			permissionPollMs: 0
+		});
+		const events: DonorEvent[] = [];
+		handle.bus.subscribe((e) => events.push(e));
+		const created = await handle.fetch('http://donor.local/session', { method: 'POST', body: '{}' });
+		const session = (await created.json()) as { id: string };
+		await handle.fetch(`http://donor.local/session/${session.id}/prompt_async`, {
+			method: 'POST',
+			body: JSON.stringify({ parts: [{ text: 'stream it' }] })
+		});
+		await settle();
+
+		const deltas = events.filter((e) => e.type === 'message.part.delta');
+		expect(deltas.map((e) => (e.properties as { offset?: number }).offset)).toEqual([0, 3, 7]);
+	});
+
+	it('SSE /event replay skips message.part.delta so a reconnect cannot re-append streamed text', async () => {
+		const state = newState();
+		const sse = [
+			frame('audit', { event_type: 'llm_delta', data: { delta: 'Hello' } }),
+			frame('audit', { event_type: 'llm_delta', data: { delta: ' world', end_of_turn: true } }),
+			frame('audit', { event_type: 'llm_call', data: { text: 'Hello world' } }),
+			frame('end', { status: 'succeeded' })
+		];
+		const handle = createAtlasFetchHandle({
+			gateway: GW,
+			fetchImpl: stubGateway(state, sse),
+			permissionPollMs: 0
+		});
+		const created = await handle.fetch('http://donor.local/session', { method: 'POST', body: '{}' });
+		const session = (await created.json()) as { id: string };
+		await handle.fetch(`http://donor.local/session/${session.id}/prompt_async`, {
+			method: 'POST',
+			body: JSON.stringify({ parts: [{ text: 'hey' }] })
+		});
+		await settle();
+
+		// a late /event subscriber (same code path as a mid-run reconnect)
+		// must get state via part.updated snapshots, never replayed deltas.
+		const res = await handle.fetch('http://donor.local/event');
+		const reader = res.body!.getReader();
+		const decoder = new TextDecoder();
+		let text = '';
+		for (let i = 0; i < 20 && !text.includes('message.part.updated'); i++) {
+			const { value, done } = await reader.read();
+			if (done) break;
+			text += decoder.decode(value, { stream: true });
+		}
+		expect(text).toContain('message.part.updated');
+		expect(text).not.toContain('message.part.delta');
+		await reader.cancel();
+	});
 });

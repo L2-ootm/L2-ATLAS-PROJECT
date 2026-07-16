@@ -48,6 +48,15 @@ export class EventBus {
 	}
 
 	replayRecent(listener: DonorEventListener): void {
-		for (const event of this.recent) listener(event);
+		for (const event of this.recent) {
+			// Never replay text-append deltas: a subscriber that already applied
+			// them (an /event reconnect re-subscribing mid-run) would append the
+			// same text twice — the visible "streaming duplication" failure. The
+			// replayed message.part.updated events serialize the LIVE part object
+			// at forward time, so they already carry the full accumulated text;
+			// deltas add nothing to a late subscriber that updated events don't.
+			if (event.type === 'message.part.delta') continue;
+			listener(event);
+		}
 	}
 }
