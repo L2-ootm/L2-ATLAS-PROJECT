@@ -20,7 +20,8 @@ import Console from '../routes/Console';
 const surface = vi.hoisted(() => ({
 	value: {
 		events: [] as SurfaceEvent[],
-		submitPrompt: vi.fn()
+		submitPrompt: vi.fn(),
+		releaseSession: vi.fn().mockResolvedValue(undefined)
 	}
 }));
 
@@ -132,5 +133,63 @@ describe('Console streaming (delta + reconcile merge)', () => {
 		// debug row — that's a different view, not the duplication bug.
 		const matches = within(chatPane).getAllByText('Good question. Let me check where we actually stand.');
 		expect(matches).toHaveLength(1);
+	});
+
+	it('renders tool execution events as tool cards with matched results', async () => {
+		surface.value.submitPrompt.mockResolvedValue('run-1');
+		renderConsole();
+
+		fireEvent.change(screen.getByPlaceholderText('Message ATLAS'), {
+			target: { value: 'run a command' }
+		});
+		fireEvent.click(screen.getByTitle('Send'));
+		await act(async () => {});
+
+		// native.py's tool hooks: tool_requested/tool_completed audit rows
+		// project to surface kinds tool_call/tool_result with tool + call_id.
+		surface.value.events = [
+			surfaceEvent(1, 'tool_call', {
+				tool: 'run_command',
+				call_id: 'call-1',
+				arguments: { command: 'git status' }
+			}),
+			surfaceEvent(2, 'tool_result', {
+				tool: 'run_command',
+				call_id: 'call-1',
+				text: 'On branch main'
+			})
+		];
+		await act(async () => fireEvent.click(screen.getByText('tick')));
+
+		const chatPane = screen.getByTestId('chat-pane-chat-1');
+		expect(within(chatPane).getByText(/run_command/i)).toBeInTheDocument();
+	});
+
+	it('collapses consecutive run-boundary status lines into one receipt row', async () => {
+		surface.value.submitPrompt.mockResolvedValue('run-1');
+		renderConsole();
+
+		fireEvent.change(screen.getByPlaceholderText('Message ATLAS'), {
+			target: { value: 'status noise' }
+		});
+		fireEvent.click(screen.getByTitle('Send'));
+		await act(async () => {});
+
+		// The three per-run notices (transition + runtime marker + privacy
+		// warning) arrive as consecutive status-mapped tool_call events.
+		surface.value.events = [
+			surfaceEvent(1, 'tool_call', { transition: 'started' }),
+			surfaceEvent(2, 'tool_call', { runtime: 'native' }),
+			surfaceEvent(3, 'tool_call', {
+				privacy_warning: 'free models may log prompts — do not send secrets'
+			})
+		];
+		await act(async () => fireEvent.click(screen.getByText('tick')));
+
+		const chatPane = screen.getByTestId('chat-pane-chat-1');
+		const merged = within(chatPane).getByText(
+			'run started · runtime native · free models may log prompts — do not send secrets'
+		);
+		expect(merged).toBeInTheDocument();
 	});
 });

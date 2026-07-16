@@ -10,6 +10,7 @@ import {
 	ApiError,
 	approveToolCall,
 	cancelSurfaceSession,
+	closeSurfaceSession,
 	createMission,
 	createSurfaceSession,
 	getSurfaceEvents,
@@ -190,6 +191,24 @@ export function AgentSurfaceProvider({ children }: { children: ReactNode }) {
 		retainSession(next);
 	}, [retainSession]);
 
+	/** Drop the held surface session (workspace rebind, unbind). The session
+	 * is workspace-bound at creation, so a binding change must not keep
+	 * scoping runs to the old workspace — release locally first (the next
+	 * prompt re-surfaces against the new binding), then close best-effort. */
+	const releaseSession = useCallback(async () => {
+		const current = sessionRef.current;
+		if (!current) return;
+		retainSession(null);
+		cursor.current = -1;
+		setEvents([]);
+		setApprovals([]);
+		try {
+			await closeSurfaceSession(current);
+		} catch {
+			// Best-effort: an already-expired/reclaimed session is fine.
+		}
+	}, [retainSession]);
+
 	const resume = useCallback(async () => {
 		const current = sessionRef.current;
 		if (!current) return;
@@ -303,6 +322,7 @@ export function AgentSurfaceProvider({ children }: { children: ReactNode }) {
 			openSurface,
 			submitPrompt,
 			cancel,
+			releaseSession,
 			resume,
 			refresh,
 			decide,
@@ -325,6 +345,7 @@ export function AgentSurfaceProvider({ children }: { children: ReactNode }) {
 			openSurface,
 			submitPrompt,
 			cancel,
+			releaseSession,
 			resume,
 			refresh,
 			decide
