@@ -1,87 +1,387 @@
 # Handoff — L2 ATLAS Finish Sprint
 
-## Session update — 2026-07-12 (final): streaming text duplication — 4 fix iterations, rendering hypothesis confirmed
+## Session update — 2026-07-15 (R3): streaming duplication root-caused — mid-tool-call retry, not a render bug; uncommitted R1/R2/R3 from prior session committed
 
-### Status: DATA-FLOW BUGS FIXED, RENDERING BUG OPEN
+Operator reported (screenshot) that the R1+R2 fixes from the prior "(latest)"
+session did NOT resolve the streaming duplication. Ran a full ULTRAREVIEW
+(4 parallel subagents) instead of assuming a stale-process false alarm again.
+Full writeup: `.planning/ultra/ULTRAREVIEW-streaming-duplication-R3-mid-tool-call-retry-2026-07-15.md`.
 
-The streaming text duplication went through **4 fix iterations** across the
-session. All data-flow bugs are now fixed and tested. The duplication
-**persists** — operator UAT confirms it is a **rendering-layer issue** in
-the opentui `<code>` component, not in the adapter/runtime data flow.
+**Root cause (new, 4th layer — content duplication, not render duplication):**
+`foundation/atlas-hermes/agent/chat_completion_helpers.py:2144-2186` (vendored,
+D-001) has a code-documented, intentional mid-tool-call silent stream retry: if a
+transient connection drop happens while a tool call is forming, it fires a "⚠
+Connection dropped mid tool-call; reconnecting…" marker through
+`stream_delta_callback` and re-enters the provider call from scratch — with no
+end-of-turn (`None`) signal in between. ATLAS's `_DeltaBuffer`
+(`native.py`, pre-fix) did pure unguarded concatenation, so the regenerated
+preamble landed stitched directly onto the interrupted one: two near-identical
+copies of the same paragraph with a small textual offset (sampling variance),
+exactly the operator's reported pattern. This is architecturally invisible to
+every previous fix — R1/R2/prior-session part-creation dedup all operate on the
+**render** layer and assume the underlying text stream is already correct
+content; this bug corrupts the content itself, one layer upstream.
+
+**Fix**: `native.py`'s `_DeltaBuffer.push()` now detects the retry marker text
+and, when found inside an open turn, flushes the pre-drop segment as
+`final=True` before the marker + retried text start a fresh segment — the
+client already knows how to start a new part on a closed `streamingText` entry
+(unchanged `chat.ts` logic), so the retry now renders as two visually distinct
+parts (interrupted preamble, then reconnect notice + clean regenerated answer)
+instead of one seamless garbled block. Does not eliminate the foundation's
+intentional redundant-generation tradeoff (out of scope, vendored) but makes the
+failure mode honest/comprehensible instead of indistinguishable from a
+rendering defect. New tests:
+`test_delta_buffer_splits_on_mid_tool_call_retry_marker`,
+`test_delta_buffer_retry_marker_without_open_turn_is_not_split`.
+
+**Commit-hygiene finding**: the prior session's R1 (sdk.tsx always-debounce) was
+**never committed, in any commit** — `git log --all -S"Always debounce"` returns
+nothing; HEAD still had the old conditional-flush logic despite HANDOFF claiming
+it was "Implemented ... Verified." R2's persistence infra
+(`patchedDependencies`, the patch file, `bun.lock`) was also uncommitted — the
+opentui patch was physically live in `node_modules` but a fresh clone+install
+would have silently lost it. An **undocumented R3-style change** was also found
+uncommitted in `session/index.tsx` (`streaming={!props.message.time.completed}`
+on `TextPart`), contradicting HANDOFF's explicit "Did NOT implement R3" — it was
+logically correct so it's kept, and HANDOFF is now accurate. All of this is
+committed this session. Also fixed a same-class residual bug found during the
+audit: `ReasoningPart`'s `<code>` renderable still hardcoded `streaming={true}`
+(never updated alongside `TextPart`) — now `streaming={!isDone()}`.
+
+**Cleared (not the bug, audited in full)**: gateway's rowid-cursor SSE relay
+(replay-safe, verified), freellmapi's `content.ts` normalization + dialect-hold
+passthrough logic (structurally incapable of duplication), `sdk.tsx`'s event
+source wiring (mutually exclusive if/else, no dual-delivery).
+
+**Documented but not fixed (judgment calls, see ULTRAREVIEW doc for detail)**:
+`sync.tsx`'s `message.part.delta` handler has no event-id/sequence dedup guard
+— real latent gap, no confirmed live trigger, would need a schema change;
+freellmapi's Gemini adapter (`google.ts`, sibling repo) has zero
+cumulative-vs-incremental diffing guard — structural risk, unconfirmed, out of
+scope (separate repo, not modified).
+
+Verified: agent-runtime full suite 831 passed (2 new); atlas-terminal tsc
+clean, bun test 56/56. **UAT still owed** — this environment can't force a real
+mid-tool-call network drop to visually confirm live; next operator session
+should watch for the "⚠ Connection dropped mid tool-call" marker if duplication
+ever recurs (confirms this path) vs. no marker (points at the two documented-
+but-unfixed gaps above instead).
+
+**Next:**
+1. Operator UAT: run real prompts through `atlas`, including some that trigger
+   tool calls, and watch for either (a) no more duplication, or (b) a visible
+   "⚠ Connection dropped..." reconnect boundary instead of seamless garbled text.
+2. If duplication recurs with no reconnect marker: implement the `sync.tsx`
+   delta dedup guard (needs a sequence number added to the delta event schema).
+3. Flag freellmapi's `google.ts` adapter gap to that repo/maintainer, or add
+   a defensive incremental-diff guard there if ATLAS traffic frequently routes
+   to `platform: google`.
+
+## Session update — 2026-07-15 (later): UAT feedback — help/up redraw bug fixed, streaming duplication still reported (needs clean-restart retest), workspace-root design deferred
+
+Operator UAT of the prior entry's work found a real regression in the new
+interactive `atlas help`, reported the streaming duplication as still present,
+and flagged a real architecture gap in the workspace-root model.
+
+**1. Help/up picker duplication — FIXED and root-caused.** Screenshot showed
+the tab bar rendering twice (stale first line + corrected second line).
+`help_browser.py`'s `_draw()` moved the cursor up by the **new** frame's line
+count before repainting — but different tabs have different command counts
+(7 in "Getting Started", 1 in "Dev / Internal"), so switching tabs desynced
+the cursor from the actual previous frame height, leaving stale lines on
+screen. `interactive_select.py`'s picker never hit this (its frame height is
+constant — same items for the whole session) so it needed no fix. Rewrote
+`_draw()` to thread the *previous* frame's line count through the loop
+(`prev_lines = _draw(lines, prev_lines)`) and clear+rewind past any leftover
+lines when a frame shrinks. 4 new regression tests proving the cursor math
+for growing/shrinking/first-frame draws
+(`test_help_browser.py::test_draw_*`). Full suite: 829 passed.
+
+**2. Streaming duplication — still reported live; not re-fixed this pass.**
+Verified the opentui patch (`renderable.streaming = this._streaming`) is
+still physically present in `node_modules` — not reverted. Working
+hypothesis: the screenshotted session was a long-running atlas-terminal
+Node process that predates the R1+R2 fix (patched files only take effect on
+the *next* process launch; several `node.exe` processes were already running
+on this machine when checked). **Operator asked to fully quit and relaunch
+`atlas`, then retest, before assuming the fix itself is wrong.** This
+environment cannot drive a real interactive TUI stream to independently
+reproduce/verify — that's the actual limitation, not avoidance. If it
+recurs after a genuinely clean restart, next step is a deeper look at
+atlas-terminal's own screen-diffing (separate from opentui core) for the
+same class of bug just fixed in (1) above — variable-height frame redraw
+without full clear is a suspicious structural match for the reported visual
+pattern (stale partial text immediately adjacent to the corrected full text,
+no separator).
+
+**3. Workspace-root model — confirmed real gap, explicitly deferred.**
+Operator's stated intent: execution/workspace scope should default to the
+user's home directory ("user folder down"), with `~/.atlas` reserved purely
+for ATLAS's own internal state (config, db, logs, and — per the operator —
+soul.md/Hermes-derived memory files once that work lands). Confirmed current
+behavior: `workspace_service.global_root()` (the "default ATLAS workspace"
+option in `_prompt_workspace_scope()`) resolves to `~/.atlas` itself,
+deliberately tied to the DB home (existing "Pitfall 4" invariant comment) —
+so there is no real broad-workspace option today, only "wherever the shell's
+cwd happened to be" or the small internal dotfolder. The specific screenshot
+(cwd reported as `services/agent-runtime`) was the former, not a code bug in
+that instance — but the underlying design gap is real. `global_root()` is
+also the literal SURF-02/03 path-containment security boundary, so widening
+it is a deliberate scope decision, not cosmetic. **Operator chose: scope this
+as its own design pass, bundled with the upcoming Hermes memory/SOUL.md
+rework**, rather than an interim fix now. Not implemented this session.
+
+**4. WebUI chat: real duplication bug found + fixed, session-list live
+updates fixed, transport-latency swap deferred.** Ran an ULTRARESEARCH
+(`.planning/ultra/ULTRARESEARCH-webui-chat-streaming-and-sota-redesign-2026-07-15.md`)
+on the operator's report that WebUI streaming doesn't work and sessions need
+a manual refresh. Diagnosis: `surface_events.py`'s `_KIND_MAP` maps both
+`llm_delta` (each streamed chunk) and `llm_call` (the final reconcile) to
+the SAME `SurfaceEventKind` ('text') — the kind alone can't distinguish
+them. Two real bugs followed from that, both fixed:
+- `consoleEvents.ts` never read the `delta` payload field (only `text`/
+  `summary`), so delta chunks silently contributed nothing — explains "not
+  working" literally, not just "coarse."
+- Had that alone been fixed, **`AgentTurn` (Console.tsx) renders every event
+  in `message.events` as its own block** — every delta chunk PLUS the final
+  reconcile would each show up as a separate stacked line: the exact
+  "response repeats itself" pattern from the TUI bug, just not yet visible
+  here since deltas were inert. Fixed with a `displayEvents` collapse in
+  `AgentTurn`: deltas extend an "open" run in place, the reconcile replaces
+  that run's text instead of appending after it.
+- `Missions.tsx` (the session/mission list) now also polls every 8s in
+  addition to the existing epoch-on-gateway-reconnect refetch, so a new
+  session shows up without a manual page refresh.
+- **Deferred**: the actual SSE transport swap (2s CLI-dispatch poll →
+  low-latency streaming) — the merge-logic fix was a correctness
+  prerequisite that had to land first (faster transport onto broken merge
+  logic would have made the bug MORE visible). Also deferred: the visual
+  redesign (markdown rendering, a real collapsible block for the
+  already-defined-but-unhandled `'reasoning'` SurfaceEventKind, tool-card
+  polish) — operator asked to pause before this for a design-direction
+  check-in.
+- Verified: `services/web-ui-react` — `tsc -b` clean, vitest 50/50 (2 new),
+  `vite build` + bundle-budget check green.
+
+**Next:**
+1. Operator: clean-restart `atlas` and retest the atlas-terminal streaming
+   duplication.
+2. If still broken after a clean restart: deeper look at atlas-terminal's own
+   terminal-diffing (beyond the opentui patch already applied) for the same
+   redraw-without-clear bug class fixed in `atlas help`'s picker this
+   session.
+3. Workspace-root / ATLAS-home split: dedicated design session, bundled with
+   Hermes memory/SOUL.md improvements — not yet scheduled (operator's call).
+4. WebUI: the actual SSE transport swap for the chat pane, then the Phase C
+   visual redesign (design-direction check-in first, per operator request).
+
+## Session update — 2026-07-15 (latest): streaming duplication R1+R2, freellmapi relocated to ATLAS_HOME, `atlas up` interactive picker, interactive `atlas help` browser + `atlas logs`
+
+Picked up the prior session's ULTRAREVIEW (root causes already proven, fixes
+recommended but not implemented) plus two new asks: freellmapi sidecar install
+location and an interactive `atlas up`. No new ultrareview/ultraplan pipeline
+run — the investigation was already done; this was straight implementation.
+
+**1. Streaming duplication — R1 (client batching) + R2 (opentui patch) applied:**
+- **R2** (the dominant visible bug): `node_modules/@opentui/core/index-fedv7szb.js`
+  `applyMarkdownCodeRenderable` hardcoded `renderable.streaming = true` on child
+  prose blocks regardless of parent state — matching `applyCodeBlockRenderable`'s
+  own `renderable.streaming = this._streaming` pattern fixed it. Persisted via
+  `bun patch` (no patch-package infra existed before — `bun patch --commit`
+  wrote `services/atlas-terminal/patches/@opentui%2Fcore@0.1.99.patch` +
+  `patchedDependencies` in package.json, so the fix survives `bun install`).
+- **R1** (event batching): `sdk.tsx`'s `handleEvent` used to flush immediately
+  when idle >16ms, then debounce-batch only if busy — meaning a same-turn pair
+  (final text reconcile + completion signal) landing a few ms apart (not the
+  same synchronous tick) reliably split into two SolidJS render passes. Changed
+  to always debounce on a trailing 16ms window (reset per event) instead of a
+  conditional immediate-flush. Implemented client-side (not the server-side
+  chat.ts mechanism the prior ULTRAREVIEW doc sketched) — same effect, lower
+  risk (no server-side completion-semantics changes near the multi-tool-round
+  turn logic that a previous fix iteration already had to fix once).
+- Did NOT implement R3 (delay streaming toggle by one tick) — R1+R2 combo was
+  the doc's primary recommendation; R3 was only the documented fallback if R2
+  (vendored patch) wasn't feasible. It was feasible.
+- Verified: atlas-terminal tsc clean, 56/56 bun tests, `--smoke` OK.
+  **UAT still owed** — this environment can't drive a real streaming TUI
+  session to visually confirm the duplication is gone; next operator session
+  should run a real prompt through `atlas` and watch the boundary behavior.
+
+**2. FreeLLMAPI sidecar relocated to ATLAS_HOME (`freellmapi_control.py`):**
+- Operator-flagged gap: the sidecar only resolved from `_EXTERNAL_REPOS/`
+  (inside this monorepo checkout) or a sibling folder next to it — both
+  dev-checkout-only paths. A fresh `npm`/`pip` install of `atlas` has no repo
+  on disk at all, so there was nowhere for a new install to land, and no CLI
+  path to create one (operator had to manually `git clone` themselves).
+- New `sidecar_home()`: `<ATLAS home>/sidecars/freellmapi`, derived from
+  `db.default_db_path()` (ATLAS_DB/ATLAS_HOME-aware at call time, same pattern
+  as `workspace_service.global_root()`) — now the **first** resolution
+  candidate, ahead of the two dev-checkout sibling paths (kept as back-compat
+  fallback, not removed — this machine's real install is still at
+  `C:\Users\Davi\Desktop\Projects\freellmapi`, a sibling path, and it still
+  resolves correctly).
+- New `install(target=None, force=False)`: git clone (`--depth 1`) + `npm
+  install` + `npm run build` into `sidecar_home()` by default; idempotent
+  (re-runs install/build without re-cloning if `target/.git` already exists).
+  New CLI: `atlas freellmapi install [--target] [--force] [--json]`. Gives
+  `atlas` actual lifecycle control (install/start/stop/status), not just
+  start/stop of something the operator had to set up by hand.
+- Verified: `test_freellmapi_control.py` 17 passed (8 new), full agent-runtime
+  suite 789 passed at that point.
+
+**3. `atlas up` reworked into an interactive service picker:**
+- New `services/agent-runtime/atlas_runtime/cli/interactive_select.py` —
+  dependency-free space/enter checkbox prompt (`msvcrt` on Windows,
+  `termios`/`tty` on POSIX; key-reading isolated behind an injectable
+  `read_key` param so the selection state machine is unit-testable without a
+  real TTY). Falls back to a numbered `typer.prompt` when stdio isn't a real
+  TTY — but `_up_cmd` only reaches the picker at all when stdin+stdout are a
+  real TTY; non-interactive runs (CI, `--yes`, `--json`, `--services`, or no
+  TTY) silently use the old default set (gateway+cockpit+freellmapi; cashflow/
+  discord stay opt-in), so nothing scripted against `atlas up` changed
+  behavior by default.
+- Flow: probes `health_ok()` on all 5 services first (gateway, cockpit,
+  freellmapi, cashflow, discord) — already-running ones show locked/checked
+  and can't be toggled off, non-running ones default-checked per the old
+  auto-start set. Space toggles, enter confirms, q/Esc/Ctrl-C cancels (exit 1,
+  nothing started). Sidecars a user selects are still gated on gateway+cockpit
+  actually coming up healthy first (preserves the existing D-015 gating, now
+  generalized past just freellmapi).
+- New flags: `--yes` (skip picker, default set), `--services a,b,c` (explicit
+  non-interactive set, rejects unknown keys), `--json` (implies non-
+  interactive). `atlas down` unchanged.
+- Verified: `test_interactive_select.py` 11 passed (new), `test_cli_up.py` 13
+  passed (7 new: already-running/no-restart, `--services` selection + unknown-
+  key rejection, `--yes` default set, `--json` shape), full agent-runtime
+  suite **805 passed**.
+- **Live-ran `atlas up --json` on this machine to sanity-check real output**
+  (not just mocked tests) — this had a real side effect: it started actual
+  gateway (pid varies, :8484), cockpit (:5173), and freellmapi (:3001)
+  processes, left running at session end. Confirmed freellmapi resolved to
+  the existing sibling-path install (`...\Projects\freellmapi`) as expected —
+  proves the new candidate ordering didn't break the working setup. **Left
+  running** since it's a reasonable base for the next operator session to UAT
+  the streaming fix in a live TUI; `atlas down` to tear it down if not wanted.
+
+**Not done / explicitly out of scope this session:**
+- Cockpit-web's freellmapi UI hints (`apps/web-ui-react/src/lib/api.ts:620`
+  area) weren't touched — CLI-side control was the ask, cockpit surfacing the
+  new `install` action is a natural but separate follow-up.
+- `atlas doctor`'s freellmapi remediation string still says `atlas freellmapi
+  start` (doesn't mention `install`) — minor, not corrected this session.
+- No real interactive keypress test of the checkbox picker exists or can
+  exist from this environment (no real TTY to drive) — logic is fully unit-
+  tested via the injectable `read_key`, but the actual live space/arrow/enter
+  feel is unverified. First real terminal use of `atlas up` should confirm it
+  renders/behaves as intended (redraw-in-place, no leftover artifacts) across
+  whatever terminal the operator uses.
+
+**4. Interactive `atlas help` browser + `atlas logs` + minor CLI polish
+(follow-on ask in the same session: "work on some atlas commands... the help
+command should be interactive, have tabs... uncover what can be done, and do
+it, in the end document all"):**
+- Audited the full CLI surface (`typer.main.get_command(app)` introspection
+  over all ~34 top-level command groups) rather than reading source files —
+  cheap and gave an exact, current catalog (including two hidden dev-only
+  commands and 6 subcommands with blank help text that a source read would've
+  been easy to miss).
+- `atlas help` is now a full-screen, dependency-free tabbed command browser
+  (new `cli/help_browser.py`): 8 category tabs, live-introspected command
+  list per tab (never hand-duplicated — a newly added command that isn't
+  categorized still shows up, in an auto-created `Other` tab), `/` fuzzy
+  search across everything, Enter drills into a command's real `--help` text
+  (via an internal `CliRunner` call — exactly what a user would see, avoids a
+  click/typer quirk where hand-built `Context` objects mis-render option
+  defaults). Falls back to a static categorized listing (`--plain`, or
+  automatically off a real TTY) — CI/piped use is unaffected.
+- Generalized `interactive_select.py`'s raw-terminal key reader (shared with
+  the `atlas up` picker) to support left/right/backspace and literal
+  characters, needed for tab-cycling and the search text box. Had to fix a
+  real conflict this surfaced: the picker's `_read_key` used to hard-map a
+  bare `q` keypress to "quit" — fine for a checkbox list, but would have
+  swallowed the letter `q` as data inside the help browser's search box.
+  `quit` is now Ctrl-C/Esc only at the key-reader level; `multi_select`
+  (which has no text entry) separately still treats a literal `q`/`Q` as
+  cancel, unchanged from the operator's perspective.
+- New `atlas logs [--tail N] [--follow] [--path]` — every entry point
+  already writes to `<ATLAS home>/logs/atlas.log` (F13's rotating handler)
+  but there was no CLI path to read it. `--follow` handles log rotation
+  (detects the file shrinking under it and reopens).
+- Fixed 6 blank docstrings on `atlas surface` subcommands (`get`, `list`,
+  `heartbeat`, `suspend`, `resume`, `cancel`, `close`) — `--help` showed them
+  with no description.
+- New tests: `test_help_browser.py` (13), plus 6 for `atlas logs`
+  (`test_cli_logs.py`) and updated `test_interactive_select.py`/`test_cli.py`
+  for the key-reader and `atlas help` behavior changes. Full suite: **825
+  passed**.
+- Full writeup: `docs/operations/CLI_ENHANCEMENTS_2026-07-15.md`.
+- **Not verified**: real keyboard feel of either interactive picker (arrow
+  keys, in-place redraw) — no real TTY in this environment to drive one.
+
+**Next:**
+1. Operator UAT: run a real prompt through `atlas` (gateway/cockpit already up
+   from this session) and confirm the streaming duplication is gone.
+2. Try `atlas up` and `atlas help` for real in a terminal — confirm
+   render/redraw, tab switching, search, and cancel (q/Esc) all feel right.
+3. Consider surfacing `atlas freellmapi install` in the cockpit UI.
+4. `atlas doctor`'s freellmapi remediation string still only says `atlas
+   freellmapi start` (doesn't mention `install`) — minor, not corrected.
+
+## Session update — 2026-07-12 (latest): streaming duplication — 3 layered root causes found, fix ready
+
+### Status: ROOT CAUSE COMPLETE, FIX RECOMMENDATIONS READY — NEEDS IMPLEMENTATION
+
+The streaming text duplication went through **7 fix iterations** (6 prior + 1 current streaming-toggle approach). All data-flow bugs are fixed and tested. The duplication **persists** with a new pattern: text formatting now partially works (bold conceal active), but paragraph content overlaps at boundaries ("What's on your mind?, debug, automate, research, and communicate across platforms." followed by "What's on your mind?").
 
 ### What was fixed (data flow — all committed, all tested)
 
 | # | Commit | Bug | Root cause |
 |---|--------|-----|-----------|
 | 1 | `b4ecd9c1` | No streaming at all | Schema + DeltaBuffer + adapter llm_delta branch + gateway 200ms poll |
-| 2 | `2aa99a1b` | Multi-turn text drop + no end-of-turn flush | Guard was backwards (dropped legitimate deltas); foundation never calls None for final responses |
-| 3 | `a9acc882` | Last sentence × 2 | `transition:succeeded` creates part after llm_call reconciled; exact-text dupe check fails |
-| 4 | `e8e1f763` | Full text × 2 (all patterns) | Multiple event types (llm_call, transition) independently create parts; unified `hasTextPart` guard |
+| 2 | `2aa99a1b` | Multi-turn text drop + no end-of-turn flush | Guard was backwards; foundation never calls None for final responses |
+| 3 | `a9acc882` | Last sentence × 2 | `transition:succeeded` creates part after llm_call reconciled |
+| 4 | `e8e1f763` | Full text × 2 (all patterns) | Multiple event types independently create parts; unified guard |
+| 5-6 | uncommitted | Raw `**` markers + blank flash | Component-swap approach broke opentui async highlight lifecycle |
+| 7 | current | Streaming toggle + partial formatting | Correct per opentui contract, but child prose blocks hardcoded to streaming=true |
 
-### What persists (rendering — open)
+### Root causes (v2 ULTRAREVIEW — 3 layered bugs, with proof)
 
-After all 4 data-flow fixes, operator UAT shows the **entire response
-rendered twice** with slight offset:
-```
-Hey Davi! 👋
-Doing great – just spinning up, eager to make progressHey Davi! 👋
-Doing great – just spinning up, eager to make progress...
-```
+**Bug 1 — Event batching split (`sdk.tsx:62-73`):**
+The SDK's `handleEvent()` uses a 16ms batching window. The `llm_call` (reconcile text) and `end` (set completed) events can land in **separate SolidJS batches** if the last delta was >16ms prior. This causes two render passes:
+- Pass 1: content updates, `streaming` still `true` → `updateBlocks()` with `trailingUnstable=2` → intermediate paragraph boundaries
+- Pass 2 (16ms later): `streaming` flips to `false` → `updateBlocks(true)` with `trailingUnstable=0` → correct boundaries, but intermediate state already painted
 
-This pattern is consistent across multiple prompts. The text in the data
-layer is correct (1 part, correct content). The duplication is in the
-terminal output.
+**Bug 2 — Child prose blocks hardcoded to `streaming: true` (`index-fedv7szb.js:9518`):**
+`applyMarkdownCodeRenderable()` hardcodes `renderable.streaming = true` on child `CodeRenderable` instances. After parent `MarkdownRenderable.streaming` flips to false, `updateBlocks(true)` refreshes all blocks, but `applyMarkdownCodeRenderable` (line 9518) forces child prose blocks back to streaming mode. Their `content` setter early-returns (line 4178) without updating the text buffer — they show stale styled content from a previous highlight pass. Fenced code blocks work correctly because `applyCodeBlockRenderable` (line 9529) propagates `renderable.streaming = this._streaming`.
 
-### Root cause hypothesis: opentui `<code>` component double-paint
+**Bug 3 — Double `updateBlocks` at completion:**
+When both content and streaming change (in one or two render passes), `MarkdownRenderable` runs `updateBlocks()` twice: once from the content setter (`trailingUnstable=2`) and once from the streaming setter (`trailingUnstable=0`). The first run may produce different paragraph token boundaries, causing blocks to be destroyed and recreated — visible flash/duplication.
 
-The `<code streaming={true} content={...}>` component at
-`session/index.tsx:1578-1586` receives the full text content on each
-reactive update. When `streaming={true}`, the component may output both
-the old and new content during rapid prop changes, causing the terminal
-to display duplicated text.
+### Recommended fixes
 
-**Why this can't be verified statically:** `@opentui/core` ships as a
-compiled bundle — no readable `.ts`/`.js` source under
-`node_modules/@opentui/core/renderables/`, only `.d.ts` type files.
+1. **`chat.ts`** — emit `time.completed` as part of the `message.part.updated` from `llm_call`, so both changes land in one SolidJS batch
+2. **`index-fedv7szb.js:9518`** — change `renderable.streaming = true` to `renderable.streaming = this._streaming` in `applyMarkdownCodeRenderable`, matching the pattern in `applyCodeBlockRenderable`
 
-### Diagnostic instrumented (not committed)
-
-A `createEffect` render counter was added to `TextPart` at
-`session/index.tsx:1560`:
-```typescript
-const renderCount = { current: 0 }
-createEffect(() => {
-  const _text = props.part.text
-  renderCount.current++
-  console.error(`[TextPart] part=${props.part.id} render=${renderCount.current} len=${_text.length} first60=${JSON.stringify(_text.slice(0, 60))}`)
-})
-```
-
-**Next agent should:**
-1. Run `bun run dev` in atlas-terminal
-2. Send "hey who are you"
-3. Capture the `[TextPart]` diagnostic output from the terminal
-4. If `render=1` and len is correct → duplication is in `<code>` component rendering (opentui bug)
-5. If `render=2` → SolidJS reactivity issue (store double-update)
-6. If `render=1` and len is doubled → data layer still has duplicates (guard failed)
-7. Based on the result, either fix the opentui component, or instrument deeper
+Fallback if vendored opentui can't be patched: R1 + R3 (delay streaming toggle by one tick in TextPart).
 
 ### Key files for the next agent
 
-| File | What to look at |
-|------|----------------|
-| `services/atlas-terminal/src/adapter/chat.ts:410-468` | All text-part creation paths (10 total, cataloged in ULTRAREVIEW DEEP report) |
-| `services/atlas-terminal/src/tui/routes/session/index.tsx:1560-1597` | TextPart render — `<code streaming={true}>` receives `content={props.part.text.trim()}` |
-| `services/atlas-terminal/src/tui/context/sync.tsx:493-530` | Store: `message.part.updated` (reconcile) + `message.part.delta` (append) handlers |
-| `services/atlas-terminal/src/vendor/opencode/cli/logo.ts` | Logo rendering (may share `<code>` component behavior) |
-| `node_modules/@opentui/core/` | Compiled bundle — check `.d.ts` for `Code`/`Markdown` component props |
+| File | Lines | What to look at |
+|------|-------|----------------|
+| `services/atlas-terminal/src/adapter/chat.ts` | 368-471 | Event emission: reconcile + completed (Bug 1 fix here) |
+| `services/atlas-terminal/src/tui/context/sdk.tsx` | 48-73 | Event batching: 16ms window (Bug 1 trigger) |
+| `services/atlas-terminal/src/tui/context/sync.tsx` | 121-6110, 831-10110 | Store: message + part update handlers |
+| `services/atlas-terminal/src/tui/routes/session/index.tsx` | 1560-1603 | TextPart: streaming toggle (Bug 3 fix here if R3) |
+| `node_modules/@opentui/core/index-fedv7szb.js` | 9477-9519, 4173-4288 | MarkdownRenderable child blocks (Bug 2 fix here) |
 
 ### Key reports
 
 | Report | Content |
 |--------|---------|
 | `.planning/ultra/ULTRAREVIEW-streaming-duplication-2026-07-12.md` | First pass: 9-hop data flow trace, adapter fix |
-| `.planning/ultra/ULTRAREVIEW-streaming-duplication-DEEP-2026-07-12.md` | Deep pass: foundation threading, 10 part-creation paths, DeltaBuffer gap, sync store internals, 4 fix iterations documented |
+| `.planning/ultra/ULTRAREVIEW-streaming-duplication-DEEP-2026-07-12.md` | Deep pass: foundation threading, 10 part-creation paths, DeltaBuffer gap, 4 fix iterations |
+| `.planning/ultra/ULTRAREVIEW-streaming-duplication-v2-2026-07-12.md` | **NEW:** 3 layered root causes with proof (batching + hardcoded streaming + double updateBlocks) |
 | `.planning/ultra/ULTRAREVIEW-integration-verification-streaming-folder-scope-2026-07-12.md` | 5 root causes (all fixed): integration hallucination, streaming, folder, scope, context |
 
 ### Verified (current state)
@@ -89,7 +389,7 @@ createEffect(() => {
 - atlas-terminal: tsc clean, 56/56 bun tests, boundary scan passed, smoke LIVE
 - agent-runtime: 782 passed, 2 skipped
 - atlas-gateway: 108 cargo tests
-- All data-flow bugs resolved; rendering hypothesis confirmed by operator UAT
+- All data-flow bugs resolved; rendering root causes identified with proof
 
 ## Session update — 2026-07-12 (latest): streaming slice (ULTRAREVIEW item 2) closed
 
