@@ -137,6 +137,34 @@ body,
 	cursor: default;
 }
 
+/* Streaming caret — the tail of a smoothly-revealing agent turn. */
+.atlas-stream-caret {
+	color: var(--atlas-emerald, #46f0a0);
+	margin-left: 1px;
+	animation: atlas-pulse-soft 1.1s var(--l2-ease) infinite;
+}
+
+/* Workbench tab close — hidden-quiet until the tab is engaged. */
+.atlas-tab-close {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+	margin-left: 2px;
+	border-radius: 2px;
+	color: var(--l2-fg-3);
+	opacity: 0.4;
+	transition: opacity 140ms var(--l2-ease), background 140ms var(--l2-ease),
+		color 140ms var(--l2-ease);
+}
+.atlas-tab-close:hover,
+.atlas-tab-close:focus-visible {
+	opacity: 1;
+	background: rgba(255, 77, 125, 0.14);
+	color: var(--l2-error, #ff4d7d);
+}
+
 /* Console composer: quiet at rest, a soft celestial ring while focused. */
 .atlas-console-composer {
 	transition: border-color 160ms var(--l2-ease), box-shadow 220ms var(--l2-ease);

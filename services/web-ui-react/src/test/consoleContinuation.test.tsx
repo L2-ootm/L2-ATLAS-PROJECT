@@ -10,7 +10,8 @@ import Console from '../routes/Console';
 const surface = vi.hoisted(() => ({
 	value: {
 		events: [] as SurfaceEvent[],
-		submitPrompt: vi.fn()
+		submitPrompt: vi.fn(),
+		releaseSession: vi.fn().mockResolvedValue(undefined)
 	}
 }));
 

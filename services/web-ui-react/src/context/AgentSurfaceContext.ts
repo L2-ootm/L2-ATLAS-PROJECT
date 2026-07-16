@@ -24,6 +24,9 @@ export interface AgentSurfaceValue {
 		workspace: WorkspaceRequest
 	) => Promise<string>;
 	cancel: () => Promise<void>;
+	/** Drop the held surface session (workspace rebind/unbind) — local release
+	 * first, then a best-effort close; the next prompt re-surfaces fresh. */
+	releaseSession: () => Promise<void>;
 	resume: () => Promise<void>;
 	refresh: () => Promise<void>;
 	decide: (

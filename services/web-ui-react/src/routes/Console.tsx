@@ -28,6 +28,7 @@ import {
 	Search,
 	SendHorizontal,
 	SquareTerminal,
+	Unlink,
 	Waypoints,
 	Wrench,
 	X
@@ -41,6 +42,7 @@ import {
 	agentRuntimeLabel,
 	getRun,
 	listProjects,
+	registerProject,
 	type AgentRuntime,
 	type ConsoleChatEvent,
 	type Project
@@ -271,6 +273,47 @@ export default function Console() {
 		setRecentFolders(addRecentFolder(boundCwd));
 	}, [boundCwd]);
 
+	// The gateway workspace model is global|project (registered roots with
+	// containment checks) — a raw folder binding must resolve to a registered
+	// project id before a run can actually execute inside it. Cached per
+	// folderPath; resolved lazily at dispatch so a persisted binding survives
+	// reloads without an eager registration on every hydrate.
+	const [folderProjectId, setFolderProjectId] = useState<string | null>(null);
+	useEffect(() => {
+		setFolderProjectId(null);
+	}, [folderPath]);
+
+	const ensureFolderProject = useCallback(
+		async (path: string): Promise<string | null> => {
+			const norm = (p: string) => p.replace(/[\\/]+$/, '').replace(/\//g, '\\').toLowerCase();
+			const existing = projects.find((p) => norm(p.root_path) === norm(path));
+			if (existing) return existing.id;
+			try {
+				const { project } = await registerProject(pathTail(path), path);
+				setLoad((prev) =>
+					prev.s === 'ready' ? { s: 'ready', projects: [...prev.projects, project] } : prev
+				);
+				return project.id;
+			} catch {
+				return null;
+			}
+		},
+		[projects]
+	);
+
+	// A surface session is bound to the workspace it was opened with; when the
+	// operator rebinds, the held session would keep scoping runs to the OLD
+	// workspace. Release it (idle turns only — dispatch is blocked mid-turn
+	// anyway) so the next prompt re-surfaces against the new binding.
+	const bindingKey = `${projectId ?? ''}|${boundCwd ?? ''}`;
+	useEffect(() => {
+		if (activeTurn) return;
+		void agentSurface.releaseSession();
+		// Keyed on the binding identity only — releasing on every render or
+		// turn change would churn sessions for no reason.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [bindingKey]);
+
 	// Single debounced writer for the whole console snapshot. `auditEvents` and
 	// `activeTurn` are intentionally excluded — see consolePersistence.ts.
 	useEffect(() => {
@@ -437,6 +480,14 @@ export default function Console() {
 		}
 	}
 
+	function unbindWorkspace() {
+		setBindingMode('folder');
+		setFolderPath('');
+		setFolderProjectId(null);
+		if (projectId) setParams({});
+		resetChatSessions();
+	}
+
 	function addWindow(kind: WindowKind = 'chat', windowAgent: AgentRuntime = 'native') {
 		const count = windows.filter((w) => w.kind === kind).length + 1;
 		const agentCount = windows.filter((w) => w.kind === 'chat' && (w.agent ?? 'native') === windowAgent).length + 1;
@@ -547,10 +598,20 @@ export default function Console() {
 		setActiveTurn({ windowId, turnId, runId: null, afterSeq });
 
 		try {
-			const workspace =
-				bindingMode === 'project' && projectId
-					? ({ kind: 'project', projectId } as const)
-					: ({ kind: 'global' } as const);
+			let workspace: { kind: 'global' } | { kind: 'project'; projectId: string } = {
+				kind: 'global'
+			};
+			if (bindingMode === 'project' && projectId) {
+				workspace = { kind: 'project', projectId };
+			} else if (bindingMode === 'folder' && boundCwd) {
+				// Folder bindings execute as registered projects — resolve (or
+				// register) the project for this folder so the run's cwd is real.
+				const pid = folderProjectId ?? (await ensureFolderProject(boundCwd));
+				if (pid) {
+					setFolderProjectId(pid);
+					workspace = { kind: 'project', projectId: pid };
+				}
+			}
 			const runId = await agentSurface.submitPrompt(prompt, windowAgent, workspace);
 			setActiveTurn((current) =>
 				current?.turnId === turnId ? { ...current, runId } : current
@@ -770,6 +831,11 @@ export default function Console() {
 					<IconAction title="Change bound folder" onClick={() => void chooseFolder()}>
 						<FolderSearch size={15} strokeWidth={1.7} />
 					</IconAction>
+					{(boundCwd || projectId) && (
+						<IconAction title="Unbind workspace" onClick={unbindWorkspace}>
+							<Unlink size={15} strokeWidth={1.7} />
+						</IconAction>
+					)}
 					<IconAction title="Spawn native chat" onClick={() => addWindow('chat', 'native')}>
 						<CopyPlus size={15} strokeWidth={1.7} />
 					</IconAction>
@@ -812,8 +878,10 @@ export default function Console() {
 					layout={layout}
 					windows={windows}
 					activeWindow={activeWindow}
+					busyWindowId={activeTurn?.windowId ?? null}
 					onActivate={setActiveWindow}
 					onAddWindow={addWindow}
+					onClose={closeWindow}
 				/>
 				<div
 					ref={canvasRef}
@@ -914,20 +982,25 @@ function WorkbenchBar({
 	layout,
 	windows,
 	activeWindow,
+	busyWindowId,
 	onActivate,
-	onAddWindow
+	onAddWindow,
+	onClose
 }: {
 	layout: LayoutMode;
 	windows: ConsoleWindow[];
 	activeWindow: string;
+	busyWindowId: string | null;
 	onActivate: (id: string) => void;
 	onAddWindow: (kind: WindowKind, agent?: AgentRuntime) => void;
+	onClose: (id: string) => void;
 }) {
 	return (
 		<div style={barStyle}>
 			{windows.map((win) => {
 				const Icon = KIND_ICON[win.kind];
 				const active = win.id === activeWindow;
+				const closable = windows.length > 1 && busyWindowId !== win.id;
 				return (
 					<button
 						key={win.id}
@@ -943,6 +1016,29 @@ function WorkbenchBar({
 					>
 						<Icon size={14} strokeWidth={1.6} />
 						<span>{win.title}</span>
+						{closable && (
+							/* span, not button — tabs are already buttons and nesting is invalid HTML */
+							<span
+								role="button"
+								tabIndex={0}
+								aria-label={`Close ${win.title}`}
+								title={`Close ${win.title}`}
+								className="atlas-tab-close"
+								onClick={(e) => {
+									e.stopPropagation();
+									onClose(win.id);
+								}}
+								onKeyDown={(e) => {
+									if (e.key === 'Enter' || e.key === ' ') {
+										e.preventDefault();
+										e.stopPropagation();
+										onClose(win.id);
+									}
+								}}
+							>
+								<X size={11} strokeWidth={1.8} />
+							</span>
+						)}
 					</button>
 				);
 			})}
@@ -1560,6 +1656,56 @@ export function ReasoningBlock({ text }: { text: string }) {
 	);
 }
 
+/** Smooth chunk-buffered streaming reveal. The gateway relays deltas in
+ * ~200ms poll batches, so raw rendering jumps a sentence at a time. This
+ * buffers the incoming text and reveals it with a calculated catch-up rate —
+ * the backlog drains over ~320ms so the reveal never falls behind the stream,
+ * but never teleports either. Honors prefers-reduced-motion (instant), and
+ * the parent swaps to ChatMarkdown on the final reconcile. */
+export function SmoothStreamText({ text }: { text: string }) {
+	// Text present at mount is already history — paint it whole; only growth
+	// that arrives while mounted animates.
+	const [shown, setShown] = useState(() => text.length);
+	const shownRef = useRef(text.length);
+	const textRef = useRef(text);
+	textRef.current = text;
+	useEffect(() => {
+		if (
+			typeof window.matchMedia === 'function' &&
+			window.matchMedia('(prefers-reduced-motion: reduce)').matches
+		) {
+			shownRef.current = textRef.current.length;
+			setShown(shownRef.current);
+			return;
+		}
+		let raf = 0;
+		let last = performance.now();
+		const step = (now: number) => {
+			const target = textRef.current.length;
+			const current = shownRef.current;
+			if (current < target) {
+				const backlog = target - current;
+				const rate = Math.max(45, backlog / 0.32); // chars/sec, backlog-adaptive
+				const advance = Math.max(1, Math.round(((now - last) / 1000) * rate));
+				shownRef.current = Math.min(target, current + advance);
+				setShown(shownRef.current);
+			}
+			last = now;
+			raf = requestAnimationFrame(step);
+		};
+		raf = requestAnimationFrame(step);
+		return () => cancelAnimationFrame(raf);
+	}, []);
+	return (
+		<div style={agentTextStyle}>
+			{text.slice(0, shown)}
+			<span className="atlas-stream-caret" aria-hidden>
+				▍
+			</span>
+		</div>
+	);
+}
+
 function AgentTurn({ message }: { message: ConsoleMessage }) {
 	const events = useMemo(() => message.events ?? [], [message.events]);
 	// 'text_delta' (streamed chunk) and 'text' (the run's final authoritative
@@ -1592,6 +1738,18 @@ function AgentTurn({ message }: { message: ConsoleMessage }) {
 				out.push({ ...event, _open: false });
 				continue;
 			}
+			// Run-boundary notices (run started / runtime / privacy) arrive as
+			// consecutive status events; three stacked lines per turn is noise.
+			// Merge them into one compact receipt row.
+			if (event.type === 'status') {
+				const last = out[out.length - 1];
+				if (last?.type === 'status') {
+					last.text = `${last.text ?? ''} · ${event.text ?? ''}`;
+					continue;
+				}
+				out.push({ ...event });
+				continue;
+			}
 			out.push(event);
 		}
 		return out;
@@ -1621,6 +1779,12 @@ function AgentTurn({ message }: { message: ConsoleMessage }) {
 			)}
 			{displayEvents.map((event, idx) => {
 				if (event.type === 'text') {
+					// An open streaming run renders as smoothly-revealed plain text
+					// (markdown parses once, at the final reconcile — no half-parsed
+					// flicker while tokens arrive).
+					if (event._open && message.status === 'pending') {
+						return <SmoothStreamText key={idx} text={event.text ?? ''} />;
+					}
 					return event.text ? <ChatMarkdown key={idx} text={event.text} /> : null;
 				}
 				if (event.type === 'reasoning') {
@@ -1842,13 +2006,14 @@ function SegmentButton({ children, active, onClick, disabled, tone = 'blue' }: {
 }
 
 const statusLineStyle: React.CSSProperties = {
-	padding: '3px 0',
+	padding: '2px 0',
 	color: 'var(--l2-fg-3)',
 	fontFamily: 'var(--l2-font-mono)',
-	fontSize: 10.5,
-	letterSpacing: '0.08em',
+	fontSize: 9.5,
+	letterSpacing: '0.1em',
 	textTransform: 'uppercase',
-	opacity: 0.8
+	opacity: 0.55,
+	overflowWrap: 'anywhere'
 };
 
 const activityEventStyle: React.CSSProperties = {

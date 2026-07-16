@@ -60,6 +60,7 @@ function value(overrides: Partial<AgentSurfaceValue> = {}): AgentSurfaceValue {
 		openSurface: vi.fn(),
 		submitPrompt: vi.fn(),
 		cancel: vi.fn(),
+		releaseSession: vi.fn(),
 		resume: vi.fn(),
 		refresh: vi.fn(),
 		decide: vi.fn(),
