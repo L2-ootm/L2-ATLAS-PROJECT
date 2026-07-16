@@ -95,3 +95,75 @@ def test_cli_start_not_installed_exits_nonzero(tmp_path, monkeypatch) -> None:
     result = runner.invoke(app, ["freellmapi", "start"])
     assert result.exit_code == 1
     assert "ATLAS_FREELLMAPI_DIR" in result.output
+
+
+def test_sidecar_home_follows_atlas_home_env(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    monkeypatch.delenv("ATLAS_DB", raising=False)
+    assert fc.sidecar_home() == tmp_path / "sidecars" / "freellmapi"
+
+
+def test_resolve_dir_falls_back_to_sidecar_home(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(fc, "STATE_FILE", tmp_path / "state" / "freellmapi.json")
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(fc, "sidecar_home", lambda: home)
+    assert fc.resolve_dir() == home
+
+
+def test_install_requires_git(monkeypatch) -> None:
+    monkeypatch.setattr(fc.shutil, "which", lambda name: None)
+    ok, msg = fc.install(pathlib.Path("/tmp/wherever"))
+    assert ok is False
+    assert "git" in msg
+
+
+def test_install_requires_npm(monkeypatch) -> None:
+    monkeypatch.setattr(fc.shutil, "which", lambda name: "git" if "git" in name else None)
+    ok, msg = fc.install(pathlib.Path("/tmp/wherever"))
+    assert ok is False
+    assert "npm" in msg
+
+
+def test_install_rejects_existing_non_checkout_without_force(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(fc.shutil, "which", lambda name: name)
+    dest = tmp_path / "existing"
+    dest.mkdir()
+    (dest / "some_file.txt").write_text("not a checkout", encoding="utf-8")
+    ok, msg = fc.install(dest)
+    assert ok is False
+    assert "force=True" in msg
+
+
+def test_install_clones_and_builds(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(fc, "STATE_FILE", tmp_path / "state" / "freellmapi.json")
+    monkeypatch.setattr(fc.shutil, "which", lambda name: name)
+
+    calls = []
+
+    class _FakeResult:
+        returncode = 0
+        stderr = ""
+
+    def _fake_run(*args, **kwargs):
+        calls.append((args, kwargs))
+        # Simulate `git clone` creating the destination checkout.
+        if args and args[0] and args[0][0] == "git":
+            dest = pathlib.Path(args[0][-1])
+            (dest / ".git").mkdir(parents=True, exist_ok=True)
+        return _FakeResult()
+
+    monkeypatch.setattr(fc.subprocess, "run", _fake_run)
+    dest = tmp_path / "install-target"
+    ok, msg = fc.install(dest)
+    assert ok is True
+    assert str(dest) in msg
+    assert fc._read_state()["dir"] == str(dest)
+    assert len(calls) == 3  # clone, npm install, npm run build
+
+
+def test_cli_freellmapi_install(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(fc, "install", lambda target=None, force=False: (True, "freellmapi installed"))
+    result = runner.invoke(app, ["freellmapi", "install", "--json"])
+    assert result.exit_code == 0
+    assert '"ok": true' in result.output

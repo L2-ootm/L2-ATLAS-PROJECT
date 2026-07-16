@@ -252,11 +252,23 @@ def test_run_exec_unknown_run_exits_one(db, monkeypatch):
     assert result.exit_code == 1
 
 
-def test_help_command_prints_root_help():
+def test_help_command_prints_categorized_listing_when_not_a_tty():
+    # `atlas help` is now the interactive tabbed browser (help_browser.py) on a
+    # real TTY; CliRunner's stdio isn't one, so it falls back to the static
+    # categorized listing — see tests/test_help_browser.py for the interactive
+    # state machine coverage.
     result = runner.invoke(app, ["help"])
 
     assert result.exit_code == 0, result.output
-    assert "ATLAS - an auditable AI operating system" in result.output
+    assert "Getting Started" in result.output
+    assert "atlas mission" in result.output
+
+
+def test_help_plain_flag_matches_non_tty_fallback():
+    result = runner.invoke(app, ["help", "--plain"])
+
+    assert result.exit_code == 0, result.output
+    assert "Getting Started" in result.output
 
 
 def test_wiki_group_without_subcommand_prints_help():
