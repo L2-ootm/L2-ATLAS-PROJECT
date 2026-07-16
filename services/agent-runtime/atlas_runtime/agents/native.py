@@ -20,6 +20,7 @@ harness returns failed/error and this maps to an honest failed run (not theater)
 """
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
 import threading
@@ -187,6 +188,28 @@ class _DeltaBuffer:
         self._on_flush(text, final)
 
 
+def _json_safe_preview(value: Any, cap: int) -> Any:
+    """A JSON-serializable, size-capped preview of tool args/results.
+
+    Audit payloads must round-trip through json; tool args/results can carry
+    arbitrary objects. Strings pass through capped; everything else is
+    serialized with `default=str` and, when small enough, decoded back so the
+    payload keeps its structure for the surface renderers (ToolCallCard).
+    """
+    if isinstance(value, str):
+        return value[:cap]
+    try:
+        encoded = json.dumps(value, ensure_ascii=False, default=str)
+    except Exception:  # noqa: BLE001 — preview must never fail the run
+        return str(value)[:cap]
+    if len(encoded) <= cap:
+        try:
+            return json.loads(encoded)
+        except Exception:  # noqa: BLE001
+            return encoded[:cap]
+    return encoded[:cap]
+
+
 def _find_foundation() -> Optional[Path]:
     """Walk up from this file to locate foundation/atlas-hermes."""
     for parent in Path(__file__).resolve().parents:
@@ -206,6 +229,8 @@ def _default_factory(
     api_key: Optional[str] = None,
     reasoning_effort: str = "",
     stream_delta_callback: Optional[Callable[[Optional[str]], None]] = None,
+    tool_start_callback: Optional[Callable[[Any, Any, Any], None]] = None,
+    tool_complete_callback: Optional[Callable[[Any, Any, Any, Any], None]] = None,
 ) -> Any:
     """Construct a real foundation AIAgent (lazy import; path-injected).
 
@@ -251,6 +276,14 @@ def _default_factory(
         kwargs["reasoning_config"] = {"effort": reasoning_effort}
     if stream_delta_callback is not None:
         kwargs["stream_delta_callback"] = stream_delta_callback
+    # Foundation tool-execution hooks (agent/tool_executor.py fires them as
+    # tool_start_callback(call_id, name, args) and
+    # tool_complete_callback(call_id, name, args, result)) — how ATLAS
+    # observes tool use without editing the vendored harness (D-001).
+    if tool_start_callback is not None:
+        kwargs["tool_start_callback"] = tool_start_callback
+    if tool_complete_callback is not None:
+        kwargs["tool_complete_callback"] = tool_complete_callback
     return AIAgent(**kwargs)
 
 
@@ -447,6 +480,37 @@ class NativeAtlasAgent(AgentRuntime):
                     self._safe_emit(conn, lock, run_id, event_type="llm_delta", data=data)
 
                 delta_buffer = _DeltaBuffer(_emit_delta)
+
+                # Per-tool execution visibility: project the foundation's tool
+                # hooks onto the audit taxonomy (`tool_requested` /
+                # `tool_completed`), which surface_events already maps to the
+                # surface kinds every chat UI renders as tool cards. Fires on
+                # the run worker thread — same threading contract as
+                # stream_delta_callback, and _safe_emit takes the shared lock.
+                def _emit_tool_start(call_id: Any, name: Any, args: Any) -> None:
+                    self._safe_emit(
+                        conn, lock, run_id, event_type="tool_requested",
+                        tool_name=str(name),
+                        data={
+                            "runtime": "native",
+                            "tool": str(name),
+                            "call_id": str(call_id),
+                            "arguments": _json_safe_preview(args, 2000),
+                        },
+                    )
+
+                def _emit_tool_complete(call_id: Any, name: Any, args: Any, result: Any) -> None:
+                    self._safe_emit(
+                        conn, lock, run_id, event_type="tool_completed",
+                        tool_name=str(name),
+                        data={
+                            "runtime": "native",
+                            "tool": str(name),
+                            "call_id": str(call_id),
+                            "text": _json_safe_preview(result, 4000),
+                        },
+                    )
+
                 factory = lambda session_id: _default_factory(  # noqa: E731
                     session_id,
                     self._max_iterations,
@@ -456,6 +520,8 @@ class NativeAtlasAgent(AgentRuntime):
                     api_key=api_key,
                     reasoning_effort=reasoning_effort,
                     stream_delta_callback=delta_buffer.push,
+                    tool_start_callback=_emit_tool_start,
+                    tool_complete_callback=_emit_tool_complete,
                 )
         try:
             agent = factory(session_id=run_id)
