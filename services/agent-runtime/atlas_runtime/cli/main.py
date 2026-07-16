@@ -12,6 +12,7 @@ Design:
 
 from __future__ import annotations
 
+import pathlib
 import sqlite3
 import threading
 import json
@@ -62,7 +63,7 @@ module_app = typer.Typer(name="module", help="Optional modules: list, activate, 
 app.add_typer(module_app, name="module")
 cashflow_app = typer.Typer(name="cashflow", help="Cashflow module process: start, status, stop.")
 app.add_typer(cashflow_app, name="cashflow")
-freellmapi_app = typer.Typer(name="freellmapi", help="FreeLLMAPI sidecar endpoint: start, status, stop.")
+freellmapi_app = typer.Typer(name="freellmapi", help="FreeLLMAPI sidecar endpoint: install, start, status, stop.")
 app.add_typer(freellmapi_app, name="freellmapi")
 graph_app = typer.Typer(name="graph", help="Project knowledge graph for the cockpit Graphify view.")
 app.add_typer(graph_app, name="graph")
@@ -258,6 +259,54 @@ def _version_cmd(
         typer.echo(json.dumps({"name": "atlas", "version": ver}))
     else:
         typer.echo(f"atlas {ver}")
+
+
+@app.command("logs", help="Tail the ATLAS rotating log file (<ATLAS home>/logs/atlas.log).")
+def _logs_cmd(
+    tail: int = typer.Option(50, "--tail", "-n", help="Number of most recent lines to print (0 for the whole file)."),
+    follow: bool = typer.Option(False, "--follow", "-f", help="Keep streaming new lines as they're written (Ctrl-C to stop)."),
+    path_out: bool = typer.Option(False, "--path", help="Print the resolved log file path and exit."),
+) -> None:
+    from atlas_runtime import logging_config
+
+    log_path = logging_config.log_file_path()
+    if path_out:
+        typer.echo(str(log_path))
+        return
+    if not log_path.exists():
+        typer.echo(f"no log file yet at {log_path} (nothing has logged through atlas_runtime.logging_config in this ATLAS home)")
+        raise typer.Exit(1)
+
+    text = log_path.read_text(encoding="utf-8", errors="replace")
+    lines = text.splitlines()
+    for line in (lines[-tail:] if tail > 0 else lines):
+        typer.echo(line)
+
+    if follow:
+        import os
+        import time
+
+        fh = log_path.open("r", encoding="utf-8", errors="replace")
+        try:
+            fh.seek(0, os.SEEK_END)
+            while True:
+                line = fh.readline()
+                if line:
+                    typer.echo(line.rstrip("\n"))
+                    continue
+                time.sleep(0.5)
+                try:
+                    # RotatingFileHandler rotates by rename; a shrunk size means
+                    # a fresh file was created at this path underneath us.
+                    if log_path.stat().st_size < fh.tell():
+                        fh.close()
+                        fh = log_path.open("r", encoding="utf-8", errors="replace")
+                except OSError:
+                    pass
+        except KeyboardInterrupt:
+            pass
+        finally:
+            fh.close()
 
 
 @app.command("tui", help="Launch the ATLAS terminal workbench.")
@@ -1079,32 +1128,99 @@ def gateway_stop() -> None:
         raise typer.Exit(1)
 
 
-def _up_cmd() -> None:
-    """Boot gateway + cockpit + optional sidecars (idempotent). Thin wrapper
+# (key, label, control-module name, default-checked-when-non-interactive, start() kwargs)
+_UP_SERVICE_REGISTRY = (
+    ("gateway", "Gateway (core API)", "gateway_control", True, {}),
+    ("cockpit", "Cockpit (web UI)", "cockpit_control", True, {}),
+    ("freellmapi", "FreeLLMAPI sidecar (free-tier LLM gateway)", "freellmapi_control", True, {}),
+    ("cashflow", "Cashflow module", "cashflow_control", False, {}),
+    ("discord", "Discord bot sidecar", "discord_control", False, {}),
+)
+_UP_CORE_KEYS = frozenset({"gateway", "cockpit"})
+
+
+def _up_cmd(
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="Skip the picker; start the default set (gateway, cockpit, freellmapi)."
+    ),
+    services: str = typer.Option(
+        "", "--services", help="Comma-separated service keys to start, skipping the picker (e.g. gateway,cockpit)."
+    ),
+    json_out: bool = typer.Option(False, "--json", help="Emit machine-readable JSON (implies --yes)."),
+) -> None:
+    """Boot ATLAS services (idempotent). Checks what's already running, then on
+    a real TTY lets the operator pick which of the rest to start — space to
+    toggle, enter to confirm. Non-interactive runs (no TTY, or --yes/--json/
+    --services given) start the default set without prompting. Thin wrapper
     only — no SQL/no emit() here; logic lives in the *_control modules."""
-    from atlas_runtime import cockpit_control, freellmapi_control, gateway_control
+    import importlib
+    import sys
 
-    gateway_ok, gateway_message = gateway_control.start()
-    typer.echo(gateway_message)
-    if gateway_ok and gateway_control.binary_stale():
-        typer.echo(
-            "gateway: WARNING binary predates its Rust sources — "
-            "cargo build --release -p atlas-gateway"
-        )
-    cockpit_ok, cockpit_message = cockpit_control.start()
-    typer.echo(cockpit_message)
+    from atlas_runtime import gateway_control
 
-    # FreeLLMAPI is an optional external sidecar (D-015) — start it only if
-    # gateway+cockpit are healthy, and never fail `atlas up` when it's absent.
-    if gateway_ok and cockpit_ok:
-        _, freellmapi_message = freellmapi_control.start()
-        typer.echo(f"freellmapi: {freellmapi_message}")
+    modules = {
+        key: importlib.import_module(f"atlas_runtime.{mod_name}")
+        for key, _, mod_name, _, _ in _UP_SERVICE_REGISTRY
+    }
+    running = {key: modules[key].health_ok(timeout=0.5) for key in modules}
 
-    if not (gateway_ok and cockpit_ok):
+    if services.strip():
+        valid_keys = {key for key, *_ in _UP_SERVICE_REGISTRY}
+        chosen = {tok.strip() for tok in services.split(",") if tok.strip()}
+        unknown = chosen - valid_keys
+        if unknown:
+            typer.echo(f"unknown service(s): {', '.join(sorted(unknown))}", err=True)
+            raise typer.Exit(1)
+    elif not yes and not json_out and sys.stdin.isatty() and sys.stdout.isatty():
+        from atlas_runtime.cli.interactive_select import SelectItem, SelectionCancelled, multi_select
+
+        items = [
+            SelectItem(key=key, label=label, checked=default_checked, locked=running[key])
+            for key, label, _, default_checked, _ in _UP_SERVICE_REGISTRY
+        ]
+        try:
+            chosen = set(multi_select(items, title="Select services to start:"))
+        except SelectionCancelled:
+            typer.echo("cancelled — nothing started.")
+            raise typer.Exit(1)
+    else:
+        chosen = {key for key, _, _, default_checked, _ in _UP_SERVICE_REGISTRY if default_checked}
+
+    core_ok = True
+    failed = False
+    results = []
+    for key, _, _, _, start_kwargs in _UP_SERVICE_REGISTRY:
+        is_core = key in _UP_CORE_KEYS
+        if running[key]:
+            ok, message = True, "already running"
+        elif key not in chosen:
+            ok, message = True, "skipped"
+        elif not is_core and not core_ok:
+            ok, message = True, "skipped — gateway/cockpit not healthy"
+        else:
+            ok, message = modules[key].start(**start_kwargs)
+            if key == "gateway" and ok and gateway_control.binary_stale():
+                typer.echo(
+                    "gateway: WARNING binary predates its Rust sources — "
+                    "cargo build --release -p atlas-gateway"
+                )
+            if is_core and not ok:
+                core_ok = False
+                failed = True
+        results.append({"component": key, "ok": ok, "message": message})
+        if not json_out:
+            typer.echo(f"{key}: {message}")
+
+    if json_out:
+        typer.echo(json.dumps({"ok": not failed, "components": results}))
+    if failed:
         raise typer.Exit(1)
 
 
-app.command("up", help="Boot gateway + cockpit together (idempotent).")(_up_cmd)
+app.command(
+    "up",
+    help="Boot ATLAS services (idempotent); interactive picker on a TTY, --yes/--services/--json for scripts.",
+)(_up_cmd)
 
 
 def _stop_result_is_idempotent_ok(message: str) -> bool:
@@ -1160,10 +1276,19 @@ def _down_cmd(
 app.command("down", help="Stop sidecars + cockpit + gateway together (idempotent).")(_down_cmd)
 
 
-@app.command("help", help="Show root help.")
-def _help_cmd(ctx: typer.Context) -> None:
-    parent = ctx.parent or ctx
-    typer.echo(parent.get_help())
+@app.command("help", help="Browse all ATLAS commands interactively (tabs, search, drill-down).")
+def _help_cmd(
+    plain: bool = typer.Option(
+        False, "--plain", help="Skip the interactive browser; print the categorized listing and exit."
+    ),
+) -> None:
+    from atlas_runtime.cli.help_browser import build_catalog, render_static, run_browser
+
+    if plain:
+        tab_order, tabs = build_catalog(typer.main.get_command(app))
+        render_static(tab_order, tabs)
+        return
+    run_browser(app, typer.main.get_command(app))
 
 from atlas_runtime.cli.doctor import _doctor_cmd
 
@@ -1264,6 +1389,33 @@ def cashflow_stop() -> None:
 # ---------------------------------------------------------------------------
 # freellmapi subcommands — external sidecar endpoint control (D-015)
 # ---------------------------------------------------------------------------
+
+
+@freellmapi_app.command("install")
+def freellmapi_install(
+    target: str = typer.Option(
+        "", "--target", help="Install directory (default: <ATLAS home>/sidecars/freellmapi)."
+    ),
+    force: bool = typer.Option(
+        False, "--force", help="Overwrite a non-checkout directory already at the target."
+    ),
+    json_out: bool = typer.Option(False, "--json", help="Emit machine-readable JSON."),
+) -> None:
+    """Clone + build the FreeLLMAPI sidecar under ATLAS's own install home.
+
+    Gives `atlas` full control of the sidecar's lifecycle end to end — no manual
+    git clone required. Requires git + npm on PATH.
+    """
+    from atlas_runtime import freellmapi_control
+
+    dest = pathlib.Path(target).expanduser() if target else None
+    ok, message = freellmapi_control.install(dest, force=force)
+    if json_out:
+        typer.echo(json.dumps({"ok": ok, "message": message}))
+    else:
+        typer.echo(message)
+    if not ok:
+        raise typer.Exit(1)
 
 
 @freellmapi_app.command("start")

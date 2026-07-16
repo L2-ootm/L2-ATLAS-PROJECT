@@ -40,9 +40,9 @@ Run these before opening a pull request:
 | CLI installer | `cd packages/atlas-cli && npm test` | `packages/atlas-cli/` |
 
 > **Known CI gap:** the `atlas-cli` installer test currently fails on Windows
-> because its tar extraction shells out to the system `tar` with native paths.
-> See `.debug/` for the defect report. Do not assume `npm test` is green there
-> until that is fixed; the non-manifest install path passes.
+> because its tar extraction shells out to the system `tar` with native paths
+> instead of a cross-platform archive library. Do not assume `npm test` is
+> green there until that is fixed; the non-manifest install path passes.
 
 ## Architecture
 

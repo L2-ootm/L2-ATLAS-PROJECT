@@ -226,6 +226,7 @@ def get(
     session_id: str,
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
+    """Print one surface session's id/state/kind."""
     session = _session_or_fail(_get_connection(), session_id)
     if json_out:
         _echo_session(session)
@@ -237,6 +238,7 @@ def get(
 def list_sessions(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
+    """List all surface sessions as 'id<TAB>state<TAB>kind'."""
     sessions = surface_session_service.list_sessions(_get_connection())
     if json_out:
         _echo({"sessions": [item.model_dump(mode="json") for item in sessions]})
@@ -278,6 +280,7 @@ def heartbeat(
     owner_token: str = typer.Option(..., "--owner-token"),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
+    """Keep an owned surface session alive (resets its idle-reclaim clock)."""
     conn = _get_connection()
     lock = _get_lock()
     _owned_session_or_fail(conn, session_id, owner_token)
@@ -295,6 +298,7 @@ def suspend(
     owner_token: str = typer.Option(..., "--owner-token"),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
+    """Suspend an owned surface session (pauses it; resumable later)."""
     conn = _get_connection()
     lock = _get_lock()
     session = _owned_session_or_fail(conn, session_id, owner_token)
@@ -324,6 +328,7 @@ def resume(
     owner_token: str = typer.Option(..., "--owner-token"),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
+    """Resume a suspended surface session under a freshly issued owner token."""
     conn = _get_connection()
     prior = _owned_session_or_fail(conn, session_id, owner_token)
     next_owner_token = str(uuid.uuid4())
@@ -421,6 +426,7 @@ def cancel(
     owner_token: str = typer.Option(..., "--owner-token"),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
+    """Cancel an owned surface session (and its run, if any) to a terminal state."""
     _finish(
         session_id,
         owner_token=owner_token,
@@ -435,6 +441,7 @@ def close(
     owner_token: str = typer.Option(..., "--owner-token"),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
+    """Close an owned surface session normally, completing its run if any."""
     _finish(
         session_id,
         owner_token=owner_token,

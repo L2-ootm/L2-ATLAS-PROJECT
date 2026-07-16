@@ -34,6 +34,11 @@ def _default_log_dir() -> pathlib.Path:
     return base / "logs"
 
 
+def log_file_path() -> pathlib.Path:
+    """Resolve `<ATLAS_HOME>/logs/atlas.log` at call time (ATLAS_LOG_DIR/ATLAS_HOME-aware)."""
+    return _default_log_dir() / "atlas.log"
+
+
 def configure_logging(
     *,
     level: str | None = None,
