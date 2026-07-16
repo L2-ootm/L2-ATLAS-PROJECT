@@ -1,5 +1,99 @@
 # Handoff — L2 ATLAS Finish Sprint
 
+## Session update — 2026-07-16: TUI duplication R5 (client delta replay), English-default language policy, `atlas restart`, dedicated WebUI Chat page + console truncation fix
+
+Operator reported duplication still live after clean restart (screenshots: TUI
+"who are you" run + WebUI hino run truncated at "Bril"), Portuguese-bound
+replies, and asked for: `atlas restart`, a dedicated WebUI chat page,
+conditional smooth autoscroll, once-per-session run receipts, and a styled
+paced streaming reveal.
+
+**1. TUI duplication R5 — server exonerated by DB forensics; client delta
+replay path closed.** Dumped the exact screenshotted runs from
+`~/.atlas/atlas.db` audit rows: the delta stream, `llm_call` final text, and
+transition summary were all CLEAN (single "é só falar 🫡"), rowid-ordered,
+`end_of_turn` flagged — so the R4 `_diff_cumulative_chunk` boundary guard
+works and everything upstream of the client is correct. The gateway relay +
+binary were verified fresh (binary newer than sources; `rowid > cursor`
+semantics correct). The remaining live duplication path is the one HANDOFF
+already documented as the latent gap: atlas-terminal's donor `/event` channel
+replays the last 256 bus events to ANY (re)subscriber (`EventBus.replayRecent`)
+and `sdk.tsx`'s `startSSE` reconnect loop re-subscribes on any stream end —
+re-applied `message.part.delta` events append the same text again, with no
+client dedup. Mid-run replay ≈ "even more duplicated while streaming". Fixes
+(defense in depth, all committed):
+- `events.ts`: `replayRecent` never replays `message.part.delta` (replayed
+  `message.part.updated` events serialize the live part at forward time, so
+  they already carry full text — deltas add only corruption to a late
+  subscriber).
+- `chat.ts`: delta emissions now carry `offset` (authoritative text length
+  before the append).
+- `sync.tsx`: the `message.part.delta` handler drops any delta whose `offset`
+  doesn't match the store text length (duplicate delivery / ordering
+  violation); the final part.updated reconcile remains the authority.
+- New tests: offsets `[0,3,7]` asserted; `/event` replay asserted to contain
+  part.updated but never part.delta. atlas-terminal: bun test 58/58, tsc clean.
+- UAT owed: this environment can't drive the live TUI; if duplication STILL
+  recurs, instrument `startSSE` reconnects (the trigger) — the render layer
+  (opentui `updateBlocks(true)` on streaming flip) re-renders from store text,
+  so with the store now guarded the display should follow.
+
+**2. Portuguese-bound replies — English-default language policy.** No language
+instruction existed anywhere in the prompt stack (checked atlas_core.md,
+prompt_builder/system_prompt, i18n is static-strings-only, config.yaml has no
+display.language) — the model inherited Portuguese from cross-session context.
+`prompts/atlas_core.md` now carries: English by default; another language only
+when the operator's current message uses it or they ask; never carry language
+from retrieved context/past sessions. Golden prompt sha256s regenerated (5
+files). Verified the compiled contract IS the native run's `system_message`
+(native.py `_contract_system_message`).
+
+**3. `atlas restart`.** `_restart_cmd` = `_down_cmd` then `_up_cmd` with the
+normal interactive picker (or `--yes/--services/--json` passthrough); a hard
+down failure aborts before the up phase. Registered in the "Getting Started"
+help tab. 3 new tests (order, abort-on-failure, services passthrough);
+agent-runtime suite 846 passed.
+
+**4. WebUI: dedicated Chat page (`/chat`) + console streaming fixes.**
+- **Truncation root cause (the "Bril" hino run): Console's stuck-turn watchdog
+  finalized the turn on the FIRST terminal run-record sighting, while the tail
+  surface events (last deltas + final reconcile) were still unpolled — once
+  `activeTurn` cleared, the merge effect never applied them. DB had the full
+  answer.** Fix (Console + Chat): first terminal sighting only forces
+  `agentSurface.refresh()` and holds the turn; finalize on the next tick if the
+  terminal event still hasn't landed. Existing continuation test updated to the
+  two-tick contract.
+- **New `/chat` route** (lazy, own 17KB chunk; sidebar MISSION → CHAT):
+  single-transcript operator chat built on the same surface-session contracts —
+  agent picker (ATLAS/Claude Code), project/folder binding with lazy project
+  registration, cancel-run button, localStorage persistence (pending turns
+  marked interrupted on hydrate), empty-state, per-run tool cards + reasoning
+  blocks (imported from Console), result footer (turns/cost).
+- **Paced streaming reveal**: new `StreamReveal` component — buffers incoming
+  chunks, reveals at a backlog-adaptive rate (~420ms drain, ≥55cps) all the way
+  to the end of the answer; trailing 24-char "hot edge" glows and cools; scan
+  bar pulses at the frontier; `onSettled` swaps to full markdown only after the
+  reveal catches up. prefers-reduced-motion = instant.
+- **Autoscroll**: stick-to-bottom only when already pinned (<48px from bottom);
+  rAF follow during streaming; scrolling up detaches; "LATEST" pill re-pins
+  smoothly. Applied to BOTH Chat and console ChatPane (TopoScroll gained an
+  optional viewportRef/onViewportScroll).
+- **Run-receipt de-noise**: `turnReceiptSignature()` — the merged "run started
+  · runtime · privacy" receipt renders only when it differs from the previous
+  agent turn's (once per session in practice). Applied to both surfaces.
+- Verified: tsc clean, vitest 77/77 (2 new chat tests: delta+reconcile renders
+  once; receipt once across two runs), vite build + bundle budget green.
+
+**Next:**
+1. Operator UAT: TUI duplication after a clean relaunch (watch for whether it
+   EVER recurs — if yes, log `startSSE` reconnects), WebUI /chat page live
+   streaming feel, console truncation gone, English-default replies.
+2. If the scan-edge reveal feels right in /chat, port `StreamReveal` into
+   Console's AgentTurn (replaces `SmoothStreamText`).
+3. Deferred from previous sessions: WebUI SSE transport swap (2s poll → push),
+   workspace-root/ATLAS-home split design pass, freellmapi `google.ts`
+   cumulative-diff guard upstream.
+
 ## Session update — 2026-07-15 (R3): streaming duplication root-caused — mid-tool-call retry, not a render bug; uncommitted R1/R2/R3 from prior session committed
 
 Operator reported (screenshot) that the R1+R2 fixes from the prior "(latest)"
