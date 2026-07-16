@@ -16,7 +16,11 @@ from atlas_runtime import focus_service, goal_service, run_service
 from atlas_runtime.agents import RunOutcome, get_agent, known_agents
 from atlas_runtime.agents.base import AgentRuntime
 from atlas_runtime.agents.claude_code import ClaudeCodeAgent
-from atlas_runtime.agents.native import NativeAtlasAgent, _DeltaBuffer
+from atlas_runtime.agents.native import (
+    NativeAtlasAgent,
+    _DeltaBuffer,
+    _repair_cumulative_final,
+)
 from atlas_runtime.audit_service import get_events_for_run
 
 
@@ -404,6 +408,45 @@ def test_delta_buffer_resets_cumulative_tracking_across_turns() -> None:
         ("Sure, one moment", True),
         ("Sure, one moment please", True),
     ]
+
+
+def test_delta_buffer_records_last_turn_text() -> None:
+    buf = _DeltaBuffer(lambda text, final: None, interval_s=999, max_chars=999)
+    buf.push("Qual deles")
+    buf.push("Qual deles você quer atacar?")  # cumulative resend
+    buf.push(None)
+    assert buf.last_turn_text == "Qual deles você quer atacar?"
+    buf.push(None)  # redundant close (no open turn) must not clobber it
+    assert buf.last_turn_text == "Qual deles você quer atacar?"
+
+
+def test_repair_cumulative_final_strips_prefix_concatenation() -> None:
+    truth = "Qual deles você quer atacar?"
+    corrupted = "Qual deles" + truth  # foundation joined raw cumulative chunks
+    assert _repair_cumulative_final(corrupted, truth) == truth
+
+
+def test_repair_cumulative_final_multi_piece_head() -> None:
+    truth = "ABC"
+    corrupted = "A" + "AB" + truth  # p1 + p2 + full text
+    assert _repair_cumulative_final(corrupted, truth) == truth
+
+
+def test_repair_cumulative_final_leaves_honest_text_alone() -> None:
+    assert _repair_cumulative_final("hello world", "hello world") == "hello world"
+    # Legitimately different final (footer appended, think-block stripped,
+    # non-stream path) must pass through untouched.
+    assert _repair_cumulative_final("hello world\n\n-- footer", "hello world") == "hello world\n\n-- footer"
+    assert _repair_cumulative_final("something else entirely", "hello world") == "something else entirely"
+    # No streamed truth available (non-streaming factory) — no-op.
+    assert _repair_cumulative_final("hello world", "") == "hello world"
+
+
+def test_repair_cumulative_final_rejects_non_prefix_head() -> None:
+    truth = "you want to attack?"
+    # Ends with truth but the head is real content, not stale prefixes.
+    legit = "Which one do " + truth
+    assert _repair_cumulative_final(legit, truth) == legit
 
 
 def test_native_harness_unavailable_is_failed(db: sqlite3.Connection, lock: threading.Lock) -> None:
