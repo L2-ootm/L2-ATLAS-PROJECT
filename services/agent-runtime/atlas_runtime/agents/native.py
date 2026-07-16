@@ -61,6 +61,31 @@ _STREAM_RETRY_MARKER = "Connection dropped mid tool-call"
 HarnessFactory = Callable[..., Any]
 
 
+def _diff_cumulative_chunk(previous_text: str, chunk_text: str) -> str:
+    """Normalizes an incoming stream chunk against everything already seen
+    for the current turn, returning just the new increment.
+
+    ATLAS's `_DeltaBuffer` is the single choke point every streaming surface
+    (atlas-terminal, web-ui-react) consumes through — it must not trust the
+    upstream provider mesh (freellmapi and any provider behind it) to always
+    honor the incremental-delta contract. Some upstreams (observed: Gemini
+    via freellmapi, ULTRAREVIEW-streaming-duplication-R4) resend the full
+    text accumulated so far in a single chunk instead of just the new
+    fragment; forwarding that verbatim duplicates/overlaps the rendered
+    text. This defends the boundary ATLAS actually owns, rather than relying
+    on every sidecar/provider to normalize correctly upstream.
+    """
+    if not previous_text:
+        return chunk_text
+    if chunk_text == previous_text:
+        return ""
+    if chunk_text.startswith(previous_text):
+        return chunk_text[len(previous_text):]
+    if previous_text.startswith(chunk_text):
+        return ""
+    return chunk_text
+
+
 class _DeltaBuffer:
     """Coalesces a foundation `stream_delta_callback(chunk | None)` stream into
     flush-sized `llm_delta` audit events.
@@ -86,12 +111,16 @@ class _DeltaBuffer:
         self._buffer: list[str] = []
         self._last_flush = time.monotonic()
         self._turn_open = False
+        # Raw cumulative text seen for the currently-open turn, pre-dedup —
+        # what incoming chunks are diffed against (see _diff_cumulative_chunk).
+        self._turn_text = ""
 
     def push(self, chunk: Optional[str]) -> None:
         if chunk is None:
             if self._turn_open:
                 self._flush(final=True)
                 self._turn_open = False
+            self._turn_text = ""
             return
         if self._turn_open and _STREAM_RETRY_MARKER in chunk:
             # Mid-turn silent retry: close the pre-drop segment as its own
@@ -99,8 +128,13 @@ class _DeltaBuffer:
             # new one (see _STREAM_RETRY_MARKER comment above).
             self._flush(final=True)
             self._turn_open = False
+            self._turn_text = ""
+        normalized = _diff_cumulative_chunk(self._turn_text, chunk)
+        self._turn_text += normalized
         self._turn_open = True
-        self._buffer.append(chunk)
+        if not normalized:
+            return
+        self._buffer.append(normalized)
         now = time.monotonic()
         buffered_len = sum(len(c) for c in self._buffer)
         if now - self._last_flush >= self._interval_s or buffered_len >= self._max_chars:

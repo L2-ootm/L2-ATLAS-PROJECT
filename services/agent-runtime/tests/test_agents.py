@@ -364,6 +364,48 @@ def test_delta_buffer_retry_marker_without_open_turn_is_not_split() -> None:
     assert flushes == [("\n\n⚠ Connection dropped mid tool-call; reconnecting…\n\n", True)]
 
 
+def test_delta_buffer_diffs_cumulative_chunk_to_new_suffix() -> None:
+    """ULTRAREVIEW R4: some upstream providers (observed: Gemini via
+    freellmapi) resend the full text accumulated so far in a chunk instead
+    of just the new fragment. ATLAS's _DeltaBuffer is the single choke point
+    every streaming surface consumes through — it must not trust the
+    provider mesh to always honor the incremental-delta contract, since a
+    fix on one sidecar (freellmapi) doesn't protect against a different
+    misbehaving upstream in the future.
+    """
+    flushes: list[tuple[str, bool]] = []
+    buf = _DeltaBuffer(lambda text, final: flushes.append((text, final)), interval_s=999, max_chars=999)
+    buf.push("Qual deles")
+    buf.push("Qual deles você quer atacar?")
+    buf.push(None)
+    assert flushes == [("Qual deles você quer atacar?", True)]
+
+
+def test_delta_buffer_drops_exact_repeat_chunk() -> None:
+    flushes: list[tuple[str, bool]] = []
+    buf = _DeltaBuffer(lambda text, final: flushes.append((text, final)), interval_s=999, max_chars=999)
+    buf.push("hello")
+    buf.push("hello")  # stray exact repeat — no new content
+    buf.push(None)
+    assert flushes == [("hello", True)]
+
+
+def test_delta_buffer_resets_cumulative_tracking_across_turns() -> None:
+    """A closed turn's accumulated text must not be diffed against the next
+    turn's chunks — a coincidental prefix match across turns should not
+    silently eat the next turn's opening text."""
+    flushes: list[tuple[str, bool]] = []
+    buf = _DeltaBuffer(lambda text, final: flushes.append((text, final)), interval_s=999, max_chars=999)
+    buf.push("Sure, one moment")
+    buf.push(None)
+    buf.push("Sure, one moment please")  # new turn; happens to share a prefix
+    buf.push(None)
+    assert flushes == [
+        ("Sure, one moment", True),
+        ("Sure, one moment please", True),
+    ]
+
+
 def test_native_harness_unavailable_is_failed(db: sqlite3.Connection, lock: threading.Lock) -> None:
     mid = _pending_mission(db)
     rid = _running_run(db, mid)
