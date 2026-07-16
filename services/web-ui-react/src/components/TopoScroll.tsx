@@ -11,6 +11,11 @@ type Props = {
 	viewportStyle?: React.CSSProperties;
 	className?: string;
 	tone?: ScrollTone;
+	/** Optional handle to the scrolling viewport element — lets chat surfaces
+	 * implement stick-to-bottom follow without reaching into the DOM. */
+	viewportRef?: React.MutableRefObject<HTMLDivElement | null>;
+	/** Fires on viewport scroll (after the internal thumb bookkeeping). */
+	onViewportScroll?: (el: HTMLDivElement) => void;
 };
 
 /**
@@ -19,7 +24,7 @@ type Props = {
  * It auto-hides when idle, brightens on hover, and is draggable. Vertical only —
  * the console scroll surfaces never scroll horizontally.
  */
-export function TopoScroll({ children, style, viewportStyle, className, tone = 'info' }: Props) {
+export function TopoScroll({ children, style, viewportStyle, className, tone = 'info', viewportRef: externalViewportRef, onViewportScroll }: Props) {
 	const viewportRef = useRef<HTMLDivElement>(null);
 	const [thumb, setThumb] = useState({ height: 0, top: 0, visible: false });
 	const [active, setActive] = useState(false);
@@ -63,6 +68,7 @@ export function TopoScroll({ children, style, viewportStyle, className, tone = '
 	function onScroll() {
 		recompute();
 		flashActive();
+		if (viewportRef.current && onViewportScroll) onViewportScroll(viewportRef.current);
 	}
 
 	function onThumbDown(e: React.PointerEvent<HTMLDivElement>) {
@@ -102,7 +108,15 @@ export function TopoScroll({ children, style, viewportStyle, className, tone = '
 
 	return (
 		<div className={`atlas-topo-scroll${className ? ` ${className}` : ''}`} style={style} data-tone={tone}>
-			<div ref={viewportRef} className="atlas-topo-scroll-viewport" style={viewportStyle} onScroll={onScroll}>
+			<div
+				ref={(el) => {
+					viewportRef.current = el;
+					if (externalViewportRef) externalViewportRef.current = el;
+				}}
+				className="atlas-topo-scroll-viewport"
+				style={viewportStyle}
+				onScroll={onScroll}
+			>
 				{children}
 			</div>
 			{thumb.visible && (

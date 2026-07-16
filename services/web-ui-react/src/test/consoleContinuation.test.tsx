@@ -11,7 +11,8 @@ const surface = vi.hoisted(() => ({
 	value: {
 		events: [] as SurfaceEvent[],
 		submitPrompt: vi.fn(),
-		releaseSession: vi.fn().mockResolvedValue(undefined)
+		releaseSession: vi.fn().mockResolvedValue(undefined),
+		refresh: vi.fn().mockResolvedValue(undefined)
 	}
 }));
 
@@ -153,11 +154,22 @@ describe('Console route continuation', () => {
 		expect(screen.getByTestId('turn-status')).toHaveTextContent('pending');
 		expect(screen.getByPlaceholderText('Turn in progress — streaming')).toBeDisabled();
 
+		// First terminal sighting is a grace pass: the watchdog forces a surface
+		// event refresh instead of finalizing, so late tail events (final deltas
+		// + reconcile) can still land — see the "Bril" truncation bug. The turn
+		// must still be held open after this tick.
 		await act(async () => {
 			await vi.advanceTimersByTimeAsync(8_000);
 		});
-
 		expect(api.getRun).toHaveBeenCalledWith('run-1');
+		expect(surface.value.refresh).toHaveBeenCalled();
+		expect(screen.getByTestId('active-run')).toHaveTextContent('run-1');
+
+		// Second sighting with the terminal event still missing: finalize from
+		// the run record.
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(8_000);
+		});
 		expect(screen.getByTestId('active-run')).toHaveTextContent('idle');
 		expect(screen.getByTestId('turn-status')).toHaveTextContent('succeeded');
 		expect(screen.getByPlaceholderText('Message ATLAS')).toBeEnabled();

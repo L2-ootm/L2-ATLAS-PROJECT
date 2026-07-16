@@ -1138,3 +1138,71 @@ body,
 .hljs-strong {
 	font-weight: 700;
 }
+
+/* ── Chat streaming reveal (StreamReveal) ─────────────────────────────────
+   Settled text is normal foreground; the trailing "hot edge" glows and cools
+   as the frontier moves past it; a scan bar pulses at the frontier. */
+.atlas-stream-reveal {
+	color: var(--l2-fg-1);
+	font-size: 13.5px;
+	line-height: 1.6;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+.atlas-stream-hot {
+	color: #d8ffe9;
+	text-shadow:
+		0 0 8px rgba(70, 240, 160, 0.55),
+		0 0 22px rgba(70, 240, 160, 0.22);
+}
+.atlas-scan-bar {
+	display: inline-block;
+	width: 7px;
+	height: 1.05em;
+	margin-left: 2px;
+	vertical-align: text-bottom;
+	border-radius: 1px;
+	background: linear-gradient(
+		180deg,
+		rgba(70, 240, 160, 0.95),
+		rgba(79, 139, 255, 0.75)
+	);
+	box-shadow:
+		0 0 10px rgba(70, 240, 160, 0.6),
+		0 0 26px rgba(70, 240, 160, 0.25);
+	animation: atlas-scan-bar-pulse 900ms var(--l2-ease) infinite;
+}
+@keyframes atlas-scan-bar-pulse {
+	0%, 100% { opacity: 1; transform: scaleY(1); }
+	50% { opacity: 0.55; transform: scaleY(0.82); }
+}
+@media (prefers-reduced-motion: reduce) {
+	.atlas-scan-bar { animation: none; }
+	.atlas-stream-hot { text-shadow: none; color: inherit; }
+}
+
+/* Jump-to-latest pill — appears when the operator scrolls away from the live
+   bottom edge of a streaming transcript. */
+.atlas-jump-latest {
+	position: absolute;
+	right: 18px;
+	bottom: 14px;
+	z-index: 5;
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	padding: 5px 11px;
+	border-radius: 2px;
+	border: 1px solid rgba(70, 240, 160, 0.4);
+	background: rgba(9, 12, 18, 0.92);
+	color: var(--atlas-emerald, #46f0a0);
+	font-family: var(--l2-mono, ui-monospace, monospace);
+	font-size: 10px;
+	letter-spacing: 0.14em;
+	cursor: pointer;
+	box-shadow: 0 6px 22px rgba(0, 0, 0, 0.5), 0 0 12px rgba(70, 240, 160, 0.12);
+	animation: atlas-window-in 200ms var(--l2-ease);
+}
+.atlas-jump-latest:hover {
+	background: rgba(70, 240, 160, 0.12);
+}

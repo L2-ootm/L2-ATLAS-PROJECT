@@ -21,6 +21,8 @@ import Migrating from './routes/Migrating';
 const Graph = lazy(() => import('./routes/Graph'));
 // Lazy — pulls the markdown/highlight stack, kept out of the main bundle.
 const Console = lazy(() => import('./routes/Console'));
+// Lazy — shares the markdown/highlight chunk with Console.
+const Chat = lazy(() => import('./routes/Chat'));
 
 const router = createBrowserRouter([
 	{
@@ -34,6 +36,7 @@ const router = createBrowserRouter([
 			{ path: 'runs', element: <Runs /> },
 			{ path: 'runs/:id', element: <RunDetail /> },
 			{ path: 'console', element: <Suspense fallback={null}><Console /></Suspense> },
+			{ path: 'chat', element: <Suspense fallback={null}><Chat /></Suspense> },
 			{ path: 'graph', element: <Suspense fallback={null}><Graph /></Suspense> },
 			{ path: 'projects', element: <Projects /> },
 			{ path: 'cashflow', element: <Cashflow /> },

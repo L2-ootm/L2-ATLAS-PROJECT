@@ -1,0 +1,992 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type * as React from 'react';
+import {
+	AlertTriangle,
+	Bot,
+	ChevronDown,
+	Folder,
+	FolderSearch,
+	MessagesSquare,
+	Plus,
+	SendHorizontal,
+	Square,
+	Unlink
+} from 'lucide-react';
+import { Page } from '../components/Page';
+import { GlassPanel } from '../components/GlassFx';
+import { TopoScroll } from '../components/TopoScroll';
+import { ChatMarkdown } from '../components/ChatMarkdown';
+import { StreamReveal } from '../components/chat/StreamReveal';
+import {
+	agentRuntimeLabel,
+	getRun,
+	listProjects,
+	registerProject,
+	type AgentRuntime,
+	type ConsoleChatEvent,
+	type Project
+} from '../lib/api';
+import {
+	isRunTerminalEvent,
+	surfaceConsoleEvent,
+	surfaceEventsForTurn
+} from '../lib/consoleEvents';
+import { useAgentSurface } from '../context/AgentSurfaceContext';
+import type { ConsoleMessage } from '../context/ConsoleSessionContext';
+import { selectFolder } from '../lib/host';
+import { ReasoningBlock, ToolCallCard, turnReceiptSignature } from './Console';
+
+/**
+ * Dedicated operator chat — a single, full-page conversation with the agent.
+ *
+ * The multi-window Console stays the workbench; this surface is the polished
+ * dialogue: one transcript, paced streaming reveal with a scan edge,
+ * stick-to-bottom follow (only when the operator is already at the bottom),
+ * run receipts shown once per session instead of on every turn, and a
+ * grace-drained watchdog so answers can never freeze mid-chunk.
+ */
+
+const STORE_KEY = 'atlas.chatpage.v1';
+const MAX_STORED_MESSAGES = 150;
+
+type BindingMode = 'project' | 'folder';
+
+type ActiveChatTurn = {
+	turnId: string;
+	runId: string | null;
+	afterSeq: number;
+};
+
+interface ChatSnapshot {
+	messages: ConsoleMessage[];
+	draft: string;
+	agent: AgentRuntime;
+	bindingMode: BindingMode;
+	folderPath: string;
+	projectId: string;
+}
+
+function loadSnapshot(): ChatSnapshot | null {
+	try {
+		const raw = localStorage.getItem(STORE_KEY);
+		if (!raw) return null;
+		const parsed = JSON.parse(raw) as ChatSnapshot;
+		return {
+			...parsed,
+			// A turn that was pending when the tab closed can never complete —
+			// surface it honestly instead of showing an eternal LIVE badge.
+			messages: (parsed.messages ?? []).map((m) =>
+				m.status === 'pending'
+					? { ...m, status: 'failed', body: m.body || 'Interrupted — the session ended before this turn completed.' }
+					: m
+			)
+		};
+	} catch {
+		return null;
+	}
+}
+
+function nowLabel(): string {
+	return new Intl.DateTimeFormat(undefined, {
+		hour: '2-digit',
+		minute: '2-digit',
+		second: '2-digit'
+	}).format(new Date());
+}
+
+function pathTail(path: string): string {
+	const tail = path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? path;
+	return tail.length > 28 ? `${tail.slice(0, 27)}…` : tail;
+}
+
+export default function Chat() {
+	const agentSurface = useAgentSurface();
+	const snapshot = useRef<ChatSnapshot | null | undefined>(undefined);
+	if (snapshot.current === undefined) snapshot.current = loadSnapshot();
+
+	const [messages, setMessages] = useState<ConsoleMessage[]>(snapshot.current?.messages ?? []);
+	const [draft, setDraft] = useState(snapshot.current?.draft ?? '');
+	const [agent, setAgent] = useState<AgentRuntime>(snapshot.current?.agent ?? 'native');
+	const [bindingMode, setBindingMode] = useState<BindingMode>(snapshot.current?.bindingMode ?? 'folder');
+	const [folderPath, setFolderPath] = useState(snapshot.current?.folderPath ?? '');
+	const [projectId, setProjectId] = useState(snapshot.current?.projectId ?? '');
+	const [projects, setProjects] = useState<Project[]>([]);
+	const [activeTurn, setActiveTurn] = useState<ActiveChatTurn | null>(null);
+	const [bindOpen, setBindOpen] = useState(false);
+
+	useEffect(() => {
+		let alive = true;
+		void listProjects(100)
+			.then(({ projects: loaded }) => {
+				if (alive) setProjects(loaded);
+			})
+			.catch(() => undefined);
+		return () => {
+			alive = false;
+		};
+	}, []);
+
+	const activeProject = useMemo(
+		() => (bindingMode === 'project' && projectId ? projects.find((p) => p.id === projectId) ?? null : null),
+		[bindingMode, projectId, projects]
+	);
+	const boundCwd = bindingMode === 'project' ? activeProject?.root_path ?? null : folderPath.trim() || null;
+
+	// Persist the whole page state (debounce-free: writes are tiny and rare
+	// relative to render cost; the messages cap keeps the payload bounded).
+	useEffect(() => {
+		try {
+			const payload: ChatSnapshot = {
+				messages: messages.slice(-MAX_STORED_MESSAGES),
+				draft,
+				agent,
+				bindingMode,
+				folderPath,
+				projectId
+			};
+			localStorage.setItem(STORE_KEY, JSON.stringify(payload));
+		} catch {
+			// Quota/serialization failures must never break the chat.
+		}
+	}, [messages, draft, agent, bindingMode, folderPath, projectId]);
+
+	// ── event merge (same contract as Console's, single transcript) ─────────
+	useEffect(() => {
+		const pending = surfaceEventsForTurn(agentSurface.events, activeTurn);
+		if (!activeTurn || pending.length === 0) return;
+		const projected = pending.map((surfaceEvent): ConsoleChatEvent => {
+			try {
+				return surfaceConsoleEvent(surfaceEvent);
+			} catch (cause) {
+				return { type: 'failure', error: cause instanceof Error ? cause.message : String(cause) };
+			}
+		});
+		const terminal = projected.some(isRunTerminalEvent);
+		const afterSeq = Math.max(...pending.map((event) => event.seq));
+		const { turnId, runId } = activeTurn;
+
+		setMessages((prev) =>
+			prev.map((message) => {
+				if (message.id !== turnId) return message;
+				let body = message.body;
+				let streamDeltaStart = message.streamDeltaStart;
+				let next = message;
+				for (const event of projected) {
+					if (event.type === 'text_delta') {
+						if (streamDeltaStart === undefined) streamDeltaStart = body.length;
+						body = `${body}${event.text ?? ''}`;
+					} else if (event.type === 'text') {
+						body =
+							streamDeltaStart !== undefined
+								? `${body.slice(0, streamDeltaStart)}${event.text ?? ''}`
+								: `${body}${event.text ?? ''}`;
+						streamDeltaStart = undefined;
+					}
+					next = {
+						...next,
+						events: [...(next.events ?? []), event],
+						body,
+						streamDeltaStart,
+						status:
+							event.type === 'failure' && !event.tool_call_id
+								? 'failed'
+								: event.type === 'result'
+									? event.is_error
+										? 'failed'
+										: 'succeeded'
+									: next.status
+					};
+				}
+				return next;
+			})
+		);
+		setActiveTurn((current) => {
+			if (!current || current.turnId !== turnId || current.runId !== runId) return current;
+			return terminal ? null : { ...current, afterSeq };
+		});
+	}, [activeTurn, agentSurface.events]);
+
+	// ── stuck-turn watchdog with grace drain (see Console.tsx) ──────────────
+	const watchedRunId = activeTurn?.runId ?? null;
+	const watchedTurnId = activeTurn?.turnId ?? null;
+	const terminalSeenRef = useRef<string | null>(null);
+	const refreshSurfaceEvents = agentSurface.refresh;
+	useEffect(() => {
+		if (!watchedRunId || !watchedTurnId) return;
+		terminalSeenRef.current = null;
+		const timer = window.setInterval(async () => {
+			try {
+				const { run } = await getRun(watchedRunId);
+				if (!['succeeded', 'failed', 'cancelled'].includes(run.status)) return;
+				// First terminal sighting: the tail surface events (last deltas +
+				// final reconcile) may not be polled yet — force a refresh and give
+				// them one more tick before finalizing, or the answer truncates.
+				if (terminalSeenRef.current !== watchedRunId) {
+					terminalSeenRef.current = watchedRunId;
+					void refreshSurfaceEvents().catch(() => undefined);
+					return;
+				}
+				const failed = run.status !== 'succeeded';
+				setMessages((prev) =>
+					prev.map((message) =>
+						message.id === watchedTurnId && message.status === 'pending'
+							? {
+									...message,
+									status: failed ? 'failed' : 'succeeded',
+									body: message.body || run.summary || (failed ? 'Run failed.' : 'Run completed.')
+								}
+							: message
+					)
+				);
+				setActiveTurn((current) => (current?.runId === watchedRunId ? null : current));
+			} catch {
+				// Gateway blip — the next tick retries.
+			}
+		}, 8000);
+		return () => window.clearInterval(timer);
+	}, [watchedRunId, watchedTurnId, refreshSurfaceEvents]);
+
+	// ── workspace binding → registered project resolution ───────────────────
+	const [folderProjectId, setFolderProjectId] = useState<string | null>(null);
+	useEffect(() => {
+		setFolderProjectId(null);
+	}, [folderPath]);
+
+	const ensureFolderProject = useCallback(
+		async (path: string): Promise<string | null> => {
+			const norm = (p: string) => p.replace(/[\\/]+$/, '').replace(/\//g, '\\').toLowerCase();
+			const existing = projects.find((p) => norm(p.root_path) === norm(path));
+			if (existing) return existing.id;
+			try {
+				const { project } = await registerProject(pathTail(path), path);
+				setProjects((prev) => [...prev, project]);
+				return project.id;
+			} catch {
+				return null;
+			}
+		},
+		[projects]
+	);
+
+	// Rebinding releases the held surface session (it is workspace-bound).
+	const bindingKey = `${bindingMode}|${projectId}|${boundCwd ?? ''}`;
+	const releaseSession = agentSurface.releaseSession;
+	useEffect(() => {
+		if (activeTurn) return;
+		void releaseSession();
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [bindingKey]);
+
+	// ── dispatch ─────────────────────────────────────────────────────────────
+	async function send() {
+		const prompt = draft.trim();
+		if (!prompt || activeTurn) return;
+		setDraft('');
+		const operator: ConsoleMessage = {
+			id: `${Date.now()}-operator`,
+			role: 'operator',
+			label: 'OPERATOR',
+			body: prompt,
+			time: nowLabel()
+		};
+		const turnId = `${Date.now()}-agent`;
+		const liveTurn: ConsoleMessage = {
+			id: turnId,
+			role: 'agent',
+			label: agentRuntimeLabel(agent),
+			body: '',
+			time: nowLabel(),
+			status: 'pending',
+			events: []
+		};
+		setMessages((prev) => [...prev, operator, liveTurn]);
+		const afterSeq = agentSurface.events.reduce((highest, event) => Math.max(highest, event.seq), -1);
+		setActiveTurn({ turnId, runId: null, afterSeq });
+		try {
+			let workspace: { kind: 'global' } | { kind: 'project'; projectId: string } = { kind: 'global' };
+			if (bindingMode === 'project' && projectId) {
+				workspace = { kind: 'project', projectId };
+			} else if (bindingMode === 'folder' && boundCwd) {
+				const pid = folderProjectId ?? (await ensureFolderProject(boundCwd));
+				if (pid) {
+					setFolderProjectId(pid);
+					workspace = { kind: 'project', projectId: pid };
+				}
+			}
+			const runId = await agentSurface.submitPrompt(prompt, agent, workspace);
+			setActiveTurn((current) => (current?.turnId === turnId ? { ...current, runId } : current));
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			setMessages((prev) =>
+				prev.map((m) =>
+					m.id === turnId
+						? { ...m, status: 'failed', body: m.body || msg, events: [...(m.events ?? []), { type: 'failure', error: msg }] }
+						: m
+				)
+			);
+			setActiveTurn((current) => (current?.turnId === turnId ? null : current));
+		}
+	}
+
+	async function cancelRun() {
+		try {
+			await agentSurface.cancel();
+		} catch {
+			// The watchdog settles the turn either way.
+		}
+	}
+
+	function newSession() {
+		if (activeTurn) return;
+		setMessages([]);
+		void agentSurface.releaseSession();
+	}
+
+	async function chooseFolder() {
+		setBindingMode('folder');
+		try {
+			const picked = await selectFolder('Choose chat working folder');
+			if (picked) setFolderPath(picked);
+		} catch {
+			// Gateway offline — the binding chip keeps showing UNBOUND.
+		}
+	}
+
+	function unbind() {
+		setBindingMode('folder');
+		setFolderPath('');
+		setProjectId('');
+		setFolderProjectId(null);
+	}
+
+	// ── stick-to-bottom follow ───────────────────────────────────────────────
+	const viewportRef = useRef<HTMLDivElement | null>(null);
+	const pinnedRef = useRef(true);
+	const [unpinned, setUnpinned] = useState(false);
+	const busy = !!activeTurn;
+	const onViewportScroll = useCallback((el: HTMLDivElement) => {
+		const pinned = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+		pinnedRef.current = pinned;
+		setUnpinned(!pinned);
+	}, []);
+	useEffect(() => {
+		const el = viewportRef.current;
+		if (el && pinnedRef.current) el.scrollTop = el.scrollHeight;
+	}, [messages]);
+	useEffect(() => {
+		if (!busy) return;
+		let raf = 0;
+		const follow = () => {
+			const el = viewportRef.current;
+			if (el && pinnedRef.current && el.scrollHeight - el.scrollTop - el.clientHeight > 1) {
+				el.scrollTop = el.scrollHeight;
+			}
+			raf = requestAnimationFrame(follow);
+		};
+		raf = requestAnimationFrame(follow);
+		return () => cancelAnimationFrame(raf);
+	}, [busy]);
+	const jumpToLatest = useCallback(() => {
+		const el = viewportRef.current;
+		if (!el) return;
+		pinnedRef.current = true;
+		setUnpinned(false);
+		el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+	}, []);
+
+	// Receipts repeat identically per session — show only when changed.
+	let lastReceipt: string | null = null;
+
+	const bindingLabel = activeProject
+		? activeProject.name
+		: boundCwd
+			? pathTail(boundCwd)
+			: 'UNBOUND';
+
+	return (
+		<Page
+			eyebrow="MISSION · CHAT"
+			title="Chat"
+			max={null}
+			actions={
+				<>
+					<div style={segStyle}>
+						<SegmentButton active={agent === 'native'} onClick={() => !busy && setAgent('native')}>
+							ATLAS
+						</SegmentButton>
+						<SegmentButton active={agent === 'claude_code'} onClick={() => !busy && setAgent('claude_code')}>
+							CLAUDE CODE
+						</SegmentButton>
+					</div>
+					<div style={{ position: 'relative' }}>
+						<button
+							type="button"
+							style={bindingChipStyle}
+							onClick={() => setBindOpen((v) => !v)}
+							title={boundCwd ?? 'No workspace bound'}
+						>
+							<Folder size={13} strokeWidth={1.7} />
+							{bindingLabel}
+							<ChevronDown size={12} strokeWidth={1.8} />
+						</button>
+						{bindOpen && (
+							<div style={bindMenuStyle} data-topo="atlas">
+								<div style={bindMenuTitleStyle}>PROJECTS</div>
+								{projects.map((project) => (
+									<button
+										key={project.id}
+										type="button"
+										style={bindMenuItemStyle}
+										onClick={() => {
+											setBindingMode('project');
+											setProjectId(project.id);
+											setBindOpen(false);
+										}}
+									>
+										{project.name}
+									</button>
+								))}
+								{projects.length === 0 && <div style={bindMenuEmptyStyle}>No registered projects</div>}
+								<div style={bindMenuDividerStyle} />
+								<button
+									type="button"
+									style={bindMenuItemStyle}
+									onClick={() => {
+										setBindOpen(false);
+										void chooseFolder();
+									}}
+								>
+									<FolderSearch size={13} strokeWidth={1.7} style={{ marginRight: 6 }} />
+									Choose folder…
+								</button>
+							</div>
+						)}
+					</div>
+					{(boundCwd || projectId) && (
+						<IconAction title="Unbind workspace" onClick={unbind}>
+							<Unlink size={14} strokeWidth={1.7} />
+						</IconAction>
+					)}
+					<IconAction title="New session (clears the transcript)" onClick={newSession}>
+						<Plus size={14} strokeWidth={1.8} />
+					</IconAction>
+				</>
+			}
+		>
+			<GlassPanel
+				data-topo={agent === 'claude_code' ? 'ai' : 'atlas'}
+				style={{
+					height: 'calc(100vh - 142px)',
+					minHeight: 560,
+					display: 'grid',
+					gridTemplateRows: 'minmax(0,1fr) auto',
+					overflow: 'hidden'
+				}}
+			>
+				<div style={{ position: 'relative', minHeight: 0, display: 'grid' }}>
+					<TopoScroll
+						tone={agent === 'claude_code' ? 'atlas' : 'info'}
+						style={{ minHeight: 0 }}
+						viewportStyle={transcriptStyle}
+						viewportRef={viewportRef}
+						onViewportScroll={onViewportScroll}
+					>
+						{messages.length === 0 && (
+							<div style={emptyStateStyle}>
+								<MessagesSquare size={26} strokeWidth={1.2} style={{ color: 'var(--atlas-celestial)', opacity: 0.7 }} />
+								<div style={{ ...monoLabelStyle, fontSize: 11 }}>OPERATOR CHANNEL</div>
+								<div style={{ color: 'var(--l2-fg-3)', fontSize: 13, maxWidth: 420, textAlign: 'center', lineHeight: 1.6 }}>
+									Direct line to {agentRuntimeLabel(agent)}.{' '}
+									{boundCwd ? `Bound to ${pathTail(boundCwd)}.` : 'Bind a project or folder to scope execution.'}
+								</div>
+							</div>
+						)}
+						{messages.map((message) => {
+							if (message.role === 'agent' && (message.events?.length || message.status === 'pending')) {
+								const receipt = turnReceiptSignature(message);
+								const hideStatus = receipt !== null && receipt === lastReceipt;
+								if (receipt !== null) lastReceipt = receipt;
+								return <ChatAgentTurn key={message.id} message={message} hideStatus={hideStatus} />;
+							}
+							return <ChatBubble key={message.id} message={message} />;
+						})}
+					</TopoScroll>
+					{unpinned && (
+						<button type="button" onClick={jumpToLatest} className="atlas-jump-latest" title="Follow the live response">
+							<ChevronDown size={13} strokeWidth={2} />
+							LATEST
+						</button>
+					)}
+				</div>
+				<div style={composerWrapStyle}>
+					<textarea
+						className="atlas-console-composer"
+						value={draft}
+						onChange={(e) => setDraft(e.target.value)}
+						onKeyDown={(e) => {
+							if (e.key === 'Enter' && !e.shiftKey) {
+								e.preventDefault();
+								void send();
+							}
+						}}
+						placeholder={
+							busy
+								? 'Turn in progress — streaming'
+								: agent === 'claude_code'
+									? 'Ask Claude Code in this workspace'
+									: 'Message ATLAS'
+						}
+						disabled={busy}
+						rows={3}
+						style={composerStyle}
+					/>
+					{busy ? (
+						<button type="button" onClick={() => void cancelRun()} style={cancelButtonStyle} title="Cancel the running turn">
+							<Square size={14} strokeWidth={2} fill="currentColor" />
+						</button>
+					) : (
+						<button
+							type="button"
+							className="atlas-console-send"
+							onClick={() => void send()}
+							disabled={!draft.trim()}
+							style={sendButtonStyle}
+							title="Send"
+						>
+							<SendHorizontal size={16} strokeWidth={1.8} />
+						</button>
+					)}
+				</div>
+			</GlassPanel>
+		</Page>
+	);
+}
+
+// ── turn rendering ──────────────────────────────────────────────────────────
+
+/** Streamed answer text: paced scan-edge reveal while the run is open, then a
+ * swap to full markdown only AFTER the reveal has played out to the end. */
+function TurnText({ text, streaming }: { text: string; streaming: boolean }) {
+	const [settled, setSettled] = useState(!streaming);
+	const everStreamed = useRef(streaming);
+	if (streaming) everStreamed.current = true;
+	if (!everStreamed.current || (settled && !streaming)) {
+		return text ? <ChatMarkdown text={text} /> : null;
+	}
+	return <StreamReveal text={text} done={!streaming} onSettled={() => setSettled(true)} />;
+}
+
+function ChatAgentTurn({ message, hideStatus }: { message: ConsoleMessage; hideStatus: boolean }) {
+	const events = useMemo(() => message.events ?? [], [message.events]);
+	// Collapse text deltas into one open run; the final reconcile replaces the
+	// open run's text (same merge contract as Console's AgentTurn).
+	const displayEvents = useMemo(() => {
+		const out: Array<ConsoleChatEvent & { _open?: boolean }> = [];
+		for (const event of events) {
+			if (event.type === 'text_delta') {
+				const last = out[out.length - 1];
+				if (last?._open) {
+					last.text = `${last.text ?? ''}${event.text ?? ''}`;
+					continue;
+				}
+				out.push({ type: 'text', text: event.text ?? '', _open: true });
+				continue;
+			}
+			if (event.type === 'text') {
+				const last = out[out.length - 1];
+				if (last?._open) {
+					last.text = event.text;
+					last._open = false;
+					continue;
+				}
+				out.push({ ...event, _open: false });
+				continue;
+			}
+			if (event.type === 'status') {
+				const last = out[out.length - 1];
+				if (last?.type === 'status') {
+					last.text = `${last.text ?? ''} · ${event.text ?? ''}`;
+					continue;
+				}
+				out.push({ ...event });
+				continue;
+			}
+			out.push(event);
+		}
+		return out;
+	}, [events]);
+	const resultsByCall = useMemo(() => {
+		const map: Record<string, ConsoleChatEvent> = {};
+		for (const e of events) {
+			if ((e.type === 'tool_result' || e.type === 'failure') && e.tool_call_id) map[e.tool_call_id] = e;
+		}
+		return map;
+	}, [events]);
+	const summary = events.find((e) => e.type === 'result');
+	const pending = message.status === 'pending';
+	return (
+		<div
+			style={turnStyle}
+			className={pending ? 'atlas-inference-wake' : undefined}
+			data-topo={message.status === 'failed' ? 'bad' : 'good'}
+		>
+			<div style={turnHeaderStyle}>
+				<Bot size={13} strokeWidth={1.7} style={{ color: 'rgba(70,240,160,0.95)' }} />
+				<span style={monoLabelStyle}>{message.label}</span>
+				<span style={{ ...timeTextStyle }}>{message.time}</span>
+				{pending && <span style={liveBadgeStyle}>LIVE</span>}
+			</div>
+			{events.length === 0 && pending && <div style={{ color: 'var(--l2-fg-3)', fontSize: 13 }}>Working…</div>}
+			{displayEvents.map((event, idx) => {
+				if (event.type === 'text') {
+					return <TurnText key={idx} text={event.text ?? ''} streaming={!!event._open && pending} />;
+				}
+				if (event.type === 'reasoning') {
+					return event.text ? <ReasoningBlock key={idx} text={event.text} /> : null;
+				}
+				if (event.type === 'tool_call') {
+					return (
+						<ToolCallCard
+							key={idx}
+							event={event}
+							result={event.tool_call_id ? resultsByCall[event.tool_call_id] : undefined}
+						/>
+					);
+				}
+				if (event.type === 'failure') {
+					if (event.tool_call_id) return null;
+					return (
+						<div key={idx} style={turnErrorStyle}>
+							<AlertTriangle size={13} strokeWidth={1.8} />
+							<span>{event.error ?? 'Agent failure'}</span>
+						</div>
+					);
+				}
+				if (event.type === 'result' || event.type === 'tool_result') return null;
+				if (event.type === 'status') {
+					if (hideStatus) return null;
+					return (
+						<div key={idx} style={statusLineStyle}>
+							{event.text}
+						</div>
+					);
+				}
+				return null;
+			})}
+			{summary && (summary.num_turns != null || summary.total_cost_usd != null) && (
+				<div style={turnFooterStyle}>
+					{summary.num_turns != null && <span>{summary.num_turns} turns</span>}
+					{summary.total_cost_usd != null && <span>${summary.total_cost_usd.toFixed(4)}</span>}
+				</div>
+			)}
+		</div>
+	);
+}
+
+function ChatBubble({ message }: { message: ConsoleMessage }) {
+	const operator = message.role === 'operator';
+	const failed = message.status === 'failed';
+	if (message.role === 'system') {
+		return (
+			<div style={systemReceiptStyle} data-topo="muted">
+				<span style={{ ...monoLabelStyle, color: 'var(--atlas-bronze)' }}>▸ {message.label}</span>
+				<span style={{ color: 'var(--l2-fg-3)', fontSize: 12, minWidth: 0 }}>{message.body}</span>
+				<span style={{ ...timeTextStyle, flex: '0 0 auto' }}>{message.time}</span>
+			</div>
+		);
+	}
+	return (
+		<div style={{ display: 'flex', justifyContent: operator ? 'flex-end' : 'flex-start' }}>
+			<div
+				data-topo={failed ? 'bad' : operator ? 'info' : 'good'}
+				style={{
+					maxWidth: 'min(720px, 88%)',
+					borderRadius: 2,
+					border: failed
+						? '1px solid rgba(255,77,125,0.32)'
+						: operator
+							? '1px solid rgba(79,139,255,0.32)'
+							: '1px solid rgba(70,240,160,0.22)',
+					background: failed ? 'rgba(255,77,125,0.06)' : operator ? 'rgba(79,139,255,0.10)' : 'rgba(70,240,160,0.055)',
+					padding: '12px 13px',
+					animation: 'atlas-window-in 260ms var(--l2-ease)'
+				}}
+			>
+				<div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
+					<span style={monoLabelStyle}>{message.label}</span>
+					<span style={timeTextStyle}>{message.time}</span>
+				</div>
+				{message.role === 'agent' ? (
+					<ChatMarkdown text={message.body} />
+				) : (
+					<div style={{ color: 'var(--l2-fg-1)', fontSize: 13.5, lineHeight: 1.55, overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
+						{message.body}
+					</div>
+				)}
+			</div>
+		</div>
+	);
+}
+
+// ── small chrome ────────────────────────────────────────────────────────────
+
+function SegmentButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			style={{
+				border: 'none',
+				borderRadius: 1,
+				padding: '6px 11px',
+				fontFamily: 'var(--l2-mono)',
+				fontSize: 10,
+				letterSpacing: '0.12em',
+				cursor: 'pointer',
+				background: active ? 'rgba(79,139,255,0.16)' : 'transparent',
+				color: active ? 'var(--l2-fg-1)' : 'var(--l2-fg-3)'
+			}}
+		>
+			{children}
+		</button>
+	);
+}
+
+function IconAction({ title, onClick, children }: { title: string; onClick: () => void; children: React.ReactNode }) {
+	return (
+		<button type="button" title={title} onClick={onClick} style={iconActionStyle}>
+			{children}
+		</button>
+	);
+}
+
+// ── styles ──────────────────────────────────────────────────────────────────
+
+const monoLabelStyle: React.CSSProperties = {
+	fontFamily: 'var(--l2-mono)',
+	fontSize: 10,
+	letterSpacing: '0.14em',
+	color: 'var(--l2-fg-2)',
+	textTransform: 'uppercase'
+};
+
+const timeTextStyle: React.CSSProperties = {
+	fontFamily: 'var(--l2-mono)',
+	fontSize: 10,
+	color: 'var(--l2-fg-3)'
+};
+
+const liveBadgeStyle: React.CSSProperties = {
+	marginLeft: 'auto',
+	fontFamily: 'var(--l2-mono)',
+	fontSize: 9,
+	letterSpacing: '0.16em',
+	color: 'var(--atlas-emerald)',
+	border: '1px solid rgba(70,240,160,0.35)',
+	borderRadius: 1,
+	padding: '2px 6px',
+	animation: 'atlas-pulse-soft 1.4s var(--l2-ease) infinite'
+};
+
+const transcriptStyle: React.CSSProperties = {
+	display: 'flex',
+	flexDirection: 'column',
+	gap: 14,
+	padding: '22px clamp(16px, 6vw, 96px) 26px',
+	maxWidth: 1040,
+	width: '100%',
+	margin: '0 auto'
+};
+
+const emptyStateStyle: React.CSSProperties = {
+	display: 'flex',
+	flexDirection: 'column',
+	alignItems: 'center',
+	gap: 10,
+	margin: 'auto',
+	padding: '80px 0'
+};
+
+const turnStyle: React.CSSProperties = {
+	display: 'grid',
+	gap: 10,
+	border: '1px solid rgba(70,240,160,0.16)',
+	background: 'rgba(70,240,160,0.035)',
+	borderRadius: 2,
+	padding: '12px 14px'
+};
+
+const turnHeaderStyle: React.CSSProperties = {
+	display: 'flex',
+	alignItems: 'center',
+	gap: 8
+};
+
+const turnErrorStyle: React.CSSProperties = {
+	display: 'flex',
+	alignItems: 'center',
+	gap: 7,
+	color: 'var(--l2-error, #ff4d7d)',
+	fontSize: 12.5
+};
+
+const statusLineStyle: React.CSSProperties = {
+	fontFamily: 'var(--l2-mono)',
+	fontSize: 10,
+	letterSpacing: '0.1em',
+	color: 'var(--l2-fg-3)',
+	textTransform: 'uppercase'
+};
+
+const turnFooterStyle: React.CSSProperties = {
+	display: 'flex',
+	gap: 14,
+	fontFamily: 'var(--l2-mono)',
+	fontSize: 10,
+	color: 'var(--l2-fg-3)',
+	borderTop: '1px solid rgba(237,234,224,0.06)',
+	paddingTop: 8
+};
+
+const systemReceiptStyle: React.CSSProperties = {
+	display: 'flex',
+	alignItems: 'baseline',
+	gap: 10,
+	padding: '4px 2px'
+};
+
+const composerWrapStyle: React.CSSProperties = {
+	display: 'flex',
+	gap: 10,
+	alignItems: 'flex-end',
+	padding: '12px clamp(16px, 6vw, 96px) 16px',
+	borderTop: '1px solid var(--l2-hairline)',
+	maxWidth: 1040,
+	width: '100%',
+	margin: '0 auto'
+};
+
+const composerStyle: React.CSSProperties = {
+	flex: 1,
+	resize: 'none',
+	background: 'rgba(237,234,224,0.03)',
+	border: '1px solid rgba(237,234,224,0.10)',
+	borderRadius: 2,
+	color: 'var(--l2-fg-1)',
+	fontSize: 13.5,
+	lineHeight: 1.5,
+	padding: '10px 12px',
+	outline: 'none',
+	fontFamily: 'inherit'
+};
+
+const sendButtonStyle: React.CSSProperties = {
+	border: '1px solid rgba(79,139,255,0.4)',
+	background: 'rgba(79,139,255,0.14)',
+	color: 'var(--atlas-celestial, #4f8bff)',
+	borderRadius: 2,
+	width: 42,
+	height: 42,
+	display: 'inline-flex',
+	alignItems: 'center',
+	justifyContent: 'center',
+	cursor: 'pointer'
+};
+
+const cancelButtonStyle: React.CSSProperties = {
+	border: '1px solid rgba(255,77,125,0.4)',
+	background: 'rgba(255,77,125,0.10)',
+	color: 'var(--l2-error, #ff4d7d)',
+	borderRadius: 2,
+	width: 42,
+	height: 42,
+	display: 'inline-flex',
+	alignItems: 'center',
+	justifyContent: 'center',
+	cursor: 'pointer'
+};
+
+const segStyle: React.CSSProperties = {
+	display: 'inline-flex',
+	border: '1px solid rgba(237,234,224,0.10)',
+	borderRadius: 2,
+	overflow: 'hidden'
+};
+
+const iconActionStyle: React.CSSProperties = {
+	border: '1px solid rgba(237,234,224,0.10)',
+	background: 'rgba(237,234,224,0.03)',
+	color: 'var(--l2-fg-2)',
+	borderRadius: 2,
+	width: 30,
+	height: 30,
+	display: 'inline-flex',
+	alignItems: 'center',
+	justifyContent: 'center',
+	cursor: 'pointer'
+};
+
+const bindingChipStyle: React.CSSProperties = {
+	display: 'inline-flex',
+	alignItems: 'center',
+	gap: 7,
+	border: '1px solid rgba(237,234,224,0.12)',
+	background: 'rgba(237,234,224,0.03)',
+	color: 'var(--l2-fg-2)',
+	borderRadius: 2,
+	padding: '6px 10px',
+	fontFamily: 'var(--l2-mono)',
+	fontSize: 10,
+	letterSpacing: '0.1em',
+	cursor: 'pointer',
+	maxWidth: 240,
+	whiteSpace: 'nowrap',
+	overflow: 'hidden',
+	textOverflow: 'ellipsis'
+};
+
+const bindMenuStyle: React.CSSProperties = {
+	position: 'absolute',
+	top: 'calc(100% + 6px)',
+	right: 0,
+	zIndex: 60,
+	minWidth: 240,
+	maxHeight: 320,
+	overflowY: 'auto',
+	border: '1px solid rgba(237,234,224,0.12)',
+	background: 'rgba(10,13,20,0.98)',
+	borderRadius: 2,
+	padding: 6,
+	boxShadow: '0 18px 52px rgba(0,0,0,0.55)'
+};
+
+const bindMenuTitleStyle: React.CSSProperties = {
+	...monoLabelStyle,
+	padding: '6px 8px 4px'
+};
+
+const bindMenuItemStyle: React.CSSProperties = {
+	display: 'flex',
+	alignItems: 'center',
+	width: '100%',
+	border: 'none',
+	background: 'transparent',
+	color: 'var(--l2-fg-1)',
+	fontSize: 12.5,
+	textAlign: 'left',
+	padding: '7px 8px',
+	borderRadius: 1,
+	cursor: 'pointer'
+};
+
+const bindMenuEmptyStyle: React.CSSProperties = {
+	color: 'var(--l2-fg-3)',
+	fontSize: 12,
+	padding: '6px 8px'
+};
+
+const bindMenuDividerStyle: React.CSSProperties = {
+	height: 1,
+	background: 'rgba(237,234,224,0.08)',
+	margin: '6px 0'
+};
