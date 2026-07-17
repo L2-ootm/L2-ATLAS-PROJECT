@@ -41,7 +41,14 @@ export class EventBus {
 	}
 
 	emit(type: string, properties: Record<string, unknown>): void {
-		const event: DonorEvent = { type, properties };
+		// Event payloads are snapshots, not live references into adapter state.
+		// ChatAdapter continues mutating its canonical message/part objects after
+		// emitting them; sharing those same objects with the TUI store makes the
+		// store appear to advance before the matching delta event arrives. That
+		// breaks offset-based idempotency and can suppress legitimate streaming
+		// updates. Donor event payloads are JSON-shaped, so structuredClone is the
+		// correct boundary here and also keeps replayRecent historically accurate.
+		const event: DonorEvent = { type, properties: structuredClone(properties) };
 		this.recent.push(event);
 		if (this.recent.length > EventBus.RECENT_CAP) this.recent.shift();
 		for (const listener of [...this.listeners]) listener(event);
@@ -52,9 +59,9 @@ export class EventBus {
 			// Never replay text-append deltas: a subscriber that already applied
 			// them (an /event reconnect re-subscribing mid-run) would append the
 			// same text twice — the visible "streaming duplication" failure. The
-			// replayed message.part.updated events serialize the LIVE part object
-			// at forward time, so they already carry the full accumulated text;
-			// deltas add nothing to a late subscriber that updated events don't.
+			// replayed message.part.updated snapshots already carry authoritative
+			// part state at their emission points; deltas add only corruption to
+			// a subscriber reconnecting with an existing store.
 			if (event.type === 'message.part.delta') continue;
 			listener(event);
 		}

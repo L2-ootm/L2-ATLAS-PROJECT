@@ -89,11 +89,19 @@ export class GatewayClient {
 		return (await res.json()) as T;
 	}
 
-	createSurface(surfaceKind = 'tui', workspaceKind = 'global'): Promise<SurfaceSession> {
-		return this.request<SurfaceSession>('POST', '/v1/surface-sessions', {
+	createSurface(
+		surfaceKind = 'tui',
+		workspaceKind = 'global',
+		provider?: string,
+		model?: string
+	): Promise<SurfaceSession> {
+		const body: Record<string, unknown> = {
 			surface_kind: surfaceKind,
 			workspace_kind: workspaceKind
-		});
+		};
+		if (provider !== undefined) body['provider'] = provider;
+		if (model !== undefined) body['model'] = model;
+		return this.request<SurfaceSession>('POST', '/v1/surface-sessions', body);
 	}
 
 	closeSurface(session: SurfaceSession): Promise<unknown> {
@@ -122,11 +130,26 @@ export class GatewayClient {
 		return env.mission;
 	}
 
-	async startRun(missionID: string, agent: string, surfaceSessionID: string): Promise<string> {
+	async startRun(
+		missionID: string,
+		agent: string,
+		surfaceSessionID: string,
+		goalMode?: boolean,
+		judgeModel?: string,
+		maxRuns?: number
+	): Promise<string> {
+		const body: Record<string, unknown> = {
+			agent: agent || 'native',
+			execute: true,
+			surface_session_id: surfaceSessionID
+		};
+		if (goalMode !== undefined) body['goal_mode'] = goalMode;
+		if (judgeModel !== undefined) body['judge_model'] = judgeModel;
+		if (maxRuns !== undefined) body['max_runs'] = maxRuns;
 		const env = await this.request<{ run: { id: string } }>(
 			'POST',
 			`/v1/missions/${encodeURIComponent(missionID)}/run`,
-			{ agent: agent || 'native', execute: true, surface_session_id: surfaceSessionID }
+			body
 		);
 		return env.run.id;
 	}

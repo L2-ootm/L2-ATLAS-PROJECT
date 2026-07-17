@@ -6,17 +6,33 @@
  * these were actually invocable — the client already ships descriptions
  * and autocomplete entries for them, but nothing backed `/command.name`.
  *
- * Each command is a prompt template executed through the *existing*
- * chat/mission/run pipeline (ChatAdapter.promptAsync) — no new gateway
- * work. `$ARGUMENTS` is substituted with whatever the operator typed after
- * the command name; if omitted (no `$ARGUMENTS` in the template) the
- * arguments are appended on their own line.
+ * Prompt commands use templates through the existing chat pipeline. The
+ * goal/mission aliases are classified separately and re-enter ChatAdapter as
+ * raw command input so its exact command grammar remains the only parser.
  */
 
 export interface AtlasCommand {
 	name: string;
 	description: string;
 	template: string;
+	kind?: 'prompt' | 'mission';
+}
+
+export const MISSION_COMMAND_ALIASES = ['goal', 'mission'] as const;
+export type MissionCommandAlias = (typeof MISSION_COMMAND_ALIASES)[number];
+
+export type MissionCommand =
+	| { alias: MissionCommandAlias; action: 'status' }
+	| { alias: MissionCommandAlias; action: 'start'; objective: string };
+
+/** Parse only the two exact long-horizon command aliases. */
+export function parseMissionCommand(input: string): MissionCommand | null {
+	const match = /^\/(goal|mission)(?:\s+([\s\S]*))?$/.exec(input.trim());
+	if (!match) return null;
+	const alias = match[1] as MissionCommandAlias;
+	const args = (match[2] ?? '').trim();
+	if (!args || args === 'status') return { alias, action: 'status' };
+	return { alias, action: 'start', objective: args };
 }
 
 export const ATLAS_COMMANDS: AtlasCommand[] = [
@@ -54,11 +70,15 @@ export const ATLAS_COMMANDS: AtlasCommand[] = [
 	},
 	{
 		name: 'goal',
-		description: "set a stop-condition goal; runs until a judge says it's met. /goal clear to abort",
-		template:
-			'Set an explicit stop-condition goal: $ARGUMENTS\n' +
-			"Work toward this goal, re-checking after each meaningful step whether it has been met. Stop and " +
-			"report as soon as the goal is genuinely satisfied, or if truly blocked."
+		description: "start or inspect a stop-condition mission that runs until a judge says it's met",
+		template: '$ARGUMENTS',
+		kind: 'mission'
+	},
+	{
+		name: 'mission',
+		description: 'start or inspect a long-horizon mission with a judged stop condition',
+		template: '$ARGUMENTS',
+		kind: 'mission'
 	},
 	{
 		name: 'deep-research',

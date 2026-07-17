@@ -44,6 +44,7 @@ import { DialogSkill } from "../dialog-skill"
 import { DialogWorkspaceCreate, restoreWorkspaceSession } from "../dialog-workspace-create"
 import { DialogWorkspaceUnavailable } from "../dialog-workspace-unavailable"
 import { DialogAgreement, FREE_AGREEMENT_KEY, FREE_MODEL_IDS } from "../dialog-agreement"
+import { MISSION_COMMAND_ALIASES } from "../../../adapter/commands"
 import { useArgs } from "@tui/context/args"
 import { logSessionCreateError } from "../../util/sessionError"
 import { diagnosticLogPath } from "../../../util/diagnosticLog"
@@ -568,6 +569,19 @@ export function Prompt(props: PromptProps) {
           await pasteFromClipboard()
         },
       },
+      ...MISSION_COMMAND_ALIASES.map((alias) => ({
+        title: `/${alias}`,
+        description: "Start or inspect a long-horizon mission",
+        value: `mission.${alias}`,
+        category: "session",
+        onSelect: (dialog: { clear: () => void }) => {
+          const text = `/${alias} `
+          input.setText(text)
+          setStore("prompt", { input: text, parts: [] })
+          input.gotoBufferEnd()
+          dialog.clear()
+        },
+      })),
       {
         title: t("tui.command.session.interrupt.title"),
         value: "session.interrupt",
