@@ -575,7 +575,43 @@ export interface GraphLink {
 	kind: string;
 }
 
-export type GraphScope = 'atlas' | 'global' | 'projects' | 'obsidian';
+/** Built-in scopes plus operator-defined scope slugs (0025 graph_scopes). */
+export type GraphScope = string;
+
+/** One custom Graphify scope (a user-added graph tab). */
+export interface CustomGraphScope {
+	id: string;
+	label: string;
+	root_path: string;
+	kind: 'markdown' | 'projects';
+	created_at: string;
+	updated_at: string;
+}
+
+/** Custom graph scopes; empty on pre-0025 gateways so built-ins still render. */
+export async function listGraphScopes(): Promise<CustomGraphScope[]> {
+	try {
+		const { scopes } = await apiFetch<{ scopes: CustomGraphScope[] }>('/v1/graph/scopes');
+		return scopes ?? [];
+	} catch {
+		return [];
+	}
+}
+
+export async function createGraphScope(
+	label: string,
+	path: string,
+	kind: 'markdown' | 'projects' = 'markdown'
+): Promise<{ scope: CustomGraphScope }> {
+	return apiFetch('/v1/graph/scopes', {
+		method: 'POST',
+		body: JSON.stringify({ label, path, kind })
+	});
+}
+
+export async function deleteGraphScope(id: string): Promise<{ deleted: boolean; id: string }> {
+	return apiFetch(`/v1/graph/scopes/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
 
 export interface GraphData {
 	nodes: GraphNode[];

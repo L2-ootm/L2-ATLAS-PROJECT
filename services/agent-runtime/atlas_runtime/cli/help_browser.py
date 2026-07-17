@@ -32,7 +32,7 @@ _CATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Missions & Runs", ("mission", "run", "golden", "runtime")),
     ("Command Center", ("focus", "goal", "task", "observe", "operation")),
     ("Services & Sidecars", ("gateway", "cashflow", "freellmapi", "discord", "module", "terminal")),
-    ("Providers & Models", ("provider", "models", "auth", "config")),
+    ("Providers & Models", ("provider", "models", "auth", "config", "components")),
     ("Data & Knowledge", ("db", "project", "graph", "wiki")),
     ("Integrations", ("channels", "tools", "surface")),
     ("Dev / Internal", ("foundation",)),

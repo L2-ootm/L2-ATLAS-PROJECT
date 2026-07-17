@@ -333,3 +333,39 @@ def build_graph(root: str | None = None, scope: str = "atlas") -> dict[str, Any]
         return out
 
     return empty
+
+
+def build_custom_graph(
+    scope_id: str, root_path: str, kind: str = "markdown"
+) -> dict[str, Any]:
+    """Build a graph for an operator-defined scope (0025 graph_scopes row).
+
+    ``markdown`` treats the folder as one corpus (like ``global``); ``projects``
+    builds one cluster per child directory (like the built-in projects view but
+    over the user's chosen folder). A missing folder returns an empty graph
+    with an ``error`` field — never raises into the serving path.
+    """
+    base = Path(root_path)
+    empty = {
+        "nodes": [],
+        "links": [],
+        "root": str(base),
+        "scope": scope_id,
+        "counts": {"nodes": 0, "links": 0},
+    }
+    if not base.is_dir():
+        return {**empty, "error": "folder not found"}
+    if kind == "projects":
+        out = _build_projects(base, SCOPE_CAP["projects"])
+    else:
+        files = _collect_md(base, SCOPE_CAP["global"])
+        if not files:
+            return {**empty, "error": "no markdown files found"}
+        out = _build(
+            base,
+            files,
+            base.name,
+            lambda rel: _slug(rel.parts[0]) if len(rel.parts) > 1 else "doc",
+        )
+    out.update(root=str(base), scope=scope_id)
+    return out

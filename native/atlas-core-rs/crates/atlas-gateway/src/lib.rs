@@ -1681,13 +1681,20 @@ fn read_vcs_context(dir: &std::path::Path) -> Value {
 
 #[derive(Deserialize)]
 struct GraphParams {
-    /// atlas | global | projects | obsidian (defaults to atlas).
+    /// atlas | global | projects | obsidian | a custom scope slug (0025).
     scope: Option<String>,
 }
 
+/// True when `s` is a safe scope slug (built-in or custom, 0025 slugify shape).
+fn is_valid_scope_slug(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 64
+        && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
 /// Knowledge graph for the cockpit Graphify view. `scope` selects the corpus:
-/// `atlas` (the gateway's `.planning/`), `global` (repo-wide markdown),
-/// `projects` (sibling L2 projects), or `obsidian` (the configured vault).
+/// the four built-ins (`atlas`, `global`, `projects`, `obsidian`) or any
+/// operator-defined scope slug (0025 graph_scopes); the CLI resolves it.
 async fn graph_view(State(state): State<AppState>, Query(params): Query<GraphParams>) -> ApiResult {
     let scope = match params
         .scope
@@ -1695,16 +1702,64 @@ async fn graph_view(State(state): State<AppState>, Query(params): Query<GraphPar
         .map(str::trim)
         .filter(|s| !s.is_empty())
     {
-        Some(s) if matches!(s, "atlas" | "global" | "projects" | "obsidian") => s,
-        _ => "atlas",
+        Some(s) if is_valid_scope_slug(s) => s.to_string(),
+        Some(_) => return Err(ApiError::BadRequest("invalid graph scope slug")),
+        None => "atlas".to_string(),
     };
     let root = state.repo_root.to_string_lossy();
-    let args = ["graph", "build", "--root", root.as_ref(), "--scope", scope];
+    let args = ["graph", "build", "--root", root.as_ref(), "--scope", &scope];
     let out =
         dispatch_atlas_with_timeout(&state.atlas_cmd, &args, CONSOLE_DISPATCH_TIMEOUT).await?;
     let value: Value = serde_json::from_str(&out)
         .map_err(|e| ApiError::Internal(format!("atlas graph build returned invalid JSON: {e}")))?;
     Ok(Json(value))
+}
+
+/// Custom Graphify scopes (0025) for dynamic graph tabs.
+async fn graph_scopes_list(State(state): State<AppState>) -> ApiResult {
+    let path = state.db_path.clone();
+    let scopes = blocking(move || db::list_graph_scopes(&path)).await?;
+    Ok(Json(json!({ "scopes": scopes })))
+}
+
+#[derive(Deserialize)]
+struct CreateGraphScopeBody {
+    label: String,
+    path: String,
+    kind: Option<String>,
+}
+
+async fn graph_scope_create(
+    State(state): State<AppState>,
+    Json(body): Json<CreateGraphScopeBody>,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    require_arg(&body.label, "label must be non-empty")?;
+    require_arg(&body.path, "path must be non-empty")?;
+    let kind = body.kind.unwrap_or_default();
+    let mut args: Vec<&str> = vec![
+        "graph",
+        "add-scope",
+        "--label",
+        &body.label,
+        "--path",
+        &body.path,
+    ];
+    if !kind.is_empty() {
+        args.extend_from_slice(&["--kind", &kind]);
+    }
+    let out = dispatch_atlas(&state.atlas_cmd, &args).await?;
+    let scope: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("graph add-scope parse: {e}")))?;
+    Ok((StatusCode::CREATED, Json(json!({ "scope": scope }))))
+}
+
+async fn graph_scope_delete(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+) -> ApiResult {
+    require_arg(&id, "scope id must be non-empty")?;
+    dispatch_atlas(&state.atlas_cmd, &["graph", "remove-scope", "--", &id]).await?;
+    Ok(Json(json!({ "deleted": true, "id": id })))
 }
 
 #[derive(Deserialize)]
@@ -2969,6 +3024,11 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/surface-sessions/{id}/cancel", post(surface_cancel))
         .route("/v1/surface-sessions/{id}/close", post(surface_close))
         .route("/v1/graph", get(graph_view))
+        .route(
+            "/v1/graph/scopes",
+            get(graph_scopes_list).post(graph_scope_create),
+        )
+        .route("/v1/graph/scopes/{id}", axum::routing::delete(graph_scope_delete))
         .route("/v1/host/select-folder", post(select_folder))
         .route("/v1/vcs", get(vcs_context))
         .route("/v1/projects", get(projects_list).post(projects_create))

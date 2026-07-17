@@ -126,8 +126,10 @@ def neighbors(
     for _ in range(depth):
         next_frontier: list[str] = []
         for current in frontier:
+            # `IS ?` (not `=?`) so the NULL/global project scope matches its
+            # own edges — `project_id = NULL` never matches in SQL.
             rows = conn.execute(
-                "SELECT target_id FROM brain_edges WHERE source_id=? AND project_id=? "
+                "SELECT target_id FROM brain_edges WHERE source_id=? AND project_id IS ? "
                 "ORDER BY relation,target_id",
                 (current, project_id),
             ).fetchall()
@@ -169,7 +171,7 @@ def find_path(
         if len(path) - 1 >= max_depth:
             continue
         rows = conn.execute(
-            "SELECT target_id FROM brain_edges WHERE source_id=? AND project_id=? "
+            "SELECT target_id FROM brain_edges WHERE source_id=? AND project_id IS ? "
             "ORDER BY relation,target_id",
             (current, project_id),
         ).fetchall()

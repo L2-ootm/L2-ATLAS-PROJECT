@@ -385,15 +385,28 @@ def _get_lock() -> threading.Lock:
 def graph_build(
     root: str = typer.Option(".", "--root", help="Project root containing .planning/"),
     scope: str = typer.Option(
-        "atlas", "--scope", help="atlas | global | projects | obsidian"
+        "atlas",
+        "--scope",
+        help="atlas | global | projects | obsidian | <custom scope id>",
     ),
     write: bool = typer.Option(
         False, "--write", help="Also cache the graph to .planning/graphs/graph.json"
     ),
 ) -> None:
     """Build the knowledge graph for the given scope and print it as JSON."""
+    from atlas_runtime import graph_scope_service
+
     try:
-        result = graph_service.build_graph(root=root, scope=scope)
+        if scope in graph_scope_service.BUILTIN_SCOPES:
+            result = graph_service.build_graph(root=root, scope=scope)
+        else:
+            custom = graph_scope_service.get_scope(_get_connection(), scope)
+            if custom is None:
+                typer.echo(f"Error: unknown graph scope {scope!r}", err=True)
+                raise typer.Exit(1)
+            result = graph_service.build_custom_graph(
+                custom["id"], custom["root_path"], custom["kind"]
+            )
     except ValueError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1)
@@ -405,6 +418,54 @@ def graph_build(
         (out / "graph.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     # ensure_ascii so the payload survives a cp1252 stdout on Windows; valid JSON either way.
     typer.echo(json.dumps(result))
+
+
+@graph_app.command("scopes")
+def graph_scopes() -> None:
+    """Print custom graph scopes (operator-defined Graphify tabs) as JSON."""
+    from atlas_runtime import graph_scope_service
+
+    typer.echo(json.dumps(graph_scope_service.list_scopes(_get_connection())))
+
+
+@graph_app.command("add-scope")
+def graph_add_scope(
+    label: str = typer.Option(..., "--label", help="Display label for the graph tab"),
+    path: str = typer.Option(..., "--path", help="Folder the graph is built from"),
+    kind: str = typer.Option(
+        "markdown", "--kind", help="markdown (one corpus) | projects (cluster per child dir)"
+    ),
+) -> None:
+    """Create a custom graph scope; prints the scope row as JSON."""
+    from atlas_runtime import graph_scope_service
+
+    conn = _get_connection()
+    lock = _get_lock()
+    try:
+        scope = graph_scope_service.create_scope(
+            conn, lock, label=label, root_path=path, kind=kind
+        )
+    except graph_scope_service.GraphScopeError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(json.dumps(scope))
+
+
+@graph_app.command("remove-scope")
+def graph_remove_scope(
+    scope_id: str = typer.Argument(..., help="Custom scope id to remove"),
+) -> None:
+    """Remove a custom graph scope (built-ins cannot be removed)."""
+    from atlas_runtime import graph_scope_service
+
+    conn = _get_connection()
+    lock = _get_lock()
+    try:
+        graph_scope_service.delete_scope(conn, lock, scope_id)
+    except graph_scope_service.GraphScopeError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo("removed")
 
 
 # ---------------------------------------------------------------------------

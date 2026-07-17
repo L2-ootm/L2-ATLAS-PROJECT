@@ -2834,3 +2834,62 @@ async fn component_action_rejects_unknown_action() {
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
+
+// ---------------------------------------------------------------------------
+// Custom Graphify scopes (0025) — dynamic graph tabs
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn graph_scopes_list_serves_rows_and_tolerates_missing_table() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = seeded_db(&dir);
+    let router = test_app(path.clone());
+    // Pre-0025 DB: empty list, never 503.
+    let (status, body) = get_json(&router, "/v1/graph/scopes").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["scopes"].as_array().unwrap().len(), 0);
+
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    conn.execute_batch(
+        "CREATE TABLE graph_scopes (
+            id TEXT PRIMARY KEY, label TEXT NOT NULL, root_path TEXT NOT NULL,
+            kind TEXT NOT NULL DEFAULT 'markdown', created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL);
+         INSERT INTO graph_scopes VALUES
+            ('team-notes', 'Team Notes', 'C:/notes', 'markdown',
+             '2026-07-17T00:00:00Z', '2026-07-17T00:00:00Z');",
+    )
+    .unwrap();
+    drop(conn);
+    let (status, body) = get_json(&router, "/v1/graph/scopes").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["scopes"][0]["id"], "team-notes");
+    assert_eq!(body["scopes"][0]["kind"], "markdown");
+}
+
+#[tokio::test]
+async fn graph_scope_create_dispatches_and_returns_row() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"id": "team-notes", "label": "Team Notes", "root_path": "C:/notes", "kind": "markdown"}"#,
+        &stub_dir,
+    );
+    let (status, body) = post_json(
+        &router,
+        "/v1/graph/scopes",
+        json!({ "label": "Team Notes", "path": "C:/notes" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(body["scope"]["id"], "team-notes");
+}
+
+#[tokio::test]
+async fn graph_view_rejects_invalid_scope_slug() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_app(seeded_db(&dir));
+    let (status, _) = get_json(&router, "/v1/graph?scope=..%2Fetc").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}

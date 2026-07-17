@@ -8,7 +8,18 @@ import { Boxes, Crosshair, Lock, Maximize2, Minus, Plus, RefreshCw, Search, X } 
 import { Page } from '../components/Page';
 import { GlassPanel } from '../components/GlassFx';
 import { attachLightning } from '../graph/GraphLightning';
-import { getGraph, getGraphFetchedAt, type GraphData, type GraphNode, type GraphScope } from '../lib/api';
+import {
+	createGraphScope,
+	deleteGraphScope,
+	getGraph,
+	getGraphFetchedAt,
+	listGraphScopes,
+	type CustomGraphScope,
+	type GraphData,
+	type GraphNode,
+	type GraphScope
+} from '../lib/api';
+import { selectFolder } from '../lib/host';
 import {
 	BLOOM,
 	colorFor,
@@ -66,26 +77,24 @@ type GraphHandle = {
 
 type Vec3 = { x: number; y: number; z: number };
 
-const TABS = [
-	{ id: 'global', label: 'Global', live: true, scope: 'global' as GraphScope },
-	{ id: 'projects', label: 'Projects', live: true, scope: 'projects' as GraphScope },
-	{ id: 'vault', label: 'Obsidian Vault', live: true, scope: 'obsidian' as GraphScope },
-	{ id: 'agent', label: 'Agent Context', live: false, scope: 'atlas' as GraphScope }
-] as const;
-type TabId = (typeof TABS)[number]['id'];
-const SCOPE_BY_TAB: Record<TabId, GraphScope> = {
-	global: 'global',
-	projects: 'projects',
-	vault: 'obsidian',
-	agent: 'atlas'
-};
+type TabDef = { id: string; label: string; live: boolean; scope: GraphScope; custom?: boolean };
+
+const BUILTIN_TABS: TabDef[] = [
+	{ id: 'global', label: 'Global', live: true, scope: 'global' },
+	{ id: 'projects', label: 'Projects', live: true, scope: 'projects' },
+	{ id: 'vault', label: 'Obsidian Vault', live: true, scope: 'obsidian' },
+	{ id: 'agent', label: 'Agent Context', live: false, scope: 'atlas' }
+];
 
 export default function Graph() {
 	const [load, setLoad] = useState<Load>({ s: 'loading' });
 	const [reload, setReload] = useState(0);
 	const [selected, setSelected] = useState<GraphNode | null>(null);
 	const [query, setQuery] = useState('');
-	const [tab, setTab] = useState<TabId>('global');
+	const [tab, setTab] = useState<string>('global');
+	const [customScopes, setCustomScopes] = useState<CustomGraphScope[]>([]);
+	const [addingPath, setAddingPath] = useState<string | null>(null);
+	const [addErr, setAddErr] = useState<string | null>(null);
 	const [electricity, setElectricity] = useState(true);
 	const [storm, setStorm] = useState(true);
 	const [, setClock] = useState(0); // ticks "Updated Xm ago"
@@ -98,7 +107,61 @@ export default function Graph() {
 	const forceNext = useRef(false);
 	electricityRef.current = electricity;
 
-	const scope = SCOPE_BY_TAB[tab];
+	const tabs = useMemo<TabDef[]>(
+		() => [
+			...BUILTIN_TABS,
+			...customScopes.map((s) => ({
+				id: s.id,
+				label: s.label,
+				live: true,
+				scope: s.id,
+				custom: true
+			}))
+		],
+		[customScopes]
+	);
+	const scope = tabs.find((t) => t.id === tab)?.scope ?? 'global';
+
+	const refreshScopes = useCallback(async () => {
+		setCustomScopes(await listGraphScopes());
+	}, []);
+	useEffect(() => {
+		void refreshScopes();
+	}, [refreshScopes]);
+
+	const startAddScope = useCallback(async () => {
+		setAddErr(null);
+		const picked = await selectFolder('Choose a folder for the new graph tab');
+		if (picked) setAddingPath(picked);
+	}, []);
+
+	const confirmAddScope = useCallback(
+		async (label: string, kind: 'markdown' | 'projects') => {
+			if (!addingPath) return;
+			try {
+				const { scope: created } = await createGraphScope(label, addingPath, kind);
+				setAddingPath(null);
+				await refreshScopes();
+				setTab(created.id);
+			} catch (e) {
+				setAddErr(e instanceof Error ? e.message : String(e));
+			}
+		},
+		[addingPath, refreshScopes]
+	);
+
+	const removeScope = useCallback(
+		async (id: string) => {
+			try {
+				await deleteGraphScope(id);
+			} catch {
+				/* refresh below reconciles either way */
+			}
+			if (tab === id) setTab('global');
+			await refreshScopes();
+		},
+		[tab, refreshScopes]
+	);
 
 	useEffect(() => {
 		let alive = true;
@@ -459,23 +522,69 @@ export default function Graph() {
 
 				{/* Top strip — source tabs + node/edge count + rebuild */}
 				<div style={topStripStyle}>
-					<div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-						{TABS.map((t) => {
+					<div style={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+						{tabs.map((t) => {
 							const active = t.id === tab;
 							return (
-								<button
-									key={t.id}
-									type="button"
-									onClick={() => t.live && setTab(t.id)}
-									disabled={!t.live}
-									title={t.live ? undefined : 'Coming soon — wires to agent context, wiki, RAG & memory'}
-									style={tabStyle(active, t.live)}
-								>
-									{!t.live && <Lock size={10} strokeWidth={1.8} style={{ opacity: 0.7 }} />}
-									{t.label}
-								</button>
+								<span key={t.id} style={{ display: 'inline-flex', alignItems: 'center' }}>
+									<button
+										type="button"
+										onClick={() => t.live && setTab(t.id)}
+										disabled={!t.live}
+										title={
+											t.live
+												? t.custom
+													? 'Custom graph tab'
+													: undefined
+												: 'Coming soon — wires to agent context, wiki, RAG & memory'
+										}
+										style={tabStyle(active, t.live)}
+									>
+										{!t.live && <Lock size={10} strokeWidth={1.8} style={{ opacity: 0.7 }} />}
+										{t.label}
+									</button>
+									{t.custom && (
+										<button
+											type="button"
+											aria-label={`Remove graph tab ${t.label}`}
+											title="Remove this graph tab"
+											onClick={() => void removeScope(t.id)}
+											style={{
+												background: 'none',
+												border: 'none',
+												color: 'var(--l2-fg-3)',
+												cursor: 'pointer',
+												padding: '0 4px',
+												display: 'inline-flex'
+											}}
+										>
+											<X size={10} strokeWidth={2} />
+										</button>
+									)}
+								</span>
 							);
 						})}
+						<button
+							type="button"
+							onClick={() => void startAddScope()}
+							title="Add a graph tab from a folder"
+							aria-label="Add graph tab"
+							style={{
+								display: 'inline-flex',
+								alignItems: 'center',
+								justifyContent: 'center',
+								width: 24,
+								height: 24,
+								marginLeft: 4,
+								borderRadius: 2,
+								border: '1px dashed var(--l2-hairline)',
+								background: 'transparent',
+								color: 'var(--l2-fg-3)',
+								cursor: 'pointer'
+							}}
+						>
+							<Plus size={12} strokeWidth={2} />
+						</button>
 					</div>
 					<div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
 						{stats && (
@@ -489,6 +598,18 @@ export default function Graph() {
 						</button>
 					</div>
 				</div>
+
+				{addingPath && (
+					<NewScopeDialog
+						path={addingPath}
+						error={addErr}
+						onConfirm={(label, kind) => void confirmAddScope(label, kind)}
+						onCancel={() => {
+							setAddingPath(null);
+							setAddErr(null);
+						}}
+					/>
+				)}
 
 				{/* Control panel — search, legend, toggles */}
 				<div style={controlPanelStyle}>
@@ -989,3 +1110,88 @@ const rebuildButtonStyle: React.CSSProperties = {
 	letterSpacing: '0.14em',
 	cursor: 'pointer'
 };
+
+/** Name + kind picker for a new custom graph tab (folder already chosen). */
+function NewScopeDialog({
+	path,
+	error,
+	onConfirm,
+	onCancel
+}: {
+	path: string;
+	error: string | null;
+	onConfirm: (label: string, kind: 'markdown' | 'projects') => void;
+	onCancel: () => void;
+}) {
+	const [label, setLabel] = useState(() => path.split(/[\\/]/).filter(Boolean).pop() ?? 'New graph');
+	const [kind, setKind] = useState<'markdown' | 'projects'>('markdown');
+	return (
+		<div
+			onClick={onCancel}
+			style={{ position: 'absolute', inset: 0, zIndex: 30, display: 'grid', placeItems: 'center', background: 'rgba(5,6,10,0.72)', backdropFilter: 'blur(4px)' }}
+		>
+			<div
+				onClick={(e) => e.stopPropagation()}
+				style={{ width: 'min(440px, 90%)', borderRadius: 2, border: '1px solid var(--l2-hairline)', background: 'linear-gradient(160deg, rgba(20,24,33,0.98), rgba(10,12,18,0.98))', boxShadow: '0 24px 70px rgba(0,0,0,0.6)', padding: 18 }}
+			>
+				<div style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 10.5, letterSpacing: '0.2em', color: 'var(--atlas-celestial)', marginBottom: 10 }}>
+					NEW GRAPH TAB
+				</div>
+				<div style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 10.5, color: 'var(--l2-fg-3)', marginBottom: 12, overflowWrap: 'anywhere' }}>
+					{path}
+				</div>
+				<input
+					autoFocus
+					value={label}
+					onChange={(e) => setLabel(e.target.value)}
+					onKeyDown={(e) => {
+						if (e.key === 'Enter' && label.trim()) onConfirm(label.trim(), kind);
+						if (e.key === 'Escape') onCancel();
+					}}
+					placeholder="Tab name"
+					style={{ width: '100%', height: 34, borderRadius: 2, border: '1px solid var(--l2-hairline)', background: 'rgba(9,11,16,0.72)', color: 'var(--l2-fg-1)', fontSize: 13, padding: '0 10px', outline: 'none', marginBottom: 12 }}
+				/>
+				<div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+					{(['markdown', 'projects'] as const).map((k) => (
+						<button
+							key={k}
+							type="button"
+							onClick={() => setKind(k)}
+							title={k === 'markdown' ? 'One graph of every markdown file in the folder' : 'One cluster per sub-folder (projects overview)'}
+							style={{
+								padding: '6px 12px',
+								borderRadius: 2,
+								border: `1px solid ${kind === k ? 'rgba(79,139,255,0.5)' : 'var(--l2-hairline)'}`,
+								background: kind === k ? 'rgba(79,139,255,0.12)' : 'transparent',
+								color: kind === k ? 'var(--atlas-celestial)' : 'var(--l2-fg-3)',
+								fontFamily: 'var(--l2-font-mono)',
+								fontSize: 10,
+								letterSpacing: '0.14em',
+								cursor: 'pointer',
+								textTransform: 'uppercase'
+							}}
+						>
+							{k}
+						</button>
+					))}
+				</div>
+				{error && (
+					<div style={{ color: 'var(--l2-error)', fontSize: 11.5, fontFamily: 'var(--l2-font-mono)', marginBottom: 12 }}>{error}</div>
+				)}
+				<div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+					<button type="button" onClick={onCancel} style={{ padding: '7px 14px', borderRadius: 2, border: '1px solid var(--l2-hairline)', background: 'transparent', color: 'var(--l2-fg-2)', fontFamily: 'var(--l2-font-mono)', fontSize: 10.5, letterSpacing: '0.14em', cursor: 'pointer' }}>
+						CANCEL
+					</button>
+					<button
+						type="button"
+						disabled={!label.trim()}
+						onClick={() => onConfirm(label.trim(), kind)}
+						style={{ padding: '7px 14px', borderRadius: 2, border: '1px solid rgba(70,240,160,0.4)', background: 'rgba(70,240,160,0.12)', color: 'var(--atlas-emerald)', fontFamily: 'var(--l2-font-mono)', fontSize: 10.5, letterSpacing: '0.14em', cursor: label.trim() ? 'pointer' : 'default', opacity: label.trim() ? 1 : 0.5 }}
+					>
+						CREATE TAB
+					</button>
+				</div>
+			</div>
+		</div>
+	);
+}

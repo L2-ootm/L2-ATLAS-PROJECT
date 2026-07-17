@@ -520,6 +520,12 @@ class NativeAtlasAgent(AgentRuntime):
                 from atlas_runtime import actor_bridge  # noqa: PLC0415
 
                 actor_bridge.ensure_actor_bridge()
+                # Knowledge-graph tool: read AND write access to the durable
+                # brain graph plus Graphify scope creation. Same registration
+                # pattern; best-effort.
+                from atlas_runtime import graph_bridge  # noqa: PLC0415
+
+                graph_bridge.ensure_graph_bridge()
                 reasoning_effort = _resolve_reasoning_effort()
 
                 def _emit_delta(text: str, final: bool) -> None:

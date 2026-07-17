@@ -347,6 +347,34 @@ pub fn get_project(path: &Path, id: &str) -> Result<Option<(Value, Vec<Value>)>,
     Ok(Some((project, missions)))
 }
 
+/// Custom Graphify scopes (0025) ordered by creation. Returns `Ok(vec![])`
+/// when the `graph_scopes` table does not exist yet so the tabs render
+/// built-ins only, never 503.
+pub fn list_graph_scopes(path: &Path) -> Result<Vec<Value>, DbError> {
+    let conn = open_ro(path)?;
+    let mut stmt = match conn.prepare(
+        "SELECT id, label, root_path, kind, created_at, updated_at \
+         FROM graph_scopes ORDER BY created_at ASC",
+    ) {
+        Ok(s) => s,
+        Err(e) if is_schema_drift(&e) => return Ok(vec![]),
+        Err(e) => return Err(e.into()),
+    };
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(json!({
+                "id": row.get::<_, String>(0)?,
+                "label": row.get::<_, String>(1)?,
+                "root_path": row.get::<_, String>(2)?,
+                "kind": row.get::<_, String>(3)?,
+                "created_at": row.get::<_, String>(4)?,
+                "updated_at": row.get::<_, String>(5)?,
+            }))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
 /// Focus rows ordered by created_at DESC — active only unless `include_archived`
 /// (the Command Center focus switcher lists archived goal sets so they can be
 /// reactivated). Returns `Ok(vec![])` when the `focus` table does not exist yet
