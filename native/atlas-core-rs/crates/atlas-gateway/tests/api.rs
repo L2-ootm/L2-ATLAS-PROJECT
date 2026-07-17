@@ -1761,6 +1761,106 @@ async fn modules_list_empty_when_table_absent() {
     assert_eq!(body["count"], 0);
 }
 
+// --- Module framework: manifest columns + /v1/commands (0023) ----------------
+
+const MIGRATION_0023: &str =
+    include_str!("../../../../../infra/migrations/0023_module_manifests.sql");
+
+/// 0007 + 0023 + one active manifest module contributing two commands (one of
+/// which collides with the built-in `review` and must be dropped).
+fn seeded_db_manifest_modules(dir: &tempfile::TempDir) -> PathBuf {
+    let path = seeded_db(dir);
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    conn.execute_batch(MIGRATION_0007).unwrap();
+    conn.execute_batch(MIGRATION_0023).unwrap();
+    let manifest = serde_json::json!({
+        "id": "demo-mod",
+        "name": "Demo Mod",
+        "version": "1.0.0",
+        "capabilities": {
+            "commands": [
+                {"name": "demo", "description": "demo cmd", "template": "Run demo: $ARGUMENTS"},
+                {"name": "review", "description": "shadow attempt", "template": "x"}
+            ],
+            "pages": [{"id": "main", "title": "Demo", "icon": "", "blocks": []}]
+        }
+    });
+    conn.execute(
+        "INSERT INTO modules(id, name, description, status, version, source_path, manifest_json, missing, updated_at) \
+         VALUES ('demo-mod', 'Demo Mod', 'demo', 'active', '1.0.0', '/tmp/demo', ?1, 0, '2026-07-16T00:00:00Z')",
+        [manifest.to_string()],
+    )
+    .unwrap();
+    drop(conn);
+    path
+}
+
+#[tokio::test]
+async fn commands_list_serves_active_module_commands_without_shadowing() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = seeded_db_manifest_modules(&dir);
+    let router = test_app(path);
+    let (status, body) = get_json(&router, "/v1/commands").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["count"], 1, "built-in name 'review' must be dropped");
+    assert_eq!(body["commands"][0]["name"], "demo");
+    assert_eq!(body["commands"][0]["module"], "demo-mod");
+    assert!(body["commands"][0]["template"]
+        .as_str()
+        .unwrap()
+        .contains("$ARGUMENTS"));
+}
+
+#[tokio::test]
+async fn commands_list_empty_for_inactive_or_pre_migration() {
+    // pre-0007: no table at all — empty, never 500.
+    let dir = tempfile::tempdir().unwrap();
+    let path = seeded_db(&dir);
+    let router = test_app(path);
+    let (status, body) = get_json(&router, "/v1/commands").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["count"], 0);
+
+    // active module toggled off: its commands disappear.
+    let dir2 = tempfile::tempdir().unwrap();
+    let path2 = seeded_db_manifest_modules(&dir2);
+    let conn = rusqlite::Connection::open(&path2).unwrap();
+    conn.execute("UPDATE modules SET status='inactive' WHERE id='demo-mod'", [])
+        .unwrap();
+    drop(conn);
+    let router2 = test_app(path2);
+    let (status2, body2) = get_json(&router2, "/v1/commands").await;
+    assert_eq!(status2, StatusCode::OK);
+    assert_eq!(body2["count"], 0);
+}
+
+#[tokio::test]
+async fn modules_list_includes_manifest_fields() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = seeded_db_manifest_modules(&dir);
+    let router = test_app(path);
+    let (status, body) = get_json(&router, "/v1/modules").await;
+    assert_eq!(status, StatusCode::OK);
+    let demo = body["modules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["id"] == "demo-mod")
+        .unwrap();
+    assert_eq!(demo["version"], "1.0.0");
+    assert_eq!(demo["missing"], false);
+    assert_eq!(demo["manifest"]["capabilities"]["pages"][0]["id"], "main");
+    // legacy seeded row (cashflow) survives with empty manifest fields
+    let cashflow = body["modules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["id"] == "cashflow")
+        .unwrap();
+    assert_eq!(cashflow["version"], "");
+    assert!(cashflow["manifest"].is_null());
+}
+
 // --- Focus read + write surface (WP-2 — Command Center Current Focus) --------
 
 const MIGRATION_0009: &str = include_str!("../../../../../infra/migrations/0009_focus.sql");

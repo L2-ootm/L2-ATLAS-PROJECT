@@ -99,12 +99,21 @@ fn project_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
 }
 
 fn module_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
+    // manifest_json (0023) is parsed to a JSON object so the WebUI receives
+    // structured capabilities (commands/pages); malformed/empty becomes null.
+    let manifest_raw: String = row.get::<_, Option<String>>(7)?.unwrap_or_default();
+    let manifest: Value =
+        serde_json::from_str(&manifest_raw).unwrap_or(Value::Null);
     Ok(json!({
         "id": row.get::<_, String>(0)?,
         "name": row.get::<_, String>(1)?,
         "description": row.get::<_, String>(2)?,
         "status": row.get::<_, String>(3)?,
         "activated_at": row.get::<_, Option<String>>(4)?,
+        "version": row.get::<_, Option<String>>(5)?.unwrap_or_default(),
+        "source_path": row.get::<_, Option<String>>(6)?.unwrap_or_default(),
+        "manifest": manifest,
+        "missing": row.get::<_, Option<i64>>(8)?.unwrap_or(0) != 0,
     }))
 }
 
@@ -135,7 +144,8 @@ const RUN_COLS: &str =
 const RUN_COLS_QUALIFIED: &str = "r.id, r.mission_id, r.session_id, r.status, r.started_at, \
      r.finished_at, r.summary, r.agent_runtime";
 const PROJECT_COLS: &str = "id, name, root_path, created_at, updated_at";
-const MODULE_COLS: &str = "id, name, description, status, activated_at";
+const MODULE_COLS: &str =
+    "id, name, description, status, activated_at, version, source_path, manifest_json, missing";
 const FOCUS_COLS: &str =
     "id, title, framework, priorities, drivers, project_id, status, created_at, updated_at";
 
@@ -497,12 +507,88 @@ pub fn list_modules(path: &Path) -> Result<Vec<Value>, DbError> {
         Err(rusqlite::Error::SqliteFailure(_, Some(ref msg))) if msg.contains("no such table") => {
             return Ok(vec![]);
         }
-        Err(e) => return Err(e.into()),
+        Err(original) => {
+            // Pre-0023 database (missing manifest columns): serve the legacy
+            // shape until migrations run. Any other failure propagates.
+            let legacy = "SELECT id, name, description, status, activated_at \
+                          FROM modules ORDER BY id ASC";
+            match conn.prepare(legacy) {
+                Ok(mut stmt) => {
+                    let rows = stmt
+                        .query_map([], module_row_legacy)?
+                        .collect::<rusqlite::Result<Vec<_>>>()?;
+                    return Ok(rows);
+                }
+                Err(_) => return Err(original.into()),
+            }
+        }
     };
     let rows = stmt
         .query_map([], module_row)?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(rows)
+}
+
+/// Slash commands contributed by active, present manifest modules.
+/// Built-in command names are never shadowed; first module wins a collision.
+pub fn list_module_commands(path: &Path) -> Result<Vec<Value>, DbError> {
+    const RESERVED: [&str; 7] = [
+        "init", "review", "dream", "distill", "goal", "mission", "deep-research",
+    ];
+    let conn = open_ro(path)?;
+    let sql = "SELECT id, manifest_json FROM modules \
+               WHERE status='active' AND missing=0 AND manifest_json != '' \
+               ORDER BY id ASC";
+    // Pre-0007 (no table) or pre-0023 (no manifest columns) databases have no
+    // module commands by definition — degrade to an empty catalog, never 500.
+    let Ok(mut stmt) = conn.prepare(sql) else {
+        return Ok(vec![]);
+    };
+    let rows: Vec<(String, String)> = stmt
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut taken: std::collections::HashSet<String> =
+        RESERVED.iter().map(|s| s.to_string()).collect();
+    let mut commands = Vec::new();
+    for (module_id, manifest_json) in rows {
+        let Ok(manifest) = serde_json::from_str::<Value>(&manifest_json) else {
+            continue;
+        };
+        let Some(entries) = manifest
+            .pointer("/capabilities/commands")
+            .and_then(Value::as_array)
+        else {
+            continue;
+        };
+        for entry in entries {
+            let name = entry.get("name").and_then(Value::as_str).unwrap_or("");
+            if name.is_empty() || taken.contains(name) {
+                continue;
+            }
+            taken.insert(name.to_string());
+            commands.push(json!({
+                "name": name,
+                "description": entry.get("description").and_then(Value::as_str).unwrap_or(""),
+                "template": entry.get("template").and_then(Value::as_str).unwrap_or(""),
+                "module": module_id,
+            }));
+        }
+    }
+    Ok(commands)
+}
+
+fn module_row_legacy(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
+    Ok(json!({
+        "id": row.get::<_, String>(0)?,
+        "name": row.get::<_, String>(1)?,
+        "description": row.get::<_, String>(2)?,
+        "status": row.get::<_, String>(3)?,
+        "activated_at": row.get::<_, Option<String>>(4)?,
+        "version": "",
+        "source_path": "",
+        "manifest": Value::Null,
+        "missing": false,
+    }))
 }
 
 /// Single module by id. `None` when unknown or the `modules` table is absent.
@@ -515,7 +601,16 @@ pub fn get_module(path: &Path, id: &str) -> Result<Option<Value>, DbError> {
         Err(rusqlite::Error::SqliteFailure(_, Some(ref msg))) if msg.contains("no such table") => {
             Ok(None)
         }
-        Err(e) => Err(e.into()),
+        Err(original) => {
+            // Pre-0023 database: fall back to the legacy column set.
+            let legacy =
+                "SELECT id, name, description, status, activated_at FROM modules WHERE id = ?1";
+            match conn.query_row(legacy, [id], module_row_legacy) {
+                Ok(v) => Ok(Some(v)),
+                Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                Err(_) => Err(original.into()),
+            }
+        }
     }
 }
 

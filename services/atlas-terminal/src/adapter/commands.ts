@@ -90,8 +90,24 @@ export const ATLAS_COMMANDS: AtlasCommand[] = [
 	}
 ];
 
+/**
+ * Module-contributed commands (module framework): refreshed from the gateway's
+ * /v1/commands by handleCommandList, merged after the built-ins. Built-in
+ * names can never be shadowed (the gateway filters too — defense in depth).
+ */
+let MODULE_COMMANDS: AtlasCommand[] = [];
+
+export function setModuleCommands(commands: AtlasCommand[]): void {
+	const taken = new Set(ATLAS_COMMANDS.map((c) => c.name));
+	MODULE_COMMANDS = commands.filter((c) => !!c.name && !!c.template && !taken.has(c.name));
+}
+
+export function allAtlasCommands(): AtlasCommand[] {
+	return [...ATLAS_COMMANDS, ...MODULE_COMMANDS];
+}
+
 export function findAtlasCommand(name: string): AtlasCommand | undefined {
-	return ATLAS_COMMANDS.find((c) => c.name === name);
+	return allAtlasCommands().find((c) => c.name === name);
 }
 
 export function expandCommandTemplate(template: string, args: string): string {

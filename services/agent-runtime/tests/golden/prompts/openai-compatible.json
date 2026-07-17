@@ -1,9 +1,9 @@
 {
-  "stable_prompt_sha256": "377e6738c954fe60c1036a523e35bd659770f197ac21fe6bc8f0de4057e6fad6",
+  "stable_prompt_sha256": "c92ce3ab46bf50d6b9289120402406535d89cad77dbeb3086ff636b61dcef771",
   "bootstrap_message_sha256": "80c52e61fafb93797f3df571794992ddfd24e2409a98cf90db07662ec263e9ce",
   "context_message_sha256": "8247ba9751b436e8164c42cb6a5e7e17b8bb9568f1f85dd1ebf251cf77b4facb",
   "prompt_version": "1.0.0",
-  "estimated_stable_tokens": 1139,
+  "estimated_stable_tokens": 1272,
   "surface": "api",
   "provider": "openai-compatible"
 }

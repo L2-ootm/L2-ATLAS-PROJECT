@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import type * as React from 'react';
 import {
 	AlertTriangle,
@@ -96,6 +97,19 @@ export default function Chat() {
 	const [catalogSessionId, setCatalogSessionId] = useState(initial.id);
 	const [messages, setMessages] = useState<ConsoleMessage[]>(initial.snapshot.messages);
 	const [draft, setDraft] = useState(initial.snapshot.draft);
+	// One-shot composer seed (?draft=/hello) — module page actions and deep
+	// links land here; the param is consumed so reloads don't re-seed.
+	const [searchParams, setSearchParams] = useSearchParams();
+	useEffect(() => {
+		const seeded = searchParams.get('draft');
+		if (seeded) {
+			setDraft(seeded);
+			const next = new URLSearchParams(searchParams);
+			next.delete('draft');
+			setSearchParams(next, { replace: true });
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
 	const [agent, setAgent] = useState<AgentRuntime>(initial.snapshot.agent);
 	const [bindingMode, setBindingMode] = useState<BindingMode>(initial.snapshot.bindingMode);
 	const [folderPath, setFolderPath] = useState(initial.snapshot.folderPath);
