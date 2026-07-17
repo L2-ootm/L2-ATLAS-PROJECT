@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
-last_updated: "2026-07-16"
-last_activity: 2026-07-16 (verification) -- Applied migrations 0022/0023, rebuilt and tested release gateway (117 passed), rebuilt WebUI, restarted gateway/cockpit, synced+activated example-hello, and verified the live AgentPicker and module page in-browser. Focused actor/module/Codex tests: 50 passed. Installer PowerShell parses cleanly. Live UAT found two blockers missed by injected-runner/unit tests: Codex passes the full prompt as argv and exceeds the Windows command-line limit; Hermes injects task_id into atlas_actor, but actor_bridge rejects that keyword before any actor is created. Also found atlas down/restart can leave the Vite child process listening on 5173 after killing its cmd.exe parent. Gateway, cockpit, and FreeLLMAPI are live; the model registry was refreshed (68 active models); optional cashflow/Discord are stopped. Clean-machine installer UAT remains owed.
+last_updated: "2026-07-17"
+last_activity: 2026-07-17 -- Codex production runtime migrated from argv-based `codex exec` to the official optional Python Codex SDK (`openai-codex` beta, local operator CLI/login selected explicitly), preserving final text, usage, shell/tool pairing, failures, and cancellation audit mapping. Live Codex text+tool UAT passed. ULTRAREVIEW traced atlas_actor through Hermes and fixed four layered defects: plugin handler ABI, wrong nested schema envelope, random turn task_id vs ATLAS run_id, and generic empty session-start overwriting the explicit run map. Live joined actor UAT completed ACTOR_CHILD_OK with queued/running/completed lifecycle events. Windows cockpit shutdown now uses verified process-tree termination; live down released 5173 and restart killed the old Vite listener before starting a new one. Ruff and pip check passed; full agent-runtime 913 passed / 1 skipped. UI actor workspace + four-message queued composer captured as pending todo (047a84d). Installer UAT intentionally deferred.
 prior_activity_2026_07_11: Pushed to origin (db772555..01623abe, 42 commits). Next session: retarget `atlas`/`atlas tui` to atlas-terminal, TUI visual polish (fix indentation, differentiate from MiMoCode clone using L2 Dark Prism tokens), WebUI completeness audit, operator UAT, CI watch. Prior: identity fix (DIV-F-007), atlas-terminal waves 2-3, UAT confirmed working (ATLAS identity, /vcs, freellmapi, no event crashes). Critical: atlas-terminal GlobalEvent envelope fix (crashed on every event) + silent reject-becomes-approve fix + nonce-bound approvals; DB indexes (0019). High: cold-start orphan reaper, cockpit SSE backoff, all env vars documented, atlas-ci.yml authored, adapter timeouts/retries. Medium: GET /v1/runs (N+1 gone, E2E-verified), 403 auto re-surface, config schema migration chain, centralized rotating log, cross-module E2E (enabled by env-aware db.default_db_path -- live-DB footgun fixed), goal_tree SQL filtering, PID-reuse guard. Low: ogl removed, atlas-core pinned, graph TTL, bundle budget green, Go TUI mission rows show intent+updated. All suites green (766/97/29/20/101/104/44/1 E2E). Release gateway rebuilt. Wiki CLI DB path also made env-aware (34 passed). main 38 ahead of origin, unpushed.
 progress:
   total_phases: 8
@@ -16,7 +16,31 @@ progress:
 
 # STATE — L2 ATLAS
 
-## Current Position — 2026-07-16 verification: backlog structurally sound, live integration blockers identified
+## Current Position — 2026-07-17: Codex SDK, durable actor, and lifecycle fixes verified live
+
+- Codex now uses OpenAI's official Python SDK over the local app-server and the
+  operator's existing Codex login. The beta dependency is an optional `codex`
+  extra (`>=0.1.0b3,<0.2`) because it bundles an approximately 95 MB pinned CLI;
+  ATLAS explicitly selects the current local CLI so modern ChatGPT-login models
+  work without ATLAS handling an API key. Live text and shell-tool audit UAT pass.
+- `atlas_actor` now implements Hermes's dictionary-plus-context plugin ABI and
+  publishes the schema shape Hermes expects. The native harness binds supported
+  turn task IDs to the ATLAS run ID, and incomplete generic session hooks can no
+  longer erase explicit session/run ownership. Live joined actor UAT persisted
+  a completed actor, child run, result, and queued/running/completed events.
+- Cockpit stop uses Windows `taskkill /T /F`, waits for termination, retains the
+  PID file on failure, and only reports success after the recorded root exits.
+  Live `down` released port 5173; live `restart` removed both the prior npm root
+  and Vite listener before starting a distinct healthy process tree.
+- Evidence: Ruff clean; `pip check` clean; focused compatibility suite 108
+  passed; full agent-runtime 913 passed / 1 skipped; `git diff --check` clean.
+- Forensic report:
+  `.planning/ultra/ULTRAREVIEW_atlas-actor-hermes-dispatch.md`. Design decision:
+  `docs/plans/2026-07-16-codex-sdk-actor-lifecycle-fixes-design.md`.
+- Deferred by operator: clean-machine installer UAT. Captured separately:
+  live actor workspace and Codex-inspired four-message composer queue.
+
+## Prior Position — 2026-07-16 verification: backlog structurally sound, live integration blockers identified
 
 - Database migrations `0022_actors.sql` and `0023_module_manifests.sql` are
   applied. The release gateway rebuilt successfully and its full suite passed
