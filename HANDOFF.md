@@ -1,5 +1,69 @@
 # Handoff — L2 ATLAS Finish Sprint
 
+## Session update — 2026-07-17: distribution sprint — slash actions, installer hardening, public README, GSD/L2 framework, security gate
+
+Operator mission: slash-command overhaul (WebUI first), installation workflow
+per `C:\Users\Davi\Downloads\AI_Cockpit_Distribution_and_Launch_Playbook.md`,
+repo audit, README rewrite, then (mid-session rescope) GSD framework refactor
+for L2/ATLAS instead of media assets, and the pre-public security gate WITHOUT
+flipping the repo public. 5 commits on `codex/chat-actor-workspace`.
+
+**1. WebUI slash-command action layer.** `atlasCommands.ts` gains
+`kind: 'prompt' | 'action'`: seven WebUI-local action commands (`/help`,
+`/new [unbound]`, `/clear`, `/agent <atlas|claude|codex>`, `/bind`, `/unbind`,
+`/go <page>`) execute client-side in Chat (session/runtime/binding/navigation;
+`/help` renders a markdown command index into the transcript). Composer routes
+them via a new `onAction` prop; the Console palette stays prompt-only and hides
+them. TUI parity deliberately deferred (operator said WebUI first).
+
+**2. Installer hardening (playbook).** `install/install.ps1`: winget offer for
+Python; optional-tool offers for Rust/cargo and Bun where each skipped
+toolchain names the exact surface it disables (gateway → `atlas up`, terminal
+UI → bare `atlas`); session+user PATH repair with the venv `Scripts` dir;
+post-install `atlas --help` validation; recovery-step error messages.
+`@l2/atlas`: repository/bugs/homepage metadata, files allowlist, publishConfig,
+engines `>=20` enforced in `bin/atlas.js`, package README. Validated: both
+scripts parse clean, atlas-cli 20/20 node tests, `npm pack --dry-run` = 11
+intended files, local `.venv\Scripts\atlas.exe` path logic confirmed live.
+**Clean-VM end-to-end run still owed** (this environment cannot provide one).
+
+**3. Public README rewritten** — positioning per playbook Phase 18, badges,
+irm one-liner + inspectable variant + POSIX path, surfaces table, mermaid
+architecture map, module example validated against `validate_manifest`,
+honesty-first section, orientation table. Media slots are commented `<img>`
+tags landing in `docs/media/` (operator produces media separately).
+
+**4. GSD/L2 framework (rescoped task).** New first-party execution doctrine,
+"GSD/L2 — Goal · Slice · Deliver": `skills/atlas/gsd/` (README + init,
+discuss, plan, execute, verify, debug, ship, progress — plain-markdown,
+runtime-agnostic, mapped onto ATLAS primitives: judged missions, durable
+actors, audit-ledger evidence, wiki filing, evidence tiers) + bundled
+`modules/gsd` module exposing `/gsd`, `/gsd-init`, `/gsd-discuss`,
+`/gsd-plan`, `/gsd-execute`, `/gsd-verify`, `/gsd-debug`, `/gsd-ship` on all
+surfaces, with a cockpit page. `RESERVED_COMMANDS` extended with the action
+command names. DECISION: the "bundled modules dir stays empty" test became an
+exact first-party allowlist `['gsd']`. Owed UAT: `atlas module sync` +
+activate `gsd` live, run `/gsd` from Chat/terminal.
+
+**5. Pre-public security gate — PASS, repo NOT flipped.** Tree + full-history
+(775 commits) scans found no secret material (all hits = redaction code and
+test fixtures). `.mimocode/`, `.ops/`, planning scratch, `*.backup` now
+gitignored (untracked count 0). Flagged accepted-risk: 25 `C:\Users\Davi`
+path occurrences in 18 tracked files + git authorship metadata. Report + the
+operator pre-flip checklist:
+`.planning/reports/pre-public-security-gate-2026-07-17.md`. NOTE: the RTK
+hook truncates piped git output — history scans must run through
+`rtk proxy git …`.
+
+**Verification:** WebUI 149 passed + tsc + eslint + production build/budgets;
+agent-runtime 922 passed / 1 skipped; atlas-cli 20/20; installer parse checks;
+`modules/gsd` validated through live `discover_modules`.
+
+**Next:** 1) operator UAT: `/help`·`/agent`·`/go` in Chat, `atlas module sync`
+→ `/gsd` live, installer on a clean Windows Sandbox; 2) decide finding 7
+(machine paths in `.planning/`) then push + flip public; 3) TUI parity for the
+action commands; 4) media assets into `docs/media/` + uncomment README slots.
+
 ## Session update — 2026-07-16 (later): backlog committed, durable actor supervisor, Codex runtime + agent dropdown, module framework slice 1, irm installer
 
 Operator asked to verify continuation state, strengthen the subagent
