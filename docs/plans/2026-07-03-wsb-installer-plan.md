@@ -43,7 +43,7 @@ Rejected alternatives (kept from the WS-B inventory, restated with reasoning):
 ## 3. Architecture
 
 ```
-npm i -g @l2/atlas
+npm i -g @systemsl2/atlas
         │
         ▼
   bin/atlas.js (thin Node launcher, ~200 LOC)
@@ -118,7 +118,7 @@ of leaving it in a working tree:
 
 | Command | Behavior |
 |---|---|
-| `npm i -g @l2/atlas` | Installs the thin launcher only. Prints next step. |
+| `npm i -g @systemsl2/atlas` | Installs the thin launcher only. Prints next step. |
 | `atlas install [--version X] [--channel stable\|nightly]` | First-run bootstrap: fetch bundle, verify checksums, unpack, set `current`, run `atlas db init`. |
 | `atlas update [--version X]` | Fetch newer bundle into a new `versions/<n>` dir, run any migration hooks (DB migrations already idempotent per `db init`), flip `current`, keep the previous version on disk. |
 | `atlas rollback [--to X]` | Flip `current` to a prior retained version; default = previous. Re-verify via `doctor`. |
@@ -136,7 +136,7 @@ A documented, scripted check (`docs/runbooks/clean-machine-install.md` +
 `scripts/ci/verify-clean-install.*`) that on a machine with **only** Node/npm present
 (no Go, no Rust, no Python pre-installed beyond what the bundle brings):
 
-1. `npm i -g @l2/atlas`
+1. `npm i -g @systemsl2/atlas`
 2. `atlas install`
 3. `atlas doctor` → all green
 4. `atlas up` → gateway healthy, cockpit reachable
@@ -182,7 +182,7 @@ the "which binaries go in the manifest" question and the Bun-compile CI job unti
    7 unit tests (`node --test test/commands.test.js`) plus a manual end-to-end run
    (install → doctor → update → doctor → rollback → doctor → uninstall → doctor) all
    pass. The package has since been promoted to the public contract name
-   `@l2/atlas` with bin `atlas`; local source-checkout shims remain a developer
+   `@systemsl2/atlas` with bin `atlas`; local source-checkout shims remain a developer
    coexistence concern, not the published package name.
    **Not yet built**: the real release-fetch path (download + checksum-verify a
    published bundle for `--version X --channel stable`) — `install`/`update` currently
@@ -233,6 +233,6 @@ the "which binaries go in the manifest" question and the Bun-compile CI job unti
    before calling WS-B done: real GitHub Release upload/publishing, real published
    release-index URL, and clean-machine verification against hosted artifacts.
 6. Stand up real CI publishing (GitHub Releases or equivalent artifact host) + npm
-   package publish for `@l2/atlas`.
+   package publish for `@systemsl2/atlas`.
 7. Run the clean-machine gate for real, on actual clean VMs per platform, before calling
    WS-B done.

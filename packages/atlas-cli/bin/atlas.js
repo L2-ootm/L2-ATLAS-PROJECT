@@ -5,7 +5,7 @@ const cmds = require('../src/commands');
 const { readInstallState } = require('../src/installState');
 const { releaseManifest } = require('../src/config');
 const { launchRuntime, resolveRuntimeEntrypoint } = require('../src/launcher');
-const { updateLauncher } = require('../src/selfUpdate');
+const { updateLauncher, handoffUpdatedLauncher } = require('../src/selfUpdate');
 const { materializePlatformPackage } = require('../src/platformPackage');
 
 function parseArgs(argv) {
@@ -53,7 +53,7 @@ async function main() {
 				if (opts.from) r = cmds.install(home, opts);
 				else if (opts.manifest) r = await cmds.installFromRelease(home, opts);
 				else r = materialize();
-				if (!r) throw new cmds.CliError('platform runtime package is missing; reinstall @l2/atlas');
+				if (!r) throw new cmds.CliError('platform runtime package is missing; reinstall @systemsl2/atlas');
 				if (opts.json) {
 					printJson(r);
 					break;
@@ -64,6 +64,11 @@ async function main() {
 			case 'update': {
 				let launcher = { updated: false };
 				if (!opts.noLauncherUpdate && !opts.from && !opts.manifest) launcher = await updateLauncher();
+				if (launcher.updated) {
+					console.log(`launcher updated ${launcher.current} -> ${launcher.latest}`);
+					process.exitCode = handoffUpdatedLauncher(rest.filter((arg) => arg !== '--no-launcher-update'));
+					break;
+				}
 				let r;
 				if (opts.from) r = cmds.update(home, opts);
 				else if (opts.manifest) r = await cmds.updateFromRelease(home, opts);
@@ -78,7 +83,6 @@ async function main() {
 					printJson({ ...r, launcher });
 					break;
 				}
-				if (launcher.updated) console.log(`launcher updated ${launcher.current} -> ${launcher.latest}`);
 				console.log(`updated ${r.previous ?? '(none)'} -> ${r.version}`);
 				break;
 			}

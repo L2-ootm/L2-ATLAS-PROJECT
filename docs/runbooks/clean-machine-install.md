@@ -67,7 +67,7 @@ node scripts/ci/verify-clean-install.js `
 After release artifacts are published:
 
 ```powershell
-npm i -g @l2/atlas
+npm i -g @systemsl2/atlas
 atlas doctor
 atlas up
 atlas update

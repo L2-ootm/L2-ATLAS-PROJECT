@@ -1,9 +1,9 @@
-# @l2/atlas
+# @systemsl2/atlas
 
 The official installer and lifecycle launcher for the ATLAS AI operator cockpit.
 
 ```powershell
-npm install --global @l2/atlas
+npm install --global @systemsl2/atlas
 atlas doctor
 atlas up
 ```

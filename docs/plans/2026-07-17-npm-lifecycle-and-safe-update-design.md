@@ -5,7 +5,7 @@
 
 ## Outcome
 
-`npm install --global @l2/atlas` installs a small lifecycle launcher plus an exact
+`npm install --global @systemsl2/atlas` installs a small lifecycle launcher plus an exact
 OS/CPU-specific optional npm package containing the complete ATLAS runtime. This
 avoids npm install scripts, which current npm versions may block unless explicitly
 allow-listed. On first invocation, the launcher verifies and materializes the
@@ -27,7 +27,7 @@ runtime state only.
 
 ## Platform-package contract
 
-Each `@l2/atlas-<os>-<arch>` package is restricted by npm `os` and `cpu` metadata and
+Each `@systemsl2/atlas-<os>-<arch>` package is restricted by npm `os` and `cpu` metadata and
 contains an `atlasPlatform` object with its version, runtime directory, and safe
 relative entrypoint (for example `bin/atlas.exe`). The payload must contain the full
 runtime; clean-machine acceptance may assume Node/npm but not Go, Rust, Python, Bun,
@@ -35,8 +35,8 @@ Git, or a source checkout.
 
 ## Update transaction
 
-1. Check the npm registry for a newer `@l2/atlas` version.
-2. Run `npm install --global @l2/atlas@<version>` when newer; npm resolves the exact
+1. Check the npm registry for a newer `@systemsl2/atlas` version.
+2. Run `npm install --global @systemsl2/atlas@<version>` when newer; npm resolves the exact
    matching platform package.
 3. Validate the platform contract and ensure the entrypoint cannot escape the payload.
 4. Copy into a new immutable version directory and create its per-file manifest.

@@ -6,7 +6,7 @@
 #   1. Verifies prerequisites (git, Node.js >= 20, Python >= 3.11) and offers
 #      winget installs for anything missing.
 #   2. RELEASE mode (when a release manifest URL is provided/published):
-#      npm install -g @l2/atlas, then `atlas install --manifest <url>` —
+#      npm install -g @systemsl2/atlas, then `atlas install --manifest <url>` —
 #      versioned prebuilt bundles, update/rollback/uninstall included.
 #   3. SOURCE mode (default while ATLAS is pre-release): clones the repo and
 #      runs scripts/install-atlas-cli.ps1 (editable install + DB bootstrap).
@@ -91,9 +91,9 @@ Write-Host '    git / node / python OK'
 
 # ── RELEASE mode ─────────────────────────────────────────────────────────────
 if ($ReleaseManifest) {
-    Write-Step "Installing the @l2/atlas lifecycle launcher (release mode)"
-    npm install -g @l2/atlas
-    if ($LASTEXITCODE -ne 0) { throw 'npm install -g @l2/atlas failed' }
+    Write-Step "Installing the @systemsl2/atlas lifecycle launcher (release mode)"
+    npm install -g @systemsl2/atlas
+    if ($LASTEXITCODE -ne 0) { throw 'npm install -g @systemsl2/atlas failed' }
     Write-Step "Installing ATLAS from release manifest"
     atlas install --manifest $ReleaseManifest
     if ($LASTEXITCODE -ne 0) { throw 'atlas install failed' }

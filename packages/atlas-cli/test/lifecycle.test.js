@@ -9,7 +9,7 @@ const test = require('node:test');
 const cmds = require('../src/commands');
 const { atlasInstallRoot, atlasStateHome } = require('../src/paths');
 const { resolveRuntimeEntrypoint, launchRuntime } = require('../src/launcher');
-const { compareVersions, updateLauncher } = require('../src/selfUpdate');
+const { compareVersions, updateLauncher, handoffUpdatedLauncher } = require('../src/selfUpdate');
 const { safeRelativeEntrypoint } = require('../src/release');
 const { buildPlatformPackage } = require('../src/buildPlatformPackage');
 const { materializePlatformPackage, platformPackageName } = require('../src/platformPackage');
@@ -59,8 +59,31 @@ test('launcher semver comparison and npm self-update are deterministic', async (
 	assert.equal(result.updated, true);
 	assert.deepEqual(invocation, {
 		command: 'npm',
-		args: ['install', '--global', '@l2/atlas@0.2.0']
+		args: ['install', '--global', '@systemsl2/atlas@0.2.0']
 	});
+});
+
+test('updated launcher hands runtime materialization to the newly installed code', () => {
+	let invocation = null;
+	const status = handoffUpdatedLauncher(['--json'], {
+		node: 'node.exe',
+		entrypoint: 'C:\\npm\\node_modules\\@systemsl2\\atlas\\bin\\atlas.js',
+		env: { ATLAS_HOME: 'C:\\atlas-state' },
+		spawn: (command, args, options) => {
+			invocation = { command, args, options };
+			return { status: 0 };
+		}
+	});
+	assert.equal(status, 0);
+	assert.equal(invocation.command, 'node.exe');
+	assert.deepEqual(invocation.args, [
+		'C:\\npm\\node_modules\\@systemsl2\\atlas\\bin\\atlas.js',
+		'update',
+		'--json',
+		'--no-launcher-update'
+	]);
+	assert.equal(invocation.options.shell, false);
+	assert.equal(invocation.options.env.ATLAS_HOME, 'C:\\atlas-state');
 });
 
 test('platform npm package materializes a verified release without touching ATLAS_HOME', () => {
@@ -84,7 +107,7 @@ test('platform npm package materializes a verified release without touching ATLA
 	const result = materializePlatformPackage(installRoot, {
 		env: { ATLAS_PLATFORM_PACKAGE_ROOT: built.packageDir, ATLAS_HOME: stateHome }
 	});
-	assert.equal(platformPackageName(), `@l2/atlas-${process.platform}-${process.arch}`);
+	assert.equal(platformPackageName(), `@systemsl2/atlas-${process.platform}-${process.arch}`);
 	assert.equal(cmds.readCurrent(installRoot), '1.0.0');
 	assert.equal(fs.readFileSync(marker, 'utf8'), 'id: operator-module\n');
 	assert.equal(resolveRuntimeEntrypoint(installRoot), path.join(installRoot, 'versions', '1.0.0', 'bin', 'runtime.js'));

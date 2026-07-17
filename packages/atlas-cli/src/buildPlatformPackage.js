@@ -25,10 +25,14 @@ function buildPlatformPackage(opts) {
 	}
 
 	const packageDir = path.join(outDir, `atlas-${platform}-${version}`);
+	if (!packageDir.startsWith(`${outDir}${path.sep}`)) {
+		throw new Error('platform package output escapes the requested output directory');
+	}
+	fs.rmSync(packageDir, { recursive: true, force: true });
 	fs.mkdirSync(packageDir, { recursive: true });
 	fs.cpSync(bundleDir, path.join(packageDir, 'runtime'), { recursive: true });
 	const metadata = {
-		name: `@l2/atlas-${platform}`,
+		name: `@systemsl2/atlas-${platform}`,
 		version,
 		private: false,
 		license: 'MIT',

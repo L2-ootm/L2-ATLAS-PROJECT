@@ -47,4 +47,24 @@ async function updateLauncher(options = {}) {
 	return { updated: true, current, latest };
 }
 
-module.exports = { PACKAGE_NAME, REGISTRY_LATEST, compareVersions, checkLatestVersion, updateLauncher };
+function handoffUpdatedLauncher(args = [], options = {}) {
+	const runner = options.spawn || spawnSync;
+	const node = options.node || process.execPath;
+	const entrypoint = options.entrypoint || process.argv[1];
+	const result = runner(node, [entrypoint, 'update', ...args, '--no-launcher-update'], {
+		stdio: 'inherit',
+		shell: false,
+		env: options.env || process.env
+	});
+	if (result.error) throw result.error;
+	return result.status ?? 1;
+}
+
+module.exports = {
+	PACKAGE_NAME,
+	REGISTRY_LATEST,
+	compareVersions,
+	checkLatestVersion,
+	updateLauncher,
+	handoffUpdatedLauncher
+};

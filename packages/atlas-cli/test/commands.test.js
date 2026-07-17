@@ -41,7 +41,7 @@ function fileUrl(p) {
 }
 
 test('npm package metadata matches the public install contract', () => {
-	assert.equal(packageJson.name, '@l2/atlas');
+	assert.equal(packageJson.name, '@systemsl2/atlas');
 	assert.notEqual(packageJson.private, true);
 	assert.deepEqual(packageJson.bin, { atlas: 'bin/atlas.js' });
 

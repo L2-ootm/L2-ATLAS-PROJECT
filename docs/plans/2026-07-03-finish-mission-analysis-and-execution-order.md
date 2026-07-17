@@ -47,7 +47,7 @@ Reality constraint: the product spans Python (runtime), Rust (gateway binary), G
 Bun (atlas-terminal, future), Node (freellmapi/discord sidecars, external). A pure npm
 package cannot carry this; viable options:
 
-1. **npm wrapper + platform artifacts** (recommended): `npm i -g @l2/atlas` installs a
+1. **npm wrapper + platform artifacts** (recommended): `npm i -g @systemsl2/atlas` installs a
    thin launcher that downloads/verifies a versioned release bundle (gateway exe, TUI exe,
    python wheel or pinned venv bootstrap) into `~/.atlas`; `atlas update` re-fetches;
    `atlas doctor` validates. Mirrors how modern CLIs ship (opencode/MiMo do exactly this

@@ -86,6 +86,7 @@ def test_start_resolves_npm_cmd_on_windows(tmp_path, monkeypatch):
     health_calls = iter([False, True])
     monkeypatch.setattr(cockpit_control, "health_ok", lambda timeout=1.0: next(health_calls))
     monkeypatch.setattr(cockpit_control, "PID_FILE", tmp_path / "cockpit.pid")
+    monkeypatch.setattr(cockpit_control, "_DIST_INDEX", tmp_path / "missing-index.html")
 
     mock_proc = MagicMock()
     mock_proc.pid = 1
@@ -101,11 +102,35 @@ def test_start_resolves_npm_cmd_on_windows(tmp_path, monkeypatch):
     assert spawn_cmd[spawn_cmd.index("--host") + 1] == "127.0.0.1"
 
 
+def test_start_prefers_dependency_free_dist_server(tmp_path, monkeypatch):
+    dist_index = tmp_path / "dist" / "index.html"
+    dist_server = tmp_path / "scripts" / "serve-dist.mjs"
+    dist_index.parent.mkdir()
+    dist_server.parent.mkdir()
+    dist_index.write_text("ok")
+    dist_server.write_text("// server")
+    monkeypatch.setattr(cockpit_control, "_DIST_INDEX", dist_index)
+    monkeypatch.setattr(cockpit_control, "_DIST_SERVER", dist_server)
+    health_calls = iter([False, True])
+    monkeypatch.setattr(cockpit_control, "health_ok", lambda timeout=1.0: next(health_calls))
+    monkeypatch.setattr(cockpit_control, "PID_FILE", tmp_path / "cockpit.pid")
+
+    mock_proc = MagicMock(pid=7)
+    with patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
+        ok, _ = cockpit_control.start(poll_seconds=1.0)
+
+    assert ok is True
+    command = mock_popen.call_args.args[0]
+    assert command[:2] == ["node", str(dist_server)]
+    assert "npm" not in " ".join(command)
+
+
 def test_start_resolves_npm_on_posix(tmp_path, monkeypatch):
     monkeypatch.setattr(cockpit_control.os, "name", "posix")
     health_calls = iter([False, True])
     monkeypatch.setattr(cockpit_control, "health_ok", lambda timeout=1.0: next(health_calls))
     monkeypatch.setattr(cockpit_control, "PID_FILE", tmp_path / "cockpit.pid")
+    monkeypatch.setattr(cockpit_control, "_DIST_INDEX", tmp_path / "missing-index.html")
 
     mock_proc = MagicMock()
     mock_proc.pid = 1

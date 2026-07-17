@@ -22,17 +22,19 @@ and were deliberately NOT performed autonomously. Work top to bottom.
       from `ATLAS_HOME`, OS/CPU platform package, runtime forwarding, safe release
       entrypoint, launcher self-update, checksum verification, rollback, and module-
       preservation fixture. Package suite green; `npm pack --dry-run` clean.
-- [ ] Build and host the complete Windows release bundle (runtime entrypoint, Python
-      runtime, Rust gateway, cockpit, selected TUI, bundled modules). The release-index
-      generator exists; a production bundle does not.
-- [ ] Publish a private prerelease of `@l2/atlas`, then run install/update/rollback UAT
-      on a clean Windows VM before any public npm publish.
+- [x] Build and host the complete Windows x64 release bundle (2026-07-17): embedded
+      Python 3.13.11, Rust gateway, compiled cockpit, Go TUI, runtime services, and
+      bundled modules in `@systemsl2/atlas-win32-x64@0.1.0`.
+- [x] Publish `@systemsl2/atlas@0.1.0` and its platform package publicly; anonymous
+      registry install, materialization, 23 DB migrations, doctor, no-op update, module
+      preservation, gateway execution, and cockpit HTTP 200 passed in isolation.
+- [ ] Repeat cross-version update/rollback UAT when the next npm release exists.
 - [x] Full-history secret scan and cleanup (2026-07-17): rewritten publishable history
       contains only `main`; local planning/scratch and private module history are excluded;
       personal absolute-path variants are absent; the reviewed Gitleaks policy reports
       0 findings across 483 commits. A recovery bundle remains private outside the repo.
-- [ ] Confirm npm authentication and ownership of both `@l2/atlas` and the matching
-      `@l2/atlas-win32-x64` platform package. This machine is not currently logged in.
+- [x] Confirm npm authentication and ownership of `@systemsl2/atlas` and
+      `@systemsl2/atlas-win32-x64`; both report public access and `latest: 0.1.0`.
 - [x] `atlas doctor` — db/config/gateway ok, provider mock (2026-06-23). (Run again on a truly
       fresh clone before public; cockpit shows "down" only when its port differs from the probe.)
 - [x] Full test suite green (2026-06-23): agent-runtime 369 pass / 1 skip / 1 known

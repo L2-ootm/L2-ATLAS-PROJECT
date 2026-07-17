@@ -10,6 +10,10 @@
 </p>
 
 <p align="center">
+  <img src="docs/media/atlas-npm-install.png" width="960" alt="Install ATLAS with npm i -g @systemsl2/atlas">
+</p>
+
+<p align="center">
   <a href="LICENSE">MIT License</a> ·
   <a href="docs/architecture/OVERVIEW.md">Architecture</a> ·
   <a href="docs/operations/INSTALL.md">Install</a> ·
@@ -17,9 +21,9 @@
   <a href="SECURITY.md">Security</a>
 </p>
 
-> **Private research preview.** The repository and npm package are not public yet.
-> ATLAS is being hardened for its first public release; do not use the current build
-> with sensitive production data.
+> **Research preview.** The npm package is public for Windows x64 UAT; the source
+> repository remains private until the final clean-machine and repository gates pass.
+> Do not use the preview with sensitive production data.
 
 ## What ATLAS is
 
@@ -41,10 +45,10 @@ verification.
 
 ## Installation
 
-The public release will use one command:
+Windows x64 preview:
 
 ```powershell
-npm install --global @l2/atlas
+npm install --global @systemsl2/atlas
 ```
 
 The npm launcher installs a verified platform release, then delegates normal commands
@@ -52,8 +56,10 @@ to it. Application versions live outside the source repository and outside live
 operator state. `atlas update` replaces the launcher/runtime version while preserving
 the database, configuration, credentials, wiki, logs, and user modules.
 
-The npm package is not published yet and the real platform bundle is still a release
-gate. For private source testing on Windows, use the current bootstrap:
+The published package contains an embedded Python runtime, the Rust gateway, terminal
+UI, compiled WebUI, runtime services, and bundled modules. Node.js 20+ and npm are the
+only prerequisites; Git, Python, Go, and Rust are not required. Source developers can
+still use the PowerShell bootstrap:
 
 ```powershell
 irm https://raw.githubusercontent.com/L2-ootm/L2-ATLAS-PROJECT/main/install/install.ps1 | iex
@@ -104,10 +110,11 @@ remains available to `atlas rollback`.
 
 ## Trust and project status
 
-ATLAS is intentionally honest about unfinished work. Public release remains blocked on
-the production platform bundle, npm ownership/authentication, clean-machine
-install/update/rollback UAT, and operator approval. Repository cleanup and the
-configured full-history secret scan are complete. Release gates are tracked
+ATLAS is intentionally honest about unfinished work. The Windows x64 npm packages are
+published and passed an anonymous-registry isolated install UAT. Public repository
+release remains blocked on independent clean-Windows install/update/rollback UAT and
+operator approval. Repository cleanup and the configured full-history secret scan are
+complete. Release gates are tracked
 in [`docs/release/RELEASE_CHECKLIST.md`](docs/release/RELEASE_CHECKLIST.md); internal
 planning/session state is deliberately excluded from the public repository.
 

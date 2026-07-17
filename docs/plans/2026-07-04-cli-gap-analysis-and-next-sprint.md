@@ -82,16 +82,16 @@ The operator said "freellmapi (up/down) to start atlas native clone of freellmap
 
 **Recommendation:** Option B — `start/stop` are fine per-component. The real gap is the unified `atlas down`. Add `up`/`down` aliases only at the top level.
 
-### GAP 3: Full npm package installer (`npm i -g @l2/atlas`)
+### GAP 3: Full npm package installer (`npm i -g @systemsl2/atlas`)
 
-The user wants MiMoCode/Hermes-style install: `npm i -g @l2/atlas` installs everything. Currently:
+The user wants MiMoCode/Hermes-style install: `npm i -g @systemsl2/atlas` installs everything. Currently:
 - `packages/atlas-cli/` exists with launcher mechanics (install/update/rollback/uninstall/doctor/versions)
 - But it only accepts `--from <local dir>`, not a real remote fetch
 - No CI publishing, no release bundle, no checksum verification against a remote host
 - Bin name is now `atlas` for the npm package; source-checkout Python `atlas` remains a developer PATH coexistence concern.
 
 **What needs to happen:**
-1. **npm package naming:** Decide `@l2/atlas` vs `@l2/atlas-cli` — the user said `npm install` should "install the entire thing," so `@l2/atlas` is the target name
+1. **npm package naming:** Decide `@systemsl2/atlas` vs `@systemsl2/atlas-cli` — the user said `npm install` should "install the entire thing," so `@systemsl2/atlas` is the target name
 2. **Release bundle hosting:** GitHub Releases or a dedicated artifact host. Each release = platform-specific tarball containing:
    - `atlas-gateway` binary (Rust, cross-compiled)
    - `atlas-tui` binary (Go, cross-compiled) — or atlas-terminal if retirement gate passes
@@ -152,7 +152,7 @@ From the 2026-07-04 CLI audit:
 
 | Task | Scope | Est. |
 |------|-------|------|
-| Rename `@l2/atlas-cli` → `@l2/atlas` | DONE 2026-07-07: package name is `@l2/atlas`, bin is `atlas`, metadata contract is test-covered. | Done |
+| Rename `@systemsl2/atlas-cli` → `@systemsl2/atlas` | DONE 2026-07-07: package name is `@systemsl2/atlas`, bin is `atlas`, metadata contract is test-covered. | Done |
 | Real release fetch | `atlas install` / `atlas update` fetch from GitHub Releases (platform detection, checksum verify) | 2-3 hours |
 | `atlas doctor` manifest check | Compare running binaries vs manifest checksums | 1 hour |
 | `atlas versions` | List installed versions, mark current | 30 min |
@@ -184,7 +184,7 @@ From the 2026-07-04 CLI audit:
 
 ### D-NEXT-01: npm package name
 
-**Resolved 2026-07-07:** use `@l2/atlas` with bin `atlas`. The Python `atlas` on PATH is the source-checkout shim (`atlas.cmd` at repo root). The npm package's `atlas` binary lives in a different prefix (`$(npm prefix)/bin/`). On a clean machine, there is no conflict. On a dev machine, PATH order decides which development entrypoint is used.
+**Resolved 2026-07-07:** use `@systemsl2/atlas` with bin `atlas`. The Python `atlas` on PATH is the source-checkout shim (`atlas.cmd` at repo root). The npm package's `atlas` binary lives in a different prefix (`$(npm prefix)/bin/`). On a clean machine, there is no conflict. On a dev machine, PATH order decides which development entrypoint is used.
 
 ### D-NEXT-02: Release bundle host
 - **Option A:** GitHub Releases (free, familiar, API available)

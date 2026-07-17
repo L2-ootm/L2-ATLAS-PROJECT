@@ -1,5 +1,5 @@
 {
-	"name": "@l2/atlas",
+	"name": "@systemsl2/atlas",
 	"version": "0.1.0",
 	"private": false,
 	"description": "Install and operate the complete ATLAS AI cockpit with versioned, verified releases.",
@@ -25,7 +25,7 @@
 	},
 	"publishConfig": { "access": "public" },
 	"optionalDependencies": {
-		"@l2/atlas-win32-x64": "0.1.0"
+		"@systemsl2/atlas-win32-x64": "0.1.0"
 	},
 	"atlas": {
 		"releaseManifest": "https://github.com/L2-ootm/L2-ATLAS-PROJECT/releases/latest/download/atlas-release-index.json"

@@ -4,7 +4,7 @@ The cockpit's twin of `gateway_control.py`. Triggered from `atlas up` (boots gat
 cockpit together) and any future Tauri/login auto-start surface.
 
 Idempotent: start is a no-op when the cockpit is already serving. Side-effecting
-(spawns a detached `npm run preview` process), so the testable pieces (health probe,
+(spawns a detached static-bundle server or Vite preview process), so the testable pieces (health probe,
 port parsing) are factored out and the CLI command stays thin.
 
 Port-authority decision (matches gateway_control.py's precedent): the env var
@@ -33,6 +33,8 @@ CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
 # services/agent-runtime/atlas_runtime/cockpit_control.py -> agent-runtime -> services -> repo root
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 _COCKPIT_DIR = _REPO_ROOT / "services" / "web-ui-react"
+_DIST_INDEX = _COCKPIT_DIR / "dist" / "index.html"
+_DIST_SERVER = _COCKPIT_DIR / "scripts" / "serve-dist.mjs"
 
 COCKPIT_URL = os.environ.get("ATLAS_COCKPIT_URL", "http://127.0.0.1:5173")
 PID_FILE = pathlib.Path.home() / ".atlas" / "cockpit.pid"
@@ -83,15 +85,21 @@ def start(poll_seconds: float = 15.0) -> tuple[bool, str]:
     """Start the cockpit if not already healthy. Returns (ok, message)."""
     if health_ok():
         return True, "cockpit already running"
-    npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
     port = _parse_port(COCKPIT_URL)
     host = _parse_host(COCKPIT_URL)
-    cmd = [npm_cmd, "run", "preview", "--", "--port", str(port), "--host", host]
+    if _DIST_INDEX.is_file() and _DIST_SERVER.is_file():
+        # Production releases ship the compiled cockpit and this dependency-free
+        # server. Node is already guaranteed by the npm launcher, while shipping
+        # Vite and node_modules would add hundreds of megabytes to every release.
+        cmd = ["node", str(_DIST_SERVER), "--port", str(port), "--host", host]
+    else:
+        npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
+        cmd = [npm_cmd, "run", "preview", "--", "--port", str(port), "--host", host]
     kwargs: dict = {}
     if os.name == "nt":
         # CREATE_NO_WINDOW is the extra flag beyond gateway_control's two-flag set:
-        # npm is a .cmd shell shim (not a native .exe), so DETACHED_PROCESS +
-        # CREATE_NEW_PROCESS_GROUP alone still flashes the shim's own console
+        # The development fallback is a .cmd shell shim and can otherwise flash
+        # a console; the same flags are harmless for the production node process.
         # (commit 62e9456's regression class, extended here per RESEARCH.md Pitfall 4).
         kwargs["creationflags"] = (
             DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
@@ -170,8 +178,8 @@ def stop() -> tuple[bool, str]:
         return False, f"cockpit process already gone (pid {pid}, removed)"
     try:
         if os.name == "nt":
-            # npm.cmd is only the recorded root. /T is required to terminate
-            # the Vite node.exe descendant that owns the listening port.
+            # /T is required for both the production node server and the
+            # development npm/Vite process tree.
             subprocess.run(
                 ["taskkill", "/PID", str(pid), "/T", "/F"],
                 capture_output=True,

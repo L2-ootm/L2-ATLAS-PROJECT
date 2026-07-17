@@ -1,9 +1,8 @@
 # Installing ATLAS
 
-Status: private pre-release. The source bootstrap works on the development
-machine. The npm launcher contract and local release-fixture tests are complete,
-but `@l2/atlas` is not published and no production platform bundle is hosted yet.
-Do not advertise the npm command until the clean-machine gate passes.
+Status: public npm research preview for Windows x64. The production platform package
+and launcher are published and passed anonymous-registry isolated UAT. Independent
+clean-Windows UAT remains recommended for release acceptance.
 
 ## Windows — one line (PowerShell)
 
@@ -27,7 +26,7 @@ Parameters (call the script directly instead of `| iex` to pass them):
 ## npm — public release path
 
 ```powershell
-npm install -g @l2/atlas
+npm install -g @systemsl2/atlas
 atlas doctor
 atlas up
 ```
@@ -52,9 +51,13 @@ Application releases and operator state are intentionally separate:
 `ATLAS_INSTALL_ROOT` overrides the application root. `ATLAS_HOME` overrides the
 state root. Installing or updating through npm never edits a development checkout.
 
-Until the first platform bundle is published, use source mode above. Maintainers
-can test a local artifact with `atlas install --manifest <file-or-url>` or
-`atlas install --from <bundleDir> --version <version>`.
+The first download is approximately 51 MB compressed and 138 MB unpacked. During the
+preview, expect roughly 275 MB of application disk use because npm keeps its package
+copy and ATLAS materializes a separately verified immutable release. Operator state
+grows independently under `ATLAS_HOME`.
+
+Maintainers can test a local artifact with `atlas install --manifest <file-or-url>`
+or `atlas install --from <bundleDir> --version <version>`.
 
 ## POSIX (macOS / Linux)
 
@@ -89,13 +92,14 @@ atlas rollback
 
 Direct edits inside an installed release are unsupported and appear as checksum
 drift in `atlas doctor`. Self-created extensions belong in `ATLAS_HOME/modules`.
-A future self-upgrade overlay protocol will use a separate audited directory; ATLAS
-does not yet safely rewrite its own core.
+Core upgrades arrive as new immutable npm platform packages: `atlas update` upgrades
+the launcher, hands control to the newly installed launcher, verifies/materializes the
+matching runtime, and keeps the previous runtime available for rollback.
 
 ## Deferred (documented, not built)
 
 - Desktop app + signed `.exe` setup — after full stability; will wrap the
   same versioned bundles.
-- Production release bundle CI (complete per-platform runtime + manifest index).
-- Signed/private prerelease artifact hosting and clean-machine UAT.
+- Automated multi-platform release CI beyond the current Windows x64 builder.
+- Independent clean-Windows cross-version update/rollback UAT.
 - Auditable self-upgrade overlays for changes beyond user modules.

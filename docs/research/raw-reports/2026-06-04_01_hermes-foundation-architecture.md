@@ -355,7 +355,7 @@ atlas/
 ├── scripts/{pin-hermes.sh, codegen-schema.ts}
 └── src-tauri/                      # RESERVED (empty in 30 days)
 ```
-- **Names:** `@l2/atlas-schema|atlas-core|atlas-db|hermes-client|cockpit|cli|gateway`; Python `l2-atlas-hermes-plugin`.
+- **Names:** `@systemsl2/atlas-schema|atlas-core|atlas-db|hermes-client|cockpit|cli|gateway`; Python `l2-atlas-hermes-plugin`.
 - **Versioning:** independent ATLAS SemVer; record pinned Hermes SHA in `atlas/HERMES_PIN`, surface in `atlas doctor` + cockpit footer. Mirror Hermes's pinning policy (`>=floor,<next_major`; git deps by SHA; `uv lock` with hashes) given supply-chain history.
 - **Build Windows+Linux:** Node apps via thin launcher; cockpit = SvelteKit node-adapter server; Python plugin via `uv`. Future Tauri sidecar produces per-`-$TARGET_TRIPLE` installers.
 

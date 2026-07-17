@@ -7,7 +7,7 @@ const cmds = require('./commands');
 const { safeRelativeEntrypoint } = require('./release');
 
 function platformPackageName(runtime = process) {
-	return `@l2/atlas-${runtime.platform}-${runtime.arch}`;
+	return `@systemsl2/atlas-${runtime.platform}-${runtime.arch}`;
 }
 
 function resolvePackageRoot(options = {}) {
