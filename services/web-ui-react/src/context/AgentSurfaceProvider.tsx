@@ -23,6 +23,7 @@ import {
 	type AgentRuntime,
 	type ToolApproval
 } from '../lib/api';
+import { parseMissionSlashIntent } from '../lib/missionSlash';
 import {
 	parseSurfaceReplay,
 	type SurfaceEvent,
@@ -150,16 +151,26 @@ export function AgentSurfaceProvider({ children }: { children: ReactNode }) {
 	);
 
 	const submitPrompt = useCallback(
-		async (prompt: string, agent: AgentRuntime, workspace: WorkspaceRequest) => {
+		async (
+			prompt: string,
+			agent: AgentRuntime,
+			workspace: WorkspaceRequest,
+			commandText?: string
+		) => {
+			const slashIntent = parseMissionSlashIntent(commandText ?? prompt);
+			if (slashIntent?.kind === 'goal-status') return null;
+			const missionPrompt = slashIntent?.kind === 'goal-launch' ? slashIntent.objective : prompt;
 			setBusy(true);
 			setError(null);
 			const runWith = async (surface: SurfaceSession) => {
 				const created = await createMission(
-					prompt.split(/\r?\n/, 1)[0].slice(0, 120) || 'Agent request',
-					prompt,
+					missionPrompt.split(/\r?\n/, 1)[0].slice(0, 120) || 'Agent request',
+					missionPrompt,
 					workspace.kind === 'project' ? workspace.projectId : undefined
 				);
-				const started = await startRun(created.mission.id, agent, true, surface.id);
+				const started = slashIntent?.kind === 'goal-launch'
+					? await startRun(created.mission.id, agent, true, surface.id, { goalMode: true })
+					: await startRun(created.mission.id, agent, true, surface.id);
 				return started.run.id;
 			};
 			try {

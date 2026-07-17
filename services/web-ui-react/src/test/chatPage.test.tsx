@@ -120,6 +120,57 @@ describe('Chat page', () => {
 		expect(screen.getByPlaceholderText('Message ATLAS')).toBeEnabled();
 	});
 
+	it('formats markdown while the turn is still streaming', async () => {
+		surface.value.submitPrompt.mockResolvedValue('run-1');
+		renderChat();
+
+		fireEvent.change(screen.getByPlaceholderText('Message ATLAS'), {
+			target: { value: 'format this live' }
+		});
+		fireEvent.keyDown(screen.getByPlaceholderText('Message ATLAS'), { key: 'Enter' });
+		await act(async () => {});
+
+		surface.value.events = [
+			surfaceEvent(1, 'text', { delta: '## Live heading\n\nThis is **formatted now**.' })
+		];
+		await act(async () => fireEvent.click(screen.getByText('tick')));
+
+		expect(screen.getByRole('heading', { name: 'Live heading' })).toBeInTheDocument();
+		expect(screen.getByText('formatted now').tagName).toBe('STRONG');
+		expect(document.querySelector('.atlas-stream-frontier')).not.toBeNull();
+		expect(document.querySelector('.atlas-stream-chunk-scan')).not.toBeNull();
+	});
+
+	it('keeps a goal turn pending until a final goal judgement across continuation runs', async () => {
+		surface.value.submitPrompt.mockResolvedValue('run-1');
+		renderChat();
+
+		fireEvent.change(screen.getByPlaceholderText('Message ATLAS'), {
+			target: { value: '/goal finish the release' }
+		});
+		fireEvent.keyDown(screen.getByPlaceholderText('Message ATLAS'), { key: 'Enter' });
+		await act(async () => {});
+
+		surface.value.events = [
+			surfaceEvent(1, 'text', { text: 'First attempt.' }),
+			surfaceEvent(2, 'completion', { status: 'succeeded' }),
+			surfaceEvent(3, 'task', { state: 'active', verdict: 'continue' })
+		];
+		await act(async () => fireEvent.click(screen.getByText('tick')));
+		expect(screen.getByPlaceholderText('Turn in progress — streaming')).toBeDisabled();
+
+		surface.value.events = [
+			...surface.value.events,
+			surfaceEvent(4, 'text', { text: 'Continuation finished it.' }, 'run-2'),
+			surfaceEvent(5, 'completion', { status: 'succeeded' }, 'run-2'),
+			surfaceEvent(6, 'completion', { state: 'done', verdict: 'done' }, 'run-2')
+		];
+		await act(async () => fireEvent.click(screen.getByText('tick')));
+
+		expect(screen.getByText('Continuation finished it.')).toBeInTheDocument();
+		expect(screen.getByPlaceholderText('Message ATLAS')).toBeEnabled();
+	});
+
 	it('shows the run receipt once per session, not on every turn', async () => {
 		surface.value.submitPrompt.mockResolvedValueOnce('run-1').mockResolvedValueOnce('run-2');
 		renderChat();

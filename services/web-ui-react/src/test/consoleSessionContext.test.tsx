@@ -15,7 +15,8 @@ function SessionProbe() {
 						windowId: 'chat-1',
 						turnId: 'turn-1',
 						runId: 'run-1',
-						afterSeq: 12
+						afterSeq: 12,
+						goalMode: false
 					});
 					session.setMessagesByWindow({
 						'chat-1': [

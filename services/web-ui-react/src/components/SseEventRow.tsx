@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import type { AuditEvent } from '../lib/api';
+import type { AuditLogItem } from '../lib/logProjection';
 
 // SseEventRow — one line of the audit stream. Mono + tabular: timestamp ·
 // event_type chip · tool · duration · policy chip. New rows blur in (isNew);
@@ -31,11 +33,31 @@ function ts(iso: string): string {
 	return d.toLocaleTimeString('en-GB', { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0');
 }
 
-export default function SseEventRow({ event, isNew }: { event: AuditEvent; isNew: boolean }) {
+export default function SseEventRow({
+	event,
+	isNew,
+	group
+}: {
+	event: AuditEvent;
+	isNew: boolean;
+	group?: AuditLogItem;
+}) {
 	const pol = policyStyle(event.policy_result);
+	const [expanded, setExpanded] = useState(false);
+	const grouped = !!group && group.count > 1;
 	return (
+		<>
 		<div
-			role="listitem"
+			role={grouped ? 'button' : 'listitem'}
+			tabIndex={grouped ? 0 : undefined}
+			aria-expanded={grouped ? expanded : undefined}
+			onClick={grouped ? () => setExpanded((value) => !value) : undefined}
+			onKeyDown={grouped ? (e) => {
+				if (e.key === 'Enter' || e.key === ' ') {
+					e.preventDefault();
+					setExpanded((value) => !value);
+				}
+			} : undefined}
 			style={{
 				display: 'grid',
 				gridTemplateColumns: ROW_GRID,
@@ -46,7 +68,9 @@ export default function SseEventRow({ event, isNew }: { event: AuditEvent; isNew
 				fontFamily: 'var(--l2-font-mono)',
 				fontSize: 11.5,
 				lineHeight: 1.5,
-				animation: isNew ? 'atlas-blur-in 0.4s var(--l2-ease) both' : 'none'
+				animation: isNew ? 'atlas-blur-in 0.4s var(--l2-ease) both' : 'none',
+				cursor: grouped ? 'pointer' : 'default',
+				background: expanded ? 'rgba(79,139,255,0.055)' : 'transparent'
 			}}
 		>
 			<span style={{ color: 'var(--l2-fg-3)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
@@ -62,10 +86,10 @@ export default function SseEventRow({ event, isNew }: { event: AuditEvent; isNew
 					whiteSpace: 'nowrap'
 				}}
 			>
-				{event.event_type}
+				{event.event_type}{grouped ? ` ×${group.count}` : ''}
 			</span>
 			<span style={{ color: 'var(--l2-fg-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-				{event.tool_name ?? '—'}
+				{grouped ? `${group.charCount.toLocaleString()} chars · #${group.firstCursor}–${group.lastCursor}` : event.tool_name ?? '—'}
 			</span>
 			<span style={{ color: 'var(--l2-fg-3)', fontVariantNumeric: 'tabular-nums', textAlign: 'right' }}>
 				{event.duration_ms != null ? `${event.duration_ms}ms` : '—'}
@@ -91,5 +115,25 @@ export default function SseEventRow({ event, isNew }: { event: AuditEvent; isNew
 				)}
 			</span>
 		</div>
+		{grouped && expanded && (
+			<div
+				style={{
+					padding: '10px 14px 12px 118px',
+					borderBottom: '1px solid rgba(79,139,255,0.16)',
+					background: 'rgba(4,7,12,0.72)',
+					fontFamily: 'var(--l2-font-mono)',
+					fontSize: 11,
+					lineHeight: 1.55,
+					color: 'var(--l2-fg-2)',
+					whiteSpace: 'pre-wrap',
+					wordBreak: 'break-word',
+					maxHeight: 220,
+					overflowY: 'auto'
+				}}
+			>
+				{group.text || 'Delta payload contains no text.'}
+			</div>
+		)}
+		</>
 	);
 }

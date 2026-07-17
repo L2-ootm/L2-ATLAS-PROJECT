@@ -736,18 +736,35 @@ export async function cashflowSummary(): Promise<CashflowSummary> {
  * old binary ignores `execute` and records the run only. The body carries
  * `execute` only when true to stay compatible with pre-WP-1 gateways.
  */
+export interface StartRunOptions {
+	goalMode?: boolean;
+	judgeModel?: string;
+	maxRuns?: number;
+}
+
 export async function startRun(
 	missionId: string,
 	agent?: AgentRuntime,
 	execute?: boolean,
-	surfaceSessionId?: string
+	surfaceSessionId?: string,
+	options?: StartRunOptions
 ): Promise<{ run: Run; executing?: boolean }> {
 	const init: RequestInit = { method: 'POST' };
-	const body: { agent?: AgentRuntime; execute?: boolean; surface_session_id?: string } = {};
+	const body: {
+		agent?: AgentRuntime;
+		execute?: boolean;
+		surface_session_id?: string;
+		goal_mode?: boolean;
+		judge_model?: string;
+		max_runs?: number;
+	} = {};
 	if (agent) body.agent = agent;
 	if (execute) body.execute = true;
 	if (surfaceSessionId) body.surface_session_id = surfaceSessionId;
-	if (agent || execute || surfaceSessionId) init.body = JSON.stringify(body);
+	if (options?.goalMode !== undefined) body.goal_mode = options.goalMode;
+	if (options?.judgeModel !== undefined) body.judge_model = options.judgeModel;
+	if (options?.maxRuns !== undefined) body.max_runs = options.maxRuns;
+	if (Object.keys(body).length > 0) init.body = JSON.stringify(body);
 	return apiFetch(`/v1/missions/${encodeURIComponent(missionId)}/run`, init);
 }
 
@@ -968,7 +985,12 @@ export interface AtlasConfigView {
 		reasoning_effort?: ReasoningEffort;
 	};
 	/** Function-slot routing: curator/auxiliary side-task model autoconfig. */
-	functions?: { autoconfig: boolean; curator_model: string; auxiliary_model: string };
+	functions?: {
+		autoconfig: boolean;
+		curator_model: string;
+		auxiliary_model: string;
+		judge_model?: string;
+	};
 	runtime: { default_agent: string; iteration_budget: number; compression: string };
 	gateway: { rust_port: number; messaging_enabled: boolean; messaging_port: number };
 	cockpit: { port: number; branding: string };

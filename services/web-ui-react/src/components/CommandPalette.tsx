@@ -15,7 +15,7 @@ interface CommandPaletteProps {
 
 /**
  * Cmd+K / Ctrl+K slash-command palette for the Console — TUI parity for the six
- * built-in commands (init/review/dream/distill/goal/deep-research). Input works
+ * built-in commands (including the goal/mission aliases). Input works
  * like the TUI composer: first token picks the command, the rest are arguments
  * substituted into the template's `$ARGUMENTS` slot.
  */

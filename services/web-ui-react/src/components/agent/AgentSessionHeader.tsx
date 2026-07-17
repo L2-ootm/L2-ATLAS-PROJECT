@@ -1,5 +1,7 @@
 import { Bot, Pause, ShieldCheck, Square, Wifi } from 'lucide-react';
 import { useAgentSurface } from '../../context/AgentSurfaceContext';
+import { subagentsFromSurfaceEvents } from '../../lib/subagents';
+import { AgentConstellation } from './SubagentActivity';
 
 const visibleStates = new Set(['starting', 'active', 'suspended', 'resuming', 'cancelling']);
 
@@ -7,6 +9,7 @@ export default function AgentSessionHeader() {
 	const surface = useAgentSurface();
 	const { session } = surface;
 	if (!session || !visibleStates.has(session.state)) return null;
+	const actors = subagentsFromSurfaceEvents(surface.events);
 
 	return (
 		<header className="agent-session-header" data-state={session.state}>
@@ -20,6 +23,7 @@ export default function AgentSessionHeader() {
 				<code>{session.id.slice(0, 8)}</code>
 			</div>
 			<div className="agent-session-header__context">
+				<AgentConstellation actors={actors} />
 				<span>{session.workspace.kind === 'project' ? session.workspace.project_id : 'GLOBAL'}</span>
 				<span>{session.model.provider}/{session.model.model_id}</span>
 				<span><ShieldCheck size={12} aria-hidden="true" /> {session.permission_mode}</span>

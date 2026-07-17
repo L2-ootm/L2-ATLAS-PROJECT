@@ -1,6 +1,39 @@
 import type { ConsoleChatEvent } from './api';
 import type { SurfaceEvent } from './surfaceContracts';
 
+export type GoalJudgementState = 'active' | 'done' | 'paused' | 'exhausted' | 'failed';
+
+const GOAL_JUDGEMENT_STATES = new Set<GoalJudgementState>([
+	'active',
+	'done',
+	'paused',
+	'exhausted',
+	'failed'
+]);
+
+export function goalJudgementState(event: SurfaceEvent): GoalJudgementState | null {
+	try {
+		const payload = JSON.parse(event.payload_json) as { state?: unknown };
+		if (typeof payload.state !== 'string' || !GOAL_JUDGEMENT_STATES.has(payload.state as GoalJudgementState)) {
+			return null;
+		}
+		const state = payload.state as GoalJudgementState;
+		if (state === 'active') return event.kind === 'task' ? state : null;
+		return event.kind === 'completion' ? state : null;
+	} catch {
+		return null;
+	}
+}
+
+export function finalGoalJudgementState(events: SurfaceEvent[]): GoalJudgementState | null {
+	let finalState: GoalJudgementState | null = null;
+	for (const event of events) {
+		const state = goalJudgementState(event);
+		if (state && state !== 'active') finalState = state;
+	}
+	return finalState;
+}
+
 function stringField(
 	payload: Record<string, unknown>,
 	...keys: string[]
@@ -53,11 +86,12 @@ export function surfaceConsoleEvent(event: SurfaceEvent): ConsoleChatEvent {
 		};
 	}
 	if (event.kind === 'completion') {
-		const terminalStatus = payload.status ?? payload.transition;
+		const terminalStatus = payload.status ?? payload.transition ?? payload.state;
+		const succeeded = ['succeeded', 'done', 'paused', 'exhausted'].includes(String(terminalStatus));
 		return {
 			type: 'result',
 			content: payload,
-			is_error: terminalStatus !== 'succeeded'
+			is_error: !succeeded
 		};
 	}
 	if (event.kind === 'tool_call' && !toolName) {
@@ -90,8 +124,10 @@ export function isRunTerminalEvent(event: ConsoleChatEvent): boolean {
 
 export function surfaceEventsForTurn(
 	events: SurfaceEvent[],
-	turn: { runId: string | null; afterSeq: number } | null
+	turn: { runId: string | null; afterSeq: number; goalMode?: boolean } | null
 ): SurfaceEvent[] {
 	if (!turn?.runId) return [];
-	return events.filter((event) => event.run_id === turn.runId && event.seq > turn.afterSeq);
+	return events.filter(
+		(event) => event.seq > turn.afterSeq && (turn.goalMode || event.run_id === turn.runId)
+	);
 }

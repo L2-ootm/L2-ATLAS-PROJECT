@@ -12,7 +12,7 @@ function mount(overrides: Partial<Parameters<typeof CommandPalette>[0]> = {}) {
 }
 
 describe('CommandPalette', () => {
-	it('lists all six ATLAS commands when the query is empty', () => {
+	it('lists every ATLAS command when the query is empty', () => {
 		mount();
 		for (const command of ATLAS_COMMANDS) {
 			expect(screen.getByText(`/${command.name}`)).toBeInTheDocument();

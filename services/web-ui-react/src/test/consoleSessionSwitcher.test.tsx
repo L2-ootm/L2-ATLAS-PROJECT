@@ -2,6 +2,12 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConsoleSessionProvider } from '../context/ConsoleSessionProvider';
+import type { ConsoleSnapshot } from '../lib/consolePersistence';
+import { createConsoleSession } from '../lib/consolePersistence';
+import {
+	setActiveSessionId,
+	upsertSessionCatalog
+} from '../lib/sessionCatalog';
 import type { SurfaceEvent } from '../lib/surfaceContracts';
 import Console from '../routes/Console';
 
@@ -54,38 +60,76 @@ describe('Console session switcher', () => {
 		api.getRun.mockReset();
 	});
 
-	it('lists recent folders and projects, and rebinding starts a fresh session', async () => {
-		localStorage.setItem('atlas.console.recent-folders.v1', JSON.stringify(['C:\\ws\\recent']));
+	it('opens the shared session drawer with functions and an unbound group', async () => {
 		renderConsole();
 		await act(async () => {});
 
-		fireEvent.click(screen.getByTitle('Switch session'));
-		expect(screen.getByText('Recent folders')).toBeInTheDocument();
-		expect(screen.getByTitle('C:\\ws\\recent')).toBeInTheDocument();
-		// The switcher's project entry carries the root path as its title
-		// (the bare name also renders in the ContextPane project list).
-		expect(screen.getByTitle('C:\\proj\\gateway')).toBeInTheDocument();
+		fireEvent.click(screen.getByTitle('Sessions and functions'));
+		expect(screen.getByText('Operational memory')).toBeInTheDocument();
+		expect(screen.getByText('NEW SESSION')).toBeInTheDocument();
+		expect(screen.getByText('NEW UNBOUND')).toBeInTheDocument();
+		expect(screen.getAllByText('UNBOUND').length).toBeGreaterThan(0);
+	});
 
-		fireEvent.click(screen.getByTitle('C:\\ws\\recent'));
+	it('groups bound sessions under their folder and restores the selected snapshot', async () => {
+		const baseWindow = {
+			id: 'chat-1',
+			kind: 'chat' as const,
+			title: 'atlas.chat',
+			agent: 'native' as const,
+			x: 260,
+			y: 54,
+			w: 540,
+			h: 430
+		};
+		const folderSnapshot: ConsoleSnapshot = {
+			windows: [baseWindow],
+			messagesByWindow: {
+				'chat-1': [{
+					id: 'boot-folder',
+					role: 'system',
+					label: 'ATLAS',
+					body: 'Console bound to folder: C:\\ws\\recent',
+					time: '12:00'
+				}]
+			},
+			draftByWindow: { 'chat-1': '' },
+			layout: 'tile',
+			binding: { bindingMode: 'folder', folderPath: 'C:\\ws\\recent', projectId: '' }
+		};
+		const folderId = createConsoleSession(folderSnapshot);
+		upsertSessionCatalog({
+			id: folderId,
+			surface: 'console',
+			title: 'Review recent workspace',
+			agent: 'native',
+			binding: { kind: 'folder', label: 'recent', root: 'C:\\ws\\recent', projectId: null }
+		});
+		const unboundSnapshot: ConsoleSnapshot = {
+			...folderSnapshot,
+			messagesByWindow: { 'chat-1': [] },
+			binding: { bindingMode: 'folder', folderPath: '', projectId: '' }
+		};
+		const unboundId = createConsoleSession(unboundSnapshot);
+		upsertSessionCatalog({
+			id: unboundId,
+			surface: 'console',
+			title: 'Unbound scratch',
+			agent: 'native',
+			binding: { kind: 'unbound', label: 'UNBOUND', root: null, projectId: null }
+		});
+		setActiveSessionId('console', unboundId);
+
+		renderConsole();
+		await act(async () => {});
+
+		fireEvent.click(screen.getByTitle('Sessions and functions'));
+		expect(screen.getByText('recent')).toBeInTheDocument();
+		fireEvent.click(screen.getByTitle('Review recent workspace'));
+
 		await waitFor(() =>
 			expect(
 				screen.getByText('Console bound to folder: C:\\ws\\recent')
-			).toBeInTheDocument()
-		);
-		// The popover closes after a selection.
-		expect(screen.queryByText('Recent folders')).not.toBeInTheDocument();
-	});
-
-	it('binding to a project resets the transcript to a project boot receipt', async () => {
-		renderConsole();
-		await act(async () => {});
-
-		fireEvent.click(screen.getByTitle('Switch session'));
-		fireEvent.click(screen.getByTitle('C:\\proj\\gateway'));
-
-		await waitFor(() =>
-			expect(
-				screen.getByText('Console bound to Atlas Gateway. Workspace root: C:\\proj\\gateway')
 			).toBeInTheDocument()
 		);
 	});

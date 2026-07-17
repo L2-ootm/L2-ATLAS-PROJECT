@@ -6,6 +6,7 @@ import { GlassPanel } from '../components/hud';
 import TopoInput from '../components/TopoInput';
 import { listRuns, getRunEvents, type AuditEvent } from '../lib/api';
 import { useGatewayHealth } from '../lib/useGatewayHealth';
+import { projectAuditEvents, type AuditLogItem } from '../lib/logProjection';
 import sealMark from '../brand/assets/seal.webp';
 
 // ── Ledger — /audit — the cross-run forensic explorer ────────────────────────
@@ -55,7 +56,7 @@ export default function Ledger() {
 	const [query, setQuery] = useState('');
 	const [typeFilter, setTypeFilter] = useState('ALL');
 	const [policyOnly, setPolicyOnly] = useState(false);
-	const [selected, setSelected] = useState<LedgerEvent | null>(null);
+	const [selected, setSelected] = useState<AuditLogItem<LedgerEvent> | null>(null);
 	const { epoch } = useGatewayHealth();
 	const nav = useNavigate();
 
@@ -89,11 +90,15 @@ export default function Ledger() {
 		for (const ev of load.events) set.add(ev.event_type);
 		return ['ALL', ...[...set].sort()];
 	}, [load]);
+	const projected = useMemo(
+		() => (load.s === 'ready' ? projectAuditEvents(load.events) : []),
+		[load]
+	);
 
 	const filtered = useMemo(() => {
-		if (load.s !== 'ready') return [];
 		const q = query.trim().toLowerCase();
-		return load.events.filter((ev) => {
+		return projected.filter((item) => {
+			const ev = item.event;
 			if (typeFilter !== 'ALL' && ev.event_type !== typeFilter) return false;
 			if (policyOnly && !ev.policy_result) return false;
 			if (q === '') return true;
@@ -102,10 +107,11 @@ export default function Ledger() {
 				(ev.tool_name ?? '').toLowerCase().includes(q) ||
 				ev.run_id.toLowerCase().includes(q) ||
 				ev.mission_title.toLowerCase().includes(q) ||
+				item.text.toLowerCase().includes(q) ||
 				(ev.policy_result ?? '').toLowerCase().includes(q)
 			);
 		});
-	}, [load, query, typeFilter, policyOnly]);
+	}, [policyOnly, projected, query, typeFilter]);
 
 	const total = load.s === 'ready' ? load.events.length : null;
 
@@ -115,7 +121,7 @@ export default function Ledger() {
 			title="Ledger"
 			actions={
 				<span style={mono(11, 'var(--l2-fg-3)')}>
-					{total === null ? '—' : `${filtered.length}/${total} EVENTS`}
+					{total === null ? '—' : `${filtered.length} ROWS · ${total} EVENTS`}
 				</span>
 			}
 		>
@@ -154,8 +160,8 @@ export default function Ledger() {
 						<Empty hasAny={load.events.length > 0} onClear={() => { setQuery(''); setTypeFilter('ALL'); setPolicyOnly(false); }} />
 					) : (
 						<div style={{ maxHeight: '64vh', overflowY: 'auto' }}>
-							{filtered.slice(0, 400).map((ev, i) => (
-								<Row key={`${ev.run_id}-${ev.cursor}`} ev={ev} i={i} onClick={() => setSelected(ev)} />
+							{filtered.slice(0, 400).map((item, i) => (
+								<Row key={item.id} item={item} i={i} onClick={() => setSelected(item)} />
 							))}
 							{filtered.length > 400 && (
 								<div style={{ padding: '12px 18px', textAlign: 'center', ...mono(10.5, 'var(--l2-fg-3)') }}>
@@ -167,7 +173,7 @@ export default function Ledger() {
 			</GlassPanel>
 
 			{selected && (
-				<Drawer ev={selected} onClose={() => setSelected(null)} onOpenRun={(id) => nav(`/runs/${id}`)} />
+				<Drawer item={selected} onClose={() => setSelected(null)} onOpenRun={(id) => nav(`/runs/${id}`)} />
 			)}
 		</Page>
 	);
@@ -199,7 +205,8 @@ function Header() {
 	);
 }
 
-function Row({ ev, i, onClick }: { ev: LedgerEvent; i: number; onClick: () => void }) {
+function Row({ item, i, onClick }: { item: AuditLogItem<LedgerEvent>; i: number; onClick: () => void }) {
+	const ev = item.event;
 	const tone = eventTone(ev);
 	return (
 		<div
@@ -228,10 +235,10 @@ function Row({ ev, i, onClick }: { ev: LedgerEvent; i: number; onClick: () => vo
 				<span style={{ width: 6, height: 6, borderRadius: '50%', background: tone, boxShadow: `0 0 7px ${tone}`, flexShrink: 0 }} />
 				<span style={{ minWidth: 0 }}>
 					<div style={{ ...mono(12.5, 'var(--l2-fg-1)'), letterSpacing: '0.04em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-						{ev.event_type}
+						{ev.event_type}{item.count > 1 ? ` ×${item.count}` : ''}
 					</div>
 					<div style={{ fontSize: 11.5, color: 'var(--l2-fg-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-						{ev.mission_title} · {ev.run_id.slice(0, 8)}
+						{ev.mission_title} · {ev.run_id.slice(0, 8)}{item.count > 1 ? ` · ${item.charCount.toLocaleString()} chars` : ''}
 					</div>
 				</span>
 			</span>
@@ -298,17 +305,28 @@ function Offline() {
 }
 
 // ── detail drawer ─────────────────────────────────────────────────────────────
-function Drawer({ ev, onClose, onOpenRun }: { ev: LedgerEvent; onClose: () => void; onOpenRun: (id: string) => void }) {
+function Drawer({ item, onClose, onOpenRun }: { item: AuditLogItem<LedgerEvent>; onClose: () => void; onOpenRun: (id: string) => void }) {
+	const ev = item.event;
 	const pretty = (() => {
 		try {
-			return JSON.stringify(ev.data, null, 2);
+			return item.count > 1
+				? JSON.stringify({
+					group: 'consecutive_llm_delta',
+					count: item.count,
+					cursor_range: [item.firstCursor, item.lastCursor],
+					char_count: item.charCount,
+					text: item.text,
+					member_event_ids: item.members.map((member) => member.id)
+				}, null, 2)
+				: JSON.stringify(ev.data, null, 2);
 		} catch {
 			return String(ev.data);
 		}
 	})();
 	const rows: Array<[string, string]> = [
-		['Event type', ev.event_type],
+		['Event type', item.count > 1 ? `${ev.event_type} ×${item.count}` : ev.event_type],
 		['Cursor', `#${ev.cursor}`],
+		...(item.count > 1 ? [['Cursor range', `#${item.firstCursor}–#${item.lastCursor}`] as [string, string]] : []),
 		['Run', ev.run_id],
 		['Mission', ev.mission_title],
 		['Tool', ev.tool_name ?? '—'],

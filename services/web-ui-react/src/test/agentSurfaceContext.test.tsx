@@ -67,6 +67,24 @@ function Probe() {
 			>
 				submit
 			</button>
+			<button onClick={() => void surface.submitPrompt('/goal Ship it', 'native', { kind: 'global' })}>
+				goal
+			</button>
+			<button onClick={() => void surface.submitPrompt('/mission status', 'native', { kind: 'global' })}>
+				goal status
+			</button>
+			<button
+				onClick={() =>
+					void surface.submitPrompt(
+						'Expanded command template',
+						'native',
+						{ kind: 'global' },
+						'/mission Ship from palette'
+					)
+				}
+			>
+				palette goal
+			</button>
 		</div>
 	);
 }
@@ -115,6 +133,67 @@ describe('AgentSurfaceProvider', () => {
 				true,
 				'surface-1'
 			)
+		);
+	});
+
+	it('creates one mission and starts goal mode for a long-horizon alias', async () => {
+		api.createSurfaceSession.mockResolvedValue(session());
+		const user = userEvent.setup();
+		render(
+			<AgentSurfaceProvider>
+				<Probe />
+			</AgentSurfaceProvider>
+		);
+
+		await user.click(screen.getByRole('button', { name: 'goal' }));
+		await waitFor(() => expect(api.startRun).toHaveBeenCalledTimes(1));
+		expect(api.createMission).toHaveBeenCalledTimes(1);
+		expect(api.createMission).toHaveBeenCalledWith('Ship it', 'Ship it', undefined);
+		expect(api.startRun).toHaveBeenCalledWith(
+			'mission-1',
+			'native',
+			true,
+			'surface-1',
+			{ goalMode: true }
+		);
+	});
+
+	it('does not send bare or status aliases as agent prompts', async () => {
+		const user = userEvent.setup();
+		render(
+			<AgentSurfaceProvider>
+				<Probe />
+			</AgentSurfaceProvider>
+		);
+
+		await user.click(screen.getByRole('button', { name: 'goal status' }));
+		expect(api.createSurfaceSession).not.toHaveBeenCalled();
+		expect(api.createMission).not.toHaveBeenCalled();
+		expect(api.startRun).not.toHaveBeenCalled();
+	});
+
+	it('uses Console command text instead of its expanded prompt for goal launch', async () => {
+		api.createSurfaceSession.mockResolvedValue(session());
+		const user = userEvent.setup();
+		render(
+			<AgentSurfaceProvider>
+				<Probe />
+			</AgentSurfaceProvider>
+		);
+
+		await user.click(screen.getByRole('button', { name: 'palette goal' }));
+		await waitFor(() => expect(api.createMission).toHaveBeenCalledTimes(1));
+		expect(api.createMission).toHaveBeenCalledWith(
+			'Ship from palette',
+			'Ship from palette',
+			undefined
+		);
+		expect(api.startRun).toHaveBeenCalledWith(
+			'mission-1',
+			'native',
+			true,
+			'surface-1',
+			{ goalMode: true }
 		);
 	});
 

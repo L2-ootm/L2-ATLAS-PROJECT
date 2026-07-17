@@ -24,6 +24,8 @@ import {
 } from '../lib/api';
 import { useGatewayHealth } from '../lib/useGatewayHealth';
 import { ProviderSettingsPanel } from './Settings';
+import { VisualsPanel } from '../components/control/VisualsPanel';
+import { StoragePanel } from '../components/control/StoragePanel';
 import {
 	AboutPanel,
 	ChannelsPanel,
@@ -41,7 +43,7 @@ import {
 // /settings and /system remain as redirects into a tab here. Tab state is
 // carried in ?tab= so deep links and the redirect shims stay addressable.
 
-const TAB_IDS = ['status', 'provider', 'tools', 'channels', 'modules', 'about'] as const;
+const TAB_IDS = ['status', 'provider', 'visuals', 'storage', 'tools', 'channels', 'modules', 'about'] as const;
 type TabId = (typeof TAB_IDS)[number];
 
 type Health = { status: string; db: string } | null;
@@ -149,6 +151,8 @@ export default function Control() {
 		(): Array<{ id: TabId; label: string; badge?: string; alert?: boolean }> => [
 			{ id: 'status', label: 'STATUS', badge: online === false ? 'OFFLINE' : undefined, alert: online === false },
 			{ id: 'provider', label: 'PROVIDER' },
+			{ id: 'visuals', label: 'VISUALS' },
+			{ id: 'storage', label: 'STORAGE' },
 			{
 				id: 'tools',
 				label: 'TOOLS & POLICY',
@@ -285,6 +289,8 @@ export default function Control() {
 				)}
 
 				{tab === 'provider' && <ProviderSettingsPanel />}
+				{tab === 'visuals' && <VisualsPanel />}
+				{tab === 'storage' && <StoragePanel />}
 
 				{tab === 'tools' && (
 					<>
