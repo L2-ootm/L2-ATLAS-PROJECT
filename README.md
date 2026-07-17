@@ -21,9 +21,9 @@
   <a href="SECURITY.md">Security</a>
 </p>
 
-> **Research preview.** The npm package is public for Windows x64 UAT; the source
-> repository remains private until the final clean-machine and repository gates pass.
-> Do not use the preview with sensitive production data.
+> **Open research preview.** The repository and Windows x64 npm package are public.
+> Independent clean-machine feedback is welcome; do not use the preview with
+> sensitive production data.
 
 ## What ATLAS is
 
@@ -111,10 +111,10 @@ remains available to `atlas rollback`.
 ## Trust and project status
 
 ATLAS is intentionally honest about unfinished work. The Windows x64 npm packages are
-published and passed an anonymous-registry isolated install UAT. Public repository
-release remains blocked on independent clean-Windows install/update/rollback UAT and
-operator approval. Repository cleanup and the configured full-history secret scan are
-complete. Release gates are tracked
+published and passed an anonymous-registry isolated install UAT; the repository is
+public. Independent clean-Windows and future cross-version update/rollback UAT remain
+recommended. Repository cleanup and the configured full-history secret scan are
+complete. Release status is tracked
 in [`docs/release/RELEASE_CHECKLIST.md`](docs/release/RELEASE_CHECKLIST.md); internal
 planning/session state is deliberately excluded from the public repository.
 

@@ -15,7 +15,7 @@ and were deliberately NOT performed autonomously. Work top to bottom.
 - [x] Known-failures list — `docs/known-failures.md`
 - [x] Trust docs (Phase 10.0.1): LICENSE, SECURITY.md, CONTRIBUTING.md, CODE_OF_CONDUCT.md, LIMITATIONS.md, ARCHITECTURE.md, ATTRIBUTION.md, issue templates
 
-## ⛔ Operator-gated actions (NOT done autonomously)
+## Operator-gated actions (performed only with explicit approval)
 
 ### Pre-flight (do before going public)
 - [x] npm lifecycle launcher contract (2026-07-17): separated immutable install root
@@ -61,7 +61,7 @@ and were deliberately NOT performed autonomously. Work top to bottom.
 - [ ] Log feedback (themes, bugs, asks) into the ship report's adoption section.
 
 ### Public flip (SC2)
-- [ ] Make the repo public.
+- [x] Make the repo public (2026-07-17; verified through GitHub CLI).
 - [ ] Tag `v0.1.0-open-research-preview`.
 - [ ] Open GitHub Discussions + seed roadmap issues from `PUBLIC_ROADMAP.md`.
 - [ ] Fill `<REPO_URL>` / `<DEMO_URL>` / `<REPORT_URL>` in `LAUNCH_MESSAGE.md`.
