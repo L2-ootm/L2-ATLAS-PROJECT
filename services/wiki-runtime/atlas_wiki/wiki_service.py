@@ -60,6 +60,14 @@ def _ensure_operator_run(conn: sqlite3.Connection, lock: threading.Lock) -> None
                     now,
                 ),
             )
+            try:
+                conn.execute(
+                    "UPDATE missions SET record_kind='system' WHERE id=?",
+                    (OPERATOR_RUN_ID,),
+                )
+            except sqlite3.OperationalError as exc:
+                if "no such column: record_kind" not in str(exc):
+                    raise
             conn.execute(
                 "INSERT OR IGNORE INTO runs(id, mission_id, session_id, status, started_at, summary) "
                 "VALUES (?, ?, ?, ?, ?, ?)",

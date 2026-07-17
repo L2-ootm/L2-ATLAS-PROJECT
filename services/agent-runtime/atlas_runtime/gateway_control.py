@@ -176,6 +176,25 @@ def _pid_process_name(pid: int) -> str | None:
     """
     try:
         if os.name == "nt":
+            # Query the kernel first. Unlike tasklist this is locale-independent
+            # and cannot be confused by CSV/error text emitted on stdout.
+            try:
+                import ctypes  # noqa: PLC0415
+
+                query_limited = 0x1000
+                handle = ctypes.windll.kernel32.OpenProcess(query_limited, False, pid)
+                if handle:
+                    try:
+                        image = ctypes.create_unicode_buffer(32768)
+                        size = ctypes.c_ulong(len(image))
+                        if ctypes.windll.kernel32.QueryFullProcessImageNameW(
+                            handle, 0, image, ctypes.byref(size)
+                        ):
+                            return pathlib.Path(image.value).name
+                    finally:
+                        ctypes.windll.kernel32.CloseHandle(handle)
+            except (AttributeError, OSError):
+                pass
             out = subprocess.run(
                 ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
                 capture_output=True,

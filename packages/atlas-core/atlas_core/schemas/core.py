@@ -53,6 +53,9 @@ class Mission(BaseModel):
     ] = "pending"
     project: str = ""
     project_id: str | None = None
+    # Persistence compatibility: chat/system execution records still own Runs,
+    # but only `mission` rows are exposed as operator-facing Missions.
+    record_kind: Literal["mission", "chat", "system"] = "mission"
     created_at: datetime.datetime = Field(
         default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )

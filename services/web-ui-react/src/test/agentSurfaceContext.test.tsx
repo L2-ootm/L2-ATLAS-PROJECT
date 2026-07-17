@@ -16,7 +16,7 @@ const api = vi.hoisted(() => ({
 	cancelSurfaceSession: vi.fn(),
 	getSurfaceEvents: vi.fn(),
 	listOwnedToolApprovals: vi.fn(),
-	createMission: vi.fn(),
+	createChatExecution: vi.fn(),
 	startRun: vi.fn(),
 	approveToolCall: vi.fn(),
 	rejectToolCall: vi.fn()
@@ -102,7 +102,7 @@ describe('AgentSurfaceProvider', () => {
 			events: []
 		});
 		api.listOwnedToolApprovals.mockReset().mockResolvedValue([]);
-		api.createMission.mockReset().mockResolvedValue({ mission: { id: 'mission-1' } });
+		api.createChatExecution.mockReset().mockResolvedValue({ mission: { id: 'mission-1' } });
 		api.startRun.mockReset().mockResolvedValue({ run: { id: 'run-1' } });
 		api.heartbeatSurfaceSession.mockResolvedValue(session());
 	});
@@ -147,8 +147,8 @@ describe('AgentSurfaceProvider', () => {
 
 		await user.click(screen.getByRole('button', { name: 'goal' }));
 		await waitFor(() => expect(api.startRun).toHaveBeenCalledTimes(1));
-		expect(api.createMission).toHaveBeenCalledTimes(1);
-		expect(api.createMission).toHaveBeenCalledWith('Ship it', 'Ship it', undefined);
+		expect(api.createChatExecution).toHaveBeenCalledTimes(1);
+		expect(api.createChatExecution).toHaveBeenCalledWith('Ship it', 'Ship it', undefined);
 		expect(api.startRun).toHaveBeenCalledWith(
 			'mission-1',
 			'native',
@@ -168,7 +168,7 @@ describe('AgentSurfaceProvider', () => {
 
 		await user.click(screen.getByRole('button', { name: 'goal status' }));
 		expect(api.createSurfaceSession).not.toHaveBeenCalled();
-		expect(api.createMission).not.toHaveBeenCalled();
+		expect(api.createChatExecution).not.toHaveBeenCalled();
 		expect(api.startRun).not.toHaveBeenCalled();
 	});
 
@@ -182,8 +182,8 @@ describe('AgentSurfaceProvider', () => {
 		);
 
 		await user.click(screen.getByRole('button', { name: 'palette goal' }));
-		await waitFor(() => expect(api.createMission).toHaveBeenCalledTimes(1));
-		expect(api.createMission).toHaveBeenCalledWith(
+		await waitFor(() => expect(api.createChatExecution).toHaveBeenCalledTimes(1));
+		expect(api.createChatExecution).toHaveBeenCalledWith(
 			'Ship from palette',
 			'Ship from palette',
 			undefined

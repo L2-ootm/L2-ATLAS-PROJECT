@@ -1674,6 +1674,8 @@ struct CreateMissionBody {
     intent: Option<String>,
     /// Optional project id — mission runs in that project's working directory.
     project: Option<String>,
+    /// Runtime execution classification. Operator-created records default to mission.
+    record_kind: Option<String>,
 }
 
 async fn create_mission(
@@ -1688,11 +1690,24 @@ async fn create_mission(
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty());
+    let record_kind = body
+        .record_kind
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("mission");
+    if !matches!(record_kind, "mission" | "chat" | "system") {
+        return Err(ApiError::BadRequest(
+            "record_kind must be 'mission', 'chat' or 'system'",
+        ));
+    }
     let mut args: Vec<&str> = vec!["mission", "create", "--title", &title, "--intent", &intent];
     if let Some(pid) = project {
         args.push("--project");
         args.push(pid);
     }
+    args.push("--record-kind");
+    args.push(record_kind);
     let id = dispatch_atlas(&state.atlas_cmd, &args).await?;
     let path = state.db_path.clone();
     let id_clone = id.clone();

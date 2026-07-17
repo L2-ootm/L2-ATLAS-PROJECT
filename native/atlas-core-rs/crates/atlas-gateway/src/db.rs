@@ -58,6 +58,7 @@ fn mission_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
         "project": row.get::<_, String>(4)?,
         "created_at": row.get::<_, String>(5)?,
         "updated_at": row.get::<_, String>(6)?,
+        "record_kind": row.get::<_, String>(7)?,
     }))
 }
 
@@ -70,8 +71,9 @@ fn mission_row_with_archive(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> 
         "project": row.get::<_, String>(4)?,
         "created_at": row.get::<_, String>(5)?,
         "updated_at": row.get::<_, String>(6)?,
-        "archived_at": row.get::<_, Option<String>>(7)?,
-        "delete_after": row.get::<_, Option<String>>(8)?,
+        "record_kind": row.get::<_, String>(7)?,
+        "archived_at": row.get::<_, Option<String>>(8)?,
+        "delete_after": row.get::<_, Option<String>>(9)?,
     }))
 }
 
@@ -135,9 +137,10 @@ fn focus_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
     }))
 }
 
-const MISSION_COLS: &str = "id, title, intent, status, project, created_at, updated_at";
+const MISSION_COLS: &str =
+    "id, title, intent, status, project, created_at, updated_at, record_kind";
 const MISSION_ARCHIVE_COLS: &str =
-    "m.id, m.title, m.intent, m.status, m.project, m.created_at, m.updated_at, \
+    "m.id, m.title, m.intent, m.status, m.project, m.created_at, m.updated_at, m.record_kind, \
      a.archived_at, a.delete_after";
 const RUN_COLS: &str =
     "id, mission_id, session_id, status, started_at, finished_at, summary, agent_runtime";
@@ -154,6 +157,7 @@ pub fn list_missions(path: &Path, limit: i64) -> Result<Vec<Value>, DbError> {
     let sql = format!(
         "SELECT {MISSION_ARCHIVE_COLS} FROM missions m \
          LEFT JOIN mission_archive a ON a.mission_id = m.id \
+         WHERE m.record_kind = 'mission' \
          ORDER BY m.created_at DESC LIMIT ?1"
     );
     let rows = match conn.prepare(&sql) {
@@ -162,7 +166,7 @@ pub fn list_missions(path: &Path, limit: i64) -> Result<Vec<Value>, DbError> {
             .collect::<rusqlite::Result<Vec<_>>>()?,
         Err(rusqlite::Error::SqliteFailure(_, Some(ref msg))) if msg.contains("no such table") => {
             let sql =
-                format!("SELECT {MISSION_COLS} FROM missions ORDER BY created_at DESC LIMIT ?1");
+                format!("SELECT {MISSION_COLS} FROM missions WHERE record_kind='mission' ORDER BY created_at DESC LIMIT ?1");
             let mut stmt = conn.prepare(&sql)?;
             let rows = stmt
                 .query_map([limit], mission_row)?
@@ -238,7 +242,7 @@ pub fn get_project(path: &Path, id: &str) -> Result<Option<(Value, Vec<Value>)>,
     let sql = format!(
         "SELECT {MISSION_ARCHIVE_COLS} FROM missions m \
          LEFT JOIN mission_archive a ON a.mission_id = m.id \
-         WHERE m.project_id = ?1 ORDER BY m.created_at DESC"
+         WHERE m.project_id = ?1 AND m.record_kind = 'mission' ORDER BY m.created_at DESC"
     );
     let missions = match conn.prepare(&sql) {
         Ok(mut stmt) => stmt
@@ -246,7 +250,7 @@ pub fn get_project(path: &Path, id: &str) -> Result<Option<(Value, Vec<Value>)>,
             .collect::<rusqlite::Result<Vec<_>>>()?,
         Err(rusqlite::Error::SqliteFailure(_, Some(ref msg))) if msg.contains("no such table") => {
             let sql = format!(
-                "SELECT {MISSION_COLS} FROM missions WHERE project_id = ?1 ORDER BY created_at DESC"
+                "SELECT {MISSION_COLS} FROM missions WHERE project_id = ?1 AND record_kind='mission' ORDER BY created_at DESC"
             );
             let mut stmt = conn.prepare(&sql)?;
             let rows = stmt

@@ -126,7 +126,7 @@ def test_json_schema_all_fields_present() -> None:
     props = set(Mission.model_json_schema()["properties"].keys())
     expected = {
         "id", "title", "intent", "status", "project", "project_id",
-        "created_at", "updated_at",
+        "record_kind", "created_at", "updated_at",
     }
     assert props == expected, f"Unexpected field set: {props}"
 

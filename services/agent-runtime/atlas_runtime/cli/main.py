@@ -416,13 +416,23 @@ def create(
     project: str = typer.Option(
         None, "--project", help="Project ID — mission runs in that project's folder"
     ),
+    record_kind: str = typer.Option(
+        "mission",
+        "--record-kind",
+        help="Execution record kind: mission | chat | system",
+    ),
 ) -> None:
     """Create a Mission and print its ID."""
     conn = _get_connection()
     lock = _get_lock()
     try:
         mission = mission_service.create_mission(
-            conn, lock, title=title, intent=intent, project_id=project
+            conn,
+            lock,
+            title=title,
+            intent=intent,
+            project_id=project,
+            record_kind=record_kind,  # type: ignore[arg-type]
         )
     except ValueError as exc:
         typer.echo(f"Error: {exc}", err=True)

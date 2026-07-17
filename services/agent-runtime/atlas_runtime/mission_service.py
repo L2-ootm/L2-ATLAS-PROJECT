@@ -13,7 +13,7 @@ from __future__ import annotations
 import datetime
 import sqlite3
 import threading
-from typing import Optional
+from typing import Literal, Optional
 
 from atlas_core.schemas.core import Mission
 
@@ -45,6 +45,14 @@ def ensure_operator_run(conn: sqlite3.Connection, lock: threading.Lock) -> str:
                     now,
                 ),
             )
+            try:
+                conn.execute(
+                    "UPDATE missions SET record_kind='system' WHERE id=?",
+                    (OPERATOR_RUN_ID,),
+                )
+            except sqlite3.OperationalError as exc:
+                if "no such column: record_kind" not in str(exc):
+                    raise
             conn.execute(
                 "INSERT OR IGNORE INTO runs(id, mission_id, session_id, status, started_at, summary) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
@@ -68,6 +76,7 @@ def create_mission(
     intent: str = "",
     project: str = "",
     project_id: Optional[str] = None,
+    record_kind: Literal["mission", "chat", "system"] = "mission",
 ) -> Mission:
     """Insert a new Mission row and return the constructed Mission.
 
@@ -78,7 +87,13 @@ def create_mission(
     working directory); a ValueError is raised before any write otherwise.
     """
     # Pydantic-first: construct and validate before any SQL
-    mission = Mission(title=title, intent=intent, project=project, project_id=project_id)
+    mission = Mission(
+        title=title,
+        intent=intent,
+        project=project,
+        project_id=project_id,
+        record_kind=record_kind,
+    )
     row = mission.model_dump()
 
     with lock:
@@ -91,9 +106,9 @@ def create_mission(
                     raise ValueError(f"unknown project_id: {mission.project_id}")
             conn.execute(
                 "INSERT INTO missions"
-                "(id, title, intent, status, project, project_id, created_at, updated_at) "
+                "(id, title, intent, status, project, project_id, created_at, updated_at, record_kind) "
                 "VALUES (:id, :title, :intent, :status, :project, :project_id, "
-                ":created_at, :updated_at)",
+                ":created_at, :updated_at, :record_kind)",
                 row,
             )
 
@@ -119,9 +134,9 @@ def get_mission(
 def list_missions(
     conn: sqlite3.Connection,
 ) -> list[Mission]:
-    """Return all Mission rows ordered by created_at ASC."""
+    """Return operator-facing Missions ordered by created_at ASC."""
     cursor = conn.execute(
-        "SELECT * FROM missions ORDER BY created_at ASC",
+        "SELECT * FROM missions WHERE record_kind='mission' ORDER BY created_at ASC",
     )
     cols = [d[0] for d in cursor.description]
     return [Mission(**dict(zip(cols, row))) for row in cursor]

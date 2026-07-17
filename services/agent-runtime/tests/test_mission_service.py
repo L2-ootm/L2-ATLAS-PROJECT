@@ -45,6 +45,22 @@ def test_list_missions_empty(db):
     assert result == []
 
 
+def test_list_missions_excludes_chat_and_system_execution_records(db, lock):
+    from atlas_runtime.mission_service import create_mission, list_missions
+
+    mission = create_mission(db, lock, title="Command launch")
+    chat = create_mission(db, lock, title="Chat prompt", record_kind="chat")
+    system = create_mission(db, lock, title="Audit anchor", record_kind="system")
+
+    assert [item.id for item in list_missions(db)] == [mission.id]
+    assert db.execute(
+        "SELECT record_kind FROM missions WHERE id=?", (chat.id,)
+    ).fetchone()[0] == "chat"
+    assert db.execute(
+        "SELECT record_kind FROM missions WHERE id=?", (system.id,)
+    ).fetchone()[0] == "system"
+
+
 def test_create_mission_status_is_pending(db, lock):
     """create_mission() creates the mission in pending status."""
     from atlas_runtime.mission_service import create_mission

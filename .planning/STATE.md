@@ -4,7 +4,7 @@ milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
 last_updated: "2026-07-17"
-last_activity: 2026-07-17 -- Durable actors no longer flash a Windows console, inherit the authoritative ATLAS surface session, bind child runs before execution, and support a configured actor model route. Chat now has a preserved 200px future file-tree rail, independently scrolling transcript, 400px actor workspace with live child event overlay, role-based model mesh, and persistent four-message FIFO composer queue. Wide/narrow Playwright QA passed, including measured scroll containment. Full verification: agent-runtime 918/1, atlas-core 97, WebUI 129 + build/budget/lint, Ruff clean. Work is on codex/chat-actor-workspace for operator review; installer remains deferred.
+last_activity: 2026-07-17 -- Mission/chat execution semantics implemented as migration 0024: ordinary surface prompts are classified as chat execution records and excluded from Mission/project lists, while explicit Command Center/Missions launches remain Missions. Historical surface-attached rows are classified without deletion; audit/run foreign keys remain intact. Restart/down PID identity now uses the Windows kernel API before locale-sensitive tasklist fallback. Verification: agent-runtime 918/2, wiki 34/3, core schemas 40, gateway 119, WebUI 134 + build/budget/typecheck/lint, Ruff and diff checks green. Commit/push remain in progress on codex/chat-actor-workspace.
 prior_activity_2026_07_11: Pushed to origin (db772555..01623abe, 42 commits). Next session: retarget `atlas`/`atlas tui` to atlas-terminal, TUI visual polish (fix indentation, differentiate from MiMoCode clone using L2 Dark Prism tokens), WebUI completeness audit, operator UAT, CI watch. Prior: identity fix (DIV-F-007), atlas-terminal waves 2-3, UAT confirmed working (ATLAS identity, /vcs, freellmapi, no event crashes). Critical: atlas-terminal GlobalEvent envelope fix (crashed on every event) + silent reject-becomes-approve fix + nonce-bound approvals; DB indexes (0019). High: cold-start orphan reaper, cockpit SSE backoff, all env vars documented, atlas-ci.yml authored, adapter timeouts/retries. Medium: GET /v1/runs (N+1 gone, E2E-verified), 403 auto re-surface, config schema migration chain, centralized rotating log, cross-module E2E (enabled by env-aware db.default_db_path -- live-DB footgun fixed), goal_tree SQL filtering, PID-reuse guard. Low: ogl removed, atlas-core pinned, graph TTL, bundle budget green, Go TUI mission rows show intent+updated. All suites green (766/97/29/20/101/104/44/1 E2E). Release gateway rebuilt. Wiki CLI DB path also made env-aware (34 passed). main 38 ahead of origin, unpushed.
 progress:
   total_phases: 8
@@ -16,7 +16,28 @@ progress:
 
 # STATE — L2 ATLAS
 
-## Current Position — 2026-07-17: durable actor repair and three-zone Chat cockpit complete
+## Current Position — 2026-07-17: Mission/chat execution semantics implemented
+
+- Migration `0024_mission_execution_kind.sql` adds explicit `mission`, `chat`,
+  and `system` execution classification without deleting existing history.
+- Historical runs attached to a surface session are classified as chat; the
+  operator audit sentinel is system. New Chat/Console prompts request chat
+  records at submission time.
+- Rust gateway Mission and project queries now return only true Missions.
+  Detail/run/audit ownership stays intact behind the compatibility boundary.
+- Explicit Command Center and Missions-page launches retain the default Mission
+  classification. The full parallel/future/dependent goal-lane slice remains
+  the next Command Center increment.
+- Restart/down PID identity now queries the Windows kernel directly before the
+  locale-sensitive `tasklist` fallback; this removed a full-suite isolation
+  failure while retaining the PID-reuse safety check.
+- Verification: agent-runtime 918 passed / 2 skipped; wiki-runtime 34 passed /
+  3 skipped; atlas-core schema/migration 40 passed; gateway 114 API + 5 contract
+  passed; WebUI 134 passed plus production build, bundle budget, TypeScript,
+  ESLint, Ruff, and `git diff --check`. Commit and push remain in progress.
+- Design: `docs/plans/2026-07-17-mission-execution-semantics-design.md`.
+
+## Prior Position — 2026-07-17: durable actor repair and three-zone Chat cockpit complete
 
 - Windows actor workers now prefer `pythonw.exe`, use `CREATE_NO_WINDOW` without
   the conflicting detached-process flag, and close inherited descriptors.

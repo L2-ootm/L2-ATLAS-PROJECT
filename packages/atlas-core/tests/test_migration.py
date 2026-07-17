@@ -106,7 +106,10 @@ def test_column_names_match_fields_mission(db: sqlite3.Connection) -> None:
     fields = set(Mission.model_fields.keys())
     # project_id is added additively in 0005_projects.sql (P3); the 0001-only
     # fixture lacks it, so exclude it from the 0001 drift check.
-    assert cols == fields - {"project_id"}, f"Schema drift — 0001 DDL: {cols}, model: {fields}"
+    # project_id (0005) and record_kind (0024) are additive migrations.
+    assert cols == fields - {"project_id", "record_kind"}, (
+        f"Schema drift — 0001 DDL: {cols}, model: {fields}"
+    )
 
 
 def test_column_names_match_fields_run(db: sqlite3.Connection) -> None:

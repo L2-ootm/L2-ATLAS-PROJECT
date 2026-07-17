@@ -11,7 +11,7 @@ import {
 	approveToolCall,
 	cancelSurfaceSession,
 	closeSurfaceSession,
-	createMission,
+	createChatExecution,
 	createSurfaceSession,
 	getSurfaceEvents,
 	getSurfaceSession,
@@ -163,7 +163,7 @@ export function AgentSurfaceProvider({ children }: { children: ReactNode }) {
 			setBusy(true);
 			setError(null);
 			const runWith = async (surface: SurfaceSession) => {
-				const created = await createMission(
+				const created = await createChatExecution(
 					missionPrompt.split(/\r?\n/, 1)[0].slice(0, 120) || 'Agent request',
 					missionPrompt,
 					workspace.kind === 'project' ? workspace.projectId : undefined

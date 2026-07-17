@@ -19,6 +19,8 @@ const MIGRATION_0007: &str = include_str!("../../../../../infra/migrations/0007_
 const MIGRATION_0016: &str =
     include_str!("../../../../../infra/migrations/0016_surface_sessions.sql");
 const MIGRATION_0021: &str = include_str!("../../../../../infra/migrations/0021_mission_loops.sql");
+const MIGRATION_0024: &str =
+    include_str!("../../../../../infra/migrations/0024_mission_execution_kind.sql");
 
 fn seeded_db(dir: &tempfile::TempDir) -> PathBuf {
     let path = dir.path().join("atlas.db");
@@ -26,12 +28,13 @@ fn seeded_db(dir: &tempfile::TempDir) -> PathBuf {
     conn.execute_batch(MIGRATION_0001).unwrap();
     conn.execute_batch(MIGRATION_0006).unwrap();
     conn.execute_batch(MIGRATION_0016).unwrap();
+    conn.execute_batch(MIGRATION_0024).unwrap();
     conn.execute_batch(
         "INSERT INTO missions VALUES
             ('m1', 'First mission', 'ship it', 'completed', 'atlas',
-             '2026-06-01T10:00:00Z', '2026-06-01T11:00:00Z'),
+             '2026-06-01T10:00:00Z', '2026-06-01T11:00:00Z', 'mission'),
             ('m2', 'Second mission', '', 'pending', 'atlas',
-             '2026-06-02T10:00:00Z', '2026-06-02T10:00:00Z');
+             '2026-06-02T10:00:00Z', '2026-06-02T10:00:00Z', 'mission');
          INSERT INTO runs VALUES
             ('r1', 'm1', 'sess-1', 'succeeded',
              '2026-06-01T10:00:00Z', '2026-06-01T10:30:00Z', 'done', 'native');
@@ -663,6 +666,31 @@ async fn missions_list_returns_rows_newest_first() {
 }
 
 #[tokio::test]
+async fn missions_list_excludes_chat_execution_records() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = seeded_db(&dir);
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    conn.execute(
+        "INSERT INTO missions(id,title,intent,status,project,created_at,updated_at,record_kind) \
+         VALUES('chat-1','ordinary prompt','hello','pending','',?1,?1,'chat')",
+        ["2026-07-17T12:00:00Z"],
+    )
+    .unwrap();
+    drop(conn);
+
+    let router = test_app(path);
+    let (status, body) = get_json(&router, "/v1/missions").await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["count"], 2);
+    assert!(body["missions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|mission| mission["record_kind"] == "mission"));
+}
+
+#[tokio::test]
 async fn missions_list_respects_limit() {
     let dir = tempfile::tempdir().unwrap();
     let router = test_app(seeded_db(&dir));
@@ -1043,6 +1071,21 @@ async fn post_mission_dispatches_to_atlas_and_returns_201() {
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(body["mission"]["id"], "m2");
     assert!(body["runs"].is_array());
+}
+
+#[tokio::test]
+async fn post_mission_rejects_unknown_record_kind() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(seeded_db(&dir), "m2", &stub_dir);
+    let (status, body) = post_json(
+        &router,
+        "/v1/missions",
+        json!({ "title": "Bad kind", "record_kind": "background" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "bad_request");
 }
 
 #[tokio::test]

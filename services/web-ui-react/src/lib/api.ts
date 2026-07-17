@@ -20,6 +20,7 @@ export interface Mission {
 	updated_at: string;
 	archived_at?: string | null;
 	delete_after?: string | null;
+	record_kind?: 'mission' | 'chat' | 'system';
 }
 
 /** Folder-backed working directory (P3). Mirrors db.rs project_row. */
@@ -167,14 +168,24 @@ export async function getMission(id: string): Promise<{ mission: Mission; runs: 
 export async function createMission(
 	title: string,
 	intent: string,
-	project?: string
+	project?: string,
+	recordKind: 'mission' | 'chat' | 'system' = 'mission'
 ): Promise<{ mission: Mission; runs: Run[] }> {
-	const body: { title: string; intent: string; project?: string } = { title, intent };
+	const body: { title: string; intent: string; project?: string; record_kind: string } = {
+		title,
+		intent,
+		record_kind: recordKind
+	};
 	if (project) body.project = project;
 	return apiFetch('/v1/missions', {
 		method: 'POST',
 		body: JSON.stringify(body)
 	});
+}
+
+/** Create an immutable run owner without promoting a normal prompt to Mission. */
+export function createChatExecution(title: string, intent: string, project?: string) {
+	return createMission(title, intent, project, 'chat');
 }
 
 export async function archiveMission(
