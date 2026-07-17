@@ -128,7 +128,7 @@ export function ChatModelRouter({
 				onClick={() => setOpen(true)}
 				aria-haspopup="dialog"
 			>
-				<span className="chat-model-router-trigger__icon"><SlidersHorizontal size={13} /></span>
+				<span className="chat-model-router-trigger__icon"><SlidersHorizontal size={16} /></span>
 				<span className="chat-model-router-trigger__copy">
 					<small>MODEL MESH</small>
 					<strong>{displayModel}</strong>

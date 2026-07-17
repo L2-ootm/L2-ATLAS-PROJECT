@@ -8,6 +8,7 @@ import {
 	surfaceConsoleEvent,
 	surfaceEventsForTurn
 } from '../lib/consoleEvents';
+import { displayConsoleEvents } from '../lib/consoleEventGroups';
 import { ToolCallCard } from '../routes/Console';
 import {
 	SURFACE_EVENT_KINDS,
@@ -57,6 +58,18 @@ describe('Console shared session transport', () => {
 		expect(() =>
 			surfaceConsoleEvent({ ...event('text'), payload_json: '{broken' })
 		).toThrow(/Malformed text event/);
+	});
+
+	it('keeps streamed narration open across provider-call metadata', () => {
+		const projected = [
+			surfaceConsoleEvent(event('text', { delta: 'Let me read the remaining ' })),
+			surfaceConsoleEvent(event('text', { provider: 'openai', model: 'gpt-5' })),
+			surfaceConsoleEvent(event('text', { delta: 'core physics files.' }))
+		];
+		expect(projected[1].type).toBe('telemetry');
+		expect(displayConsoleEvents(projected)).toEqual([
+			expect.objectContaining({ type: 'text', text: 'Let me read the remaining core physics files.', _open: true })
+		]);
 	});
 
 	it('preserves tool identity on tool-scoped failures', () => {

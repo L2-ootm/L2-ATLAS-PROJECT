@@ -16,6 +16,8 @@ type Props = {
 	viewportRef?: React.MutableRefObject<HTMLDivElement | null>;
 	/** Fires on viewport scroll (after the internal thumb bookkeeping). */
 	onViewportScroll?: (el: HTMLDivElement) => void;
+	/** Fires synchronously when the operator takes control of the viewport. */
+	onViewportUserIntent?: (intent: 'up' | 'touch' | 'drag') => void;
 };
 
 /**
@@ -24,7 +26,7 @@ type Props = {
  * It auto-hides when idle, brightens on hover, and is draggable. Vertical only —
  * the console scroll surfaces never scroll horizontally.
  */
-export function TopoScroll({ children, style, viewportStyle, className, tone = 'info', viewportRef: externalViewportRef, onViewportScroll }: Props) {
+export function TopoScroll({ children, style, viewportStyle, className, tone = 'info', viewportRef: externalViewportRef, onViewportScroll, onViewportUserIntent }: Props) {
 	const viewportRef = useRef<HTMLDivElement>(null);
 	const [thumb, setThumb] = useState({ height: 0, top: 0, visible: false });
 	const [active, setActive] = useState(false);
@@ -82,6 +84,7 @@ export function TopoScroll({ children, style, viewportStyle, className, tone = '
 			// pointer capture is best-effort
 		}
 		dragRef.current = { startY: e.clientY, startScroll: el.scrollTop };
+		onViewportUserIntent?.('drag');
 		setActive(true);
 	}
 
@@ -116,6 +119,10 @@ export function TopoScroll({ children, style, viewportStyle, className, tone = '
 				className="atlas-topo-scroll-viewport"
 				style={viewportStyle}
 				onScroll={onScroll}
+				onWheel={(event) => {
+					if (event.deltaY < 0) onViewportUserIntent?.('up');
+				}}
+				onTouchStart={() => onViewportUserIntent?.('touch')}
 			>
 				{children}
 			</div>

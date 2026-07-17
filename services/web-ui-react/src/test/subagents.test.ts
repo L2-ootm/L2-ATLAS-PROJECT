@@ -30,4 +30,9 @@ describe('subagent activity projection', () => {
 		const actor = subagentFromConsoleEvent({ type: 'task', content: payload('completed', { status: 'failed' }) });
 		expect(actor?.phase).toBe('failed');
 	});
+
+	it('maps a timed-out completion to a failed terminal state', () => {
+		const actor = subagentFromConsoleEvent({ type: 'task', content: payload('completed', { status: 'timeout' }) });
+		expect(actor?.phase).toBe('failed');
+	});
 });

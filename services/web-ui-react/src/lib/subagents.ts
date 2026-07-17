@@ -33,7 +33,8 @@ function activity(value: unknown): SubagentActivity | null {
 	const data = record(value);
 	if (data?.orchestration !== 'subagent' || typeof data.subagent_id !== 'string') return null;
 	const rawPhase = String(data.phase ?? 'working');
-	const phase: SubagentPhase = rawPhase === 'completed' && data.status === 'failed'
+	const terminalStatus = String(data.status ?? '');
+	const phase: SubagentPhase = rawPhase === 'completed' && ['failed', 'timeout', 'timed_out'].includes(terminalStatus)
 		? 'failed'
 		: ['queued', 'running', 'working', 'waiting', 'completed', 'failed', 'cancelled', 'orphaned'].includes(rawPhase)
 			? rawPhase as SubagentPhase
@@ -93,4 +94,13 @@ export function subagentLifecycleFromSurfaceEvents(
 
 export function subagentFromConsoleEvent(event: ConsoleChatEvent): SubagentActivity | null {
 	return event.type === 'task' ? activity(event.content) : null;
+}
+
+export function subagentsFromConsoleEvents(events: ConsoleChatEvent[]): SubagentActivity[] {
+	const latest = new Map<string, SubagentActivity>();
+	for (const event of events) {
+		const next = subagentFromConsoleEvent(event);
+		if (next) latest.set(next.id, next);
+	}
+	return [...latest.values()];
 }

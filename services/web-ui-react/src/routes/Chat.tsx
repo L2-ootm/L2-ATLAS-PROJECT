@@ -16,6 +16,7 @@ import { TopoScroll } from '../components/TopoScroll';
 import { ChatMarkdown } from '../components/ChatMarkdown';
 import { StreamReveal } from '../components/chat/StreamReveal';
 import { ChatActorWorkspace } from '../components/chat/ChatActorWorkspace';
+import { OrchestrationCallCard } from '../components/chat/OrchestrationCallCard';
 import { QueuedChatComposer } from '../components/chat/QueuedChatComposer';
 import { SubagentRail } from '../components/agent/SubagentActivity';
 import { SessionNavigator } from '../components/sessions/SessionNavigator';
@@ -34,6 +35,7 @@ import {
 	surfaceConsoleEvent,
 	surfaceEventsForTurn
 } from '../lib/consoleEvents';
+import { displayConsoleEvents, isOrchestrationTool } from '../lib/consoleEventGroups';
 import { useAgentSurface } from '../context/AgentSurfaceContext';
 import type { ConsoleMessage } from '../context/ConsoleSessionContext';
 import { selectFolder } from '../lib/host';
@@ -53,7 +55,8 @@ import {
 	upsertSessionCatalog
 } from '../lib/sessionCatalog';
 import { useVisualSettings } from '../lib/visualSettings';
-import { distanceFromBottom, isNearBottom } from '../lib/scrollFollow';
+import { isNearBottom } from '../lib/scrollFollow';
+import { subagentsFromConsoleEvents } from '../lib/subagents';
 import { turnReceiptSignature } from '../lib/turnReceipt';
 import { GOAL_STATUS_MESSAGE, parseMissionSlashIntent } from '../lib/missionSlash';
 import { ReasoningBlock, ToolCallCard } from './Console';
@@ -201,6 +204,8 @@ export default function Chat() {
 							streamDeltaStart !== undefined
 								? `${body.slice(0, streamDeltaStart)}${event.text ?? ''}`
 								: `${body}${event.text ?? ''}`;
+						streamDeltaStart = undefined;
+					} else if (event.type === 'tool_call') {
 						streamDeltaStart = undefined;
 					}
 					next = {
@@ -492,23 +497,14 @@ export default function Chat() {
 		pinnedRef.current = pinned;
 		setUnpinned(!pinned);
 	}, [visualSettings.autoFollow]);
+	const onViewportUserIntent = useCallback(() => {
+		pinnedRef.current = false;
+		setUnpinned(true);
+	}, []);
 	useEffect(() => {
 		const el = viewportRef.current;
 		if (el && visualSettings.autoFollow && pinnedRef.current) el.scrollTop = el.scrollHeight;
 	}, [messages, visualSettings.autoFollow]);
-	useEffect(() => {
-		if (!busy || !visualSettings.autoFollow) return;
-		let raf = 0;
-		const follow = () => {
-			const el = viewportRef.current;
-			if (el && pinnedRef.current && distanceFromBottom(el) > 1) {
-				el.scrollTop = el.scrollHeight;
-			}
-			raf = requestAnimationFrame(follow);
-		};
-		raf = requestAnimationFrame(follow);
-		return () => cancelAnimationFrame(raf);
-	}, [busy, visualSettings.autoFollow]);
 	const jumpToLatest = useCallback(() => {
 		const el = viewportRef.current;
 		if (!el) return;
@@ -617,6 +613,7 @@ export default function Chat() {
 								viewportStyle={transcriptStyle}
 								viewportRef={viewportRef}
 								onViewportScroll={onViewportScroll}
+								onViewportUserIntent={onViewportUserIntent}
 							>
 								{messages.length === 0 && (
 									<div style={emptyStateStyle}>
@@ -690,43 +687,8 @@ function TurnText({ text, streaming }: { text: string; streaming: boolean }) {
 
 function ChatAgentTurn({ message, hideStatus }: { message: ConsoleMessage; hideStatus: boolean }) {
 	const events = useMemo(() => message.events ?? [], [message.events]);
-	// Collapse text deltas into one open run; the final reconcile replaces the
-	// open run's text (same merge contract as Console's AgentTurn).
-	const displayEvents = useMemo(() => {
-		const out: Array<ConsoleChatEvent & { _open?: boolean }> = [];
-		for (const event of events) {
-			if (event.type === 'text_delta') {
-				const last = out[out.length - 1];
-				if (last?._open) {
-					last.text = `${last.text ?? ''}${event.text ?? ''}`;
-					continue;
-				}
-				out.push({ type: 'text', text: event.text ?? '', _open: true });
-				continue;
-			}
-			if (event.type === 'text') {
-				const last = out[out.length - 1];
-				if (last?._open) {
-					last.text = event.text;
-					last._open = false;
-					continue;
-				}
-				out.push({ ...event, _open: false });
-				continue;
-			}
-			if (event.type === 'status') {
-				const last = out[out.length - 1];
-				if (last?.type === 'status') {
-					last.text = `${last.text ?? ''} · ${event.text ?? ''}`;
-					continue;
-				}
-				out.push({ ...event });
-				continue;
-			}
-			out.push(event);
-		}
-		return out;
-	}, [events]);
+	const displayEvents = useMemo(() => displayConsoleEvents(events), [events]);
+	const actors = useMemo(() => subagentsFromConsoleEvents(events), [events]);
 	const resultsByCall = useMemo(() => {
 		const map: Record<string, ConsoleChatEvent> = {};
 		for (const e of events) {
@@ -750,19 +712,28 @@ function ChatAgentTurn({ message, hideStatus }: { message: ConsoleMessage; hideS
 			</div>
 			{events.length === 0 && pending && <div style={{ color: 'var(--l2-fg-3)', fontSize: 13 }}>Working…</div>}
 			<SubagentRail events={events} />
-			{displayEvents.map((event, idx) => {
+			{displayEvents.map((event) => {
 				if (event.type === 'task') return null;
 				if (event.type === 'text') {
-					return <TurnText key={idx} text={event.text ?? ''} streaming={!!event._open && pending} />;
+					return <TurnText key={event._key} text={event.text ?? ''} streaming={!!event._open && pending} />;
 				}
 				if (event.type === 'reasoning') {
-					return event.text ? <ReasoningBlock key={idx} text={event.text} /> : null;
+					return event.text ? <ReasoningBlock key={event._key} text={event.text} /> : null;
 				}
-			if (event.type === 'tool_call') {
-				if (event.tool_name?.toLowerCase() === 'atlas_actor') return null;
-				return (
+				if (event.type === 'tool_call') {
+					if (isOrchestrationTool(event.tool_name)) {
+						return (
+							<OrchestrationCallCard
+								key={event._key}
+								event={event}
+								result={event.tool_call_id ? resultsByCall[event.tool_call_id] : undefined}
+								actors={actors}
+							/>
+						);
+					}
+					return (
 						<ToolCallCard
-							key={idx}
+							key={event._key}
 							event={event}
 							result={event.tool_call_id ? resultsByCall[event.tool_call_id] : undefined}
 						/>
@@ -771,7 +742,7 @@ function ChatAgentTurn({ message, hideStatus }: { message: ConsoleMessage; hideS
 				if (event.type === 'failure') {
 					if (event.tool_call_id) return null;
 					return (
-						<div key={idx} style={turnErrorStyle}>
+						<div key={event._key} style={turnErrorStyle}>
 							<AlertTriangle size={13} strokeWidth={1.8} />
 							<span>{event.error ?? 'Agent failure'}</span>
 						</div>
@@ -781,7 +752,7 @@ function ChatAgentTurn({ message, hideStatus }: { message: ConsoleMessage; hideS
 				if (event.type === 'status') {
 					if (hideStatus) return null;
 					return (
-						<div key={idx} style={statusLineStyle}>
+						<div key={event._key} style={statusLineStyle}>
 							{event.text}
 						</div>
 					);

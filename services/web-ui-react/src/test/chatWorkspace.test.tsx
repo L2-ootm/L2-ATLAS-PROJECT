@@ -1,7 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ChatActorWorkspace } from '../components/chat/ChatActorWorkspace';
+import { OrchestrationCallCard } from '../components/chat/OrchestrationCallCard';
 import { QueuedChatComposer } from '../components/chat/QueuedChatComposer';
+import { TopoScroll } from '../components/TopoScroll';
 import type { SurfaceEvent } from '../lib/surfaceContracts';
 
 function event(seq: number, kind: SurfaceEvent['kind'], runId: string, payload: object): SurfaceEvent {
@@ -55,6 +57,39 @@ describe('chat actor workspace', () => {
 		render(<ChatActorWorkspace events={events} busy={false} provider="openrouter" modelId="primary" />);
 		expect(screen.getByText(/11 actors are parallel/)).toBeInTheDocument();
 		expect(screen.getAllByRole('button', { name: /Actor \d/ })).toHaveLength(11);
+	});
+
+	it('shows an allocating actor immediately from a delegate dispatch before its heartbeat', () => {
+		render(<ChatActorWorkspace events={[
+			event(1, 'tool_call', 'parent-run', {
+				tool: 'delegate_task',
+				call_id: 'delegate-1',
+				arguments: { tasks: [{ goal: 'Review the precision model' }] }
+			})
+		]} busy provider="openrouter" modelId="primary" />);
+		expect(screen.getByText('Review the precision model')).toBeInTheDocument();
+		expect(screen.getByText('1 LIVE')).toBeInTheDocument();
+		expect(screen.getByText(/dispatching · 0 calls/)).toBeInTheDocument();
+	});
+
+	it('settles an orchestration call from terminal actor lifecycle even before the join receipt arrives', () => {
+		render(<OrchestrationCallCard
+			event={{ type: 'tool_call', tool_name: 'delegate_task', tool_call_id: 'delegate-1', input: { tasks: [{ goal: 'Inspect runtime' }] } }}
+			actors={[{
+				id: 'actor-1', parentId: null, phase: 'completed', goal: 'Inspect runtime', model: 'test', tool: 'read_file',
+				toolCount: 4, depth: 1, background: false, durationSeconds: 2, childRunId: 'child-run'
+			}]}
+		/>);
+		expect(screen.getByText('SETTLED')).toBeInTheDocument();
+	});
+});
+
+describe('topographic scroll ownership', () => {
+	it('reports upward wheel intent before the scroll position changes', () => {
+		const intent = vi.fn();
+		render(<TopoScroll onViewportUserIntent={intent}><div>content</div></TopoScroll>);
+		fireEvent.wheel(document.querySelector('.atlas-topo-scroll-viewport')!, { deltaY: -120 });
+		expect(intent).toHaveBeenCalledWith('up');
 	});
 });
 

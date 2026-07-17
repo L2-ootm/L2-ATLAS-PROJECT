@@ -37,9 +37,12 @@ import { Page } from '../components/Page';
 import { GlassPanel } from '../components/GlassFx';
 import CommandPalette from '../components/CommandPalette';
 import { TopoScroll } from '../components/TopoScroll';
+import { OrchestrationCallCard } from '../components/chat/OrchestrationCallCard';
 import { ChatMarkdown } from '../components/ChatMarkdown';
 import { StreamReveal } from '../components/chat/StreamReveal';
 import { AgentConstellation, SubagentRail } from '../components/agent/SubagentActivity';
+import { displayConsoleEvents, isOrchestrationTool } from '../lib/consoleEventGroups';
+import { subagentsFromConsoleEvents } from '../lib/subagents';
 import { SessionNavigator } from '../components/sessions/SessionNavigator';
 import {
 	agentRuntimeLabel,
@@ -453,6 +456,8 @@ export default function Console() {
 							streamDeltaStart !== undefined
 								? `${body.slice(0, streamDeltaStart)}${event.text ?? ''}`
 								: `${body}${event.text ?? ''}`;
+						streamDeltaStart = undefined;
+					} else if (event.type === 'tool_call') {
 						streamDeltaStart = undefined;
 					}
 					return {
@@ -1931,44 +1936,8 @@ function AgentTurn({ message, hideStatus = false }: { message: ConsoleMessage; h
 	// replaces that open run's (provisional) text instead of appending a new
 	// block. `_open` marks a run that's still streaming so an unrelated later
 	// 'text' event (a fresh, non-streamed round) doesn't overwrite it.
-	const displayEvents = useMemo(() => {
-		const out: Array<ConsoleChatEvent & { _open?: boolean }> = [];
-		for (const event of events) {
-			if (event.type === 'text_delta') {
-				const last = out[out.length - 1];
-				if (last?._open) {
-					last.text = `${last.text ?? ''}${event.text ?? ''}`;
-					continue;
-				}
-				out.push({ type: 'text', text: event.text ?? '', _open: true });
-				continue;
-			}
-			if (event.type === 'text') {
-				const last = out[out.length - 1];
-				if (last?._open) {
-					last.text = event.text;
-					last._open = false;
-					continue;
-				}
-				out.push({ ...event, _open: false });
-				continue;
-			}
-			// Run-boundary notices (run started / runtime / privacy) arrive as
-			// consecutive status events; three stacked lines per turn is noise.
-			// Merge them into one compact receipt row.
-			if (event.type === 'status') {
-				const last = out[out.length - 1];
-				if (last?.type === 'status') {
-					last.text = `${last.text ?? ''} · ${event.text ?? ''}`;
-					continue;
-				}
-				out.push({ ...event });
-				continue;
-			}
-			out.push(event);
-		}
-		return out;
-	}, [events]);
+	const displayEvents = useMemo(() => displayConsoleEvents(events), [events]);
+	const actors = useMemo(() => subagentsFromConsoleEvents(events), [events]);
 	const resultsByCall = useMemo(() => {
 		const map: Record<string, ConsoleChatEvent> = {};
 		for (const e of events) {
@@ -1993,23 +1962,33 @@ function AgentTurn({ message, hideStatus = false }: { message: ConsoleMessage; h
 				<div style={{ ...agentTextStyle, opacity: 0.6 }}>Working…</div>
 			)}
 			<SubagentRail events={events} />
-			{displayEvents.map((event, idx) => {
+			{displayEvents.map((event) => {
 				if (event.type === 'task') return null;
 				if (event.type === 'text') {
 					// Chat and Console share the same live-Markdown reveal and
 					// chunk scan protocol; settings apply to both surfaces.
 					if (event._open && message.status === 'pending') {
-						return <StreamReveal key={idx} text={event.text ?? ''} />;
+						return <StreamReveal key={event._key} text={event.text ?? ''} />;
 					}
-					return event.text ? <ChatMarkdown key={idx} text={event.text} /> : null;
+					return event.text ? <ChatMarkdown key={event._key} text={event.text} /> : null;
 				}
 				if (event.type === 'reasoning') {
-					return event.text ? <ReasoningBlock key={idx} text={event.text} /> : null;
+					return event.text ? <ReasoningBlock key={event._key} text={event.text} /> : null;
 				}
 				if (event.type === 'tool_call') {
+					if (isOrchestrationTool(event.tool_name)) {
+						return (
+							<OrchestrationCallCard
+								key={event._key}
+								event={event}
+								result={event.tool_call_id ? resultsByCall[event.tool_call_id] : undefined}
+								actors={actors}
+							/>
+						);
+					}
 					return (
 						<ToolCallCard
-							key={idx}
+							key={event._key}
 							event={event}
 							result={event.tool_call_id ? resultsByCall[event.tool_call_id] : undefined}
 						/>
@@ -2018,7 +1997,7 @@ function AgentTurn({ message, hideStatus = false }: { message: ConsoleMessage; h
 				if (event.type === 'failure') {
 					if (event.tool_call_id) return null;
 					return (
-						<div key={idx} style={turnErrorStyle}>
+						<div key={event._key} style={turnErrorStyle}>
 							<AlertTriangle size={13} strokeWidth={1.8} />
 							<span>{event.error ?? 'Agent failure'}</span>
 						</div>
@@ -2028,13 +2007,13 @@ function AgentTurn({ message, hideStatus = false }: { message: ConsoleMessage; h
 				if (event.type === 'status') {
 					if (hideStatus) return null;
 					return (
-						<div key={idx} style={statusLineStyle}>
+						<div key={event._key} style={statusLineStyle}>
 							{event.text}
 						</div>
 					);
 				}
 				return (
-					<div key={idx} style={activityEventStyle} data-event-kind={event.type}>
+					<div key={event._key} style={activityEventStyle} data-event-kind={event.type}>
 						<span style={monoLabelStyle}>{event.type.replaceAll('_', ' ')}</span>
 						<span>{event.text ?? clip(resultToText(event.content), 600)}</span>
 					</div>
