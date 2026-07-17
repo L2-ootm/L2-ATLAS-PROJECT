@@ -32,7 +32,7 @@ and were deliberately NOT performed autonomously. Work top to bottom.
 - [x] Full-history secret scan and cleanup (2026-07-17): rewritten publishable history
       contains only `main`; local planning/scratch and private module history are excluded;
       personal absolute-path variants are absent; the reviewed Gitleaks policy reports
-      0 findings across 483 commits. A recovery bundle remains private outside the repo.
+      0 findings across 488 commits. A recovery bundle remains private outside the repo.
 - [x] Confirm npm authentication and ownership of `@systemsl2/atlas` and
       `@systemsl2/atlas-win32-x64`; both report public access and `latest: 0.1.0`.
 - [x] `atlas doctor` — db/config/gateway ok, provider mock (2026-06-23). (Run again on a truly
@@ -62,7 +62,10 @@ and were deliberately NOT performed autonomously. Work top to bottom.
 
 ### Public flip (SC2)
 - [x] Make the repo public (2026-07-17; verified through GitHub CLI).
-- [ ] Tag `v0.1.0-open-research-preview`.
+- [x] Publish the repository-linked `@l2-ootm/atlas@0.1.0` GitHub Package
+      (2026-07-17; public page and repository linkage verified anonymously).
+- [x] Tag and publish `v0.1.0` as **ATLAS v0.1.0 — Open Research Preview**
+      (2026-07-17), with exact npm registry tarballs and SHA-256 checksums.
 - [ ] Open GitHub Discussions + seed roadmap issues from `PUBLIC_ROADMAP.md`.
 - [ ] Fill `<REPO_URL>` / `<DEMO_URL>` / `<REPORT_URL>` in `LAUNCH_MESSAGE.md`.
 
