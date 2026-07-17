@@ -36,53 +36,50 @@ _PENDING_CLAIMS: dict[str, str] = {}
 _CLAIMS_LOCK = threading.Lock()
 
 TOOL_SCHEMA = {
-    "type": "function",
-    "function": {
-        "name": "atlas_actor",
-        "description": (
-            "Durable ATLAS actor supervisor. Spawn child agents that survive "
-            "this turn (and process restarts), inspect them, join them, or "
-            "cancel them. op=run spawns and joins (blocks up to "
-            "timeout_seconds); op=spawn returns a stable actor_id immediately "
-            "and the completion is delivered to you at a later turn boundary; "
-            "op=status inspects without consuming; op=wait joins an existing "
-            "actor; op=cancel idempotently stops an actor and its descendants."
-        ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "op": {
-                    "type": "string",
-                    "enum": ["run", "spawn", "status", "wait", "cancel"],
-                    "description": "Actor operation.",
-                },
-                "goal": {
-                    "type": "string",
-                    "description": "Child goal (required for run/spawn).",
-                },
-                "actor_id": {
-                    "type": "string",
-                    "description": "Existing actor id (required for status/wait/cancel).",
-                },
-                "model": {
-                    "type": "string",
-                    "description": "Optional model override; empty inherits the parent's.",
-                },
-                "timeout_seconds": {
-                    "type": "number",
-                    "description": "Join timeout for run/wait (default 120).",
-                },
-                "idempotency_key": {
-                    "type": "string",
-                    "description": (
-                        "Optional explicit spawn key. Identical keys return the "
-                        "existing actor; pass unique keys to intentionally run "
-                        "the same goal twice."
-                    ),
-                },
+    "name": "atlas_actor",
+    "description": (
+        "Durable ATLAS actor supervisor. Spawn child agents that survive "
+        "this turn (and process restarts), inspect them, join them, or "
+        "cancel them. op=run spawns and joins (blocks up to "
+        "timeout_seconds); op=spawn returns a stable actor_id immediately "
+        "and the completion is delivered to you at a later turn boundary; "
+        "op=status inspects without consuming; op=wait joins an existing "
+        "actor; op=cancel idempotently stops an actor and its descendants."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "op": {
+                "type": "string",
+                "enum": ["run", "spawn", "status", "wait", "cancel"],
+                "description": "Actor operation.",
             },
-            "required": ["op"],
+            "goal": {
+                "type": "string",
+                "description": "Child goal (required for run/spawn).",
+            },
+            "actor_id": {
+                "type": "string",
+                "description": "Existing actor id (required for status/wait/cancel).",
+            },
+            "model": {
+                "type": "string",
+                "description": "Optional model override; empty inherits the parent's.",
+            },
+            "timeout_seconds": {
+                "type": "number",
+                "description": "Join timeout for run/wait (default 120).",
+            },
+            "idempotency_key": {
+                "type": "string",
+                "description": (
+                    "Optional explicit spawn key. Identical keys return the "
+                    "existing actor; pass unique keys to intentionally run "
+                    "the same goal twice."
+                ),
+            },
         },
+        "required": ["op"],
     },
 }
 
@@ -97,14 +94,14 @@ def _shared_state() -> tuple[Any, Optional[threading.Lock]]:
         return None, None
 
 
-def _current_run_id(parent_agent: Any) -> Optional[str]:
+def _current_run_id(parent_agent: Any = None, task_id: Optional[str] = None) -> Optional[str]:
     try:
         import atlas_audit  # noqa: PLC0415
 
-        session_id = getattr(parent_agent, "session_id", None)
+        session_id = getattr(parent_agent, "session_id", None) or task_id
         if not session_id:
             return None
-        return atlas_audit.run_for_session(str(session_id))
+        return atlas_audit.run_for_session(str(session_id)) or None
     except Exception:  # noqa: BLE001
         return None
 
@@ -135,19 +132,30 @@ def _actor_view(actor: dict[str, Any]) -> dict[str, Any]:
 
 
 def atlas_actor_tool(
-    op: str = "status",
-    goal: Optional[str] = None,
-    actor_id: Optional[str] = None,
-    model: Optional[str] = None,
-    timeout_seconds: Optional[float] = None,
-    idempotency_key: Optional[str] = None,
+    args: Optional[dict[str, Any]] = None,
+    *,
+    task_id: Optional[str] = None,
     parent_agent: Any = None,
+    **framework: Any,
 ) -> str:
-    """Handler for the `atlas_actor` Hermes tool. Returns a JSON string."""
+    """Hermes plugin handler for `atlas_actor`; returns a JSON string."""
+    # Preserve the pre-0022 direct-call seam for programmatic callers while
+    # making the production plugin ABI (one args dict + context kwargs) primary.
+    if args is None:
+        known = {"op", "goal", "actor_id", "model", "timeout_seconds", "idempotency_key"}
+        args = {key: value for key, value in framework.items() if key in known}
+    if not isinstance(args, dict):
+        return _tool_error("atlas_actor arguments must be an object")
+    op = str(args.get("op") or "status")
+    goal = args.get("goal")
+    actor_id = args.get("actor_id")
+    model = args.get("model")
+    timeout_seconds = args.get("timeout_seconds")
+    idempotency_key = args.get("idempotency_key")
     conn, lock = _shared_state()
     if conn is None or lock is None:
         return _tool_error("actor supervisor unavailable: no ATLAS connection bound")
-    run_id = _current_run_id(parent_agent)
+    run_id = _current_run_id(parent_agent, task_id)
     if run_id is None:
         return _tool_error("actor supervisor unavailable: no ATLAS run for this session")
     timeout = float(timeout_seconds) if timeout_seconds else 120.0
