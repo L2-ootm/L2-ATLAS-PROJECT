@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
 import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom';
 import Layout from './shell/Layout';
 import Dashboard from './routes/Dashboard';
@@ -16,20 +16,23 @@ import Codex from './routes/Codex';
 import Models from './routes/Models';
 import Integrations from './routes/Integrations';
 import Migrating from './routes/Migrating';
+import { RouteLoadError } from './components/RouteLoadError';
+import { recoveringLazy } from './lib/recoveringLazy';
 
 // Lazy — pulls three.js, kept out of the main bundle.
-const Graph = lazy(() => import('./routes/Graph'));
+const Graph = recoveringLazy('graph', () => import('./routes/Graph'));
 // Lazy — pulls the markdown/highlight stack, kept out of the main bundle.
-const Console = lazy(() => import('./routes/Console'));
+const Console = recoveringLazy('console', () => import('./routes/Console'));
 // Lazy — shares the markdown/highlight chunk with Console.
-const Chat = lazy(() => import('./routes/Chat'));
+const Chat = recoveringLazy('chat', () => import('./routes/Chat'));
 // Lazy — schema-driven module pages (module framework).
-const ModuleHost = lazy(() => import('./routes/ModuleHost'));
+const ModuleHost = recoveringLazy('module-host', () => import('./routes/ModuleHost'));
 
 const router = createBrowserRouter([
 	{
 		path: '/',
 		element: <Layout />,
+		errorElement: <RouteLoadError />,
 		children: [
 			{ index: true, element: <Dashboard /> },
 			{ path: 'command', element: <Command /> },

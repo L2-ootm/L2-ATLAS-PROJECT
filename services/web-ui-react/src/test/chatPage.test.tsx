@@ -141,6 +141,30 @@ describe('Chat page', () => {
 		expect(document.querySelector('.atlas-stream-chunk-scan')).not.toBeNull();
 	});
 
+	it('queues a prompt during a live turn and dispatches it next in FIFO order', async () => {
+		surface.value.submitPrompt
+			.mockResolvedValueOnce('run-1')
+			.mockResolvedValueOnce('run-2');
+		renderChat();
+
+		fireEvent.change(screen.getByPlaceholderText('Message ATLAS'), {
+			target: { value: 'first request' }
+		});
+		fireEvent.keyDown(screen.getByPlaceholderText('Message ATLAS'), { key: 'Enter' });
+		await act(async () => {});
+
+		const busyComposer = screen.getByPlaceholderText('Write the next request for ATLAS');
+		fireEvent.change(busyComposer, { target: { value: 'queued follow-up' } });
+		fireEvent.keyDown(busyComposer, { key: 'Enter' });
+		expect(screen.getByText('queued follow-up')).toBeInTheDocument();
+
+		surface.value.events = [surfaceEvent(1, 'completion', { status: 'succeeded' })];
+		await act(async () => fireEvent.click(screen.getByText('tick')));
+		await act(async () => {});
+
+		expect(surface.value.submitPrompt).toHaveBeenNthCalledWith(2, 'queued follow-up', 'native', { kind: 'global' });
+	});
+
 	it('keeps a goal turn pending until a final goal judgement across continuation runs', async () => {
 		surface.value.submitPrompt.mockResolvedValue('run-1');
 		renderChat();
@@ -157,7 +181,7 @@ describe('Chat page', () => {
 			surfaceEvent(3, 'task', { state: 'active', verdict: 'continue' })
 		];
 		await act(async () => fireEvent.click(screen.getByText('tick')));
-		expect(screen.getByPlaceholderText('Turn in progress — streaming')).toBeDisabled();
+		expect(screen.getByPlaceholderText('Write the next request for ATLAS')).toBeEnabled();
 
 		surface.value.events = [
 			...surface.value.events,

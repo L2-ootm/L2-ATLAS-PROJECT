@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type * as React from 'react';
 import { SquareSlash } from 'lucide-react';
-import { ATLAS_COMMANDS, expandCommandTemplate, type AtlasCommand } from '../lib/atlasCommands';
-import { listModuleCommands } from '../lib/api';
+import { ATLAS_COMMANDS, expandCommandTemplate, matchAtlasCommands, type AtlasCommand } from '../lib/atlasCommands';
+import { loadAtlasCommandCatalog } from '../lib/commandCatalog';
 
 interface CommandPaletteProps {
 	open: boolean;
@@ -24,20 +24,18 @@ export default function CommandPalette({ open, onClose, busy, onRun }: CommandPa
 	const [query, setQuery] = useState('');
 	const [selected, setSelected] = useState(0);
 	const inputRef = useRef<HTMLInputElement>(null);
-	// Module-contributed commands (module framework): fetched when the palette
-	// opens, merged after the built-ins. Offline gateway = built-ins only.
-	const [moduleCommands, setModuleCommands] = useState<AtlasCommand[]>([]);
+	// The palette dispatches prompts only — WebUI-local action commands
+	// (/help, /new, /agent …) live in the Chat composer, not here.
+	const [catalog, setCatalog] = useState<AtlasCommand[]>(ATLAS_COMMANDS.filter((c) => c.kind !== 'action'));
 	useEffect(() => {
-		if (!open) return;
 		let alive = true;
-		void listModuleCommands().then((commands) => {
-			if (alive) setModuleCommands(commands);
+		void loadAtlasCommandCatalog().then((commands) => {
+			if (alive) setCatalog(commands.filter((c) => c.kind !== 'action'));
 		});
 		return () => {
 			alive = false;
 		};
-	}, [open]);
-	const catalog = useMemo(() => [...ATLAS_COMMANDS, ...moduleCommands], [moduleCommands]);
+	}, []);
 
 	const [head, args] = useMemo(() => {
 		const trimmed = query.replace(/^\//, '');
@@ -47,13 +45,7 @@ export default function CommandPalette({ open, onClose, busy, onRun }: CommandPa
 	}, [query]);
 
 	const matches = useMemo(() => {
-		const needle = head.toLowerCase();
-		if (!needle) return catalog;
-		const exact = catalog.filter((c) => c.name === needle);
-		if (exact.length) return exact;
-		return catalog.filter(
-			(c) => c.name.includes(needle) || c.description.toLowerCase().includes(needle)
-		);
+		return matchAtlasCommands(catalog, head, catalog.length);
 	}, [head, catalog]);
 
 	useEffect(() => {
@@ -71,8 +63,8 @@ export default function CommandPalette({ open, onClose, busy, onRun }: CommandPa
 
 	if (!open) return null;
 
-	function execute() {
-		const command = matches[selected];
+	function execute(selectedCommand?: AtlasCommand) {
+		const command = selectedCommand ?? matches[selected];
 		if (!command || busy) return;
 		const display = `/${command.name}${args.trim() ? ` ${args.trim()}` : ''}`;
 		onRun(display, expandCommandTemplate(command.template, args));
@@ -192,7 +184,7 @@ export default function CommandPalette({ open, onClose, busy, onRun }: CommandPa
 							<li key={command.name} role="option" aria-selected={active}>
 								<button
 									onMouseEnter={() => setSelected(i)}
-									onClick={execute}
+									onClick={() => execute(command)}
 									disabled={busy}
 									style={{
 										display: 'flex',
@@ -232,6 +224,7 @@ export default function CommandPalette({ open, onClose, busy, onRun }: CommandPa
 									>
 										{command.description}
 									</span>
+									<span className="atlas-command-source">{command.source === 'module' ? command.module : 'CORE'}</span>
 								</button>
 							</li>
 						);

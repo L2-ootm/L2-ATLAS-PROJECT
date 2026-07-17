@@ -672,6 +672,25 @@ export async function registerProject(
 	});
 }
 
+/** Rename a project (the folder on disk is unchanged). */
+export async function renameProject(
+	id: string,
+	name: string
+): Promise<{ project: Project; missions: Mission[] }> {
+	return apiFetch(`/v1/projects/${encodeURIComponent(id)}`, {
+		method: 'PATCH',
+		body: JSON.stringify({ name })
+	});
+}
+
+/** Unregister a project. The folder is never deleted; bound missions/focus
+ * are detached and their history preserved. */
+export async function unregisterProject(
+	id: string
+): Promise<{ unregistered: boolean; id: string; detached_missions: number }> {
+	return apiFetch(`/v1/projects/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
 // ── Module endpoints (Decision 3b — optional activatable modules) ─────────────
 
 /** A block on a schema-driven module page (rendered by ATLAS-owned components —
@@ -1154,6 +1173,7 @@ export interface AtlasConfigView {
 		autoconfig: boolean;
 		curator_model: string;
 		auxiliary_model: string;
+		actor_model?: string;
 		judge_model?: string;
 	};
 	runtime: { default_agent: string; iteration_budget: number; compression: string };

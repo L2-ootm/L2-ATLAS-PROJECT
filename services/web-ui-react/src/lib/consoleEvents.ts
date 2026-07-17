@@ -74,6 +74,13 @@ export function surfaceConsoleEvent(event: SurfaceEvent): ConsoleChatEvent {
 	if (event.kind === 'text' && text === undefined && typeof payload.delta === 'string') {
 		return { type: 'text_delta', text: payload.delta, content: payload };
 	}
+	// Provider-call metadata shares the `text` surface kind with actual model
+	// output. It is telemetry, not an authoritative empty reconcile. Treating it
+	// as text used to close the open delta group and produced fragments such as
+	// "ator/mass_calculator files" after every metadata checkpoint.
+	if (event.kind === 'text' && text === undefined) {
+		return { type: 'telemetry', content: payload };
+	}
 
 	if (event.kind === 'error') {
 		return {
@@ -104,8 +111,10 @@ export function surfaceConsoleEvent(event: SurfaceEvent): ConsoleChatEvent {
 						? 'MOCK MODE run (deterministic, no provider)'
 						: typeof payload.runtime === 'string'
 							? `runtime ${payload.runtime}`
-							: 'runtime event';
-		return { type: 'status', text: statusText, content: payload };
+							: null;
+		return statusText
+			? { type: 'status', text: statusText, content: payload }
+			: { type: 'telemetry', content: payload };
 	}
 	return {
 		type: event.kind,

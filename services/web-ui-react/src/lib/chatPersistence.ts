@@ -8,6 +8,12 @@ import type { ConsoleMessage } from '../context/ConsoleSessionContext';
 
 export type ChatBindingMode = 'project' | 'folder';
 
+export interface QueuedChatPrompt {
+	id: string;
+	text: string;
+	displayText?: string;
+}
+
 export interface ChatSnapshot {
 	messages: ConsoleMessage[];
 	draft: string;
@@ -15,6 +21,7 @@ export interface ChatSnapshot {
 	bindingMode: ChatBindingMode;
 	folderPath: string;
 	projectId: string;
+	queuedPrompts?: QueuedChatPrompt[];
 }
 
 const LEGACY_KEY = 'atlas.chatpage.v1';
@@ -24,6 +31,16 @@ const MAX_STORED_MESSAGES = 150;
 function normalize(snapshot: ChatSnapshot): ChatSnapshot {
 	return {
 		...snapshot,
+		queuedPrompts: Array.isArray(snapshot.queuedPrompts)
+			? snapshot.queuedPrompts
+					.filter((item) => item && typeof item.id === 'string' && typeof item.text === 'string')
+					.map((item) => ({
+						id: item.id,
+						text: item.text,
+						displayText: typeof item.displayText === 'string' ? item.displayText : undefined
+					}))
+					.slice(0, 4)
+			: [],
 		messages: (snapshot.messages ?? []).slice(-MAX_STORED_MESSAGES).map((message) =>
 			message.status === 'pending'
 				? {
@@ -62,7 +79,8 @@ export function emptyChatSnapshot(binding?: Partial<ChatSnapshot>): ChatSnapshot
 		agent: binding?.agent ?? 'native',
 		bindingMode: binding?.bindingMode ?? 'folder',
 		folderPath: binding?.folderPath ?? '',
-		projectId: binding?.projectId ?? ''
+		projectId: binding?.projectId ?? '',
+		queuedPrompts: binding?.queuedPrompts ?? []
 	};
 }
 
@@ -106,4 +124,3 @@ export function loadActiveChatSession(): { id: string; snapshot: ChatSnapshot } 
 	const snapshot = emptyChatSnapshot();
 	return { id: createChatSession(snapshot), snapshot };
 }
-

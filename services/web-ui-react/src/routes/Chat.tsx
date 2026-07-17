@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import type * as React from 'react';
 import {
 	AlertTriangle,
@@ -8,8 +8,6 @@ import {
 	Folder,
 	FolderSearch,
 	MessagesSquare,
-	SendHorizontal,
-	Square,
 	Unlink
 } from 'lucide-react';
 import { Page } from '../components/Page';
@@ -17,9 +15,11 @@ import { GlassPanel } from '../components/GlassFx';
 import { TopoScroll } from '../components/TopoScroll';
 import { ChatMarkdown } from '../components/ChatMarkdown';
 import { StreamReveal } from '../components/chat/StreamReveal';
+import { ChatActorWorkspace } from '../components/chat/ChatActorWorkspace';
+import { OrchestrationCallCard } from '../components/chat/OrchestrationCallCard';
+import { QueuedChatComposer } from '../components/chat/QueuedChatComposer';
 import { SubagentRail } from '../components/agent/SubagentActivity';
 import { SessionNavigator } from '../components/sessions/SessionNavigator';
-import { AgentPicker } from '../components/agent/AgentPicker';
 import {
 	agentRuntimeLabel,
 	getRun,
@@ -35,6 +35,7 @@ import {
 	surfaceConsoleEvent,
 	surfaceEventsForTurn
 } from '../lib/consoleEvents';
+import { displayConsoleEvents, isOrchestrationTool } from '../lib/consoleEventGroups';
 import { useAgentSurface } from '../context/AgentSurfaceContext';
 import type { ConsoleMessage } from '../context/ConsoleSessionContext';
 import { selectFolder } from '../lib/host';
@@ -44,7 +45,8 @@ import {
 	loadActiveChatSession,
 	loadChatSession,
 	saveChatSession,
-	type ChatSnapshot
+	type ChatSnapshot,
+	type QueuedChatPrompt
 } from '../lib/chatPersistence';
 import {
 	sessionBinding,
@@ -53,9 +55,12 @@ import {
 	upsertSessionCatalog
 } from '../lib/sessionCatalog';
 import { useVisualSettings } from '../lib/visualSettings';
-import { distanceFromBottom, isNearBottom } from '../lib/scrollFollow';
+import { isNearBottom } from '../lib/scrollFollow';
+import { subagentsFromConsoleEvents } from '../lib/subagents';
 import { turnReceiptSignature } from '../lib/turnReceipt';
 import { GOAL_STATUS_MESSAGE, parseMissionSlashIntent } from '../lib/missionSlash';
+import { GO_PAGES, parseAgentArgument, renderCommandHelp, type AtlasCommand } from '../lib/atlasCommands';
+import { loadAtlasCommandCatalog } from '../lib/commandCatalog';
 import { ReasoningBlock, ToolCallCard } from './Console';
 
 /**
@@ -93,10 +98,13 @@ function pathTail(path: string): string {
 export default function Chat() {
 	const agentSurface = useAgentSurface();
 	const visualSettings = useVisualSettings();
+	const navigate = useNavigate();
 	const [initial] = useState(loadActiveChatSession);
 	const [catalogSessionId, setCatalogSessionId] = useState(initial.id);
 	const [messages, setMessages] = useState<ConsoleMessage[]>(initial.snapshot.messages);
 	const [draft, setDraft] = useState(initial.snapshot.draft);
+	const [queuedPrompts, setQueuedPrompts] = useState<QueuedChatPrompt[]>(initial.snapshot.queuedPrompts ?? []);
+	const [queueError, setQueueError] = useState<string | null>(null);
 	// One-shot composer seed (?draft=/hello) — module page actions and deep
 	// links land here; the param is consumed so reloads don't re-seed.
 	const [searchParams, setSearchParams] = useSearchParams();
@@ -117,6 +125,7 @@ export default function Chat() {
 	const [projects, setProjects] = useState<Project[]>([]);
 	const [activeTurn, setActiveTurn] = useState<ActiveChatTurn | null>(null);
 	const [bindOpen, setBindOpen] = useState(false);
+	const dispatchPromptRef = useRef<(prompt: string, displayPrompt?: string) => Promise<void>>(async () => undefined);
 
 	useEffect(() => {
 		let alive = true;
@@ -137,7 +146,7 @@ export default function Chat() {
 	const boundCwd = bindingMode === 'project' ? activeProject?.root_path ?? null : folderPath.trim() || null;
 
 	useEffect(() => {
-		const payload: ChatSnapshot = { messages, draft, agent, bindingMode, folderPath, projectId };
+		const payload: ChatSnapshot = { messages, draft, agent, bindingMode, folderPath, projectId, queuedPrompts };
 		saveChatSession(catalogSessionId, payload);
 		const firstOperator = messages.find((message) => message.role === 'operator');
 		upsertSessionCatalog({
@@ -161,6 +170,7 @@ export default function Chat() {
 		bindingMode,
 		folderPath,
 		projectId,
+		queuedPrompts,
 		activeProject
 	]);
 
@@ -197,6 +207,8 @@ export default function Chat() {
 							streamDeltaStart !== undefined
 								? `${body.slice(0, streamDeltaStart)}${event.text ?? ''}`
 								: `${body}${event.text ?? ''}`;
+						streamDeltaStart = undefined;
+					} else if (event.type === 'tool_call') {
 						streamDeltaStart = undefined;
 					}
 					next = {
@@ -308,16 +320,13 @@ export default function Chat() {
 	}, [bindingKey]);
 
 	// ── dispatch ─────────────────────────────────────────────────────────────
-	async function send() {
-		const prompt = draft.trim();
-		if (!prompt || activeTurn) return;
-		const goalMode = parseMissionSlashIntent(prompt)?.kind === 'goal-launch';
-		setDraft('');
+	async function dispatchPrompt(prompt: string, displayPrompt = prompt) {
+		const goalMode = parseMissionSlashIntent(displayPrompt)?.kind === 'goal-launch';
 		const operator: ConsoleMessage = {
 			id: `${Date.now()}-operator`,
 			role: 'operator',
 			label: 'OPERATOR',
-			body: prompt,
+			body: displayPrompt,
 			time: nowLabel()
 		};
 		const turnId = `${Date.now()}-agent`;
@@ -367,6 +376,87 @@ export default function Chat() {
 			setActiveTurn((current) => (current?.turnId === turnId ? null : current));
 		}
 	}
+	dispatchPromptRef.current = dispatchPrompt;
+	function submitDraft(rawDraft: string, executionDraft = rawDraft): boolean {
+		const prompt = executionDraft.trim();
+		const displayPrompt = rawDraft.trim();
+		if (!prompt) return false;
+		setQueueError(null);
+		if (activeTurn) {
+			if (queuedPrompts.length >= 4) {
+				setQueueError('The four-message queue is full. Remove or edit an item before adding another.');
+				return false;
+			}
+			const id = globalThis.crypto?.randomUUID?.() ?? `queued-${Date.now()}`;
+			setQueuedPrompts((current) => [...current, { id, text: prompt, displayText: displayPrompt }]);
+			setDraft('');
+			return true;
+		}
+		setDraft('');
+		void dispatchPrompt(prompt, displayPrompt);
+		return true;
+	}
+
+	// ── WebUI-local action commands (/help, /new, /agent, /bind, /go …) ─────
+	function appendLocalNote(body: string, role: 'system' | 'agent' = 'system', label = 'ATLAS') {
+		const note: ConsoleMessage = {
+			id: `${Date.now()}-local-note`,
+			role,
+			label,
+			body,
+			time: nowLabel(),
+			status: 'succeeded'
+		};
+		setMessages((prev) => [...prev, note]);
+	}
+
+	function handleComposerAction(command: AtlasCommand, args: string): boolean {
+		setQueueError(null);
+		switch (command.action) {
+			case 'help':
+				void loadAtlasCommandCatalog().then((catalog) =>
+					appendLocalNote(renderCommandHelp(catalog), 'agent', 'COMMAND INDEX')
+				);
+				return true;
+			case 'new':
+			case 'clear': {
+				if (activeTurn) {
+					setQueueError('Finish or cancel the active turn before starting a new session.');
+					return false;
+				}
+				newSession(command.action === 'new' && args.trim().toLowerCase() === 'unbound');
+				return true;
+			}
+			case 'agent': {
+				const runtime = parseAgentArgument(args);
+				if (!runtime) {
+					setQueueError('Usage: /agent <atlas | claude | codex>');
+					return false;
+				}
+				setAgent(runtime);
+				appendLocalNote(`Runtime switched to **${agentRuntimeLabel(runtime)}** for the next turn.`);
+				return true;
+			}
+			case 'bind':
+				setBindOpen(true);
+				return true;
+			case 'unbind':
+				unbind();
+				appendLocalNote('Workspace binding cleared — this session is now UNBOUND.');
+				return true;
+			case 'go': {
+				const target = GO_PAGES[args.trim().toLowerCase()];
+				if (!target) {
+					setQueueError(`Unknown page for /go. Pages: ${Object.keys(GO_PAGES).join(', ')}`);
+					return false;
+				}
+				navigate(target);
+				return true;
+			}
+			default:
+				return false;
+		}
+	}
 
 	async function cancelRun() {
 		try {
@@ -385,6 +475,8 @@ export default function Chat() {
 		setBindingMode(snapshot.bindingMode);
 		setFolderPath(snapshot.folderPath);
 		setProjectId(snapshot.projectId);
+		setQueuedPrompts(snapshot.queuedPrompts ?? []);
+		setQueueError(null);
 		setActiveTurn(null);
 		setBindOpen(false);
 		void agentSurface.releaseSession();
@@ -430,6 +522,39 @@ export default function Chat() {
 	const pinnedRef = useRef(true);
 	const [unpinned, setUnpinned] = useState(false);
 	const busy = !!activeTurn;
+	const wasBusyRef = useRef(false);
+	const drainingQueueRef = useRef(false);
+	useEffect(() => {
+		if (busy) {
+			wasBusyRef.current = true;
+			return;
+		}
+		if (!wasBusyRef.current || drainingQueueRef.current || queuedPrompts.length === 0) return;
+		const next = queuedPrompts[0];
+		wasBusyRef.current = false;
+		drainingQueueRef.current = true;
+		setQueuedPrompts((current) => current.filter((item) => item.id !== next.id));
+		void dispatchPromptRef.current(next.text, next.displayText ?? next.text).finally(() => {
+			drainingQueueRef.current = false;
+		});
+	}, [busy, queuedPrompts]);
+
+	function promoteQueuedPrompt(id: string) {
+		setQueuedPrompts((current) => {
+			const selected = current.find((item) => item.id === id);
+			return selected ? [selected, ...current.filter((item) => item.id !== id)] : current;
+		});
+	}
+
+	function editQueuedPrompt(item: QueuedChatPrompt) {
+		if (draft.trim()) {
+			setQueueError('The composer already has a draft. Send or clear it before editing a queued prompt.');
+			return;
+		}
+		setQueuedPrompts((current) => current.filter((queued) => queued.id !== item.id));
+		setDraft(item.displayText ?? item.text);
+		setQueueError(null);
+	}
 	const onViewportScroll = useCallback((el: HTMLDivElement) => {
 		const pinned =
 			visualSettings.autoFollow &&
@@ -437,23 +562,14 @@ export default function Chat() {
 		pinnedRef.current = pinned;
 		setUnpinned(!pinned);
 	}, [visualSettings.autoFollow]);
+	const onViewportUserIntent = useCallback(() => {
+		pinnedRef.current = false;
+		setUnpinned(true);
+	}, []);
 	useEffect(() => {
 		const el = viewportRef.current;
 		if (el && visualSettings.autoFollow && pinnedRef.current) el.scrollTop = el.scrollHeight;
 	}, [messages, visualSettings.autoFollow]);
-	useEffect(() => {
-		if (!busy || !visualSettings.autoFollow) return;
-		let raf = 0;
-		const follow = () => {
-			const el = viewportRef.current;
-			if (el && pinnedRef.current && distanceFromBottom(el) > 1) {
-				el.scrollTop = el.scrollHeight;
-			}
-			raf = requestAnimationFrame(follow);
-		};
-		raf = requestAnimationFrame(follow);
-		return () => cancelAnimationFrame(raf);
-	}, [busy, visualSettings.autoFollow]);
 	const jumpToLatest = useCallback(() => {
 		const el = viewportRef.current;
 		if (!el) return;
@@ -491,7 +607,6 @@ export default function Chat() {
 						}}
 						onUnbind={unbind}
 					/>
-					<AgentPicker value={agent} onChange={setAgent} disabled={busy} />
 					<div style={{ position: 'relative' }}>
 						<button
 							type="button"
@@ -549,86 +664,74 @@ export default function Chat() {
 				style={{
 					height: 'calc(100vh - 142px)',
 					minHeight: 560,
-					display: 'grid',
-					gridTemplateRows: 'minmax(0,1fr) auto',
 					overflow: 'hidden'
 				}}
 			>
-				<div style={{ position: 'relative', minHeight: 0, display: 'grid' }}>
-					<TopoScroll
-						tone={agent === 'claude_code' ? 'atlas' : 'info'}
-						style={{ minHeight: 0 }}
-						viewportStyle={transcriptStyle}
-						viewportRef={viewportRef}
-						onViewportScroll={onViewportScroll}
-					>
-						{messages.length === 0 && (
-							<div style={emptyStateStyle}>
-								<MessagesSquare size={26} strokeWidth={1.2} style={{ color: 'var(--atlas-celestial)', opacity: 0.7 }} />
-								<div style={{ ...monoLabelStyle, fontSize: 11 }}>OPERATOR CHANNEL</div>
-								<div style={{ color: 'var(--l2-fg-3)', fontSize: 13, maxWidth: 420, textAlign: 'center', lineHeight: 1.6 }}>
-									Direct line to {agentRuntimeLabel(agent)}.{' '}
-									{boundCwd ? `Bound to ${pathTail(boundCwd)}.` : 'Bind a project or folder to scope execution.'}
-								</div>
-							</div>
-						)}
-						{messages.map((message) => {
-							if (message.role === 'agent' && (message.events?.length || message.status === 'pending')) {
-								const receipt = turnReceiptSignature(message);
-								const hideStatus = receipt !== null && receipt === lastReceipt;
-								if (receipt !== null) lastReceipt = receipt;
-								return <ChatAgentTurn key={message.id} message={message} hideStatus={hideStatus} />;
-							}
-							return <ChatBubble key={message.id} message={message} />;
-						})}
-					</TopoScroll>
-					{unpinned && (
-						<button type="button" onClick={jumpToLatest} className="atlas-jump-latest" title="Follow the live response">
-							<ChevronDown size={13} strokeWidth={2} />
-							LATEST
-						</button>
-					)}
-				</div>
-				<div style={composerWrapStyle}>
-					<textarea
-						className="atlas-console-composer"
-						value={draft}
-						onChange={(e) => setDraft(e.target.value)}
-						onKeyDown={(e) => {
-							if (e.key === 'Enter' && !e.shiftKey) {
-								e.preventDefault();
-								void send();
-							}
-						}}
-						placeholder={
-							busy
-								? 'Turn in progress — streaming'
-								: agent === 'claude_code'
-									? 'Ask Claude Code in this workspace'
-									: agent === 'codex'
-										? 'Ask Codex in this workspace'
-										: 'Message ATLAS'
-						}
-						disabled={busy}
-						rows={3}
-						style={composerStyle}
+				<div className="chat-workspace-grid">
+					<div className="chat-context-reserve" aria-hidden="true" />
+					<div className="chat-transcript-column">
+						<div className="chat-transcript-viewport">
+							<TopoScroll
+								className="chat-transcript-scroll"
+								tone={agent === 'claude_code' ? 'atlas' : 'info'}
+								style={{ minHeight: 0, height: '100%' }}
+								viewportStyle={transcriptStyle}
+								viewportRef={viewportRef}
+								onViewportScroll={onViewportScroll}
+								onViewportUserIntent={onViewportUserIntent}
+							>
+								{messages.length === 0 && (
+									<div style={emptyStateStyle}>
+										<MessagesSquare size={26} strokeWidth={1.2} style={{ color: 'var(--atlas-celestial)', opacity: 0.7 }} />
+										<div style={{ ...monoLabelStyle, fontSize: 11 }}>OPERATOR CHANNEL</div>
+										<div style={{ color: 'var(--l2-fg-3)', fontSize: 13, maxWidth: 420, textAlign: 'center', lineHeight: 1.6 }}>
+											Direct line to {agentRuntimeLabel(agent)}.{' '}
+											{boundCwd ? `Bound to ${pathTail(boundCwd)}.` : 'Bind a project or folder to scope execution.'}
+										</div>
+									</div>
+								)}
+								{messages.map((message) => {
+									if (message.role === 'agent' && (message.events?.length || message.status === 'pending')) {
+										const receipt = turnReceiptSignature(message);
+										const hideStatus = receipt !== null && receipt === lastReceipt;
+										if (receipt !== null) lastReceipt = receipt;
+										return <ChatAgentTurn key={message.id} message={message} hideStatus={hideStatus} />;
+									}
+									return <ChatBubble key={message.id} message={message} />;
+								})}
+							</TopoScroll>
+							{unpinned && (
+								<button type="button" onClick={jumpToLatest} className="atlas-jump-latest" title="Follow the live response">
+									<ChevronDown size={13} strokeWidth={2} />
+									LATEST
+								</button>
+							)}
+						</div>
+						<QueuedChatComposer
+							key={catalogSessionId}
+							draft={draft}
+							onDraftPersist={(value) => {
+								setDraft(value);
+								if (queueError) setQueueError(null);
+							}}
+							queue={queuedPrompts}
+							busy={busy}
+							agent={agent}
+							error={queueError}
+							onSubmit={submitDraft}
+							onAction={handleComposerAction}
+							onCancel={() => void cancelRun()}
+							onPromote={promoteQueuedPrompt}
+							onEdit={editQueuedPrompt}
+							onRemove={(id) => setQueuedPrompts((current) => current.filter((item) => item.id !== id))}
+						/>
+					</div>
+					<ChatActorWorkspace
+						events={agentSurface.events}
+						busy={busy}
+						provider={agentSurface.session?.model.provider}
+						modelId={agentSurface.session?.model.model_id}
 					/>
-					{busy ? (
-						<button type="button" onClick={() => void cancelRun()} style={cancelButtonStyle} title="Cancel the running turn">
-							<Square size={14} strokeWidth={2} fill="currentColor" />
-						</button>
-					) : (
-						<button
-							type="button"
-							className="atlas-console-send"
-							onClick={() => void send()}
-							disabled={!draft.trim()}
-							style={sendButtonStyle}
-							title="Send"
-						>
-							<SendHorizontal size={16} strokeWidth={1.8} />
-						</button>
-					)}
 				</div>
 			</GlassPanel>
 		</Page>
@@ -651,43 +754,8 @@ function TurnText({ text, streaming }: { text: string; streaming: boolean }) {
 
 function ChatAgentTurn({ message, hideStatus }: { message: ConsoleMessage; hideStatus: boolean }) {
 	const events = useMemo(() => message.events ?? [], [message.events]);
-	// Collapse text deltas into one open run; the final reconcile replaces the
-	// open run's text (same merge contract as Console's AgentTurn).
-	const displayEvents = useMemo(() => {
-		const out: Array<ConsoleChatEvent & { _open?: boolean }> = [];
-		for (const event of events) {
-			if (event.type === 'text_delta') {
-				const last = out[out.length - 1];
-				if (last?._open) {
-					last.text = `${last.text ?? ''}${event.text ?? ''}`;
-					continue;
-				}
-				out.push({ type: 'text', text: event.text ?? '', _open: true });
-				continue;
-			}
-			if (event.type === 'text') {
-				const last = out[out.length - 1];
-				if (last?._open) {
-					last.text = event.text;
-					last._open = false;
-					continue;
-				}
-				out.push({ ...event, _open: false });
-				continue;
-			}
-			if (event.type === 'status') {
-				const last = out[out.length - 1];
-				if (last?.type === 'status') {
-					last.text = `${last.text ?? ''} · ${event.text ?? ''}`;
-					continue;
-				}
-				out.push({ ...event });
-				continue;
-			}
-			out.push(event);
-		}
-		return out;
-	}, [events]);
+	const displayEvents = useMemo(() => displayConsoleEvents(events), [events]);
+	const actors = useMemo(() => subagentsFromConsoleEvents(events), [events]);
 	const resultsByCall = useMemo(() => {
 		const map: Record<string, ConsoleChatEvent> = {};
 		for (const e of events) {
@@ -711,18 +779,28 @@ function ChatAgentTurn({ message, hideStatus }: { message: ConsoleMessage; hideS
 			</div>
 			{events.length === 0 && pending && <div style={{ color: 'var(--l2-fg-3)', fontSize: 13 }}>Working…</div>}
 			<SubagentRail events={events} />
-			{displayEvents.map((event, idx) => {
+			{displayEvents.map((event) => {
 				if (event.type === 'task') return null;
 				if (event.type === 'text') {
-					return <TurnText key={idx} text={event.text ?? ''} streaming={!!event._open && pending} />;
+					return <TurnText key={event._key} text={event.text ?? ''} streaming={!!event._open && pending} />;
 				}
 				if (event.type === 'reasoning') {
-					return event.text ? <ReasoningBlock key={idx} text={event.text} /> : null;
+					return event.text ? <ReasoningBlock key={event._key} text={event.text} /> : null;
 				}
 				if (event.type === 'tool_call') {
+					if (isOrchestrationTool(event.tool_name)) {
+						return (
+							<OrchestrationCallCard
+								key={event._key}
+								event={event}
+								result={event.tool_call_id ? resultsByCall[event.tool_call_id] : undefined}
+								actors={actors}
+							/>
+						);
+					}
 					return (
 						<ToolCallCard
-							key={idx}
+							key={event._key}
 							event={event}
 							result={event.tool_call_id ? resultsByCall[event.tool_call_id] : undefined}
 						/>
@@ -731,7 +809,7 @@ function ChatAgentTurn({ message, hideStatus }: { message: ConsoleMessage; hideS
 				if (event.type === 'failure') {
 					if (event.tool_call_id) return null;
 					return (
-						<div key={idx} style={turnErrorStyle}>
+						<div key={event._key} style={turnErrorStyle}>
 							<AlertTriangle size={13} strokeWidth={1.8} />
 							<span>{event.error ?? 'Agent failure'}</span>
 						</div>
@@ -741,7 +819,7 @@ function ChatAgentTurn({ message, hideStatus }: { message: ConsoleMessage; hideS
 				if (event.type === 'status') {
 					if (hideStatus) return null;
 					return (
-						<div key={idx} style={statusLineStyle}>
+						<div key={event._key} style={statusLineStyle}>
 							{event.text}
 						</div>
 					);
@@ -906,57 +984,6 @@ const systemReceiptStyle: React.CSSProperties = {
 	alignItems: 'baseline',
 	gap: 10,
 	padding: '4px 2px'
-};
-
-const composerWrapStyle: React.CSSProperties = {
-	display: 'flex',
-	gap: 10,
-	alignItems: 'flex-end',
-	padding: '12px clamp(16px, 6vw, 96px) 16px',
-	borderTop: '1px solid var(--l2-hairline)',
-	maxWidth: 1040,
-	width: '100%',
-	margin: '0 auto'
-};
-
-const composerStyle: React.CSSProperties = {
-	flex: 1,
-	resize: 'none',
-	background: 'rgba(237,234,224,0.03)',
-	border: '1px solid rgba(237,234,224,0.10)',
-	borderRadius: 2,
-	color: 'var(--l2-fg-1)',
-	fontSize: 13.5,
-	lineHeight: 1.5,
-	padding: '10px 12px',
-	outline: 'none',
-	fontFamily: 'inherit'
-};
-
-const sendButtonStyle: React.CSSProperties = {
-	border: '1px solid rgba(79,139,255,0.4)',
-	background: 'rgba(79,139,255,0.14)',
-	color: 'var(--atlas-celestial, #4f8bff)',
-	borderRadius: 2,
-	width: 42,
-	height: 42,
-	display: 'inline-flex',
-	alignItems: 'center',
-	justifyContent: 'center',
-	cursor: 'pointer'
-};
-
-const cancelButtonStyle: React.CSSProperties = {
-	border: '1px solid rgba(255,77,125,0.4)',
-	background: 'rgba(255,77,125,0.10)',
-	color: 'var(--l2-error, #ff4d7d)',
-	borderRadius: 2,
-	width: 42,
-	height: 42,
-	display: 'inline-flex',
-	alignItems: 'center',
-	justifyContent: 'center',
-	cursor: 'pointer'
 };
 
 const iconActionStyle: React.CSSProperties = {

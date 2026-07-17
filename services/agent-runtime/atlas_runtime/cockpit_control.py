@@ -139,12 +139,12 @@ def _pid_alive(pid: int) -> bool:
             out = subprocess.run(
                 ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
                 capture_output=True,
-                text=True,
                 check=False,
             )
         except OSError:
             return True  # can't determine; don't risk a false "already gone"
-        return str(pid) in out.stdout
+        stdout = (out.stdout or b"").decode("utf-8", errors="replace")
+        return str(pid) in stdout
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -183,7 +183,6 @@ def stop() -> tuple[bool, str]:
             subprocess.run(
                 ["taskkill", "/PID", str(pid), "/T", "/F"],
                 capture_output=True,
-                text=True,
                 check=False,
             )
         else:
