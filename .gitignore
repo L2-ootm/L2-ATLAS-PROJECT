@@ -76,6 +76,20 @@ atlas.cmd
 # Local Claude Code state (plans, worktrees, settings) — never publish
 .claude/
 
+# MiMo-Code local agent state (cron locks, ultra artifacts, skills) — never publish
+.mimocode/
+services/cashflow/.mimocode/
+
+# Local ops backups (sidecar configs/state may embed keys) — never publish
+.ops/
+
+# Planning scratch scripts (session-local generators) — never publish
+.planning/ultra/_*.py
+.planning/ultra/temp-manifest.txt
+
+# Editor/scratch backups
+*.backup
+
 # Kilo/ULTRAPLAN tool scratch (superseded planning drafts) — never publish
 .kilo/
 
