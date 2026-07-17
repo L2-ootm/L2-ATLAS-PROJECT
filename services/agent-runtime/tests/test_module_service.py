@@ -152,10 +152,10 @@ def test_scaffold_creates_valid_module(db, lock, tmp_path) -> None:
         module_service.create_module_scaffold("Bad Id!", target_root=tmp_path)
 
 
-def test_bundled_example_module_is_valid(db, lock) -> None:
-    """The shipped modules/ directory must always sync cleanly."""
+def test_empty_bundled_modules_directory_syncs_cleanly(db, lock) -> None:
+    """The base install stays lean until the operator creates a module."""
     summary = module_service.sync_modules(
         db, lock, roots=[module_service.bundled_modules_dir()]
     )
-    assert "example-hello" in summary["discovered"]
+    assert summary["discovered"] == []
     assert summary["problems"] == []
