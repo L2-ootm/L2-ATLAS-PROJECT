@@ -1,0 +1,25 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Vendored model reference corpora containing token-like example strings"
+paths = [
+  '''^foundation/atlas-hermes/optional-skills/mlops/training/unsloth/references/llms-(full|txt)\.md$''',
+]
+
+[[allowlists]]
+description = "Credential redaction and authentication test fixtures"
+paths = [
+  '''^foundation/atlas-hermes/tests/''',
+  '''^services/agent-runtime/tests/test_(auth|config)_service\.py$''',
+]
+
+[[allowlists]]
+description = "Reviewed public identifiers, detection patterns, inventory hashes, and storage keys"
+paths = [
+  '''^docs/imports/ATLAS_TUI_SOURCE_INVENTORY\.csv$''',
+  '''^foundation/atlas-hermes/agent/(anthropic_adapter|google_oauth|redact)\.py$''',
+  '''^foundation/atlas-hermes/hermes_cli/(auth|copilot_auth)\.py$''',
+  '''^foundation/atlas-hermes/optional-skills/productivity/telephony/scripts/telephony\.py$''',
+  '''^services/cashflow/lib/storage\.ts$''',
+]
