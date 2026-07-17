@@ -65,15 +65,15 @@ still use the PowerShell bootstrap:
 irm https://raw.githubusercontent.com/L2-ootm/L2-ATLAS-PROJECT/main/install/install.ps1 | iex
 ```
 
-Because the GitHub repository is private, that URL requires authenticated access until
-the public flip. See [the installation guide](docs/operations/INSTALL.md) for source,
+The PowerShell URL is public and now uses the same npm release path by default. See
+[the installation guide](docs/operations/INSTALL.md) for source,
 release, update, rollback, and clean-machine details.
 
 ## First run
 
 ```powershell
+atlas up --services gateway,cockpit
 atlas doctor
-atlas up
 atlas
 ```
 

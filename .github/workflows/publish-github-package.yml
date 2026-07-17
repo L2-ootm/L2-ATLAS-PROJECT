@@ -23,8 +23,7 @@ jobs:
         run: |
           package_dir="$RUNNER_TEMP/atlas-github-package"
           cp -R packages/atlas-cli "$package_dir"
-          cp packages/atlas-cli/README.github.md "$package_dir/README.md"
-          rm "$package_dir/README.github.md"
+          cp packages/atlas-cli/GITHUB_PACKAGE.md "$package_dir/README.md"
           cd "$package_dir"
           npm pkg set 'name=@l2-ootm/atlas'
           npm pkg set 'repository.url=git+https://github.com/L2-ootm/L2-ATLAS-PROJECT.git'

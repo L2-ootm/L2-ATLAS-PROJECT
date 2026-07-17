@@ -28,15 +28,25 @@ from atlas_runtime.secure_store import (
 )
 
 ATLAS_HOME_ENV = "ATLAS_HOME"
-CONFIG_SCHEMA_VERSION = 1
+CONFIG_SCHEMA_VERSION = 2
+
+
+def _migrate_v1_to_v2(raw: dict[str, object]) -> dict[str, object]:
+    """Drop the retired actor-model slot while preserving every live setting."""
+    migrated = dict(raw)
+    functions = migrated.get("functions")
+    if isinstance(functions, dict) and "actor_model" in functions:
+        migrated["functions"] = {
+            key: value for key, value in functions.items() if key != "actor_model"
+        }
+    return migrated
 
 # Ordered migration chain: _CONFIG_MIGRATIONS[N] upgrades a raw config dict
 # from schema version N to N+1 (in memory; the next write persists the current
 # version). Bumping CONFIG_SCHEMA_VERSION REQUIRES registering the step here —
 # the loader then upgrades old files transparently instead of hard-blocking.
 _CONFIG_MIGRATIONS: dict[int, Callable[[dict[str, object]], dict[str, object]]] = {
-    # Example for a future bump to 2:
-    # 1: _migrate_v1_to_v2,
+    1: _migrate_v1_to_v2,
 }
 
 

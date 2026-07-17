@@ -12,23 +12,24 @@ irm https://raw.githubusercontent.com/L2-ootm/L2-ATLAS-PROJECT/main/install/inst
 
 What it does:
 
-1. Checks git / Node.js ≥ 20 / Python ≥ 3.11 and offers winget installs for
-   anything missing.
-2. Clones (or fast-forwards) the repo into `~\atlas` and runs
-   `scripts/install-atlas-cli.ps1`: dedicated venv, editable installs, DB
-   migrations, `atlas` on PATH.
-3. Prints the next steps (`atlas doctor`, `atlas up`, `atlas`).
+1. Checks Node.js ≥ 20 and installs the current Node LTS with winget when needed.
+2. Installs `@systemsl2/atlas@latest`, resolves the npm launcher by absolute
+   path, and materializes the exact Windows x64 runtime.
+3. Verifies the immutable installation and prints the next steps (`atlas up`,
+   `atlas doctor`, `atlas`).
 
 Parameters (call the script directly instead of `| iex` to pass them):
-`-InstallDir`, `-Repo`, `-Claude` (adds the Claude Code runtime extra),
-`-ReleaseManifest <url>` (switches to release mode below).
+`-ReleaseManifest <url>` for an advanced manifest override. Developer source
+mode is explicit with `-Source`; only that mode uses `-InstallDir`, `-Repo`,
+or `-Claude` and requires Git/Python/build tools.
 
 ## npm — public release path
 
 ```powershell
 npm install -g @systemsl2/atlas
+atlas install
+atlas up --services gateway,cockpit
 atlas doctor
-atlas up
 ```
 
 The main npm package declares an exact OS/CPU-specific optional package containing
@@ -51,10 +52,11 @@ Application releases and operator state are intentionally separate:
 `ATLAS_INSTALL_ROOT` overrides the application root. `ATLAS_HOME` overrides the
 state root. Installing or updating through npm never edits a development checkout.
 
-The first download is approximately 51 MB compressed and 138 MB unpacked. During the
-preview, expect roughly 275 MB of application disk use because npm keeps its package
-copy and ATLAS materializes a separately verified immutable release. Operator state
-grows independently under `ATLAS_HOME`.
+The platform package includes embedded Python and all pinned Python runtime
+requirements, including the Claude Agent SDK. npm keeps its package copy and ATLAS
+materializes a separately verified immutable release, so disk usage is approximately
+twice the unpacked platform payload. Operator state grows independently under
+`ATLAS_HOME`.
 
 Maintainers can test a local artifact with `atlas install --manifest <file-or-url>`
 or `atlas install --from <bundleDir> --version <version>`.
@@ -71,12 +73,13 @@ first public release.
 
 ## After install
 
-- `atlas doctor` — environment/component health.
 - `atlas up` — interactive service picker (gateway :8484, cockpit :5173,
   optional sidecars).
+- `atlas doctor` — integrity plus live component health; run it after `atlas up`
+  when you expect gateway/cockpit to be online.
 - `atlas` — terminal UI. The WebUI cockpit is at http://localhost:5173.
-- Optional runtimes: Claude Code (`pip install -e services/agent-runtime[claude]`
-  or `-Claude` at install), Codex (`npm i -g @openai/codex` + `codex login`).
+- Claude Code execution support is included in the Windows npm runtime. Codex remains
+  operator-provided (`npm i -g @openai/codex` + `codex login`).
 
 ## Update and rollback guarantees
 
@@ -86,6 +89,7 @@ rewrite `ATLAS_HOME`. The previous application version remains available:
 
 ```powershell
 atlas update
+atlas up --services gateway,cockpit
 atlas doctor
 atlas rollback
 ```

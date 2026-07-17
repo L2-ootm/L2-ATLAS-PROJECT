@@ -256,7 +256,7 @@ class ModulesConfig(_FrozenControlPlaneModel):
 
 
 class AtlasConfig(_FrozenControlPlaneModel):
-    schema_version: Literal[1] = 1
+    schema_version: Literal[2] = 2
     revision: int = Field(default=0, ge=0)
     provider: ProviderConfig = Field(default_factory=ProviderConfig)
     functions: FunctionsConfig = Field(default_factory=FunctionsConfig)

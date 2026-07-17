@@ -128,7 +128,7 @@ def test_config_json_emits_shared_masked_snapshot(monkeypatch, tmp_path, db, loc
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
-    assert payload["schema_version"] == 1
+    assert payload["schema_version"] == cfgsvc.CONFIG_SCHEMA_VERSION
     assert payload["revision"] == 0
     assert payload["provider"]["name"] == "openrouter"
     assert payload["settings"]

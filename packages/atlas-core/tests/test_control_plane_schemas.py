@@ -20,7 +20,7 @@ from atlas_core.schemas.control_plane import (
 def test_atlas_config_defaults_are_versioned_and_backward_compatible() -> None:
     config = AtlasConfig()
 
-    assert config.schema_version == 1
+    assert config.schema_version == 2
     assert config.revision == 0
     assert config.provider.name == "openrouter"
     assert config.runtime.default_agent == "native"

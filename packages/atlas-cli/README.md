@@ -4,8 +4,9 @@ The official installer and lifecycle launcher for the ATLAS AI operator cockpit.
 
 ```powershell
 npm install --global @systemsl2/atlas
+atlas install
+atlas up --services gateway,cockpit
 atlas doctor
-atlas up
 ```
 
 The npm command installs the launcher and the complete verified release for the
@@ -23,5 +24,5 @@ Operator state lives separately under `ATLAS_HOME` (default `~/.atlas`), so upda
 and rollbacks preserve the database, configuration, credentials, wiki, logs, and
 user-created modules.
 
-ATLAS is currently a research preview. Do not use it with sensitive data until the
-public release hardening checklist is complete.
+ATLAS is currently an open research preview. Do not use it with sensitive production
+data until its operational boundaries fit your environment.

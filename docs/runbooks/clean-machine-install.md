@@ -68,9 +68,11 @@ After release artifacts are published:
 
 ```powershell
 npm i -g @systemsl2/atlas
+atlas install
+atlas up --services gateway,cockpit
 atlas doctor
-atlas up
 atlas update
+atlas up --services gateway,cockpit
 atlas doctor
 atlas rollback
 atlas doctor

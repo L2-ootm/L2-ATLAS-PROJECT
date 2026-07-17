@@ -27,6 +27,31 @@ def test_save_then_load_roundtrips(tmp_path):
     assert loaded.runtime.iteration_budget == 50
 
 
+def test_load_migrates_retired_actor_model_without_losing_function_slots(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": 1,
+                "revision": 7,
+                "functions": {
+                    "actor_model": "",
+                    "curator_model": "openrouter/test-curator",
+                    "judge_model": "openrouter/test-judge",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = cfgsvc.load_config(path)
+
+    assert loaded.schema_version == 2
+    assert loaded.revision == 7
+    assert loaded.functions.curator_model == "openrouter/test-curator"
+    assert loaded.functions.judge_model == "openrouter/test-judge"
+
+
 def test_save_is_atomic_and_yaml(tmp_path):
     path = tmp_path / "config.yaml"
     cfgsvc.save_config(AtlasConfig(), path)

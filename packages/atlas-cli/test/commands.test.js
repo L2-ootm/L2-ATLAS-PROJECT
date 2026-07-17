@@ -45,7 +45,10 @@ test('npm package metadata matches the public install contract', () => {
 	assert.notEqual(packageJson.private, true);
 	assert.deepEqual(packageJson.bin, { atlas: 'bin/atlas.js' });
 
-	const result = spawnSync(process.execPath, [path.join(__dirname, '..', 'bin', 'atlas.js')], { encoding: 'utf8' });
+	const result = spawnSync(process.execPath, [path.join(__dirname, '..', 'bin', 'atlas.js')], {
+		encoding: 'utf8',
+		env: { ...process.env, ATLAS_INSTALL_ROOT: tempDir('metadata-home') }
+	});
 	assert.equal(result.status, 0);
 	assert.match(result.stdout, /^usage: atlas /);
 });

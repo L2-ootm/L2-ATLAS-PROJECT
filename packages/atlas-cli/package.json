@@ -1,6 +1,6 @@
 {
 	"name": "@systemsl2/atlas",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"private": false,
 	"description": "Install and operate the complete ATLAS AI cockpit with versioned, verified releases.",
 	"license": "MIT",
@@ -11,7 +11,13 @@
 	},
 	"homepage": "https://github.com/L2-ootm/L2-ATLAS-PROJECT#readme",
 	"bugs": "https://github.com/L2-ootm/L2-ATLAS-PROJECT/issues",
-	"keywords": ["ai", "agent", "cockpit", "atlas", "cli"],
+	"keywords": [
+		"ai",
+		"agent",
+		"cockpit",
+		"atlas",
+		"cli"
+	],
 	"type": "commonjs",
 	"bin": {
 		"atlas": "bin/atlas.js"
@@ -19,13 +25,19 @@
 	"scripts": {
 		"test": "node --test test/commands.test.js test/lifecycle.test.js test/tarball.test.js"
 	},
-	"files": ["bin", "src", "LICENSE"],
+	"files": [
+		"bin",
+		"src",
+		"LICENSE"
+	],
 	"engines": {
 		"node": ">=20"
 	},
-	"publishConfig": { "access": "public" },
+	"publishConfig": {
+		"access": "public"
+	},
 	"optionalDependencies": {
-		"@systemsl2/atlas-win32-x64": "0.1.0"
+		"@systemsl2/atlas-win32-x64": "0.1.1"
 	},
 	"atlas": {
 		"releaseManifest": "https://github.com/L2-ootm/L2-ATLAS-PROJECT/releases/latest/download/atlas-release-index.json"

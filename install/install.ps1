@@ -3,24 +3,24 @@
 #   irm https://raw.githubusercontent.com/L2-ootm/L2-ATLAS-PROJECT/main/install/install.ps1 | iex
 #
 # What it does:
-#   1. Verifies prerequisites (git, Node.js >= 20, Python >= 3.11) and offers
-#      winget installs for anything missing.
-#   2. RELEASE mode (when a release manifest URL is provided/published):
-#      npm install -g @systemsl2/atlas, then `atlas install --manifest <url>` —
-#      versioned prebuilt bundles, update/rollback/uninstall included.
-#   3. SOURCE mode (default while ATLAS is pre-release): clones the repo and
-#      runs scripts/install-atlas-cli.ps1 (editable install + DB bootstrap).
+#   1. RELEASE mode (default): ensures Node.js >= 20, installs the public npm
+#      launcher, and materializes the self-contained Windows runtime. Python,
+#      Rust, Go, Git, and build tools are not required.
+#   2. SOURCE mode (-Source): verifies the developer toolchain, clones the repo,
+#      and runs scripts/install-atlas-cli.ps1.
 #
 # Idempotent: re-running updates an existing source checkout in place.
 # Design: docs/plans/2026-07-03-wsb-installer-plan.md (npm wrapper + bundles).
 
 [CmdletBinding()]
 param(
+    # Explicitly choose the developer/source workflow. Release mode is default.
+    [switch]$Source,
     # Where the source checkout lands in SOURCE mode.
     [string]$InstallDir = "$env:USERPROFILE\atlas",
     # Repo to clone in SOURCE mode.
     [string]$Repo = 'https://github.com/L2-ootm/L2-ATLAS-PROJECT.git',
-    # Release manifest URL — switches to RELEASE mode (npm lifecycle launcher).
+    # Optional advanced release manifest override.
     [string]$ReleaseManifest = $env:ATLAS_RELEASE_MANIFEST,
     # Also install the optional Claude Code runtime extra (SOURCE mode).
     [switch]$Claude
@@ -66,6 +66,37 @@ function Assert-NodeVersion {
     }
 }
 
+function Resolve-NpmCommand {
+    $command = Get-Command 'npm.cmd' -ErrorAction SilentlyContinue
+    if (-not $command) { $command = Get-Command 'npm' -ErrorAction SilentlyContinue }
+    if (-not $command) { throw 'npm is unavailable after installing Node.js.' }
+    return $command.Source
+}
+
+function Ensure-ReleaseNode {
+    $needsInstall = -not (Test-Command 'node')
+    if (-not $needsInstall) {
+        $major = [int](((node --version) -replace '^v', '').Split('.')[0])
+        $needsInstall = $major -lt 20
+    }
+    if ($needsInstall) {
+        if (-not (Test-Command 'winget')) {
+            throw 'Node.js 20+ is required. Install the current Node.js LTS release and re-run.'
+        }
+        Write-Step 'Installing current Node.js LTS (includes npm)'
+        winget install --id OpenJS.NodeJS.LTS --source winget --silent `
+            --accept-source-agreements --accept-package-agreements
+        if ($LASTEXITCODE -ne 0) {
+            winget upgrade --id OpenJS.NodeJS.LTS --source winget --silent `
+                --accept-source-agreements --accept-package-agreements
+        }
+        $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
+                    [Environment]::GetEnvironmentVariable('Path', 'User')
+    }
+    if (-not (Test-Command 'node')) { throw 'Node.js installation completed but node is not available in this terminal.' }
+    Assert-NodeVersion
+}
+
 function Assert-PythonVersion {
     # Prefer the py launcher (the source installer uses it too).
     $probe = if (Test-Command 'py') { 'py -3' } elseif (Test-Command 'python') { 'python' } else { $null }
@@ -81,27 +112,50 @@ Write-Host '  A T L A S  —  operator install' -ForegroundColor White
 Write-Host '  L2 Systems' -ForegroundColor DarkGray
 Write-Host ''
 
-# ── Prerequisites ────────────────────────────────────────────────────────────
-Write-Step 'Checking prerequisites'
+# ── RELEASE mode (default) ───────────────────────────────────────────────────
+if (-not $Source) {
+    Write-Step 'Checking the only external prerequisite: Node.js 20+'
+    Ensure-ReleaseNode
+    $npm = Resolve-NpmCommand
+
+    Write-Step 'Installing the latest @systemsl2/atlas lifecycle launcher'
+    & $npm install --global '@systemsl2/atlas@latest'
+    if ($LASTEXITCODE -ne 0) { throw 'npm install --global @systemsl2/atlas@latest failed' }
+
+    $npmPrefix = [string]((& $npm prefix --global | Select-Object -Last 1))
+    $launcher = Join-Path $npmPrefix 'atlas.cmd'
+    if (-not (Test-Path -LiteralPath $launcher -PathType Leaf)) {
+        throw "npm installed ATLAS but the launcher was not found at $launcher"
+    }
+
+    Write-Step 'Materializing the verified, self-contained ATLAS runtime'
+    if ($ReleaseManifest) { & $launcher install --manifest $ReleaseManifest }
+    else { & $launcher install }
+    if ($LASTEXITCODE -ne 0) { throw 'atlas install failed' }
+
+    # Older source installers placed a Python-forwarding shim before npm on
+    # PATH. Replace only that ATLAS-owned compatibility shim so `atlas update`
+    # always reaches the lifecycle launcher from every directory.
+    $legacyShim = Join-Path $env:LOCALAPPDATA 'atlas\bin\atlas.cmd'
+    if (Test-Path -LiteralPath $legacyShim) {
+        $compat = "@echo off`r`ncall `"$launcher`" %*`r`nexit /b %errorlevel%`r`n"
+        Set-Content -LiteralPath $legacyShim -Value $compat -Encoding ascii -NoNewline
+    }
+
+    & $launcher doctor --install-only
+    if ($LASTEXITCODE -ne 0) { throw 'ATLAS package integrity verification failed' }
+    Write-Step 'Done — run: atlas up, then atlas doctor'
+    exit 0
+}
+
+# ── SOURCE mode (explicit) ───────────────────────────────────────────────────
+Write-Step 'Checking source-development prerequisites'
 if (-not (Ensure-Tool -Command 'git'  -Display 'Git'     -WingetId 'Git.Git')) { exit 1 }
 if (-not (Ensure-Tool -Command 'node' -Display 'Node.js' -WingetId 'OpenJS.NodeJS.LTS')) { exit 1 }
 Assert-NodeVersion
 Assert-PythonVersion
 Write-Host '    git / node / python OK'
 
-# ── RELEASE mode ─────────────────────────────────────────────────────────────
-if ($ReleaseManifest) {
-    Write-Step "Installing the @systemsl2/atlas lifecycle launcher (release mode)"
-    npm install -g @systemsl2/atlas
-    if ($LASTEXITCODE -ne 0) { throw 'npm install -g @systemsl2/atlas failed' }
-    Write-Step "Installing ATLAS from release manifest"
-    atlas install --manifest $ReleaseManifest
-    if ($LASTEXITCODE -ne 0) { throw 'atlas install failed' }
-    Write-Step 'Done — try: atlas doctor, then atlas up'
-    exit 0
-}
-
-# ── SOURCE mode (default while pre-release) ──────────────────────────────────
 Write-Step "Source install into $InstallDir"
 if (Test-Path (Join-Path $InstallDir '.git')) {
     Write-Host '    existing checkout found — updating'

@@ -35,11 +35,27 @@ $runtimeSpec = if ($Claude) { "$root/services/agent-runtime[claude]" } else { "$
 & $venvPy -m pip install -e $runtimeSpec
 & $venvPy -m pip install -e "$root/services/wiki-runtime"
 
-# Regenerate the portable `atlas` shim at repo root, pointing at THIS repo's
-# venv (so `.\atlas ...` works from the repo without touching PATH). The gateway
-# self-resolves its own ATLAS_CLI from the venv interpreter (gateway_control).
-$atlasExe = Join-Path $venv 'Scripts\atlas.exe'
-$shim = "@echo off`r`n`"$venvPy`" -m atlas_runtime.cli.main %*`r`n"
+# Regenerate the portable repo shim without embedding a developer's absolute
+# path. Runtime commands use this checkout; lifecycle commands always reach the
+# npm launcher so `atlas update` never mutates or mistakes the source tree.
+$shim = @'
+@echo off
+setlocal
+if /I "%~1"=="install" goto lifecycle
+if /I "%~1"=="update" goto lifecycle
+if /I "%~1"=="rollback" goto lifecycle
+if /I "%~1"=="uninstall" goto lifecycle
+if /I "%~1"=="versions" goto lifecycle
+set "ATLAS_REPO=%~dp0"
+"%ATLAS_REPO%.venv\Scripts\python.exe" -m atlas_runtime.cli.main %*
+exit /b %errorlevel%
+:lifecycle
+for /f "delims=" %%I in ('npm.cmd prefix --global 2^>nul') do set "ATLAS_NPM_PREFIX=%%I"
+if not defined ATLAS_NPM_PREFIX exit /b 1
+if not exist "%ATLAS_NPM_PREFIX%\atlas.cmd" exit /b 1
+call "%ATLAS_NPM_PREFIX%\atlas.cmd" %*
+exit /b %errorlevel%
+'@
 Set-Content -Path (Join-Path $root 'atlas.cmd') -Value $shim -Encoding ascii -NoNewline
 
 # Build the Go/BubbleTea sidecar into the ATLAS-owned binary directory used by

@@ -24,7 +24,7 @@ def test_missing_and_unversioned_config_migrate_in_memory_without_write(
     path.write_text(original, encoding="utf-8")
     loaded = config_service.load_config(path)
 
-    assert loaded.schema_version == 1
+    assert loaded.schema_version == config_service.CONFIG_SCHEMA_VERSION
     assert loaded.revision == 0
     assert loaded.provider.model == "custom/model"
     assert path.read_text(encoding="utf-8") == original
@@ -76,7 +76,8 @@ def test_old_schema_version_migrates_through_registered_chain(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Simulate a v0 file with a registered 0 -> 1 migration that renames a key.
+    # Simulate a v0 file with a registered 0 -> 1 migration. The real 1 -> 2
+    # migration then completes the chain to the current schema.
     path = tmp_path / "config.yaml"
     path.write_text(
         "schema_version: 0\nrevision: 3\nlegacy_model: custom/model\n",
@@ -93,7 +94,7 @@ def test_old_schema_version_migrates_through_registered_chain(
     monkeypatch.setitem(config_service._CONFIG_MIGRATIONS, 0, migrate_v0_to_v1)
     loaded = config_service.load_config(path)
 
-    assert loaded.schema_version == 1
+    assert loaded.schema_version == config_service.CONFIG_SCHEMA_VERSION
     assert loaded.revision == 3
     assert loaded.provider.model == "custom/model"
 

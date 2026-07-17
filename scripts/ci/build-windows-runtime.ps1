@@ -136,7 +136,11 @@ $runtimeDependencies = @(
     'PyJWT[crypto]==2.12.1',
     'tzdata==2025.3',
     'psutil==7.2.2',
-    'typer==0.25.1'
+    'typer==0.25.1',
+    # First-class Claude Code execution must work in the self-contained
+    # release. The SDK includes its own runtime, so users do not repair the
+    # embedded Python environment after npm installation.
+    'claude-agent-sdk==0.2.104'
 )
 & $python -s -m pip install --disable-pip-version-check --no-compile $runtimeDependencies
 if ($LASTEXITCODE) { throw 'runtime dependency installation failed' }
@@ -198,7 +202,7 @@ $manifest | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $bundle 'runtim
 
 $previousNoBytecode = $env:PYTHONDONTWRITEBYTECODE
 $env:PYTHONDONTWRITEBYTECODE = '1'
-& $python -s -c 'import atlas_core, atlas_runtime, atlas_wiki, agent; print("embedded runtime imports: OK")'
+& $python -s -c 'import atlas_core, atlas_runtime, atlas_wiki, agent, claude_agent_sdk; print("embedded runtime imports: OK")'
 if ($LASTEXITCODE) { throw 'embedded runtime import verification failed' }
 $helpOutput = & $python -s -m atlas_runtime.cli.main --help 2>&1
 $helpExit = $LASTEXITCODE
