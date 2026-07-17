@@ -11,6 +11,7 @@ export type ChatBindingMode = 'project' | 'folder';
 export interface QueuedChatPrompt {
 	id: string;
 	text: string;
+	displayText?: string;
 }
 
 export interface ChatSnapshot {
@@ -33,6 +34,11 @@ function normalize(snapshot: ChatSnapshot): ChatSnapshot {
 		queuedPrompts: Array.isArray(snapshot.queuedPrompts)
 			? snapshot.queuedPrompts
 					.filter((item) => item && typeof item.id === 'string' && typeof item.text === 'string')
+					.map((item) => ({
+						id: item.id,
+						text: item.text,
+						displayText: typeof item.displayText === 'string' ? item.displayText : undefined
+					}))
 					.slice(0, 4)
 			: [],
 		messages: (snapshot.messages ?? []).slice(-MAX_STORED_MESSAGES).map((message) =>

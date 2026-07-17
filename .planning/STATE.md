@@ -4,7 +4,7 @@ milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
 last_updated: "2026-07-17"
-last_activity: 2026-07-17 -- Mission/chat execution semantics implemented as migration 0024: ordinary surface prompts are classified as chat execution records and excluded from Mission/project lists, while explicit Command Center/Missions launches remain Missions. Historical surface-attached rows are classified without deletion; audit/run foreign keys remain intact. Restart/down PID identity now uses the Windows kernel API before locale-sensitive tasklist fallback. Verification: agent-runtime 918/2, wiki 34/3, core schemas 40, gateway 119, WebUI 134 + build/budget/typecheck/lint, Ruff and diff checks green. Commit/push remain in progress on codex/chat-actor-workspace.
+last_activity: 2026-07-17 -- Final operator-chat pass complete: bounded read-only atlas_graph tool implemented through the Hermes plugin seam over the existing Global/Projects/Obsidian/Agent graph backend; Agent Context tab enabled; WebUI command discovery uses one cached built-in+module catalog with inline slash completion and template execution; composer draft ownership moved local with debounced persistence and a reduced-motion-safe scan line. Verification: agent-runtime 921/2, WebUI 136 + TypeScript/lint/build/budget, Ruff and browser QA green.
 prior_activity_2026_07_11: Pushed to origin (db772555..01623abe, 42 commits). Next session: retarget `atlas`/`atlas tui` to atlas-terminal, TUI visual polish (fix indentation, differentiate from MiMoCode clone using L2 Dark Prism tokens), WebUI completeness audit, operator UAT, CI watch. Prior: identity fix (DIV-F-007), atlas-terminal waves 2-3, UAT confirmed working (ATLAS identity, /vcs, freellmapi, no event crashes). Critical: atlas-terminal GlobalEvent envelope fix (crashed on every event) + silent reject-becomes-approve fix + nonce-bound approvals; DB indexes (0019). High: cold-start orphan reaper, cockpit SSE backoff, all env vars documented, atlas-ci.yml authored, adapter timeouts/retries. Medium: GET /v1/runs (N+1 gone, E2E-verified), 403 auto re-surface, config schema migration chain, centralized rotating log, cross-module E2E (enabled by env-aware db.default_db_path -- live-DB footgun fixed), goal_tree SQL filtering, PID-reuse guard. Low: ogl removed, atlas-core pinned, graph TTL, bundle budget green, Go TUI mission rows show intent+updated. All suites green (766/97/29/20/101/104/44/1 E2E). Release gateway rebuilt. Wiki CLI DB path also made env-aware (34 passed). main 38 ahead of origin, unpushed.
 progress:
   total_phases: 8
@@ -16,7 +16,27 @@ progress:
 
 # STATE — L2 ATLAS
 
-## Current Position — 2026-07-17: Mission/chat execution semantics implemented
+## Current Position — 2026-07-17: graph query and operator-chat final pass
+
+- Added the read-only `atlas_graph` Hermes tool with bounded search, node,
+  neighbors, path, content, and stats operations across Global, Projects,
+  Obsidian, and Agent Context. It reuses the Knowledge Graph page backend,
+  has short-lived caching, traversal protection, depth/result limits, and no
+  mutation/Cypher surface.
+- Consolidated WebUI built-in and active-module commands behind one cached
+  catalog. The modal and Chat composer use the same matcher; typing `/` in
+  Chat now opens keyboard-navigable inline completion.
+- The live draft now resides inside the compact composer subtree and persists
+  to the session on a debounce, avoiding a full transcript/actor-workspace
+  render per key. Typing triggers one cancellable transform/opacity scan band
+  and respects reduced-motion.
+- Design: `docs/plans/2026-07-17-graph-query-command-composer-final-pass-design.md`.
+- Verification: agent-runtime 921 passed / 2 skipped; WebUI 136 passed plus
+  TypeScript, ESLint, production build and bundle budgets; Ruff passes. Real
+  browser QA at 1600×1000 confirmed inline completion, overlay placement, and
+  zero console errors without launching a provider run.
+
+## Prior Position — 2026-07-17: Mission/chat execution semantics implemented
 
 - Migration `0024_mission_execution_kind.sql` adds explicit `mission`, `chat`,
   and `system` execution classification without deleting existing history.

@@ -8,6 +8,9 @@ export interface AtlasCommand {
 	name: string;
 	description: string;
 	template: string;
+	source?: 'atlas' | 'module';
+	module?: string;
+	argumentHint?: string;
 }
 
 export const ATLAS_COMMANDS: AtlasCommand[] = [
@@ -22,6 +25,7 @@ export const ATLAS_COMMANDS: AtlasCommand[] = [
 	{
 		name: 'review',
 		description: 'review changes [commit|branch|pr], defaults to uncommitted',
+		argumentHint: '[commit | branch | PR]',
 		template:
 			'Review the following change: $ARGUMENTS\n' +
 			'If no target was given, review the current uncommitted diff instead. For each affected file, ' +
@@ -46,22 +50,27 @@ export const ATLAS_COMMANDS: AtlasCommand[] = [
 	{
 		name: 'goal',
 		description: "start or inspect a stop-condition mission that runs until its judge says it's met",
+		argumentHint: '<goal>',
 		template: '$ARGUMENTS'
 	},
 	{
 		name: 'mission',
 		description: 'alias of /goal for a judged long-horizon mission',
+		argumentHint: '<goal>',
 		template: '$ARGUMENTS'
 	},
 	{
 		name: 'deep-research',
 		description: 'deep multi-source, fact-checked research report (runs the deep-research workflow)',
+		argumentHint: '<topic>',
 		template:
 			'Produce a deep, multi-source, fact-checked research report on: $ARGUMENTS\n' +
 			'Cross-reference at least three independent sources for each major claim, note any disagreement ' +
 			'or uncertainty explicitly, and cite sources inline.'
 	}
 ];
+
+for (const command of ATLAS_COMMANDS) command.source = 'atlas';
 
 export function findAtlasCommand(name: string): AtlasCommand | undefined {
 	return ATLAS_COMMANDS.find((c) => c.name === name);
@@ -71,4 +80,20 @@ export function expandCommandTemplate(template: string, args: string): string {
 	const trimmed = args.trim();
 	if (template.includes('$ARGUMENTS')) return template.replaceAll('$ARGUMENTS', trimmed);
 	return trimmed ? `${template}\n\n${trimmed}` : template;
+}
+
+export function matchAtlasCommands(catalog: AtlasCommand[], input: string, limit = 8): AtlasCommand[] {
+	const needle = input.replace(/^\//, '').split(/\s/, 1)[0].toLowerCase();
+	if (!needle) return catalog.slice(0, limit);
+	return catalog
+		.map((command) => {
+			const name = command.name.toLowerCase();
+			const description = command.description.toLowerCase();
+			const score = name === needle ? 4 : name.startsWith(needle) ? 3 : name.includes(needle) ? 2 : description.includes(needle) ? 1 : 0;
+			return { command, score };
+		})
+		.filter((item) => item.score > 0)
+		.sort((a, b) => b.score - a.score || a.command.name.localeCompare(b.command.name))
+		.slice(0, limit)
+		.map((item) => item.command);
 }

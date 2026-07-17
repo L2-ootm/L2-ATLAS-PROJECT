@@ -95,12 +95,12 @@ describe('topographic scroll ownership', () => {
 
 describe('queued chat composer', () => {
 	it('keeps the composer active during a run and exposes queue controls', () => {
-		const submit = vi.fn();
+		const submit = vi.fn(() => true);
 		const promote = vi.fn();
 		render(
 			<QueuedChatComposer
 				draft="follow up"
-				onDraftChange={vi.fn()}
+				onDraftPersist={vi.fn()}
 				queue={[{ id: 'one', text: 'first' }, { id: 'two', text: 'second' }]}
 				busy
 				agent="native"
@@ -117,5 +117,60 @@ describe('queued chat composer', () => {
 		expect(submit).toHaveBeenCalledOnce();
 		fireEvent.click(screen.getByRole('button', { name: 'Run this prompt next' }));
 		expect(promote).toHaveBeenCalledWith('two');
+	});
+
+	it('discovers slash commands inline and completes a partial command before send', () => {
+		const submit = vi.fn(() => true);
+		render(
+			<QueuedChatComposer
+				draft=""
+				onDraftPersist={vi.fn()}
+				queue={[]}
+				busy={false}
+				agent="native"
+				error={null}
+				onSubmit={submit}
+				onCancel={vi.fn()}
+				onPromote={vi.fn()}
+				onEdit={vi.fn()}
+				onRemove={vi.fn()}
+			/>
+		);
+		const composer = screen.getByPlaceholderText('Message ATLAS');
+		fireEvent.change(composer, { target: { value: '/rev' } });
+		expect(screen.getByRole('option', { name: /\/review/ })).toBeInTheDocument();
+		fireEvent.keyDown(composer, { key: 'Enter' });
+		expect(composer).toHaveValue('/review ');
+		expect(submit).not.toHaveBeenCalled();
+		fireEvent.change(composer, { target: { value: '/review HEAD~1' } });
+		fireEvent.keyDown(composer, { key: 'Enter' });
+		expect(submit).toHaveBeenCalledWith('/review HEAD~1', expect.stringContaining('HEAD~1'));
+	});
+
+	it('cancels the pending persistence debounce after a successful send', () => {
+		vi.useFakeTimers();
+		const persist = vi.fn();
+		render(
+			<QueuedChatComposer
+				draft=""
+				onDraftPersist={persist}
+				queue={[]}
+				busy={false}
+				agent="native"
+				error={null}
+				onSubmit={() => true}
+				onCancel={vi.fn()}
+				onPromote={vi.fn()}
+				onEdit={vi.fn()}
+				onRemove={vi.fn()}
+			/>
+		);
+		const composer = screen.getByPlaceholderText('Message ATLAS');
+		fireEvent.change(composer, { target: { value: 'send once' } });
+		fireEvent.keyDown(composer, { key: 'Enter' });
+		vi.runAllTimers();
+		expect(persist).toHaveBeenLastCalledWith('');
+		expect(persist).not.toHaveBeenCalledWith('send once');
+		vi.useRealTimers();
 	});
 });

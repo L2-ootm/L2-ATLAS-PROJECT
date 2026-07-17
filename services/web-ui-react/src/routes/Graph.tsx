@@ -70,7 +70,7 @@ const TABS = [
 	{ id: 'global', label: 'Global', live: true, scope: 'global' as GraphScope },
 	{ id: 'projects', label: 'Projects', live: true, scope: 'projects' as GraphScope },
 	{ id: 'vault', label: 'Obsidian Vault', live: true, scope: 'obsidian' as GraphScope },
-	{ id: 'agent', label: 'Agent Context', live: false, scope: 'atlas' as GraphScope }
+	{ id: 'agent', label: 'Agent Context', live: true, scope: 'atlas' as GraphScope }
 ] as const;
 type TabId = (typeof TABS)[number]['id'];
 const SCOPE_BY_TAB: Record<TabId, GraphScope> = {

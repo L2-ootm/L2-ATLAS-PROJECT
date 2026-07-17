@@ -122,7 +122,7 @@ export default function Chat() {
 	const [projects, setProjects] = useState<Project[]>([]);
 	const [activeTurn, setActiveTurn] = useState<ActiveChatTurn | null>(null);
 	const [bindOpen, setBindOpen] = useState(false);
-	const dispatchPromptRef = useRef<(prompt: string) => Promise<void>>(async () => undefined);
+	const dispatchPromptRef = useRef<(prompt: string, displayPrompt?: string) => Promise<void>>(async () => undefined);
 
 	useEffect(() => {
 		let alive = true;
@@ -317,13 +317,13 @@ export default function Chat() {
 	}, [bindingKey]);
 
 	// ── dispatch ─────────────────────────────────────────────────────────────
-	async function dispatchPrompt(prompt: string) {
-		const goalMode = parseMissionSlashIntent(prompt)?.kind === 'goal-launch';
+	async function dispatchPrompt(prompt: string, displayPrompt = prompt) {
+		const goalMode = parseMissionSlashIntent(displayPrompt)?.kind === 'goal-launch';
 		const operator: ConsoleMessage = {
 			id: `${Date.now()}-operator`,
 			role: 'operator',
 			label: 'OPERATOR',
-			body: prompt,
+			body: displayPrompt,
 			time: nowLabel()
 		};
 		const turnId = `${Date.now()}-agent`;
@@ -374,23 +374,24 @@ export default function Chat() {
 		}
 	}
 	dispatchPromptRef.current = dispatchPrompt;
-
-	function submitDraft() {
-		const prompt = draft.trim();
-		if (!prompt) return;
+	function submitDraft(rawDraft: string, executionDraft = rawDraft): boolean {
+		const prompt = executionDraft.trim();
+		const displayPrompt = rawDraft.trim();
+		if (!prompt) return false;
 		setQueueError(null);
 		if (activeTurn) {
 			if (queuedPrompts.length >= 4) {
 				setQueueError('The four-message queue is full. Remove or edit an item before adding another.');
-				return;
+				return false;
 			}
 			const id = globalThis.crypto?.randomUUID?.() ?? `queued-${Date.now()}`;
-			setQueuedPrompts((current) => [...current, { id, text: prompt }]);
+			setQueuedPrompts((current) => [...current, { id, text: prompt, displayText: displayPrompt }]);
 			setDraft('');
-			return;
+			return true;
 		}
 		setDraft('');
-		void dispatchPrompt(prompt);
+		void dispatchPrompt(prompt, displayPrompt);
+		return true;
 	}
 
 	async function cancelRun() {
@@ -469,7 +470,7 @@ export default function Chat() {
 		wasBusyRef.current = false;
 		drainingQueueRef.current = true;
 		setQueuedPrompts((current) => current.filter((item) => item.id !== next.id));
-		void dispatchPromptRef.current(next.text).finally(() => {
+		void dispatchPromptRef.current(next.text, next.displayText ?? next.text).finally(() => {
 			drainingQueueRef.current = false;
 		});
 	}, [busy, queuedPrompts]);
@@ -487,7 +488,7 @@ export default function Chat() {
 			return;
 		}
 		setQueuedPrompts((current) => current.filter((queued) => queued.id !== item.id));
-		setDraft(item.text);
+		setDraft(item.displayText ?? item.text);
 		setQueueError(null);
 	}
 	const onViewportScroll = useCallback((el: HTMLDivElement) => {
@@ -643,8 +644,9 @@ export default function Chat() {
 							)}
 						</div>
 						<QueuedChatComposer
+							key={catalogSessionId}
 							draft={draft}
-							onDraftChange={(value) => {
+							onDraftPersist={(value) => {
 								setDraft(value);
 								if (queueError) setQueueError(null);
 							}}
