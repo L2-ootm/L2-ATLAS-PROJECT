@@ -18,6 +18,15 @@ and were deliberately NOT performed autonomously. Work top to bottom.
 ## ⛔ Operator-gated actions (NOT done autonomously)
 
 ### Pre-flight (do before going public)
+- [x] npm lifecycle launcher contract (2026-07-17): separated immutable install root
+      from `ATLAS_HOME`, OS/CPU platform package, runtime forwarding, safe release
+      entrypoint, launcher self-update, checksum verification, rollback, and module-
+      preservation fixture. Package suite green; `npm pack --dry-run` clean.
+- [ ] Build and host the complete Windows release bundle (runtime entrypoint, Python
+      runtime, Rust gateway, cockpit, selected TUI, bundled modules). The release-index
+      generator exists; a production bundle does not.
+- [ ] Publish a private prerelease of `@l2/atlas`, then run install/update/rollback UAT
+      on a clean Windows VM before any public npm publish.
 - [~] Secret scan — **sanity pass clean** (2026-06-23): tracked hits are credential-*handling*
       code + env-var *name* constants only, no secret values. A deep gitleaks/trufflehog run
       over full history remains the operator's formal step before public.

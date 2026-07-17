@@ -44,6 +44,7 @@ function buildManifest(versionDir, version, meta = {}) {
 		version,
 		buildDate: meta.buildDate || new Date().toISOString(),
 		commit: meta.commit || null,
+		entrypoint: meta.entrypoint || null,
 		checksums
 	};
 }

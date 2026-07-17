@@ -1,6 +1,9 @@
 # WS-B — Installation Package Plan (npm wrapper + platform artifacts)
 
-**Status:** draft, pending STAGE 3 (WS-A) outcome before final artifact list is locked.
+**Status:** superseded in part on 2026-07-17 by
+`docs/plans/2026-07-17-npm-lifecycle-and-safe-update-design.md`. The thin-launcher decision remains;
+the install root no longer shares `ATLAS_HOME`, global npm install now bootstraps the
+release, and the release index owns an explicit runtime entrypoint.
 **Companion docs:** `2026-07-03-finish-mission-analysis-and-execution-order.md` (WS-B
 summary + rationale for the recommended approach), `2026-07-03-sprint-to-2026-07-09-
 milestone-finish.md` (sprint contract: install/update/uninstall-rollback/doctor/clean-

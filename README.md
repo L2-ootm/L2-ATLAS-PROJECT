@@ -1,87 +1,128 @@
-# L2 ATLAS PROJECT
+<p align="center">
+  <img src="brand/atlas/marks/emblem-full.png" width="180" alt="ATLAS emblem">
+</p>
 
-> **ATLAS v0.1 — Open Research Preview**
+<h1 align="center">ATLAS</h1>
 
-ATLAS v0.1 is an open research preview of an **auditable AI agent cockpit** for
-developers and power users. It demonstrates mission control, runtime execution, live
-audit streams, artifact persistence, LLM Wiki filing, integrations, and an extensible
-harness built from an evolved Hermes foundation.
+<p align="center">
+  <strong>An auditable AI operator cockpit for developers and power users.</strong><br>
+  One runtime for missions, agents, tools, knowledge, approvals, and operational state.
+</p>
 
-ATLAS is an L2-owned operator cockpit/runtime built by evolving the Hermes Agent foundation into an ATLAS-branded harness, then adding mission, audit, policy, wiki, memory, router, gateway, and cockpit layers around that evolved foundation.
+<p align="center">
+  <a href="LICENSE">MIT License</a> ·
+  <a href="docs/architecture/OVERVIEW.md">Architecture</a> ·
+  <a href="docs/operations/INSTALL.md">Install</a> ·
+  <a href="docs/known-failures.md">Known limitations</a> ·
+  <a href="SECURITY.md">Security</a>
+</p>
 
-**What it is not** (yet): production-ready, enterprise-ready, fully autonomous,
-self-improving, secure for sensitive data, or a replacement for developers. It is an
-early, honest research preview — see [`docs/known-failures.md`](docs/known-failures.md)
-for documented limitations.
+> **Private research preview.** The repository and npm package are not public yet.
+> ATLAS is being hardened for its first public release; do not use the current build
+> with sensitive production data.
 
-## Quickstart
+## What ATLAS is
 
-```bash
-git clone <your-fork-url> atlas && cd atlas
-cp .env.example .env
-./scripts/setup.sh          # or .\scripts\install-atlas-cli.ps1 on Windows
-./atlas db init --demo      # optional: seed a demo mission so the cockpit isn't empty
-./atlas up
-./atlas doctor              # confirm db/config/gateway/cockpit/provider are all healthy
+ATLAS turns an evolved Hermes foundation into an L2-owned operator runtime. It joins
+agent execution with an audit ledger, mission and run state, approval-gated tools,
+persistent knowledge, provider routing, and a WebUI cockpit. The product is designed
+so every meaningful action can be traced from intent to tool call, output, and
+verification.
+
+- **Operator cockpit** — chat-first WebUI, mission control, runs, ledger, models,
+  integrations, system health, and slash-command palette.
+- **Auditable runtime** — structured missions/runs, tool approvals, artifacts, and
+  append-oriented operational evidence.
+- **Persistent knowledge** — wiki/codex ingestion, provenance, and local search.
+- **Extensible modules** — bundled modules ship with releases; operator and agent
+  modules live separately under `ATLAS_HOME/modules` and survive updates.
+- **Native direction** — the gateway and new infrastructure are Rust-first; the
+  Hermes plugin surface and LLM adapters remain Python where that boundary is useful.
+
+## Installation
+
+The public release will use one command:
+
+```powershell
+npm install --global @l2/atlas
 ```
 
-No provider API key required to try it — ATLAS runs in Mock Mode end-to-end
-with zero credentials configured. Full walkthrough, troubleshooting, and the
-optional Docker Compose path: see [`docs/INSTALL.md`](docs/INSTALL.md).
+The npm launcher installs a verified platform release, then delegates normal commands
+to it. Application versions live outside the source repository and outside live
+operator state. `atlas update` replaces the launcher/runtime version while preserving
+the database, configuration, credentials, wiki, logs, and user modules.
 
-## What v0.1 ships
+The npm package is not published yet and the real platform bundle is still a release
+gate. For private source testing on Windows, use the current bootstrap:
 
-The full v1.0 cockpit + runtime, hardened into the v1.0.5 mass-adoption wedge:
+```powershell
+irm https://raw.githubusercontent.com/L2-ootm/L2-ATLAS-PROJECT/main/install/install.ps1 | iex
+```
 
-- **Mission control & runtime** — create missions, run them through the ATLAS runtime
-  (native or the operator's local Claude Code session), live SSE audit streams.
-- **Audit-first** — every action is an `audit_event`; the cockpit Ledger is a cross-run
-  forensic explorer.
-- **Persistent knowledge** — artifacts + an LLM Wiki (Codex) with provenance and FTS5 search.
-- **Extensible harness** — developer **Tool Manifest v0**: adding an integration is a YAML
-  manifest + a Python adapter, gated through one policy chokepoint
-  ([`docs/tools.md`](docs/tools.md)). Read-only by default; writes are approval-gated.
-- **Golden workflows** — Repo Triage, Research Brief, and an approval-gated Self-Review
-  ([`docs/golden-workflows.md`](docs/golden-workflows.md)), demo-stable and reproducible.
-- **Cockpit** — Observatory, Missions, Runs, Ledger, Codex, Models, Integrations, System,
-  built in the celestial-heraldic ATLAS design language.
+Because the GitHub repository is private, that URL requires authenticated access until
+the public flip. See [the installation guide](docs/operations/INSTALL.md) for source,
+release, update, rollback, and clean-machine details.
 
-Live project state: [`.planning/STATE.md`](.planning/STATE.md). Release artifacts:
-[`docs/release/`](docs/release/).
+## First run
 
-## Try it (no credentials)
+```powershell
+atlas doctor
+atlas up
+atlas
+```
 
-1. Create a mission.
-2. Run it through the ATLAS runtime (Mock Mode needs zero credentials).
-3. Persist run/audit/artifacts; file valuable output into the LLM Wiki.
-4. Watch it stream live in the cockpit.
+`atlas up` starts the local gateway and cockpit. `atlas` opens the terminal surface.
+Mock Mode supports the core demo path without a provider API key.
 
-## Orientation
+## Update model
 
-- `docs/README.md` — documentation authority order
-- `docs/architecture/OVERVIEW.md` — one-page architecture
-- `docs/decisions/INDEX.md` — ADR index (D-001…D-022)
-- [`docs/tools.md`](docs/tools.md) — developer integrations + Tool Manifest v0 (adding a tool = manifest + adapter)
-- `foundation/README.md` — vendored Hermes-derived foundation, attribution, divergences
+```text
+npm launcher          npm global prefix
+immutable releases    OS application-data/atlas/versions/<version>
+active pointer        OS application-data/atlas/current
+operator state        ~/.atlas (or ATLAS_HOME)
+user modules          ~/.atlas/modules
+```
 
-Optional retrieval research now tracked:
+Updates never target this development checkout. A failed download, checksum, or
+entrypoint validation cannot activate the new version; the previous verified version
+remains available to `atlas rollback`.
 
-- `docs/research/2026-06-06_TURBOVEC_LOCAL_RETRIEVAL_SPIKE.md` — evaluates `turbovec` as a compressed local semantic index behind SQLite metadata and ATLAS policy filters.
+## Repository map
 
-## Rules
+| Area | Purpose |
+|---|---|
+| `foundation/atlas-hermes/` | Hermes-derived ATLAS foundation and divergence record |
+| `services/agent-runtime/` | Runtime orchestration and CLI |
+| `native/atlas-core-rs/` | Rust gateway and native infrastructure |
+| `services/web-ui-react/` | WebUI operator cockpit |
+| `services/atlas-tui/` | Current Go terminal surface |
+| `services/atlas-terminal/` | Next terminal surface under gated evaluation |
+| `packages/atlas-cli/` | npm installer, updater, rollback, and runtime launcher |
+| `modules/` | Modules bundled with ATLAS releases |
+| `docs/` | Architecture, operations, decisions, verification, and release material |
 
-- Use Hermes as the foundation codebase, vendored at `foundation/atlas-hermes/` and evolved in place (D-018). ATLAS is never a thin wrapper around, or a route through, stock Hermes.
-- Raw sources are immutable.
-- Every autonomous action is auditable.
-- LLM Wiki compounds knowledge; RAG alone is not enough.
-- Existing L2 repos are source assets, not blindly merged code.
+## Trust and project status
+
+ATLAS is intentionally honest about unfinished work. Public release remains blocked on
+the production platform bundle, clean-machine install/update/rollback UAT, full-history
+secret scanning, repository cleanup, and operator approval. Release gates are tracked
+in [`docs/release/RELEASE_CHECKLIST.md`](docs/release/RELEASE_CHECKLIST.md); internal
+planning/session state is deliberately excluded from the public repository.
+
+The foundation is vendored and evolved in place rather than treated as a black-box
+dependency. Provenance and changes are documented in
+[`foundation/ATTRIBUTION.md`](foundation/ATTRIBUTION.md) and
+[`foundation/DIVERGENCE_LOG.md`](foundation/DIVERGENCE_LOG.md).
+
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md), the [Code of Conduct](CODE_OF_CONDUCT.md),
+and [CLA.md](CLA.md) before opening a contribution. Security issues should follow the
+private process in [SECURITY.md](SECURITY.md).
 
 ## License
 
-ATLAS is licensed under the [MIT License](LICENSE). Third-party dependency
-licenses and required attributions are tracked in
-[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md); vendored/derived-code
-provenance is tracked in [`ATTRIBUTION.md`](ATTRIBUTION.md).
-
-Contributions require signing the [Contributor License Agreement](CLA.md) —
-opening a pull request constitutes agreement to its terms.
+ATLAS is available under the [MIT License](LICENSE). Third-party licenses and derived
+code attribution are documented in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)
+and [ATTRIBUTION.md](ATTRIBUTION.md).

@@ -5,6 +5,7 @@ const path = require('node:path');
 
 const { hashFile } = require('./manifest');
 const { createTarGz } = require('./tarball');
+const { safeRelativeEntrypoint } = require('./release');
 
 function normalizeBaseUrl(baseUrl) {
 	if (!baseUrl) return null;
@@ -29,10 +30,16 @@ function buildReleaseIndex(opts) {
 	const version = opts.version;
 	const platform = opts.platform;
 	const channel = opts.channel || 'stable';
+	const entrypoint = safeRelativeEntrypoint(
+		opts.entrypoint || (platform?.startsWith('win32-') ? 'bin/atlas.exe' : 'bin/atlas')
+	);
 
 	if (!version) throw new Error('version is required');
 	if (!platform) throw new Error('platform is required');
 	if (!fs.existsSync(bundleDir)) throw new Error(`bundle directory not found: ${bundleDir}`);
+	if (!fs.existsSync(path.join(bundleDir, entrypoint))) {
+		throw new Error(`runtime entrypoint not found in bundle: ${entrypoint}`);
+	}
 
 	const archiveName = `atlas-${version}-${platform}.tar.gz`;
 	const archivePath = path.join(outDir, archiveName);
@@ -46,6 +53,7 @@ function buildReleaseIndex(opts) {
 					[platform]: {
 						url: artifactUrl(opts.baseUrl, archiveName, archivePath),
 						sha256: hashFile(archivePath),
+						entrypoint,
 					},
 				},
 			},

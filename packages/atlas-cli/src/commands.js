@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 
-const { atlasHome, versionsDir, versionDir, currentPointerFile, manifestFile } = require('./paths');
+const { atlasInstallRoot, atlasStateHome, versionsDir, versionDir, currentPointerFile, manifestFile } = require('./paths');
 const { buildManifest, readManifest, verifyManifest } = require('./manifest');
 const { readInstallState, writeInstallState } = require('./installState');
 const {
@@ -75,7 +75,8 @@ function install(home, opts) {
 	writeInstallState(home, {
 		installedVersion: version,
 		installMethod: 'local-staged',
-		lastUpdateCheck: new Date().toISOString()
+		lastUpdateCheck: new Date().toISOString(),
+		runtimeEntrypoint: opts.entrypoint || undefined
 	});
 
 	return { version, path: dest };
@@ -111,15 +112,53 @@ function update(home, opts) {
 		installedVersion: opts.version,
 		installMethod: 'local-staged',
 		lastUpdateCheck: new Date().toISOString(),
-		previousVersion: previous || undefined
+		previousVersion: previous || undefined,
+		runtimeEntrypoint: opts.entrypoint || undefined
 	});
 
 	return { version: opts.version, previous, path: dest };
 }
 
+/** Activate the complete runtime carried by the npm platform package. */
+function installBundledPlatform(home, opts) {
+	if (!opts.from || !opts.version || !opts.entrypoint) {
+		throw new CliError('platform package requires from, version, and entrypoint');
+	}
+	const source = path.resolve(opts.from);
+	const previous = readCurrent(home);
+	const dest = versionDir(home, opts.version);
+	let reused = false;
+	if (fs.existsSync(dest)) {
+		const existingManifest = manifestFile(dest);
+		if (!fs.existsSync(existingManifest) || !verifyManifest(dest, readManifest(existingManifest)).ok) {
+			throw new CliError(`version ${opts.version} exists but failed verification at ${dest}`);
+		}
+		reused = true;
+	} else {
+		copyDir(source, dest);
+		const manifest = buildManifest(dest, opts.version, { entrypoint: opts.entrypoint });
+		fs.writeFileSync(manifestFile(dest), JSON.stringify(manifest, null, 2) + '\n', 'utf8');
+	}
+	writeCurrent(home, opts.version);
+	writeInstallState(home, {
+		installedVersion: opts.version,
+		installMethod: 'npm-platform-package',
+		packageName: opts.packageName,
+		lastUpdateCheck: new Date().toISOString(),
+		runtimeEntrypoint: opts.entrypoint,
+		previousVersion: previous && previous !== opts.version ? previous : undefined
+	});
+	return { version: opts.version, previous, path: dest, reused };
+}
+
 async function stageRelease(home, opts, mode) {
 	if (!opts.manifest) throw new CliError(`${mode} requires --manifest <release index url>`);
-	const index = await readReleaseIndex(opts.manifest);
+	let index;
+	try {
+		index = await readReleaseIndex(opts.manifest);
+	} catch (err) {
+		throw new CliError(err.message);
+	}
 	let selected;
 	try {
 		selected = selectArtifact(index, opts);
@@ -130,7 +169,22 @@ async function stageRelease(home, opts, mode) {
 	const previous = readCurrent(home);
 	const dest = versionDir(home, selected.version);
 	if (fs.existsSync(dest)) {
-		throw new CliError(`version ${selected.version} already exists at ${dest}`);
+		const existingManifest = manifestFile(dest);
+		if (!fs.existsSync(existingManifest) || !verifyManifest(dest, readManifest(existingManifest)).ok) {
+			throw new CliError(`version ${selected.version} exists but failed verification at ${dest}`);
+		}
+		writeCurrent(home, selected.version);
+		writeInstallState(home, {
+			installedVersion: selected.version,
+			installMethod: 'release-manifest',
+			lastUpdateCheck: new Date().toISOString(),
+			channel: opts.channel || 'stable',
+			platform: selected.platform,
+			releaseManifest: opts.manifest,
+			runtimeEntrypoint: selected.artifact.entrypoint || undefined,
+			previousVersion: mode === 'update' && previous !== selected.version ? previous || undefined : undefined
+		});
+		return { version: selected.version, previous, path: dest, platform: selected.platform, reused: true };
 	}
 
 	const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-cli-release-'));
@@ -140,7 +194,8 @@ async function stageRelease(home, opts, mode) {
 		const manifestPath = manifestFile(dest);
 		if (!fs.existsSync(manifestPath)) {
 			const manifest = buildManifest(dest, selected.version, {
-				commit: selected.artifact.commit || index.commit || null
+				commit: selected.artifact.commit || index.commit || null,
+				entrypoint: selected.artifact.entrypoint || null
 			});
 			fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
 		}
@@ -159,6 +214,7 @@ async function stageRelease(home, opts, mode) {
 		channel: opts.channel || 'stable',
 		platform: selected.platform,
 		releaseManifest: opts.manifest,
+		runtimeEntrypoint: selected.artifact.entrypoint || undefined,
 		previousVersion: mode === 'update' ? previous || undefined : undefined
 	});
 
@@ -185,12 +241,18 @@ function rollback(home, opts) {
 	if (!fs.existsSync(dest)) throw new CliError(`version ${target} is not installed at ${dest}`);
 
 	const current = readCurrent(home);
+	const targetManifestPath = manifestFile(dest);
+	const targetManifest = fs.existsSync(targetManifestPath) ? readManifest(targetManifestPath) : null;
 	writeCurrent(home, target);
 	writeInstallState(home, {
 		installedVersion: target,
 		installMethod: state?.installMethod || 'local-staged',
 		lastUpdateCheck: new Date().toISOString(),
-		previousVersion: current || undefined
+		previousVersion: current || undefined,
+		channel: state?.channel,
+		platform: state?.platform,
+		releaseManifest: state?.releaseManifest,
+		runtimeEntrypoint: targetManifest?.entrypoint || state?.runtimeEntrypoint
 	});
 
 	return { version: target, rolledBackFrom: current };
@@ -269,6 +331,17 @@ function doctor(home) {
 	const versions = listVersions(home);
 	checks.push({ name: 'retained-versions', ok: true, detail: versions.join(', ') || '(none)' });
 
+	const state = readInstallState(home);
+	if (state?.runtimeEntrypoint) {
+		const entrypoint = path.resolve(dest, state.runtimeEntrypoint);
+		const insideVersion = entrypoint.startsWith(`${path.resolve(dest)}${path.sep}`);
+		checks.push({
+			name: 'runtime-entrypoint',
+			ok: insideVersion && fs.existsSync(entrypoint),
+			detail: insideVersion && fs.existsSync(entrypoint) ? entrypoint : `missing or unsafe: ${state.runtimeEntrypoint}`
+		});
+	}
+
 	return { ok: checks.every((c) => c.ok), checks };
 }
 
@@ -280,8 +353,13 @@ function versions(home) {
 
 module.exports = {
 	CliError,
-	atlasHome,
+	atlasInstallRoot,
+	atlasStateHome,
+	// Backward-compatible name for the installer prototype API. New callers
+	// should use atlasInstallRoot; ATLAS_HOME now means runtime state only.
+	atlasHome: atlasInstallRoot,
 	install,
+	installBundledPlatform,
 	installFromRelease,
 	update,
 	updateFromRelease,

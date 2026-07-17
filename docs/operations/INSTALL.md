@@ -1,10 +1,9 @@
 # Installing ATLAS
 
-Status: pre-release. The one-line bootstrap and the npm lifecycle launcher
-both work today against a source checkout; versioned prebuilt release
-bundles (the final npm story) ship when the repo goes public — the plumbing
-already exists (`packages/atlas-cli`, design:
-`docs/plans/2026-07-03-wsb-installer-plan.md`).
+Status: private pre-release. The source bootstrap works on the development
+machine. The npm launcher contract and local release-fixture tests are complete,
+but `@l2/atlas` is not published and no production platform bundle is hosted yet.
+Do not advertise the npm command until the clean-machine gate passes.
 
 ## Windows — one line (PowerShell)
 
@@ -25,19 +24,37 @@ Parameters (call the script directly instead of `| iex` to pass them):
 `-InstallDir`, `-Repo`, `-Claude` (adds the Claude Code runtime extra),
 `-ReleaseManifest <url>` (switches to release mode below).
 
-## npm — lifecycle launcher
+## npm — public release path
 
-```
+```powershell
 npm install -g @l2/atlas
-atlas install --manifest <release-manifest-url>   # versioned bundle install
-atlas update | rollback | uninstall | doctor | versions
+atlas doctor
+atlas up
 ```
 
-`@l2/atlas` is a thin launcher that installs/updates/rolls back **versioned
-release bundles** under `~/.atlas/versions` with an atomic `current` pointer
-— it never builds from source. Until public release bundles are published,
-use the one-line bootstrap (source mode) above; `atlas install --from
-<bundleDir>` also works against a locally built bundle.
+The main npm package declares an exact OS/CPU-specific optional package containing
+the complete runtime. This avoids install scripts that current npm versions may
+block. The first `atlas` command verifies and materializes that local payload.
+`atlas update` checks the npm launcher and matching platform package;
+`atlas rollback`, `atlas versions`, and `atlas uninstall` own the application
+lifecycle. Normal commands are forwarded to the active runtime.
+
+Application releases and operator state are intentionally separate:
+
+| Data | Windows default | Update behavior |
+|---|---|---|
+| npm launcher | `%APPDATA%\npm` | Replaced by npm |
+| application releases | `%LOCALAPPDATA%\atlas\versions` | Immutable/versioned |
+| active pointer + install metadata | `%LOCALAPPDATA%\atlas` | Updated transactionally |
+| operator state | `%USERPROFILE%\.atlas` (`ATLAS_HOME`) | Preserved |
+| user/agent modules | `%USERPROFILE%\.atlas\modules` | Preserved |
+
+`ATLAS_INSTALL_ROOT` overrides the application root. `ATLAS_HOME` overrides the
+state root. Installing or updating through npm never edits a development checkout.
+
+Until the first platform bundle is published, use source mode above. Maintainers
+can test a local artifact with `atlas install --manifest <file-or-url>` or
+`atlas install --from <bundleDir> --version <version>`.
 
 ## POSIX (macOS / Linux)
 
@@ -58,10 +75,27 @@ first public release.
 - Optional runtimes: Claude Code (`pip install -e services/agent-runtime[claude]`
   or `-Claude` at install), Codex (`npm i -g @openai/codex` + `codex login`).
 
+## Update and rollback guarantees
+
+`atlas update` downloads into a new version directory, validates the archive and
+runtime entrypoint, and only then changes the active pointer. It does not delete or
+rewrite `ATLAS_HOME`. The previous application version remains available:
+
+```powershell
+atlas update
+atlas doctor
+atlas rollback
+```
+
+Direct edits inside an installed release are unsupported and appear as checksum
+drift in `atlas doctor`. Self-created extensions belong in `ATLAS_HOME/modules`.
+A future self-upgrade overlay protocol will use a separate audited directory; ATLAS
+does not yet safely rewrite its own core.
+
 ## Deferred (documented, not built)
 
 - Desktop app + signed `.exe` setup — after full stability; will wrap the
   same versioned bundles.
-- Public release bundle CI (per-platform archives + manifest index) — the
-  generator exists (`packages/atlas-cli/src/buildReleaseIndex.js`); needs a
-  public artifact host and a release workflow.
+- Production release bundle CI (complete per-platform runtime + manifest index).
+- Signed/private prerelease artifact hosting and clean-machine UAT.
+- Auditable self-upgrade overlays for changes beyond user modules.

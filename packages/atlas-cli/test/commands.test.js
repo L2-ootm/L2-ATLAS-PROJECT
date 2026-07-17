@@ -55,7 +55,7 @@ test('bin doctor --json emits machine-readable health reports', () => {
 	const result = spawnSync(
 		process.execPath,
 		[path.join(__dirname, '..', 'bin', 'atlas.js'), 'doctor', '--json'],
-		{ encoding: 'utf8', env: { ...process.env, ATLAS_HOME: home } }
+		{ encoding: 'utf8', env: { ...process.env, ATLAS_INSTALL_ROOT: home } }
 	);
 
 	assert.equal(result.status, 1);
@@ -74,7 +74,7 @@ test('bin versions --json emits installed versions with current marker', () => {
 	const result = spawnSync(
 		process.execPath,
 		[path.join(__dirname, '..', 'bin', 'atlas.js'), 'versions', '--json'],
-		{ encoding: 'utf8', env: { ...process.env, ATLAS_HOME: home } }
+		{ encoding: 'utf8', env: { ...process.env, ATLAS_INSTALL_ROOT: home } }
 	);
 
 	assert.equal(result.status, 0);
@@ -86,8 +86,8 @@ test('bin command failures honor --json with a structured error object', () => {
 	const home = tempDir('home');
 	const result = spawnSync(
 		process.execPath,
-		[path.join(__dirname, '..', 'bin', 'atlas.js'), 'install', '--json'],
-		{ encoding: 'utf8', env: { ...process.env, ATLAS_HOME: home } }
+		[path.join(__dirname, '..', 'bin', 'atlas.js'), 'install', '--from', path.join(home, 'missing'), '--json'],
+		{ encoding: 'utf8', env: { ...process.env, ATLAS_INSTALL_ROOT: home } }
 	);
 
 	assert.equal(result.status, 1);
@@ -95,7 +95,7 @@ test('bin command failures honor --json with a structured error object', () => {
 	assert.deepEqual(JSON.parse(result.stdout), {
 		error: {
 			code: 'atlas_cli_error',
-			message: 'install requires --from <staged bundle dir>'
+			message: `staged bundle not found: ${path.join(home, 'missing')}`
 		}
 	});
 });
@@ -250,7 +250,11 @@ test('release-index builder emits a consumable platform artifact and index', asy
 	const home = tempDir('home');
 	const bundle = tempDir('bundle');
 	const releases = tempDir('releases');
-	stageBundle(bundle, { 'bin/atlas-gateway': 'v1-from-builder', 'README.txt': 'release notes' });
+	stageBundle(bundle, {
+		'bin/atlas-gateway': 'v1-from-builder',
+		'bin/atlas.exe': 'runtime-entrypoint',
+		'README.txt': 'release notes'
+	});
 
 	const result = buildReleaseIndex({
 		bundleDir: bundle,

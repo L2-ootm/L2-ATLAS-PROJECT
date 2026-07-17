@@ -11,6 +11,19 @@ function platformKey(runtime = process) {
 	return `${runtime.platform}-${runtime.arch}`;
 }
 
+function safeRelativeEntrypoint(value) {
+	if (!value) return null;
+	const normalized = String(value).replace(/\\/g, '/');
+	if (normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized)) {
+		throw new Error(`release entrypoint must be relative: ${value}`);
+	}
+	const parts = normalized.split('/');
+	if (parts.some((part) => !part || part === '.' || part === '..')) {
+		throw new Error(`unsafe release entrypoint: ${value}`);
+	}
+	return normalized;
+}
+
 function fileUrlToPath(url) {
 	const parsed = new URL(url);
 	if (parsed.protocol !== 'file:') throw new Error(`not a file URL: ${url}`);
@@ -55,7 +68,11 @@ function selectArtifact(index, opts) {
 	if (!artifact.url || !artifact.sha256) {
 		throw new Error(`release ${version} artifact for ${key} must include url and sha256`);
 	}
-	return { version, platform: key, artifact };
+	return {
+		version,
+		platform: key,
+		artifact: { ...artifact, entrypoint: safeRelativeEntrypoint(artifact.entrypoint) }
+	};
 }
 
 async function downloadVerifiedArtifact(artifact, workDir) {
@@ -80,4 +97,5 @@ module.exports = {
 	selectArtifact,
 	downloadVerifiedArtifact,
 	extractArchive,
+	safeRelativeEntrypoint,
 };
