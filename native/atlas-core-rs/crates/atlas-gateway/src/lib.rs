@@ -2159,6 +2159,43 @@ async fn projects_register(
     dispatch_project(&state, "register", &body.name, &body.path).await
 }
 
+#[derive(Deserialize)]
+struct RenameProjectBody {
+    name: String,
+}
+
+async fn project_rename(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    Json(body): Json<RenameProjectBody>,
+) -> ApiResult {
+    require_arg(&id, "project id must be non-empty")?;
+    require_arg(&body.name, "name must be non-empty")?;
+    dispatch_atlas(
+        &state.atlas_cmd,
+        &["project", "rename", "--name", &body.name, "--", &id],
+    )
+    .await?;
+    let path = state.db_path.clone();
+    let id_clone = id.clone();
+    let found = blocking(move || db::get_project(&path, &id_clone)).await?;
+    match found {
+        Some((project, missions)) => Ok(Json(json!({ "project": project, "missions": missions }))),
+        None => Err(ApiError::NotFound("project")),
+    }
+}
+
+/// DELETE /v1/projects/{id} — unregister only: the folder on disk is never
+/// touched, and bound missions/focus are detached (history preserved).
+async fn project_unregister(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
+    require_arg(&id, "project id must be non-empty")?;
+    let detached = dispatch_atlas(&state.atlas_cmd, &["project", "unregister", "--", &id]).await?;
+    let detached_missions = detached.trim().parse::<i64>().unwrap_or(0);
+    Ok(Json(
+        json!({ "unregistered": true, "id": id, "detached_missions": detached_missions }),
+    ))
+}
+
 // ---------------------------------------------------------------------------
 // Focus handlers (WP-2 — Command Center Current Focus, D-022 dispatch pattern)
 // ---------------------------------------------------------------------------
@@ -3061,7 +3098,12 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/freellmapi/status", get(freellmapi_status))
         .route("/v1/freellmapi/start", post(freellmapi_start))
         .route("/v1/freellmapi/stop", post(freellmapi_stop))
-        .route("/v1/projects/{id}", get(project_detail))
+        .route(
+            "/v1/projects/{id}",
+            get(project_detail)
+                .patch(project_rename)
+                .delete(project_unregister),
+        )
         .layer(middleware::from_fn(cors))
         .with_state(state)
 }

@@ -14,6 +14,7 @@ Conventions follow mission_service.py:
 """
 from __future__ import annotations
 
+import datetime
 import pathlib
 import sqlite3
 import threading
@@ -97,6 +98,58 @@ def register_project(
     if not resolved.is_dir():
         raise ProjectError(f"path is not a directory: {resolved}")
     return _insert(conn, lock, name=name, resolved=resolved)
+
+
+def rename_project(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    *,
+    project_id: str,
+    name: str,
+) -> Project:
+    """Rename a project (the folder path stays fixed — it defines run semantics)."""
+    if not name or not name.strip():
+        raise ProjectError("name must not be empty")
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    with lock:
+        with conn:
+            cursor = conn.execute(
+                "UPDATE projects SET name=?, updated_at=? WHERE id=?",
+                (name.strip(), now, project_id),
+            )
+            if cursor.rowcount == 0:
+                raise ProjectError(f"project {project_id!r} not found")
+    project = get_project(conn, project_id)
+    assert project is not None
+    return project
+
+
+def unregister_project(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    *,
+    project_id: str,
+) -> int:
+    """Unregister a project. The folder on disk is never touched.
+
+    Missions and focus rows bound to the project are detached (project_id set
+    NULL) so their history survives; returns the number of detached missions.
+    """
+    with lock:
+        with conn:
+            exists = conn.execute(
+                "SELECT 1 FROM projects WHERE id=?", (project_id,)
+            ).fetchone()
+            if exists is None:
+                raise ProjectError(f"project {project_id!r} not found")
+            detached = conn.execute(
+                "UPDATE missions SET project_id=NULL WHERE project_id=?", (project_id,)
+            ).rowcount
+            conn.execute(
+                "UPDATE focus SET project_id=NULL WHERE project_id=?", (project_id,)
+            )
+            conn.execute("DELETE FROM projects WHERE id=?", (project_id,))
+    return detached
 
 
 def get_project(

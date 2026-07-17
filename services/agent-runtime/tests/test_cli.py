@@ -278,6 +278,44 @@ def test_wiki_group_without_subcommand_prints_help():
     assert "LLM Wiki commands" in result.output
 
 
+def test_project_rename_command(db, lock, tmp_path, monkeypatch):
+    """atlas project rename updates the name and exits 0."""
+    import atlas_runtime.cli.main as cli_main
+    from atlas_runtime import project_service
+
+    monkeypatch.setattr(cli_main, "_get_connection", lambda: db)
+    monkeypatch.setattr(cli_main, "_get_lock", lambda: lock)
+    project = project_service.register_project(db, lock, name="Old", root_path=str(tmp_path))
+    result = runner.invoke(app, ["project", "rename", project.id, "--name", "Renamed"])
+    assert result.exit_code == 0, result.output
+    assert project_service.get_project(db, project.id).name == "Renamed"
+
+
+def test_project_unregister_command_prints_detached_count(db, lock, tmp_path, monkeypatch):
+    """atlas project unregister detaches missions, keeps the folder, prints count."""
+    import atlas_runtime.cli.main as cli_main
+    from atlas_runtime import mission_service, project_service
+
+    monkeypatch.setattr(cli_main, "_get_connection", lambda: db)
+    monkeypatch.setattr(cli_main, "_get_lock", lambda: lock)
+    project = project_service.register_project(db, lock, name="Bound", root_path=str(tmp_path))
+    mission_service.create_mission(db, lock, title="A", project_id=project.id)
+    result = runner.invoke(app, ["project", "unregister", project.id])
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == "1"
+    assert project_service.get_project(db, project.id) is None
+    assert tmp_path.is_dir()
+
+
+def test_project_rename_unknown_exits_nonzero(db, lock, monkeypatch):
+    import atlas_runtime.cli.main as cli_main
+
+    monkeypatch.setattr(cli_main, "_get_connection", lambda: db)
+    monkeypatch.setattr(cli_main, "_get_lock", lambda: lock)
+    result = runner.invoke(app, ["project", "rename", "no-such-id", "--name", "x"])
+    assert result.exit_code == 1
+
+
 def test_mission_workdir_resolves_bound_project_root(db, lock, tmp_path):
     """A mission bound to a registered project resolves to that project's root."""
     from atlas_runtime import mission_service, project_service

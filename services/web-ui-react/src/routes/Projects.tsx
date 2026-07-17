@@ -1,13 +1,21 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type * as React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Plus, FolderPlus, X, FolderOpen, SquareTerminal } from 'lucide-react';
+import { Search, Plus, FolderPlus, X, FolderOpen, SquareTerminal, Pencil, Trash2, Crosshair } from 'lucide-react';
 import { Page } from '../components/Page';
 import TopoInput from '../components/TopoInput';
 import BorderGlow from '../components/BorderGlow';
 import { GlassPanel } from '../components/GlassFx';
 import { GLASS_DISPLACE_ID } from '../lib/glass';
-import { listProjects, createProject, registerProject, type Project } from '../lib/api';
+import {
+	listProjects,
+	createProject,
+	registerProject,
+	renameProject,
+	unregisterProject,
+	createFocus,
+	type Project
+} from '../lib/api';
 import { selectFolder } from '../lib/host';
 import sealMark from '../brand/assets/seal.webp';
 
@@ -28,6 +36,8 @@ export default function Projects() {
 	const [load, setLoad] = useState<Load>({ s: 'loading' });
 	const [query, setQuery] = useState('');
 	const [modal, setModal] = useState<Mode | null>(null);
+	const [busyId, setBusyId] = useState<string | null>(null);
+	const [rowError, setRowError] = useState<{ id: string; msg: string } | null>(null);
 	const navigate = useNavigate();
 
 	async function refresh() {
@@ -41,6 +51,46 @@ export default function Projects() {
 	useEffect(() => {
 		void refresh();
 	}, []);
+
+	async function handleRename(p: Project, name: string) {
+		const next = name.trim();
+		if (!next || next === p.name) return;
+		setBusyId(p.id);
+		setRowError(null);
+		try {
+			await renameProject(p.id, next);
+			await refresh();
+		} catch (e) {
+			setRowError({ id: p.id, msg: e instanceof Error ? e.message : 'Rename failed.' });
+		} finally {
+			setBusyId(null);
+		}
+	}
+
+	async function handleUnregister(p: Project) {
+		setBusyId(p.id);
+		setRowError(null);
+		try {
+			await unregisterProject(p.id);
+			await refresh();
+		} catch (e) {
+			setRowError({ id: p.id, msg: e instanceof Error ? e.message : 'Unregister failed.' });
+		} finally {
+			setBusyId(null);
+		}
+	}
+
+	async function handleSetFocus(p: Project) {
+		setBusyId(p.id);
+		setRowError(null);
+		try {
+			await createFocus({ title: p.name, project: p.id });
+			navigate('/command');
+		} catch (e) {
+			setRowError({ id: p.id, msg: e instanceof Error ? e.message : 'Could not set focus.' });
+			setBusyId(null);
+		}
+	}
 
 	const filtered = useMemo(() => {
 		if (load.s !== 'ready') return [];
@@ -99,7 +149,12 @@ export default function Projects() {
 								key={p.id}
 								p={p}
 								i={i}
+								busy={busyId === p.id}
+								error={rowError?.id === p.id ? rowError.msg : null}
 								onOpenConsole={() => navigate(`/console?project=${encodeURIComponent(p.id)}`)}
+								onRename={(name) => void handleRename(p, name)}
+								onUnregister={() => void handleUnregister(p)}
+								onSetFocus={() => void handleSetFocus(p)}
 							/>
 						))
 					))}
@@ -139,12 +194,55 @@ function Header() {
 			<span>#</span>
 			<span>Project</span>
 			<span className="atlas-projects-created-col" style={{ textAlign: 'right' }}>Created</span>
-			<span className="atlas-projects-console-col" style={{ textAlign: 'right' }}>Console</span>
+			<span className="atlas-projects-actions-col" style={{ textAlign: 'right' }}>Actions</span>
 		</div>
 	);
 }
 
-function Row({ p, i, onOpenConsole }: { p: Project; i: number; onOpenConsole: () => void }) {
+function Row({
+	p,
+	i,
+	busy,
+	error,
+	onOpenConsole,
+	onRename,
+	onUnregister,
+	onSetFocus
+}: {
+	p: Project;
+	i: number;
+	busy: boolean;
+	error: string | null;
+	onOpenConsole: () => void;
+	onRename: (name: string) => void;
+	onUnregister: () => void;
+	onSetFocus: () => void;
+}) {
+	const [editing, setEditing] = useState(false);
+	const [draft, setDraft] = useState(p.name);
+	const [confirmDelete, setConfirmDelete] = useState(false);
+	const inputRef = useRef<HTMLInputElement | null>(null);
+
+	useEffect(() => {
+		if (editing) {
+			setDraft(p.name);
+			// focus after paint so the caret lands in the field
+			requestAnimationFrame(() => inputRef.current?.select());
+		}
+	}, [editing, p.name]);
+
+	// A fresh confirm window per interaction; auto-cancel avoids a sticky armed state.
+	useEffect(() => {
+		if (!confirmDelete) return;
+		const t = window.setTimeout(() => setConfirmDelete(false), 4000);
+		return () => window.clearTimeout(t);
+	}, [confirmDelete]);
+
+	function commitRename() {
+		setEditing(false);
+		onRename(draft);
+	}
+
 	return (
 		<div
 			className="atlas-projects-grid"
@@ -155,7 +253,8 @@ function Row({ p, i, onOpenConsole }: { p: Project; i: number; onOpenConsole: ()
 				alignItems: 'center',
 				padding: '14px 18px',
 				borderTop: i === 0 ? 'none' : '1px solid var(--l2-hairline)',
-				transition: 'background var(--l2-duration-xs) var(--l2-ease)'
+				opacity: busy ? 0.6 : 1,
+				transition: 'background var(--l2-duration-xs) var(--l2-ease), opacity 150ms var(--l2-ease)'
 			}}
 			onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(70,240,160,0.05)')}
 			onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
@@ -164,20 +263,118 @@ function Row({ p, i, onOpenConsole }: { p: Project; i: number; onOpenConsole: ()
 				{String(i + 1).padStart(2, '0')}
 			</span>
 			<span style={{ minWidth: 0 }}>
-				<div style={{ color: 'var(--l2-fg-1)', fontSize: 14, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-					{p.name}
-				</div>
+				{editing ? (
+					<input
+						ref={inputRef}
+						value={draft}
+						onChange={(e) => setDraft(e.target.value)}
+						onKeyDown={(e) => {
+							if (e.key === 'Enter') commitRename();
+							if (e.key === 'Escape') setEditing(false);
+						}}
+						onBlur={commitRename}
+						aria-label="Project name"
+						style={{
+							width: '100%',
+							height: 30,
+							borderRadius: 2,
+							border: '1px solid rgba(70,240,160,0.45)',
+							background: 'rgba(9,11,16,0.9)',
+							color: 'var(--l2-fg-1)',
+							fontSize: 14,
+							padding: '0 8px',
+							outline: 'none',
+							marginBottom: 2
+						}}
+					/>
+				) : (
+					<div
+						onDoubleClick={() => setEditing(true)}
+						title="Double-click to rename"
+						style={{ color: 'var(--l2-fg-1)', fontSize: 14, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'text' }}
+					>
+						{p.name}
+					</div>
+				)}
 				<div style={{ color: 'var(--l2-fg-3)', fontSize: 12, fontFamily: 'var(--l2-font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
 					{p.root_path}
 				</div>
+				{error && <div style={{ color: 'var(--l2-error)', fontSize: 11, fontFamily: 'var(--l2-font-mono)', marginTop: 3 }}>{error}</div>}
 			</span>
 			<span className="atlas-projects-created-col" style={{ textAlign: 'right', fontFamily: 'var(--l2-font-mono)', fontSize: 11, color: 'var(--l2-fg-3)' }}>
 				{rel(p.created_at)}
 			</span>
-			<span className="atlas-projects-console-col" style={{ display: 'flex', justifyContent: 'flex-end' }}>
+			<span className="atlas-projects-actions-col" style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, alignItems: 'center' }}>
+				<IconAction icon={<Crosshair size={14} strokeWidth={1.7} />} label="Set as focus" onClick={onSetFocus} disabled={busy} tone="celestial" />
+				<IconAction icon={<Pencil size={14} strokeWidth={1.7} />} label="Rename" onClick={() => setEditing(true)} disabled={busy} />
+				<IconAction
+					icon={<Trash2 size={14} strokeWidth={1.7} />}
+					label={confirmDelete ? 'Confirm unregister' : 'Unregister'}
+					onClick={() => {
+						if (confirmDelete) {
+							setConfirmDelete(false);
+							onUnregister();
+						} else {
+							setConfirmDelete(true);
+						}
+					}}
+					disabled={busy}
+					tone={confirmDelete ? 'error' : 'default'}
+				/>
 				<ConsoleButton onClick={onOpenConsole} />
 			</span>
 		</div>
+	);
+}
+
+function IconAction({
+	icon,
+	label,
+	onClick,
+	disabled,
+	tone = 'default'
+}: {
+	icon: React.ReactNode;
+	label: string;
+	onClick: () => void;
+	disabled?: boolean;
+	tone?: 'default' | 'error' | 'celestial';
+}) {
+	const color =
+		tone === 'error' ? 'var(--l2-error)' : tone === 'celestial' ? 'var(--atlas-celestial)' : 'var(--l2-fg-3)';
+	const border =
+		tone === 'error' ? 'rgba(255,0,85,0.5)' : tone === 'celestial' ? 'rgba(79,139,255,0.38)' : 'var(--l2-hairline)';
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			disabled={disabled}
+			aria-label={label}
+			title={label}
+			style={{
+				display: 'inline-flex',
+				alignItems: 'center',
+				justifyContent: 'center',
+				width: 30,
+				height: 30,
+				borderRadius: 2,
+				border: `1px solid ${border}`,
+				background: 'transparent',
+				color,
+				cursor: disabled ? 'default' : 'pointer',
+				opacity: disabled ? 0.5 : 1,
+				transition: 'border-color 150ms var(--l2-ease), color 150ms var(--l2-ease)'
+			}}
+			onMouseEnter={(e) => {
+				if (disabled) return;
+				e.currentTarget.style.borderColor = color;
+			}}
+			onMouseLeave={(e) => {
+				e.currentTarget.style.borderColor = border;
+			}}
+		>
+			{icon}
+		</button>
 	);
 }
 
@@ -189,7 +386,7 @@ function SkeletonRows() {
 					<div style={sk(16)} />
 					<div style={sk(`${50 + ((i * 11) % 35)}%`)} />
 					<div className="atlas-projects-created-col" style={sk(48, true)} />
-					<div className="atlas-projects-console-col" style={sk(64, true)} />
+					<div className="atlas-projects-actions-col" style={sk(180, true)} />
 				</div>
 			))}
 		</div>

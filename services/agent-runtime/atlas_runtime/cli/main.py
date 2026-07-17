@@ -767,6 +767,41 @@ def project_list() -> None:
         typer.echo(f"{p.id}\t{p.name}\t{p.root_path}")
 
 
+@project_app.command("rename")
+def project_rename(
+    project_id: str = typer.Argument(..., help="Project ID to rename"),
+    name: str = typer.Option(..., "--name", help="New project name"),
+) -> None:
+    """Rename a project (the folder on disk is unchanged)."""
+    conn = _get_connection()
+    lock = _get_lock()
+    try:
+        project = project_service.rename_project(conn, lock, project_id=project_id, name=name)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(project.id)
+
+
+@project_app.command("unregister")
+def project_unregister(
+    project_id: str = typer.Argument(..., help="Project ID to unregister"),
+) -> None:
+    """Unregister a project. The folder on disk is never deleted.
+
+    Missions/focus bound to it are detached (history kept). Prints the
+    number of detached missions.
+    """
+    conn = _get_connection()
+    lock = _get_lock()
+    try:
+        detached = project_service.unregister_project(conn, lock, project_id=project_id)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(str(detached))
+
+
 # ---------------------------------------------------------------------------
 # run subcommands — background-safe execution of an already-started run
 # ---------------------------------------------------------------------------

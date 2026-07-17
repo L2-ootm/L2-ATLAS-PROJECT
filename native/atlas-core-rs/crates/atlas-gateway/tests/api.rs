@@ -2767,6 +2767,68 @@ async fn focus_activate_dispatches_and_returns_focus() {
     assert_eq!(body["focus"]["id"], "f-old");
 }
 
+const MIGRATION_0005: &str = include_str!("../../../../../infra/migrations/0005_projects.sql");
+
+/// seeded_db + 0005 (projects) with one registered project bound to a mission.
+fn seeded_db_projects(dir: &tempfile::TempDir) -> PathBuf {
+    let path = seeded_db(dir);
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    conn.execute_batch(MIGRATION_0005).unwrap();
+    conn.execute_batch(
+        "INSERT INTO projects (id, name, root_path, created_at, updated_at)
+         VALUES ('p1', 'Atlas Repo', 'C:/atlas',
+                 '2026-06-01T10:00:00Z', '2026-06-01T10:00:00Z');
+         UPDATE missions SET project_id='p1' WHERE id='m1';",
+    )
+    .unwrap();
+    path
+}
+
+#[tokio::test]
+async fn project_rename_patch_dispatches_and_returns_project() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(seeded_db_projects(&dir), "p1", &stub_dir);
+    let (status, body) = patch_json(&router, "/v1/projects/p1", json!({ "name": "Renamed" })).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["project"]["id"], "p1");
+}
+
+#[tokio::test]
+async fn project_rename_rejects_empty_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(seeded_db_projects(&dir), "p1", &stub_dir);
+    let (status, _) = patch_json(&router, "/v1/projects/p1", json!({ "name": "  " })).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn project_unregister_delete_returns_detached_count() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(seeded_db_projects(&dir), "1", &stub_dir);
+    let resp = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/v1/projects/p1")
+                .header("x-atlas-surface-owner", "owner-1")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = resp.status();
+    let body_bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let body: Value = serde_json::from_slice(&body_bytes).unwrap_or(Value::Null);
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["unregistered"], true);
+    assert_eq!(body["id"], "p1");
+    assert_eq!(body["detached_missions"], 1);
+}
+
 #[tokio::test]
 async fn focus_list_all_includes_archived_sets() {
     let dir = tempfile::tempdir().unwrap();
