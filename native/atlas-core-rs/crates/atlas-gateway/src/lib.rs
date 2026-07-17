@@ -2353,6 +2353,15 @@ async fn module_set_active(state: &AppState, id: &str, sub: &str) -> ApiResult {
     }
 }
 
+/// Slash commands contributed by active manifest modules — merged by every
+/// surface (WebUI palette/slash, terminal) with its built-in catalog.
+async fn commands_list(State(state): State<AppState>) -> ApiResult {
+    let path = state.db_path.clone();
+    let commands = blocking(move || db::list_module_commands(&path)).await?;
+    let count = commands.len();
+    Ok(Json(json!({ "commands": commands, "count": count })))
+}
+
 async fn module_activate(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
     module_set_active(&state, &id, "activate").await
 }
@@ -2792,6 +2801,7 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/operations", get(operations_list))
         .route("/v1/operations/{id}/run", post(operation_run))
         .route("/v1/modules", get(modules_list))
+        .route("/v1/commands", get(commands_list))
         .route("/v1/modules/{id}/activate", post(module_activate))
         .route("/v1/modules/{id}/deactivate", post(module_deactivate))
         .route("/cashflow/full", get(cashflow_full))

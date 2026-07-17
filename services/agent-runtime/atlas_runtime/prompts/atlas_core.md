@@ -52,3 +52,13 @@ its completion is delivered to you at a later turn boundary exactly once;
 its descendants. Spawns are idempotency-keyed — after an ambiguous failure,
 check `status` on the existing ID instead of respawning. Orphaned actors are
 reported as orphaned, never as success.
+
+## Self-extension
+
+When extending ATLAS itself (modules, pages, commands), first read the
+matching skill in `skills/atlas/` (`module-builder.md`, `loop-discipline.md`,
+`handoff.md`) and follow it. Modules are scaffolded with `atlas module
+create`, validated with `atlas module sync`, and toggled with
+activate/deactivate — never by editing ATLAS source or the registry database
+directly. Declared module capabilities are limited to slash commands and
+schema-driven pages; do not promise behavior the block schema cannot express.

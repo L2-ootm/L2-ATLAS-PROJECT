@@ -1,0 +1,37 @@
+id: example-hello
+name: Example Hello
+version: 0.1.0
+description: >
+  Reference manifest module. Contributes one slash command and one
+  schema-driven page. Copy this as the starting point for new modules, or run
+  `atlas module create <id>`.
+author: atlas
+capabilities:
+  commands:
+    - name: hello
+      description: example module command — greet and summarize the workspace
+      template: |
+        Greet the operator, then produce a three-line summary of the current
+        workspace state (branch, pending work, anything notable). $ARGUMENTS
+  pages:
+    - id: main
+      title: Example Hello
+      icon: puzzle
+      blocks:
+        - kind: heading
+          text: Example Hello
+        - kind: markdown
+          text: >
+            This page is rendered from `modules/example-hello/module.yaml` by
+            ATLAS's constrained module renderer — no module code runs. Edit
+            the manifest and re-sync to change it.
+        - kind: metrics
+          items:
+            - label: Manifest version
+              value: v1
+            - label: Blocks
+              value: heading · markdown · metrics · actions
+        - kind: actions
+          items:
+            - label: Run /hello
+              command: /hello

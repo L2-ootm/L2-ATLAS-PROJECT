@@ -562,6 +562,33 @@ export async function registerProject(
 
 // ── Module endpoints (Decision 3b — optional activatable modules) ─────────────
 
+/** A block on a schema-driven module page (rendered by ATLAS-owned components —
+ * the visual constraint; no module code executes). */
+export interface ModulePageBlock {
+	kind: string; // 'heading' | 'markdown' | 'metrics' | 'actions' | future kinds
+	text?: string;
+	items?: Array<{ label: string; value?: string; command?: string }>;
+}
+
+export interface ModulePage {
+	id: string;
+	title: string;
+	icon: string;
+	blocks: ModulePageBlock[];
+}
+
+/** Parsed module.yaml manifest (null for legacy seeded modules). */
+export interface ModuleManifest {
+	id: string;
+	name: string;
+	version: string;
+	description: string;
+	capabilities: {
+		commands: Array<{ name: string; description: string; template: string }>;
+		pages: ModulePage[];
+	};
+}
+
 /** An optional, activatable ATLAS module (e.g. cashflow). Mirrors db.rs module_row. */
 export interface Module {
 	id: string;
@@ -569,6 +596,29 @@ export interface Module {
 	description: string;
 	status: 'active' | 'inactive';
 	activated_at: string | null;
+	version?: string;
+	source_path?: string;
+	manifest?: ModuleManifest | null;
+	missing?: boolean;
+}
+
+/** A slash command contributed by an active manifest module. */
+export interface ModuleCommand {
+	name: string;
+	description: string;
+	template: string;
+	module: string;
+}
+
+/** Module-contributed slash commands (merged with the built-in catalog by the
+ * palette and slash surfaces). Pre-module gateways render empty. */
+export async function listModuleCommands(): Promise<ModuleCommand[]> {
+	try {
+		const out = await apiFetch<{ commands: ModuleCommand[]; count: number }>('/v1/commands');
+		return out.commands ?? [];
+	} catch {
+		return [];
+	}
 }
 
 /** List optional modules. A pre-0007 gateway (no route/table) renders empty. */

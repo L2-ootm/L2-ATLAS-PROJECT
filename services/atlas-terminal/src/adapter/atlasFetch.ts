@@ -14,7 +14,7 @@
  */
 
 import { ChatAdapter } from './chat';
-import { ATLAS_COMMANDS, findAtlasCommand, expandCommandTemplate } from './commands';
+import { allAtlasCommands, setModuleCommands, findAtlasCommand, expandCommandTemplate } from './commands';
 import { EventBus, toGlobalEvent, type DonorEvent } from './events';
 import { GatewayClient, GatewayError } from './gateway';
 import { appendDiagnostic } from '../util/diagnosticLog';
@@ -237,10 +237,27 @@ function handleEventStream(bus: EventBus): Response {
 	});
 }
 
-/** Real command list — see src/adapter/commands.ts for the ATLAS-authored templates. */
-function handleCommandList(): Response {
+/** Real command list — built-ins from src/adapter/commands.ts plus module
+ * commands refreshed from the gateway's /v1/commands (best-effort: an offline
+ * or pre-module gateway serves built-ins only). */
+async function handleCommandList(gw: string, f: typeof fetch): Promise<Response> {
+	try {
+		const res = await f(`${gw}/v1/commands`);
+		if (res.ok) {
+			const payload = (await res.json()) as { commands?: AtlasCommandShape[] };
+			setModuleCommands(
+				(payload.commands ?? []).map((c) => ({
+					name: String(c.name ?? ''),
+					description: String(c.description ?? ''),
+					template: String(c.template ?? '')
+				}))
+			);
+		}
+	} catch {
+		// keep the last known module command set
+	}
 	return json(
-		ATLAS_COMMANDS.map((c) => ({
+		allAtlasCommands().map((c) => ({
 			name: c.name,
 			description: c.description,
 			source: 'command',
@@ -249,6 +266,12 @@ function handleCommandList(): Response {
 			hints: []
 		}))
 	);
+}
+
+interface AtlasCommandShape {
+	name?: unknown;
+	description?: unknown;
+	template?: unknown;
 }
 
 /** Donor POST /session/{id}/command — expand the template, run it through the normal chat loop. */
@@ -369,7 +392,7 @@ export function createAtlasFetchHandle(opts: AtlasFetchOptions): AtlasFetchHandl
 			if (method === 'POST' && path === '/atlas/auth/providers') return handleAtlasAuthProviders(gw, f, await readBody());
 			if (method === 'POST' && path === '/atlas/auth/codex/import') return handleAtlasAuthCodexImport(gw, f);
 			if (method === 'GET' && path === '/atlas/provider/status') return handleAtlasProviderStatus(gw, f);
-			if (method === 'GET' && path === '/command') return handleCommandList();
+			if (method === 'GET' && path === '/command') return handleCommandList(gw, f);
 			if (method === 'GET' && path === '/atlas/freellmapi/status') return handleAtlasFreellmapi(gw, f, 'status');
 			if (method === 'POST' && path === '/atlas/freellmapi/start') return handleAtlasFreellmapi(gw, f, 'start');
 			if (method === 'POST' && path === '/atlas/freellmapi/stop') return handleAtlasFreellmapi(gw, f, 'stop');

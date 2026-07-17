@@ -35,11 +35,13 @@ export default function Sidebar({ expanded, onToggle }: SidebarProps) {
 				if (!alive) return;
 				setActiveModuleNav(
 					modules
-						.filter((m) => m.status === 'active')
+						.filter((m) => m.status === 'active' && !m.missing)
 						.map((m) => ({
 							id: m.id,
 							label: m.name.toUpperCase(),
-							route: `/${m.id}`,
+							// Manifest modules with pages render in the schema host;
+							// legacy built-ins (cashflow) keep their dedicated routes.
+							route: m.manifest?.capabilities?.pages?.length ? `/m/${m.id}` : `/${m.id}`,
 							icon: MODULE_ICON[m.id] ?? Boxes,
 							status: 'active' as const,
 							ariaLabel: m.name

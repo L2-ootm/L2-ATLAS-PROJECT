@@ -23,6 +23,8 @@ const Graph = lazy(() => import('./routes/Graph'));
 const Console = lazy(() => import('./routes/Console'));
 // Lazy — shares the markdown/highlight chunk with Console.
 const Chat = lazy(() => import('./routes/Chat'));
+// Lazy — schema-driven module pages (module framework).
+const ModuleHost = lazy(() => import('./routes/ModuleHost'));
 
 const router = createBrowserRouter([
 	{
@@ -37,6 +39,7 @@ const router = createBrowserRouter([
 			{ path: 'runs/:id', element: <RunDetail /> },
 			{ path: 'console', element: <Suspense fallback={null}><Console /></Suspense> },
 			{ path: 'chat', element: <Suspense fallback={null}><Chat /></Suspense> },
+			{ path: 'm/:moduleId', element: <Suspense fallback={null}><ModuleHost /></Suspense> },
 			{ path: 'graph', element: <Suspense fallback={null}><Graph /></Suspense> },
 			{ path: 'projects', element: <Projects /> },
 			{ path: 'cashflow', element: <Cashflow /> },

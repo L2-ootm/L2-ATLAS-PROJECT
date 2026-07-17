@@ -1494,6 +1494,60 @@ def module_deactivate(
     typer.echo(f"{mod.id} {mod.status}")
 
 
+@module_app.command("sync")
+def module_sync(
+    json_output: bool = typer.Option(False, "--json", help="Emit the sync summary as JSON."),
+) -> None:
+    """Discover manifest modules (module.yaml) and sync them into the registry.
+
+    Scans <repo>/modules and <ATLAS home>/modules. Activation state survives
+    re-sync; vanished modules are flagged missing, never deleted.
+    """
+    import json as _json
+
+    from atlas_runtime import module_service
+
+    summary = module_service.sync_modules(_get_connection(), _get_lock())
+    if json_output:
+        typer.echo(_json.dumps(summary, indent=2))
+        return
+    typer.echo(f"discovered: {', '.join(summary['discovered']) or '(none)'}")
+    if summary["missing"]:
+        typer.echo(f"missing: {', '.join(summary['missing'])}")
+    for problem in summary["problems"]:
+        typer.echo(f"problem: {problem}", err=True)
+
+
+@module_app.command("create")
+def module_create(
+    module_id: str = typer.Argument(..., help="New module id ([a-z0-9-])."),
+    name: str = typer.Option(None, "--name", help="Display name (defaults from the id)."),
+    activate: bool = typer.Option(
+        True, "--activate/--no-activate",
+        help="Sync and activate the module right after scaffolding.",
+    ),
+) -> None:
+    """Scaffold a manifest module in <ATLAS home>/modules (self-wiring entry point).
+
+    Creates module.yaml with a starter command and page, then syncs (and by
+    default activates) it so the module is immediately live on every surface.
+    """
+    from atlas_runtime import module_service
+
+    try:
+        target = module_service.create_module_scaffold(module_id, name=name)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"scaffolded {target}")
+    conn = _get_connection()
+    lock = _get_lock()
+    module_service.sync_modules(conn, lock)
+    if activate:
+        mod = module_service.set_active(conn, lock, module_id=module_id, active=True)
+        typer.echo(f"{mod.id} {mod.status}")
+
+
 # ---------------------------------------------------------------------------
 # cashflow subcommands — vendored module process control
 # ---------------------------------------------------------------------------

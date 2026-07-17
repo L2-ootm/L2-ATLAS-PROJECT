@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type * as React from 'react';
 import { SquareSlash } from 'lucide-react';
-import { ATLAS_COMMANDS, expandCommandTemplate } from '../lib/atlasCommands';
+import { ATLAS_COMMANDS, expandCommandTemplate, type AtlasCommand } from '../lib/atlasCommands';
+import { listModuleCommands } from '../lib/api';
 
 interface CommandPaletteProps {
 	open: boolean;
@@ -23,6 +24,20 @@ export default function CommandPalette({ open, onClose, busy, onRun }: CommandPa
 	const [query, setQuery] = useState('');
 	const [selected, setSelected] = useState(0);
 	const inputRef = useRef<HTMLInputElement>(null);
+	// Module-contributed commands (module framework): fetched when the palette
+	// opens, merged after the built-ins. Offline gateway = built-ins only.
+	const [moduleCommands, setModuleCommands] = useState<AtlasCommand[]>([]);
+	useEffect(() => {
+		if (!open) return;
+		let alive = true;
+		void listModuleCommands().then((commands) => {
+			if (alive) setModuleCommands(commands);
+		});
+		return () => {
+			alive = false;
+		};
+	}, [open]);
+	const catalog = useMemo(() => [...ATLAS_COMMANDS, ...moduleCommands], [moduleCommands]);
 
 	const [head, args] = useMemo(() => {
 		const trimmed = query.replace(/^\//, '');
@@ -33,13 +48,13 @@ export default function CommandPalette({ open, onClose, busy, onRun }: CommandPa
 
 	const matches = useMemo(() => {
 		const needle = head.toLowerCase();
-		if (!needle) return ATLAS_COMMANDS;
-		const exact = ATLAS_COMMANDS.filter((c) => c.name === needle);
+		if (!needle) return catalog;
+		const exact = catalog.filter((c) => c.name === needle);
 		if (exact.length) return exact;
-		return ATLAS_COMMANDS.filter(
+		return catalog.filter(
 			(c) => c.name.includes(needle) || c.description.toLowerCase().includes(needle)
 		);
-	}, [head]);
+	}, [head, catalog]);
 
 	useEffect(() => {
 		if (open) {
@@ -236,7 +251,7 @@ export default function CommandPalette({ open, onClose, busy, onRun }: CommandPa
 					}}
 				>
 					<span>{busy ? 'AGENT BUSY · WAIT FOR THE ACTIVE TURN' : '↑↓ SELECT · TAB COMPLETE · ↵ RUN'}</span>
-					<span>{matches.length}/{ATLAS_COMMANDS.length}</span>
+					<span>{matches.length}/{catalog.length}</span>
 				</div>
 			</div>
 		</div>

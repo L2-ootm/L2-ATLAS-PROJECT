@@ -208,6 +208,10 @@ class Module(BaseModel):
     description: str = ""
     status: Literal["active", "inactive"] = "inactive"
     activated_at: datetime.datetime | None = None
+    # Manifest-module fields (0023): empty/False for seeded built-ins.
+    version: str = ""
+    source_path: str = ""
+    missing: bool = False
 
     @field_serializer("activated_at")
     def serialize_activated_at(self, dt: datetime.datetime | None) -> str | None:
