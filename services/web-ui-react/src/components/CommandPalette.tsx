@@ -24,11 +24,13 @@ export default function CommandPalette({ open, onClose, busy, onRun }: CommandPa
 	const [query, setQuery] = useState('');
 	const [selected, setSelected] = useState(0);
 	const inputRef = useRef<HTMLInputElement>(null);
-	const [catalog, setCatalog] = useState<AtlasCommand[]>(ATLAS_COMMANDS);
+	// The palette dispatches prompts only — WebUI-local action commands
+	// (/help, /new, /agent …) live in the Chat composer, not here.
+	const [catalog, setCatalog] = useState<AtlasCommand[]>(ATLAS_COMMANDS.filter((c) => c.kind !== 'action'));
 	useEffect(() => {
 		let alive = true;
 		void loadAtlasCommandCatalog().then((commands) => {
-			if (alive) setCatalog(commands);
+			if (alive) setCatalog(commands.filter((c) => c.kind !== 'action'));
 		});
 		return () => {
 			alive = false;

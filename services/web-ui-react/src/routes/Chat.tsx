@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import type * as React from 'react';
 import {
 	AlertTriangle,
@@ -59,6 +59,8 @@ import { isNearBottom } from '../lib/scrollFollow';
 import { subagentsFromConsoleEvents } from '../lib/subagents';
 import { turnReceiptSignature } from '../lib/turnReceipt';
 import { GOAL_STATUS_MESSAGE, parseMissionSlashIntent } from '../lib/missionSlash';
+import { GO_PAGES, parseAgentArgument, renderCommandHelp, type AtlasCommand } from '../lib/atlasCommands';
+import { loadAtlasCommandCatalog } from '../lib/commandCatalog';
 import { ReasoningBlock, ToolCallCard } from './Console';
 
 /**
@@ -96,6 +98,7 @@ function pathTail(path: string): string {
 export default function Chat() {
 	const agentSurface = useAgentSurface();
 	const visualSettings = useVisualSettings();
+	const navigate = useNavigate();
 	const [initial] = useState(loadActiveChatSession);
 	const [catalogSessionId, setCatalogSessionId] = useState(initial.id);
 	const [messages, setMessages] = useState<ConsoleMessage[]>(initial.snapshot.messages);
@@ -394,6 +397,67 @@ export default function Chat() {
 		return true;
 	}
 
+	// ── WebUI-local action commands (/help, /new, /agent, /bind, /go …) ─────
+	function appendLocalNote(body: string, role: 'system' | 'agent' = 'system', label = 'ATLAS') {
+		const note: ConsoleMessage = {
+			id: `${Date.now()}-local-note`,
+			role,
+			label,
+			body,
+			time: nowLabel(),
+			status: 'succeeded'
+		};
+		setMessages((prev) => [...prev, note]);
+	}
+
+	function handleComposerAction(command: AtlasCommand, args: string): boolean {
+		setQueueError(null);
+		switch (command.action) {
+			case 'help':
+				void loadAtlasCommandCatalog().then((catalog) =>
+					appendLocalNote(renderCommandHelp(catalog), 'agent', 'COMMAND INDEX')
+				);
+				return true;
+			case 'new':
+			case 'clear': {
+				if (activeTurn) {
+					setQueueError('Finish or cancel the active turn before starting a new session.');
+					return false;
+				}
+				newSession(command.action === 'new' && args.trim().toLowerCase() === 'unbound');
+				return true;
+			}
+			case 'agent': {
+				const runtime = parseAgentArgument(args);
+				if (!runtime) {
+					setQueueError('Usage: /agent <atlas | claude | codex>');
+					return false;
+				}
+				setAgent(runtime);
+				appendLocalNote(`Runtime switched to **${agentRuntimeLabel(runtime)}** for the next turn.`);
+				return true;
+			}
+			case 'bind':
+				setBindOpen(true);
+				return true;
+			case 'unbind':
+				unbind();
+				appendLocalNote('Workspace binding cleared — this session is now UNBOUND.');
+				return true;
+			case 'go': {
+				const target = GO_PAGES[args.trim().toLowerCase()];
+				if (!target) {
+					setQueueError(`Unknown page for /go. Pages: ${Object.keys(GO_PAGES).join(', ')}`);
+					return false;
+				}
+				navigate(target);
+				return true;
+			}
+			default:
+				return false;
+		}
+	}
+
 	async function cancelRun() {
 		try {
 			await agentSurface.cancel();
@@ -655,6 +719,7 @@ export default function Chat() {
 							agent={agent}
 							error={queueError}
 							onSubmit={submitDraft}
+							onAction={handleComposerAction}
 							onCancel={() => void cancelRun()}
 							onPromote={promoteQueuedPrompt}
 							onEdit={editQueuedPrompt}

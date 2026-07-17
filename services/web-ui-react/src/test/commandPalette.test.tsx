@@ -12,10 +12,14 @@ function mount(overrides: Partial<Parameters<typeof CommandPalette>[0]> = {}) {
 }
 
 describe('CommandPalette', () => {
-	it('lists every ATLAS command when the query is empty', () => {
+	it('lists every prompt command and hides WebUI-local action commands', () => {
 		mount();
 		for (const command of ATLAS_COMMANDS) {
-			expect(screen.getByText(`/${command.name}`)).toBeInTheDocument();
+			if (command.kind === 'action') {
+				expect(screen.queryByText(`/${command.name}`)).not.toBeInTheDocument();
+			} else {
+				expect(screen.getByText(`/${command.name}`)).toBeInTheDocument();
+			}
 		}
 	});
 

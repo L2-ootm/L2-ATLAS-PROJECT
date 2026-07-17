@@ -1,13 +1,28 @@
-// ATLAS slash commands — kept in lockstep with the TUI command catalog.
-// (services/atlas-terminal/src/adapter/commands.ts). Each command expands to a
-// prompt executed through the existing chat/mission/run pipeline; no dedicated
-// gateway endpoint. Keep the two files in lockstep: one command set, every
-// surface (multi-surface, one runtime).
+// ATLAS slash commands — prompt commands are kept in lockstep with the TUI
+// command catalog (services/atlas-terminal/src/adapter/commands.ts). Each
+// prompt command expands to a prompt executed through the existing
+// chat/mission/run pipeline; no dedicated gateway endpoint.
+//
+// Action commands (kind: 'action') are WebUI-local operator controls — they
+// run client-side (session, runtime, binding, navigation) and never become
+// model prompts. The TUI has its own local command set; only the prompt
+// commands are the cross-surface lockstep contract.
+
+export type AtlasCommandAction =
+	| 'help'
+	| 'new'
+	| 'clear'
+	| 'agent'
+	| 'bind'
+	| 'unbind'
+	| 'go';
 
 export interface AtlasCommand {
 	name: string;
 	description: string;
 	template: string;
+	kind?: 'prompt' | 'action';
+	action?: AtlasCommandAction;
 	source?: 'atlas' | 'module';
 	module?: string;
 	argumentHint?: string;
@@ -67,10 +82,114 @@ export const ATLAS_COMMANDS: AtlasCommand[] = [
 			'Produce a deep, multi-source, fact-checked research report on: $ARGUMENTS\n' +
 			'Cross-reference at least three independent sources for each major claim, note any disagreement ' +
 			'or uncertainty explicitly, and cite sources inline.'
+	},
+	// ── WebUI-local action commands ─────────────────────────────────────────
+	{
+		name: 'help',
+		description: 'list every available command and what it does',
+		template: '',
+		kind: 'action',
+		action: 'help'
+	},
+	{
+		name: 'new',
+		description: 'start a new chat session — /new unbound also clears the workspace binding',
+		argumentHint: '[unbound]',
+		template: '',
+		kind: 'action',
+		action: 'new'
+	},
+	{
+		name: 'clear',
+		description: 'start a fresh session with the same binding (alias of /new)',
+		template: '',
+		kind: 'action',
+		action: 'clear'
+	},
+	{
+		name: 'agent',
+		description: 'switch the active runtime for the next turn',
+		argumentHint: '<atlas | claude | codex>',
+		template: '',
+		kind: 'action',
+		action: 'agent'
+	},
+	{
+		name: 'bind',
+		description: 'open the workspace binding picker (project or folder)',
+		template: '',
+		kind: 'action',
+		action: 'bind'
+	},
+	{
+		name: 'unbind',
+		description: 'clear the workspace binding for this session',
+		template: '',
+		kind: 'action',
+		action: 'unbind'
+	},
+	{
+		name: 'go',
+		description: 'jump to a cockpit page',
+		argumentHint: '<page>',
+		template: '',
+		kind: 'action',
+		action: 'go'
 	}
 ];
 
-for (const command of ATLAS_COMMANDS) command.source = 'atlas';
+for (const command of ATLAS_COMMANDS) {
+	command.source = 'atlas';
+	if (!command.kind) command.kind = 'prompt';
+}
+
+/** Runtime aliases accepted by `/agent`. */
+export function parseAgentArgument(raw: string): 'native' | 'claude_code' | 'codex' | null {
+	const needle = raw.trim().toLowerCase();
+	if (['atlas', 'native'].includes(needle)) return 'native';
+	if (['claude', 'claude_code', 'claude-code', 'claudecode'].includes(needle)) return 'claude_code';
+	if (needle === 'codex') return 'codex';
+	return null;
+}
+
+/** Pages reachable through `/go`. Keys are what the operator types. */
+export const GO_PAGES: Record<string, string> = {
+	dashboard: '/',
+	chat: '/chat',
+	console: '/console',
+	command: '/command',
+	missions: '/missions',
+	runs: '/runs',
+	ledger: '/ledger',
+	graph: '/graph',
+	codex: '/codex',
+	models: '/models',
+	integrations: '/integrations',
+	projects: '/projects',
+	settings: '/settings',
+	control: '/control'
+};
+
+/** Markdown command index rendered by `/help` into the transcript. */
+export function renderCommandHelp(catalog: AtlasCommand[]): string {
+	const prompt = catalog.filter((c) => c.kind !== 'action' && c.source !== 'module');
+	const action = catalog.filter((c) => c.kind === 'action');
+	const module = catalog.filter((c) => c.source === 'module');
+	const line = (c: AtlasCommand) =>
+		`- \`/${c.name}${c.argumentHint ? ` ${c.argumentHint}` : ''}\` — ${c.description}`;
+	const sections = [
+		'**Prompt commands** (expand into an agent run)',
+		...prompt.map(line),
+		'',
+		'**Local commands** (act on this cockpit, never sent to the model)',
+		...action.map(line)
+	];
+	if (module.length > 0) {
+		sections.push('', '**Module commands**', ...module.map(line));
+	}
+	sections.push('', `Pages for \`/go\`: ${Object.keys(GO_PAGES).join(', ')}`);
+	return sections.join('\n');
+}
 
 export function findAtlasCommand(name: string): AtlasCommand | undefined {
 	return ATLAS_COMMANDS.find((c) => c.name === name);

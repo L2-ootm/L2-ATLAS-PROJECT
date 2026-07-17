@@ -21,6 +21,7 @@ export function QueuedChatComposer({
 	agent,
 	error,
 	onSubmit,
+	onAction,
 	onCancel,
 	onPromote,
 	onEdit,
@@ -33,6 +34,9 @@ export function QueuedChatComposer({
 	agent: AgentRuntime;
 	error: string | null;
 	onSubmit: (draft: string, executionDraft?: string) => boolean;
+	/** Local action commands (/help, /new, /agent …) — returns true when the
+	 * action was handled and the draft should clear. Absent = actions hidden. */
+	onAction?: (command: AtlasCommand, args: string) => boolean;
 	onCancel: () => void;
 	onPromote: (id: string) => void;
 	onEdit: (item: QueuedChatPrompt) => void;
@@ -50,9 +54,13 @@ export function QueuedChatComposer({
 			if (persistTimer.current !== null) window.clearTimeout(persistTimer.current);
 		};
 	}, []);
+	const visibleCatalog = useMemo(
+		() => (onAction ? catalog : catalog.filter((command) => command.kind !== 'action')),
+		[catalog, onAction]
+	);
 	const slashMatches = useMemo(
-		() => localDraft.startsWith('/') && !localDraft.includes('\n') ? matchAtlasCommands(catalog, localDraft, 6) : [],
-		[catalog, localDraft]
+		() => localDraft.startsWith('/') && !localDraft.includes('\n') ? matchAtlasCommands(visibleCatalog, localDraft, 6) : [],
+		[visibleCatalog, localDraft]
 	);
 	const slashHead = localDraft.split(/\s/, 1)[0];
 	useEffect(() => setSlashSelected(0), [slashHead]);
@@ -80,19 +88,25 @@ export function QueuedChatComposer({
 		changeDraft(`/${command.name}${rest ? ` ${rest}` : ' '}`);
 	}
 
+	function clearDraft() {
+		if (persistTimer.current !== null) {
+			window.clearTimeout(persistTimer.current);
+			persistTimer.current = null;
+		}
+		setLocalDraft('');
+		onDraftPersist('');
+	}
+
 	function submit() {
 		const trimmed = localDraft.trim();
 		const match = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(trimmed);
-		const command = match ? catalog.find((item) => item.name === match[1].toLowerCase()) : undefined;
-		const execution = command ? expandCommandTemplate(command.template, match?.[2] ?? '') : localDraft;
-		if (onSubmit(localDraft, execution)) {
-			if (persistTimer.current !== null) {
-				window.clearTimeout(persistTimer.current);
-				persistTimer.current = null;
-			}
-			setLocalDraft('');
-			onDraftPersist('');
+		const command = match ? visibleCatalog.find((item) => item.name === match[1].toLowerCase()) : undefined;
+		if (command?.kind === 'action' && onAction) {
+			if (onAction(command, match?.[2] ?? '')) clearDraft();
+			return;
 		}
+		const execution = command ? expandCommandTemplate(command.template, match?.[2] ?? '') : localDraft;
+		if (onSubmit(localDraft, execution)) clearDraft();
 	}
 	const placeholder = busy
 		? `Write the next request for ${agentRuntimeLabel(agent)}`
