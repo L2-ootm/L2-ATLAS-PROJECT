@@ -47,6 +47,19 @@ docs/private/
 CLAUDE-FABLE-5.md
 .mimoignore
 
+# Internal planning and session handoffs are not part of the public product
+.planning/
+HANDOFF.md
+l2_atlas_30_day_mass_adoption_wedge_plan.md
+
+# Local tool state and generated scratch
+**/.mimocode/
+.ops/
+*.backup
+
+# Internal Discord development material
+services/discord-bot/dev-utils/
+
 # Twenty CRM sidecar — fetched upstream files + local secrets (script-managed, never commit)
 infra/compose/twenty/
 
