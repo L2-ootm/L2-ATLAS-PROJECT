@@ -1,0 +1,113 @@
+# Publish @systemsl2/atlas + @systemsl2/atlas-win32-x64 to npmjs.
+#
+# Trigger: push a version tag (v0.1.1) or dispatch manually with a version.
+# The job rebuilds the self-contained Windows runtime from the tagged source,
+# runs the release script's Prepare gates (launcher tests, config/doctor
+# tests, dependency-closure check incl. the Claude Agent SDK import), then
+# publishes platform-first and verifies the public registry.
+#
+# Auth: NPM_TOKEN repository secret (granular npm token with publish access
+# to both packages). Migrating to npm Trusted Publishing (OIDC) later only
+# changes the auth step — the build/publish contract stays this file.
+name: Publish npm Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (e.g. 0.1.1); defaults to packages/atlas-cli/package.json"
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: build + publish windows runtime
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: https://registry.npmjs.org
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native/atlas-core-rs
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/atlas-tui/go.mod
+          cache-dependency-path: services/atlas-tui/go.sum
+
+      - name: Resolve release version
+        id: version
+        shell: pwsh
+        run: |
+          $version = "${{ inputs.version }}"
+          if (-not $version) {
+            if ("${{ github.ref_type }}" -eq "tag") {
+              $version = "${{ github.ref_name }}".TrimStart("v")
+            } else {
+              $version = (Get-Content packages/atlas-cli/package.json -Raw | ConvertFrom-Json).version
+            }
+          }
+          if ($version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
+            throw "invalid version: $version"
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Publishing version $version"
+
+      - name: Guard tag/source version agreement
+        shell: pwsh
+        run: |
+          $source = (Get-Content packages/atlas-cli/package.json -Raw | ConvertFrom-Json).version
+          $target = "${{ steps.version.outputs.version }}"
+          if ($source -ne $target) {
+            throw "source is versioned $source but the release asks for $target; commit the version bump first"
+          }
+
+      - name: Create test venv (release-script gate dependency)
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          .venv/Scripts/pip install --disable-pip-version-check -e packages/atlas-core -e "services/agent-runtime[dev]" -e services/wiki-runtime
+
+      - name: Install cockpit dependencies
+        working-directory: services/web-ui-react
+        run: npm ci
+
+      - name: Prepare release (build runtime + gates)
+        shell: pwsh
+        run: |
+          ./scripts/release/npm-release.ps1 -Version "${{ steps.version.outputs.version }}" -Mode Prepare
+
+      - name: Publish to npmjs (platform-first) and verify
+        shell: pwsh
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          ./scripts/release/npm-release.ps1 -Version "${{ steps.version.outputs.version }}" -Mode Publish
+
+      - name: Upload release tarballs
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-release-${{ steps.version.outputs.version }}
+          path: artifacts/npm-release-${{ steps.version.outputs.version }}/*.tgz
+          if-no-files-found: error
