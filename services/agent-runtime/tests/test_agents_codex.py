@@ -1,18 +1,19 @@
-"""CodexAgent unit tests — injected fake JSONL event stream (no CLI needed).
+"""CodexAgent unit tests — injected normalized event stream (no SDK needed).
 
 Mirrors the ClaudeCodeAgent test approach in test_agents.py: the runner is
 injected so no `codex` binary, login, or subprocess is involved. Event shapes
-follow the Codex CLI's experimental `codex exec --json` stream.
+follow the adapter's stable ATLAS normalization contract.
 """
 from __future__ import annotations
 
 import sqlite3
 import threading
 import uuid
+from types import SimpleNamespace
 
 import pytest
 
-from atlas_runtime.agents.codex import CodexAgent, _resolve_binary
+from atlas_runtime.agents.codex import CodexAgent, _resolve_binary, _sdk_notification_to_event
 from atlas_runtime.agents.registry import get_agent
 from atlas_runtime.audit_service import get_events_for_run
 
@@ -21,6 +22,49 @@ def _make_runner(events: list[dict]):
     def _run(prompt: str, cancel_token):  # noqa: ANN001
         yield from events
     return _run
+
+
+class _Dump:
+    def __init__(self, **data) -> None:  # noqa: ANN003
+        self.data = data
+
+    def model_dump(self, **_kwargs) -> dict:  # noqa: ANN003
+        return dict(self.data)
+
+
+def test_sdk_notifications_normalize_without_importing_sdk() -> None:
+    usage: dict = {}
+    item = SimpleNamespace(root=_Dump(type="agentMessage", id="m1", text="hello"))
+    notification = SimpleNamespace(
+        method="item/completed", payload=SimpleNamespace(item=item)
+    )
+    assert _sdk_notification_to_event(notification, usage) == {
+        "type": "item.completed",
+        "item": {
+            "type": "agentMessage",
+            "id": "m1",
+            "text": "hello",
+            "item_type": "agent_message",
+        },
+    }
+
+    token_event = SimpleNamespace(
+        method="thread/tokenUsage/updated",
+        payload=SimpleNamespace(
+            token_usage=SimpleNamespace(
+                last=_Dump(input_tokens=10, output_tokens=5, total_tokens=15)
+            )
+        ),
+    )
+    assert _sdk_notification_to_event(token_event, usage) is None
+    done = SimpleNamespace(
+        method="turn/completed",
+        payload=SimpleNamespace(turn=_Dump(status="completed", error=None)),
+    )
+    assert _sdk_notification_to_event(done, usage) == {
+        "type": "turn.completed",
+        "usage": {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15},
+    }
 
 
 def _mission_run(db: sqlite3.Connection) -> tuple[str, str]:

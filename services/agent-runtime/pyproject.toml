@@ -26,6 +26,10 @@ dev = ["pytest>=9.0", "pytest-cov>=7.0", "ruff>=0.15,<1"]
 # session. Optional so native-only installs stay lean; lazy-imported in
 # atlas_runtime.agents.claude_code.
 claude = ["claude-agent-sdk>=0.2"]
+# Official local Codex app-server SDK. Beta is intentionally isolated from the
+# default install because it bundles a pinned CLI runtime (~95 MB). The adapter
+# explicitly selects the operator's current Codex binary/login at runtime.
+codex = ["openai-codex>=0.1.0b3,<0.2"]
 
 [tool.hatch.metadata]
 allow-direct-references = true
