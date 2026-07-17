@@ -130,6 +130,16 @@ def on_session_start(*, session_id: str = "", run_id: str = "", **_: Any) -> Non
     the Hermes agent loop. In tests, state is injected directly into _CURRENT_RUN.
     """
     try:
+        # Hermes's generic hook invocation knows the session id but not ATLAS's
+        # run id. Never let that empty notification erase the explicit mapping
+        # installed by run_service/subagent_service before the harness starts.
+        if not session_id or not run_id:
+            logger.debug(
+                "atlas_audit: ignoring incomplete session_start session_id=%s run_id=%s",
+                session_id,
+                run_id,
+            )
+            return
         with _STATE_LOCK:
             _CURRENT_RUN[session_id] = run_id
         logger.debug(

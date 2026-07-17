@@ -20,6 +20,7 @@ harness returns failed/error and this maps to an honest failed run (not theater)
 """
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 import sqlite3
@@ -650,9 +651,17 @@ class NativeAtlasAgent(AgentRuntime):
 
         def _drive() -> None:
             try:
-                result_holder["result"] = agent.run_conversation(
-                    prompt, system_message=system_message
+                run_method = agent.run_conversation
+                parameters = inspect.signature(run_method).parameters.values()
+                supports_task_id = any(
+                    parameter.name == "task_id"
+                    or parameter.kind is inspect.Parameter.VAR_KEYWORD
+                    for parameter in parameters
                 )
+                kwargs: dict[str, Any] = {"system_message": system_message}
+                if supports_task_id:
+                    kwargs["task_id"] = run_id
+                result_holder["result"] = run_method(prompt, **kwargs)
             except BaseException as exc:  # noqa: BLE001 — surfaced below
                 error_holder["error"] = exc
 

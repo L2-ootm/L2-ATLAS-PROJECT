@@ -68,6 +68,19 @@ def test_post_tool_call_emits_audit_and_tool_call_rows(db, run_id):
     assert tc_count == 1, f"Expected 1 tool_calls row, got {tc_count}"
 
 
+def test_incomplete_session_start_does_not_erase_explicit_run_mapping(run_id):
+    atlas_audit.on_session_start(session_id="live-session", run_id=run_id)
+    atlas_audit.on_session_start(session_id="live-session")
+    assert atlas_audit.run_for_session("live-session") == run_id
+    with atlas_audit._STATE_LOCK:
+        atlas_audit._CURRENT_RUN.pop("live-session", None)
+
+
+def test_incomplete_session_start_does_not_create_empty_mapping():
+    atlas_audit.on_session_start(session_id="unknown-session")
+    assert atlas_audit.run_for_session("unknown-session") is None
+
+
 def test_post_api_request_emits_llm_call_row(db, run_id):
     """on_post_api_request produces one audit_events row with event_type='llm_call'."""
     on_post_api_request(

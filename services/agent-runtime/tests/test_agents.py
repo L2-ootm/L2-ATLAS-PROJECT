@@ -115,10 +115,14 @@ class _FakeHarness:
         self._result = result
         self.calls: list[str] = []
         self.system_messages: list[str | None] = []
+        self.task_ids: list[str | None] = []
 
-    def run_conversation(self, user_message: str, system_message=None):  # noqa: ANN001
+    def run_conversation(
+        self, user_message: str, system_message=None, task_id=None  # noqa: ANN001
+    ):
         self.calls.append(user_message)
         self.system_messages.append(system_message)
+        self.task_ids.append(task_id)
         return self._result
 
 
@@ -192,6 +196,7 @@ def test_native_passes_goal_context_to_harness_system_message(
 
     assert outcome.status == "succeeded"
     assert harness.calls == ["advance the focus"]
+    assert harness.task_ids == [rid]
     assert len(harness.system_messages) == 1
     system_message = harness.system_messages[0] or ""
     assert "# ATLAS Run Contract" in system_message
@@ -258,7 +263,9 @@ def test_native_streams_deltas_into_llm_delta_events(
         captured["callback"] = stream_delta_callback
 
         class _StreamingHarness:
-            def run_conversation(self, user_message, system_message=None):  # noqa: ANN001
+            def run_conversation(
+                self, user_message, system_message=None, task_id=None  # noqa: ANN001
+            ):
                 stream_delta_callback("Hello")
                 stream_delta_callback(", world")
                 stream_delta_callback(None)
@@ -303,7 +310,9 @@ def test_native_flushes_delta_buffer_when_foundation_never_signals_end_of_turn(
 
     def fake_default_factory(session_id, max_iterations, *, stream_delta_callback=None, **kw):
         class _NoNoneHarness:
-            def run_conversation(self, user_message, system_message=None):  # noqa: ANN001
+            def run_conversation(
+                self, user_message, system_message=None, task_id=None  # noqa: ANN001
+            ):
                 stream_delta_callback("Hey")
                 stream_delta_callback(" there")
                 # deliberately NOT calling stream_delta_callback(None) — mirrors

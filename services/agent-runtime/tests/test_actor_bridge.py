@@ -134,6 +134,40 @@ def test_tool_without_bound_connection_degrades() -> None:
     assert out["ok"] is False and "unavailable" in out["error"]
 
 
+def test_hermes_registry_dispatch_uses_task_id_context(bound, monkeypatch) -> None:
+    """Regression: exercise the real plugin ABI that direct tests once skipped."""
+    _agent, _run_id = bound
+    launched = _launched(monkeypatch)
+    from atlas_runtime.subagent_service import _foundation_on_path
+
+    assert _foundation_on_path()
+    from tools.registry import registry
+
+    registry.register(
+        name="atlas_actor",
+        toolset="atlas",
+        schema=actor_bridge.TOOL_SCHEMA,
+        handler=actor_bridge.atlas_actor_tool,
+    )
+    out = json.loads(
+        registry.dispatch(
+            "atlas_actor",
+            {"op": "spawn", "goal": "registry boundary"},
+            task_id="sess-1",
+            user_task="ignored framework context",
+        )
+    )
+    assert out["ok"] is True
+    assert out["status"] == "queued"
+    assert launched == [out["actor_id"]]
+
+
+def test_tool_schema_uses_hermes_plugin_shape() -> None:
+    assert actor_bridge.TOOL_SCHEMA["name"] == "atlas_actor"
+    assert actor_bridge.TOOL_SCHEMA["parameters"]["required"] == ["op"]
+    assert "function" not in actor_bridge.TOOL_SCHEMA
+
+
 def test_inbox_pre_claims_and_post_acknowledges(bound) -> None:
     agent, run_id = bound
     conn = atlas_audit.get_connection()
