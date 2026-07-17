@@ -39,9 +39,26 @@ logger = logging.getLogger(__name__)
 MODULE_FILE = "module.yaml"
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 
-# Built-in slash command names (both UI catalogs); module commands never shadow them.
+# Built-in slash command names (both UI catalogs); module commands never shadow
+# them. Includes the WebUI-local action commands (help/new/clear/agent/bind/
+# unbind/go) so a module cannot mask a cockpit control on any surface.
 RESERVED_COMMANDS = frozenset(
-    {"init", "review", "dream", "distill", "goal", "mission", "deep-research"}
+    {
+        "init",
+        "review",
+        "dream",
+        "distill",
+        "goal",
+        "mission",
+        "deep-research",
+        "help",
+        "new",
+        "clear",
+        "agent",
+        "bind",
+        "unbind",
+        "go",
+    }
 )
 
 PAGE_BLOCK_KINDS = ("heading", "markdown", "metrics", "actions")

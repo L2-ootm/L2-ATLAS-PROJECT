@@ -173,6 +173,11 @@ sidebar. Deeper integrations use **Tool Manifest v0**: a YAML manifest + a
 Python adapter, gated through one policy chokepoint, read-only by default,
 writes approval-gated ([`docs/tools.md`](docs/tools.md)).
 
+ATLAS ships one first-party module: **GSD/L2** (*Goal · Slice · Deliver*),
+the L2 Systems execution doctrine as `/gsd-*` commands — plan, execute,
+verify, debug, and ship work with evidence-tiered claims. Doctrine files:
+[`skills/atlas/gsd/`](skills/atlas/gsd/README.md).
+
 ## Honesty first
 
 ATLAS is an **open research preview**. It is not (yet): production-ready,
