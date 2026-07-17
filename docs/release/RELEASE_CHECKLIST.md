@@ -27,9 +27,12 @@ and were deliberately NOT performed autonomously. Work top to bottom.
       generator exists; a production bundle does not.
 - [ ] Publish a private prerelease of `@l2/atlas`, then run install/update/rollback UAT
       on a clean Windows VM before any public npm publish.
-- [~] Secret scan — **sanity pass clean** (2026-06-23): tracked hits are credential-*handling*
-      code + env-var *name* constants only, no secret values. A deep gitleaks/trufflehog run
-      over full history remains the operator's formal step before public.
+- [x] Full-history secret scan and cleanup (2026-07-17): rewritten publishable history
+      contains only `main`; local planning/scratch and private module history are excluded;
+      personal absolute-path variants are absent; the reviewed Gitleaks policy reports
+      0 findings across 483 commits. A recovery bundle remains private outside the repo.
+- [ ] Confirm npm authentication and ownership of both `@l2/atlas` and the matching
+      `@l2/atlas-win32-x64` platform package. This machine is not currently logged in.
 - [x] `atlas doctor` — db/config/gateway ok, provider mock (2026-06-23). (Run again on a truly
       fresh clone before public; cockpit shows "down" only when its port differs from the probe.)
 - [x] Full test suite green (2026-06-23): agent-runtime 369 pass / 1 skip / 1 known

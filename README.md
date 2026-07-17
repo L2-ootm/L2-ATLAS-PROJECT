@@ -105,8 +105,9 @@ remains available to `atlas rollback`.
 ## Trust and project status
 
 ATLAS is intentionally honest about unfinished work. Public release remains blocked on
-the production platform bundle, clean-machine install/update/rollback UAT, full-history
-secret scanning, repository cleanup, and operator approval. Release gates are tracked
+the production platform bundle, npm ownership/authentication, clean-machine
+install/update/rollback UAT, and operator approval. Repository cleanup and the
+configured full-history secret scan are complete. Release gates are tracked
 in [`docs/release/RELEASE_CHECKLIST.md`](docs/release/RELEASE_CHECKLIST.md); internal
 planning/session state is deliberately excluded from the public repository.
 
