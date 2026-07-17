@@ -1,5 +1,101 @@
 # Handoff — L2 ATLAS Finish Sprint
 
+## Session update — 2026-07-16 (later): backlog committed, durable actor supervisor, Codex runtime + agent dropdown, module framework slice 1, irm installer
+
+Operator asked to verify continuation state, strengthen the subagent
+framework, build the modularity/self-extension vision (deactivatable modules,
+user-created modules with WebUI pages + auto-propagating slash commands, ATLAS
+skill pack, plugin direction), wire Codex like Claude Code with a runtime
+dropdown, and stand up the irm/npm install framework.
+
+**0. Continuation verified + backlog committed.** The prior sessions' 66-file
+working tree was verified (all suites) and committed as 5 logical commits
+(gateway/migrations, agent-runtime, atlas-terminal, web-ui, docs). Full-suite
+run caught 5 stale prompt-golden hashes the prior session's focused tests
+missed — regenerated (a scratch regen script exists; consider promoting to
+`scripts/`).
+
+**1. Durable actor supervisor (subagent framework strengthening).** The
+infrastructure slice of `docs/plans/2026-07-16-subagent-orchestration-design.md`:
+- Migration 0022: `actors` (queued→running→completed|failed|cancelled|orphaned,
+  UNIQUE idempotency key, heartbeat, bounded result/error, terminal-immutable
+  trigger) + `actor_deliveries` inbox with claim lease.
+- `actor_service.py`: DB-pure monotonic CAS state machine; recursive idempotent
+  cancel; wait with race-close; claim/acknowledge lease (crash between claim
+  and ack retries); orphan sweep reports orphaned, never success. Lifecycle
+  projects as `subagent_run` events in the native payload shape, so the
+  existing WebUI orchestration rail renders durable actors with no UI change.
+- `actor_worker.py`: hidden detached worker (actor id only on argv; goal read
+  from SQLite), 5s heartbeats, child work runs as a normal mission+run.
+- `actor_bridge.py`: D-001-safe PluginContext registration of the
+  `atlas_actor` Hermes tool (run/spawn/status/wait/cancel) + `pre_llm_call`
+  inbox claim-inject + `post_llm_call` acknowledge. atlas_audit gained
+  public `get_connection`/`get_lock`/`run_for_session`. Registered per-run in
+  native.py; orphan sweeps wired into runtime daemon startup and
+  `atlas runtime reconcile`. Core policy documents the actor contract.
+- NOT yet built (per design doc, deliberate): gateway actor list endpoint,
+  UI actor detail view beyond the existing rail, model override resolution in
+  the worker (child runs always execute runtime `native` with inherited
+  provider selection).
+
+**2. Codex runtime + agent dropdown.** `agents/codex.py` drives the local
+OpenAI Codex CLI headlessly (`codex exec --json --skip-git-repo-check`),
+mapping its JSONL item/turn events onto the audit bus with full parity
+(agent_message→llm_call, command/mcp/file/web items→tool_call/completed/
+failed, usage receipt, failure). Injectable runner for tests;
+`ATLAS_CODEX_BIN` override; cooperative cancel terminates the child. Runtime
+key `codex` accepted everywhere (registry, VALID_AGENTS, schema Literals,
+gateway validation via a shared `VALID_AGENTS` const). WebUI: the two-button
+toggle is now the `AgentPicker` dropdown (Chat), Console gained `+ Codex`
+launcher/window titles/palette entry, Command page includes it, native label
+now reads ATLAS. Terminal `/agent` lists codex. NOTE: the Codex JSONL event
+shape is duck-typed/tolerant but was written against the documented
+experimental stream — first live run should confirm mapping.
+
+**3. Module framework slice 1** (`docs/plans/2026-07-16-module-framework-design.md`).
+One registry (0007 modules table + 0023 manifest columns) for seeded
+built-ins and manifest modules. `module.yaml` discovery from `<repo>/modules`
++ `<ATLAS home>/modules`; sync preserves activation, flags vanished sources
+missing; v1 capabilities are DECLARATIVE ONLY: slash commands (gateway
+`/v1/commands` → merged by WebUI palette and terminal, built-in names never
+shadowed) and schema-driven pages (`/m/:moduleId` ModuleHost renders
+heading/markdown/metrics/actions blocks; actions deep-link `/chat?draft=`).
+`atlas module sync|create` (create = scaffold+sync+activate — the self-wiring
+entry point the agent uses via terminal). Sidebar MODULES section routes
+manifest modules to the host. `skills/atlas/` pack seeded (module-builder,
+loop-discipline, handoff) and referenced from the core policy Self-extension
+section. Bundled `modules/example-hello` proves the path and is test-locked.
+Later slices documented in the design doc: module tools, sidecars, live
+metrics bindings, signed packages/store, module-provided agent runtimes.
+
+**4. Install framework.** `install/install.ps1` (irm|iex): prereq checks with
+winget offers, source mode default (clone + scripts/install-atlas-cli.ps1),
+release mode (`npm i -g @l2/atlas` + `atlas install --manifest`) ready for
+when bundles publish. `docs/operations/INSTALL.md` documents all paths +
+deferred desktop/exe + release-bundle CI. Parse-checked only — not executed
+end-to-end on a clean machine.
+
+**Verification:** agent-runtime 905 passed / 2 skipped; gateway cargo 117;
+atlas-terminal 66 + tsc; WebUI 121 + tsc. All committed (9 commits this
+session). `main` is many commits ahead of origin, unpushed.
+
+**UAT owed / next session:**
+1. `atlas db init` (migrations 0022/0023), stop the running gateway and
+   rebuild `target/release/atlas-gateway.exe` (it locks while running and
+   predates /v1/commands, module fields, codex validation), then `atlas
+   restart`.
+2. Live actor UAT: ask ATLAS to `spawn` a detached actor, watch the
+   constellation rail, confirm the completion notice arrives on a later turn
+   exactly once, test cancel + orphan sweep after killing a worker.
+3. Codex UAT: `npm i -g @openai/codex` + `codex login`, pick CODEX in the
+   Chat dropdown, confirm event mapping (tool cards, usage receipt).
+4. Module UAT: `atlas module sync` + activate `example-hello`, check /hello
+   in palette + TUI, the sidebar MODULES entry, and `/m/example-hello`;
+   then have ATLAS build a real module with `atlas module create`.
+5. Installer: run install.ps1 on a clean VM/sandbox (WSB) before publishing.
+6. Deferred: gateway actor list endpoint, module tools/sidecar slices,
+   POSIX install.sh, release-bundle CI.
+
 ## Session update — 2026-07-16: truncation authority fixed, session-first Runs, compact audit logs, systems/retention integrity
 
 The exact run shown stopping at `**2. Continuous Knowledge G` contained a complete
