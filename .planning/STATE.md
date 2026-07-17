@@ -1875,6 +1875,44 @@ Full codebase analysis of the Graphify knowledge graph system completed. Documen
 - Verification for the expanded vision brief: Next.js production build passed with 24 generated routes; the route smoke command was documented accurately as requiring a running server after returning 15 connection failures without one.
 - QA: both Cashflow PDFs were rendered page by page and visually inspected; the packet now has 28 pages including the X outreach sidequest, with zero missing-glyph markers or replacement characters in the Cashflow text extraction.
 
+## Chat live-telemetry follow-up — 2026-07-16
+
+- UAT proved streamed narration was being truncated between tool calls. The
+  durable audit rows contain complete deltas; metadata-only `llm_call` rows
+  were incorrectly projected as empty authoritative text reconciles in the
+  WebUI. Proof and repair contract are recorded in
+  `.planning/ultra/ULTRAREVIEW_chat-stream-interleaving.md`.
+- UAT also proved the busy-turn requestAnimationFrame follow loop can overwrite
+  upward scroll before the viewport becomes unpinned. Auto-follow will move to
+  content-change + explicit user-intent semantics.
+- Visual follow-up contract is frozen in
+  `.planning/ultra/ULTRADESIGN_chat-live-telemetry.md`: larger actor inspection
+  slab, event-keyed actor pulses, dedicated orchestration cards, and an enlarged
+  Model Mesh instrument while preserving the left file-tree reserve.
+- Command Center/Missions semantics are queued in
+  `.planning/ultra/TODO_command-center-mission-semantics.md`: ordinary chat
+  prompts must stop creating missions; deliberate missions need parallel,
+  future, and dependency-ordered goal lanes.
+- Graphify runtime access is queued in
+  `.planning/ultra/TODO_graphify-agent-query-plane.md`: an audited internal
+  graph-query tool must expose Global, Projects, Obsidian Vault, and Agent
+  Context dynamically, with privacy boundaries and a backend-neutral contract.
+- Implemented the live-telemetry repair: provider metadata no longer truncates
+  inter-tool narration, meaningless runtime-event rows are hidden, manual
+  upward/touch/thumb scrolling immediately pauses follow, and only LATEST
+  resumes it.
+- Strengthened actor lifecycle UI against delayed wiring: dispatches appear as
+  provisional allocation nodes before their first heartbeat, timeout completes
+  as failed, and matching terminal actor states settle orchestration cards even
+  before a delayed join receipt. `atlas_actor` and `delegate_task` now share a
+  dedicated control-plane card instead of generic tool chrome.
+- Rendered the expanded 460 px actor workspace, event-keyed signal field,
+  980 px actor detail slab, narrow actor drawer, and enlarged Model Mesh at
+  1920×1080 and 900×1000 through Playwright with mocked surface events only;
+  no real mission/provider run was created for QA.
+- Verification: WebUI TypeScript, ESLint, production build, bundle budgets, and
+  all 134 Vitest checks pass. `git diff --check` is clean.
+
 
 ## Architectural Mandate — 2026-07-03 (Immediate Correction)
 
