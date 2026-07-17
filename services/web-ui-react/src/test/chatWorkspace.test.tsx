@@ -138,7 +138,10 @@ describe('queued chat composer', () => {
 		);
 		const composer = screen.getByPlaceholderText('Message ATLAS');
 		fireEvent.change(composer, { target: { value: '/rev' } });
+		const suggestions = screen.getByRole('listbox', { name: 'Slash command suggestions' });
 		expect(screen.getByRole('option', { name: /\/review/ })).toBeInTheDocument();
+		expect(suggestions.parentElement).toHaveClass('chat-composer-region');
+		expect(suggestions.nextElementSibling).toHaveClass('chat-composer-shell');
 		fireEvent.keyDown(composer, { key: 'Enter' });
 		expect(composer).toHaveValue('/review ');
 		expect(submit).not.toHaveBeenCalled();

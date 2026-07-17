@@ -1690,7 +1690,7 @@ body,
 .chat-actor-stream__step span:not(.chat-actor-stream__signal) { overflow-wrap: anywhere; color: var(--l2-fg-3); font-size: 10.5px; line-height: 1.45; }
 .chat-actor-stream__step time { color: var(--l2-fg-4); font-family: var(--l2-font-mono); font-size: 7.5px; }
 
-.chat-composer-region { width: min(900px, calc(100% - 32px)); margin: 0 auto; padding: 8px 0 14px; }
+.chat-composer-region { position: relative; z-index: 5; width: min(900px, calc(100% - 32px)); margin: 0 auto; padding: 8px 0 14px; }
 .chat-prompt-queue { display: grid; gap: 2px; margin: 0 12px -2px; position: relative; z-index: 0; }
 .chat-prompt-queue__item { min-height: 36px; display: grid; grid-template-columns: 22px minmax(0,1fr) auto; align-items: center; gap: 7px; padding: 5px 9px; border: 1px solid rgba(237,234,224,.08); border-radius: 3px 3px 0 0; background: rgba(22,25,31,.96); box-shadow: 0 -8px 24px rgba(0,0,0,.12); }
 .chat-prompt-queue__index { color: var(--atlas-celestial); font-family: var(--l2-font-mono); font-size: 8px; }
@@ -1726,13 +1726,22 @@ body,
 .chat-composer-submit:disabled { opacity: .28; cursor: default; }
 .chat-composer-cancel { border: 1px solid rgba(255,77,125,.26); background: rgba(255,77,125,.08); color: var(--l2-error); }
 .chat-composer-error { padding: 6px 4px 0; color: var(--l2-error); font-size: 9px; }
-.chat-slash-suggestions { position: absolute; z-index: 4; left: 10px; right: 10px; bottom: 44px; max-height: 238px; overflow: auto; border: 1px solid rgba(79,139,255,.22); background: rgba(8,10,15,.985); box-shadow: 0 -18px 46px rgba(0,0,0,.42); }
+.chat-slash-suggestions { position: absolute; z-index: 8; left: 10px; right: 10px; bottom: calc(100% - 8px); max-height: min(290px, 42vh); overflow: auto; border: 1px solid rgba(79,139,255,.25); border-bottom-color: rgba(70,240,160,.25); background: linear-gradient(180deg, rgba(8,10,15,.985), rgba(11,14,20,.995)); box-shadow: 0 -22px 54px rgba(0,0,0,.48), 0 0 24px rgba(79,139,255,.055); transform-origin: bottom center; animation: chat-slash-rise 120ms var(--l2-ease) both; }
+.chat-slash-suggestions__rail { position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between; gap: 12px; padding: 7px 10px; border-bottom: 1px solid rgba(237,234,224,.075); background: rgba(7,9,14,.97); color: var(--l2-fg-4); font: 7.5px/1 var(--l2-font-mono); letter-spacing: .16em; }
 .chat-slash-suggestions button { width: 100%; display: grid; grid-template-columns: minmax(110px, auto) 1fr auto; align-items: baseline; gap: 12px; padding: 9px 11px; border: 0; border-bottom: 1px solid rgba(237,234,224,.065); background: transparent; color: var(--l2-fg-2); text-align: left; cursor: pointer; }
 .chat-slash-suggestions button:last-child { border-bottom: 0; }
 .chat-slash-suggestions button.is-active { background: linear-gradient(90deg, rgba(79,139,255,.12), rgba(70,240,160,.035)); box-shadow: inset 2px 0 var(--atlas-celestial); }
 .chat-slash-suggestions strong { color: var(--atlas-celestial); font: 600 11px/1.3 var(--l2-font-mono); }
 .chat-slash-suggestions span { overflow: hidden; color: var(--l2-fg-3); font: 10px/1.3 var(--l2-font-mono); text-overflow: ellipsis; white-space: nowrap; }
 .chat-slash-suggestions em, .atlas-command-source { color: var(--l2-fg-4); font: normal 8px/1 var(--l2-font-mono); letter-spacing: .14em; }
+@keyframes chat-slash-rise { from { opacity: 0; transform: translateY(6px) scaleY(.97); } to { opacity: 1; transform: translateY(0) scaleY(1); } }
+
+.atlas-route-error { min-height: 100vh; display: grid; place-content: center; justify-items: start; gap: 12px; padding: 40px; background: radial-gradient(circle at 50% 46%, rgba(255,77,125,.055), transparent 34%), var(--l2-bg); color: var(--l2-fg-1); }
+.atlas-route-error__signal { width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid rgba(255,77,125,.3); color: var(--l2-error); box-shadow: inset 0 0 24px rgba(255,77,125,.07), 0 0 24px rgba(255,77,125,.06); }
+.atlas-route-error__eyebrow { color: var(--atlas-bronze); font: 8.5px/1 var(--l2-font-mono); letter-spacing: .24em; }
+.atlas-route-error h1 { margin: 0; font: 500 32px/1.05 var(--l2-font-display); }
+.atlas-route-error p { max-width: 620px; margin: 0; color: var(--l2-fg-3); font: 11px/1.6 var(--l2-font-mono); overflow-wrap: anywhere; }
+.atlas-route-error button { display: inline-flex; align-items: center; gap: 8px; margin-top: 6px; padding: 9px 12px; border: 1px solid rgba(79,139,255,.3); background: rgba(79,139,255,.08); color: var(--atlas-celestial); font: 9px/1 var(--l2-font-mono); letter-spacing: .12em; text-transform: uppercase; cursor: pointer; }
 
 /* Model mesh overlay — primary + actor/function routing on the existing config plane. */
 .chat-model-router-trigger {
@@ -1847,5 +1856,6 @@ body,
 }
 @media (prefers-reduced-motion: reduce) {
 	.chat-composer-typing-scan { display: none; }
+	.chat-slash-suggestions { animation: none; }
 	.chat-actor-row, .chat-actor-workspace, .chat-composer-shell, .chat-actor-detail, .chat-model-router, .chat-actor-signal-node > span::before, .chat-actor-signal-node > span::after, .chat-actor-row__signal i, .chat-actor-detail__signal-core::before, .chat-actor-detail__signal-core::after, .chat-orchestration-card::before { transition: none; animation: none; }
 }

@@ -127,6 +127,28 @@ export function QueuedChatComposer({
 					))}
 				</div>
 			)}
+			{slashMatches.length > 0 && (
+				<div className="chat-slash-suggestions" role="listbox" aria-label="Slash command suggestions">
+					<div className="chat-slash-suggestions__rail" aria-hidden>
+						<span>COMMAND INDEX</span><span>↑↓ SELECT · TAB COMPLETE</span>
+					</div>
+					{slashMatches.map((command, index) => (
+						<button
+							key={command.name}
+							type="button"
+							role="option"
+							aria-selected={index === slashSelected}
+							className={index === slashSelected ? 'is-active' : undefined}
+							onMouseDown={(event) => event.preventDefault()}
+							onClick={() => completeSlash(command)}
+						>
+							<strong>/{command.name}</strong>
+							<span>{command.argumentHint ?? command.description}</span>
+							<em>{command.source === 'module' ? command.module : 'CORE'}</em>
+						</button>
+					))}
+				</div>
+			)}
 			<div className="chat-composer-shell" data-busy={busy ? 'true' : 'false'}>
 				<span ref={scanRef} className="chat-composer-typing-scan" aria-hidden="true" />
 				<textarea
@@ -162,25 +184,6 @@ export function QueuedChatComposer({
 					placeholder={placeholder}
 					rows={3}
 				/>
-				{slashMatches.length > 0 && (
-					<div className="chat-slash-suggestions" role="listbox" aria-label="Slash command suggestions">
-						{slashMatches.map((command, index) => (
-							<button
-								key={command.name}
-								type="button"
-								role="option"
-								aria-selected={index === slashSelected}
-								className={index === slashSelected ? 'is-active' : undefined}
-								onMouseDown={(event) => event.preventDefault()}
-								onClick={() => completeSlash(command)}
-							>
-								<strong>/{command.name}</strong>
-								<span>{command.argumentHint ?? command.description}</span>
-								<em>{command.source === 'module' ? command.module : 'CORE'}</em>
-							</button>
-						))}
-					</div>
-				)}
 				<div className="chat-composer-toolbar">
 					<div className="chat-composer-toolbar__state">
 						<ListPlus size={14} />
