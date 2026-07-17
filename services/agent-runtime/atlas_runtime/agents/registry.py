@@ -3,11 +3,13 @@ from __future__ import annotations
 
 from atlas_runtime.agents.base import AgentRuntime
 from atlas_runtime.agents.claude_code import ClaudeCodeAgent
+from atlas_runtime.agents.codex import CodexAgent
 from atlas_runtime.agents.native import NativeAtlasAgent
 
 _REGISTRY: dict[str, type[AgentRuntime]] = {
     NativeAtlasAgent.name: NativeAtlasAgent,
     ClaudeCodeAgent.name: ClaudeCodeAgent,
+    CodexAgent.name: CodexAgent,
 }
 
 

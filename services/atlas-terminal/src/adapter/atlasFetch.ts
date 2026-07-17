@@ -357,7 +357,8 @@ export function createAtlasFetchHandle(opts: AtlasFetchOptions): AtlasFetchHandl
 			if (method === 'GET' && path === '/agent') {
 				return json([
 					{ name: 'native', description: 'ATLAS native runtime', mode: 'primary', builtIn: true },
-					{ name: 'claude_code', description: 'Claude Code runtime', mode: 'primary', builtIn: true }
+					{ name: 'claude_code', description: 'Claude Code runtime', mode: 'primary', builtIn: true },
+					{ name: 'codex', description: 'OpenAI Codex CLI runtime', mode: 'primary', builtIn: true }
 				]);
 			}
 			if (method === 'GET' && path === '/provider') return handleProviderList(gw, f);
