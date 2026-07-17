@@ -119,3 +119,33 @@ def test_build_goal_tree_nests_children_tasks_observations(db, lock):
     child = node["children"][0]
     assert child["id"] == sub.id
     assert [t["title"] for t in child["tasks"]] == ["t-sub"]
+
+
+def test_paused_status_roundtrip(db, lock):
+    g = gs.create_goal(db, lock, title="pausable", focus_id="f1")
+    gs.update_goal(db, lock, g.id, status="paused")
+    assert gs.get_goal(db, g.id).status == "paused"
+    # Paused goals stay visible in the default (non-archived) list.
+    assert g.id in {x.id for x in gs.list_goals(db, focus_id="f1")}
+    gs.update_goal(db, lock, g.id, status="active")
+    assert gs.get_goal(db, g.id).status == "active"
+
+
+def test_delete_goal_cascades_and_detaches_observations(db, lock):
+    root = gs.create_goal(db, lock, title="root", focus_id="f1")
+    sub = gs.create_goal(db, lock, title="sub", focus_id="f1", parent_goal_id=root.id)
+    task = gs.create_task(db, lock, goal_id=sub.id, title="t")
+    obs = gs.add_observation(db, lock, body="learned", goal_id=sub.id)
+
+    deleted = gs.delete_goal(db, lock, root.id)
+    assert deleted == 2
+    assert gs.get_goal(db, root.id) is None
+    assert gs.get_goal(db, sub.id) is None
+    assert db.execute("SELECT COUNT(*) FROM tasks WHERE id=?", (task.id,)).fetchone()[0] == 0
+    row = db.execute("SELECT goal_id FROM observations WHERE id=?", (obs.id,)).fetchone()
+    assert row is not None and row[0] is None
+
+
+def test_delete_goal_unknown_raises(db, lock):
+    with pytest.raises(gs.GoalError):
+        gs.delete_goal(db, lock, "no-such-goal")

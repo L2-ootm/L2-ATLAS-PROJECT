@@ -416,13 +416,18 @@ def create(
     project: str = typer.Option(
         None, "--project", help="Project ID — mission runs in that project's folder"
     ),
+    origin: str = typer.Option(
+        "operator",
+        "--origin",
+        help="Mission authorship: operator (deliberate) | chat (prompt wrapper) | system",
+    ),
 ) -> None:
     """Create a Mission and print its ID."""
     conn = _get_connection()
     lock = _get_lock()
     try:
         mission = mission_service.create_mission(
-            conn, lock, title=title, intent=intent, project_id=project
+            conn, lock, title=title, intent=intent, project_id=project, origin=origin
         )
     except ValueError as exc:
         typer.echo(f"Error: {exc}", err=True)
@@ -892,6 +897,19 @@ def focus_list(
     typer.echo(json.dumps([f.model_dump() for f in items]))
 
 
+@focus_app.command("activate")
+def focus_activate(focus_id: str = typer.Argument(..., help="Focus ID to make current")) -> None:
+    """Make an existing Focus the Current Focus (archives any other active one)."""
+    conn = _get_connection()
+    lock = _get_lock()
+    try:
+        focus = focus_service.activate_focus(conn, lock, focus_id)
+    except focus_service.FocusError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(json.dumps(focus.model_dump()))
+
+
 @focus_app.command("archive")
 def focus_archive(focus_id: str = typer.Argument(..., help="Focus ID to archive")) -> None:
     """Archive a Focus (clears it as Current)."""
@@ -958,7 +976,7 @@ def goal_update(
     goal_id: str = typer.Argument(..., help="Goal id"),
     title: str = typer.Option("", "--title", help="New title"),
     description: str = typer.Option("", "--description", help="New description"),
-    status: str = typer.Option("", "--status", help="open|active|done|archived"),
+    status: str = typer.Option("", "--status", help="open|active|paused|done|archived"),
 ) -> None:
     """Patch a goal's fields (only provided ones change); prints 'updated'."""
     conn = _get_connection()
@@ -985,6 +1003,21 @@ def goal_archive(goal_id: str = typer.Argument(..., help="Goal id to archive (ca
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1)
     typer.echo("archived")
+
+
+@goal_app.command("delete")
+def goal_delete(
+    goal_id: str = typer.Argument(..., help="Goal id to hard-delete (cascades to sub-goals/tasks)")
+) -> None:
+    """Delete a goal subtree permanently; observations are detached, not deleted."""
+    conn = _get_connection()
+    lock = _get_lock()
+    try:
+        count = goal_service.delete_goal(conn, lock, goal_id)
+    except goal_service.GoalError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"deleted {count}")
 
 
 @task_app.command("add")
@@ -1098,7 +1131,12 @@ def operation_prepare(
         raise typer.Exit(1)
     project_id = focus.project_id if focus is not None else None
     mission = mission_service.create_mission(
-        conn, lock, title=f"{op.label}: {goal.title}"[:120], intent=intent, project_id=project_id
+        conn,
+        lock,
+        title=f"{op.label}: {goal.title}"[:120],
+        intent=intent,
+        project_id=project_id,
+        origin="system",
     )
     run = run_service.start_run(
         conn, lock, mission_id=mission.id, agent_runtime=(agent or op.agent)  # type: ignore[arg-type]

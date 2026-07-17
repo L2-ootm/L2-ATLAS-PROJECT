@@ -173,6 +173,35 @@ def update_focus(
     return updated
 
 
+def activate_focus(conn: sqlite3.Connection, lock: threading.Lock, focus_id: str) -> Focus:
+    """Make an existing Focus the Current Focus.
+
+    Archives any other active Focus first (single-active invariant), then flips
+    the target to active. Idempotent: activating the already-current Focus only
+    bumps updated_at. Raises FocusError if the id is unknown.
+    """
+    with lock:
+        with conn:
+            exists = conn.execute(
+                "SELECT 1 FROM focus WHERE id=?", (focus_id,)
+            ).fetchone()
+            if exists is None:
+                raise FocusError(f"focus {focus_id!r} not found")
+            now = _now()
+            conn.execute(
+                "UPDATE focus SET status='archived', updated_at=? "
+                "WHERE status='active' AND id<>?",
+                (now, focus_id),
+            )
+            conn.execute(
+                "UPDATE focus SET status='active', updated_at=? WHERE id=?",
+                (now, focus_id),
+            )
+    focus = get_focus(conn, focus_id)
+    assert focus is not None
+    return focus
+
+
 def archive_focus(conn: sqlite3.Connection, lock: threading.Lock, focus_id: str) -> None:
     """Archive a Focus (status -> archived). Raises FocusError if unknown."""
     with lock:

@@ -7,13 +7,27 @@ import TopoInput from '../components/TopoInput';
 import ProjectSelector from '../components/ProjectSelector';
 import BorderGlow from '../components/BorderGlow';
 import { GlassPanel } from '../components/GlassFx';
-import { listMissions, createMission, listProjects, type Mission, type Project } from '../lib/api';
+import {
+	listMissions,
+	createMission,
+	listProjects,
+	type Mission,
+	type MissionOrigin,
+	type Project
+} from '../lib/api';
 import { useGatewayHealth } from '../lib/useGatewayHealth';
 import sealMark from '../brand/assets/seal.webp';
 
 type Load = { s: 'loading' } | { s: 'ready'; missions: Mission[]; count: number } | { s: 'error' };
 
 const STATUSES = ['ALL', 'PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED', 'ARCHIVED'];
+// View selector over missions.origin (0024): deliberate missions by default,
+// per-prompt chat wrappers on demand, or everything (incl. system internals).
+const VIEWS: { key: 'missions' | 'prompts' | 'all'; label: string; origin?: MissionOrigin }[] = [
+	{ key: 'missions', label: 'MISSIONS', origin: 'operator' },
+	{ key: 'prompts', label: 'PROMPTS', origin: 'chat' },
+	{ key: 'all', label: 'EVERYTHING' }
+];
 // useGatewayHealth's `epoch` only bumps on a reconnect transition, so a
 // mission/session created elsewhere (another surface, the TUI, Discord)
 // while the gateway stays up never triggered a refetch — the list looked
@@ -35,13 +49,14 @@ export default function Missions() {
 	const [load, setLoad] = useState<Load>({ s: 'loading' });
 	const [query, setQuery] = useState('');
 	const [status, setStatus] = useState('ALL');
+	const [view, setView] = useState<(typeof VIEWS)[number]>(VIEWS[0]);
 	const [creating, setCreating] = useState(false);
 	const nav = useNavigate();
 	const { epoch } = useGatewayHealth();
 
-	async function refresh() {
+	async function refresh(origin = view.origin) {
 		try {
-			const { missions, count } = await listMissions(50);
+			const { missions, count } = await listMissions(50, origin);
 			setLoad({ s: 'ready', missions, count });
 		} catch {
 			setLoad({ s: 'error' });
@@ -49,11 +64,13 @@ export default function Missions() {
 	}
 	useEffect(() => {
 		void refresh();
-	}, [epoch]);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [epoch, view]);
 	useEffect(() => {
 		const id = setInterval(() => void refresh(), MISSIONS_POLL_MS);
 		return () => clearInterval(id);
-	}, []);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [view]);
 
 	const filtered = useMemo(() => {
 		if (load.s !== 'ready') return [];
@@ -84,6 +101,13 @@ export default function Missions() {
 		>
 			{/* filter rail */}
 			<div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+				<div style={{ display: 'flex', gap: 6 }} role="group" aria-label="Mission view">
+					{VIEWS.map((v) => (
+						<Chip key={v.key} active={v.key === view.key} onClick={() => setView(v)}>
+							{v.label}
+						</Chip>
+					))}
+				</div>
 				<div style={{ flex: 1, minWidth: 240 }}>
 					<TopoInput
 						value={query}
@@ -113,7 +137,13 @@ export default function Missions() {
 						<Empty hasAny={load.missions.length > 0} onCreate={() => setCreating(true)} />
 					) : (
 						filtered.map((m, i) => (
-							<Row key={m.id} m={m} i={i} onClick={() => nav(`/missions/${m.id}`)} />
+							<Row
+								key={m.id}
+								m={m}
+								i={i}
+								showOrigin={view.key === 'all'}
+								onClick={() => nav(`/missions/${m.id}`)}
+							/>
 						))
 					))}
 			</GlassPanel>
@@ -158,8 +188,14 @@ function Header() {
 	);
 }
 
-function Row({ m, i, onClick }: { m: Mission; i: number; onClick: () => void }) {
+const ORIGIN_TAG: Record<string, { label: string; color: string }> = {
+	chat: { label: 'PROMPT', color: 'var(--l2-fg-3)' },
+	system: { label: 'SYSTEM', color: 'var(--atlas-bronze)' }
+};
+
+function Row({ m, i, showOrigin, onClick }: { m: Mission; i: number; showOrigin?: boolean; onClick: () => void }) {
 	const archived = m.status?.toUpperCase() === 'ARCHIVED';
+	const originTag = showOrigin ? ORIGIN_TAG[m.origin] : undefined;
 	return (
 		<div
 			role="button"
@@ -187,6 +223,23 @@ function Row({ m, i, onClick }: { m: Mission; i: number; onClick: () => void }) 
 			<span style={{ minWidth: 0 }}>
 				<div style={{ color: 'var(--l2-fg-1)', fontSize: 14, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
 					{m.title}
+					{originTag && (
+						<span
+							style={{
+								marginLeft: 8,
+								padding: '1px 6px',
+								borderRadius: 2,
+								border: '1px solid var(--l2-hairline)',
+								fontFamily: 'var(--l2-font-mono)',
+								fontSize: 8.5,
+								letterSpacing: '0.16em',
+								color: originTag.color,
+								verticalAlign: 'middle'
+							}}
+						>
+							{originTag.label}
+						</span>
+					)}
 				</div>
 				<div style={{ color: 'var(--l2-fg-3)', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
 					{m.intent}

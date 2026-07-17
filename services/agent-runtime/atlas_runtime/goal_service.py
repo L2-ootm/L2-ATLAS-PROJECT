@@ -137,7 +137,7 @@ def update_goal(
         sets.append("description=?")
         params.append(description)
     if status is not None:
-        if status not in ("open", "active", "done", "archived"):
+        if status not in ("open", "active", "paused", "done", "archived"):
             raise GoalError(f"invalid status {status!r}")
         sets.append("status=?")
         params.append(status)
@@ -182,6 +182,29 @@ def archive_goal(conn: sqlite3.Connection, lock: threading.Lock, goal_id: str) -
                 "UPDATE goals SET status='archived', updated_at=? WHERE id=?",
                 [(now, gid) for gid in ids],
             )
+
+
+def delete_goal(conn: sqlite3.Connection, lock: threading.Lock, goal_id: str) -> int:
+    """Hard-delete a goal and its descendant sub-goals.
+
+    Tasks under the deleted goals are removed with them; observations are
+    detached (goal_id -> NULL) rather than deleted so run provenance and the
+    compounding loop's learned findings survive. Returns the number of goals
+    deleted. Idempotent at the API layer: deleting an unknown id raises
+    GoalError so callers can distinguish "already gone" from success.
+    """
+    with lock:
+        with conn:
+            ids = _collect_subtree(conn, goal_id)
+            if not ids:
+                raise GoalError(f"goal {goal_id!r} not found")
+            conn.executemany("DELETE FROM tasks WHERE goal_id=?", [(gid,) for gid in ids])
+            conn.executemany(
+                "UPDATE observations SET goal_id=NULL WHERE goal_id=?",
+                [(gid,) for gid in ids],
+            )
+            conn.executemany("DELETE FROM goals WHERE id=?", [(gid,) for gid in ids])
+    return len(ids)
 
 
 def _collect_subtree(conn: sqlite3.Connection, goal_id: str) -> list[str]:

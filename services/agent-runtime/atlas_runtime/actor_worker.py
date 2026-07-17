@@ -153,6 +153,7 @@ def run_actor(
             conn, lock,
             title=f"actor: {actor['goal'][:64]}",
             intent=actor["goal"],
+            origin="system",
         )
         run = start_run(
             conn, lock,

@@ -348,7 +348,13 @@ export class ChatAdapter {
 		let runID: string;
 		try {
 			const surface = await this.ensureSurface(body.model);
-			const mission = await this.gw.createMission(session.title.slice(0, 120), promptText);
+			// /goal and /mission launches are deliberate operator missions; plain
+			// prompts stay 'chat' wrappers so the Missions surface can separate them.
+			const mission = await this.gw.createMission(
+				session.title.slice(0, 120),
+				promptText,
+				missionCommand?.action === 'start' ? 'operator' : 'chat'
+			);
 			runID = await this.gw.startRun(
 				mission.id,
 				this.atlasAgent,

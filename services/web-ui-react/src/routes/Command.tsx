@@ -1,7 +1,23 @@
 import { useCallback, useEffect, useState } from 'react';
 import type * as React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Crosshair, Plus, Pencil, Archive, Rocket, X, ListTree, Check, CornerDownRight, Zap } from 'lucide-react';
+import {
+	Crosshair,
+	Plus,
+	Pencil,
+	Archive,
+	Rocket,
+	X,
+	ListTree,
+	Check,
+	CheckCircle2,
+	ChevronDown,
+	CornerDownRight,
+	Pause,
+	Play,
+	Trash2,
+	Zap
+} from 'lucide-react';
 import { Page } from '../components/Page';
 import TopoInput from '../components/TopoInput';
 import { GlassPanel } from '../components/GlassFx';
@@ -13,9 +29,14 @@ import {
 	getCurrentFocus,
 	createFocus,
 	archiveFocus,
+	listFocus,
+	activateFocus,
 	getFocusTree,
 	createGoal,
 	archiveGoal,
+	updateGoal,
+	deleteGoal,
+	createObservation,
 	createTask,
 	setTaskStatus,
 	listOperations,
@@ -60,6 +81,7 @@ type FocusLoad = { s: 'loading' } | { s: 'ready'; focus: Focus | null } | { s: '
 export default function Command() {
 	const { online, epoch } = useGatewayHealth();
 	const [focusLoad, setFocusLoad] = useState<FocusLoad>({ s: 'loading' });
+	const [allFocus, setAllFocus] = useState<Focus[]>([]);
 	const [tree, setTree] = useState<GoalNode[]>([]);
 	const [operations, setOperations] = useState<Operation[]>([]);
 	const [runs, setRuns] = useState<RunWithMission[]>([]);
@@ -92,7 +114,26 @@ export default function Command() {
 		} catch {
 			setFocusLoad({ s: 'error' });
 		}
+		// The switcher list (all goal sets incl. archived) is best-effort.
+		try {
+			const { focus: sets } = await listFocus(true);
+			setAllFocus(sets);
+		} catch {
+			setAllFocus([]);
+		}
 	}, [refreshTree]);
+
+	const onSwitchFocus = useCallback(
+		async (id: string) => {
+			try {
+				await activateFocus(id);
+				await refreshFocus();
+			} catch {
+				/* surfaced by the next focus refresh */
+			}
+		},
+		[refreshFocus]
+	);
 
 	const refreshFeed = useCallback(async () => {
 		try {
@@ -176,9 +217,11 @@ export default function Command() {
 				<div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
 					<FocusCard
 						load={focusLoad}
+						allFocus={allFocus}
 						onEdit={(f) => setEditing(f)}
 						onArchive={onArchive}
 						onSet={() => setEditing('new')}
+						onSwitch={onSwitchFocus}
 					/>
 					{focus && (
 						<GoalsPanel
@@ -216,20 +259,28 @@ export default function Command() {
 // ── Current Focus card ────────────────────────────────────────────────────────
 function FocusCard({
 	load,
+	allFocus,
 	onEdit,
 	onArchive,
-	onSet
+	onSet,
+	onSwitch
 }: {
 	load: FocusLoad;
+	allFocus: Focus[];
 	onEdit: (f: Focus) => void;
 	onArchive: (f: Focus) => void;
 	onSet: () => void;
+	onSwitch: (id: string) => void;
 }) {
+	const current = load.s === 'ready' ? load.focus : null;
 	return (
 		<GlassPanel style={{ padding: 0, overflow: 'hidden' }}>
 			<div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '13px 18px', borderBottom: '1px solid var(--l2-hairline)' }}>
 				<Crosshair size={14} strokeWidth={1.8} color="var(--atlas-bronze)" />
 				<HudLabel style={{ color: 'var(--atlas-bronze)' }}>CURRENT FOCUS</HudLabel>
+				{allFocus.length > 1 && (
+					<FocusSwitcher focus={allFocus} currentId={current?.id ?? null} onSwitch={onSwitch} />
+				)}
 			</div>
 
 			{load.s === 'loading' && <FocusSkeleton />}
@@ -239,6 +290,114 @@ function FocusCard({
 				<FocusBody focus={load.focus} onEdit={() => onEdit(load.focus as Focus)} onArchive={() => onArchive(load.focus as Focus)} />
 			)}
 		</GlassPanel>
+	);
+}
+
+/// Dropdown listing every goal set (archived included) so the operator can keep
+/// several mission/goal sets and switch which one drives the loop.
+function FocusSwitcher({
+	focus,
+	currentId,
+	onSwitch
+}: {
+	focus: Focus[];
+	currentId: string | null;
+	onSwitch: (id: string) => void;
+}) {
+	const [open, setOpen] = useState(false);
+	return (
+		<div style={{ position: 'relative', marginLeft: 'auto' }}>
+			<button
+				type="button"
+				onClick={() => setOpen((v) => !v)}
+				title="Switch goal set"
+				style={{
+					display: 'inline-flex',
+					alignItems: 'center',
+					gap: 6,
+					padding: '5px 10px',
+					borderRadius: 2,
+					border: '1px solid var(--l2-hairline)',
+					background: 'transparent',
+					color: open ? 'var(--atlas-celestial)' : 'var(--l2-fg-3)',
+					fontFamily: 'var(--l2-font-mono)',
+					fontSize: 9.5,
+					letterSpacing: '0.14em',
+					cursor: 'pointer'
+				}}
+			>
+				{focus.length} GOAL SETS
+				<ChevronDown size={12} strokeWidth={2} />
+			</button>
+			{open && (
+				<>
+					<div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+					<div
+						style={{
+							position: 'absolute',
+							top: 30,
+							right: 0,
+							zIndex: 41,
+							width: 264,
+							maxHeight: 320,
+							overflowY: 'auto',
+							borderRadius: 2,
+							border: '1px solid var(--l2-hairline)',
+							background: 'linear-gradient(160deg, rgba(20,24,33,0.98), rgba(10,12,18,0.98))',
+							boxShadow: '0 18px 50px rgba(0,0,0,0.6)'
+						}}
+					>
+						{focus.map((f) => {
+							const isCurrent = f.id === currentId;
+							return (
+								<button
+									key={f.id}
+									type="button"
+									disabled={isCurrent}
+									onClick={() => {
+										setOpen(false);
+										onSwitch(f.id);
+									}}
+									style={{
+										display: 'flex',
+										alignItems: 'center',
+										gap: 8,
+										width: '100%',
+										textAlign: 'left',
+										padding: '9px 12px',
+										background: 'none',
+										border: 'none',
+										borderBottom: '1px solid var(--l2-hairline)',
+										cursor: isCurrent ? 'default' : 'pointer'
+									}}
+									onMouseEnter={(e) => {
+										if (!isCurrent) e.currentTarget.style.background = 'rgba(79,139,255,0.08)';
+									}}
+									onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+								>
+									<span
+										aria-hidden
+										style={{
+											width: 6,
+											height: 6,
+											borderRadius: '50%',
+											flex: 'none',
+											background: isCurrent ? 'var(--atlas-emerald)' : 'var(--l2-fg-3)'
+										}}
+									/>
+									<span style={{ color: isCurrent ? 'var(--l2-fg-1)' : 'var(--l2-fg-2)', fontSize: 12.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+										{f.title}
+									</span>
+									<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 8.5, letterSpacing: '0.14em', color: isCurrent ? 'var(--atlas-emerald)' : 'var(--l2-fg-3)' }}>
+										{isCurrent ? 'CURRENT' : 'ACTIVATE'}
+									</span>
+								</button>
+							);
+						})}
+					</div>
+				</>
+			)}
+		</div>
 	);
 }
 
@@ -402,6 +561,7 @@ function GoalsPanel({
 const GOAL_STATUS_COLOR: Record<string, string> = {
 	open: 'var(--l2-fg-3)',
 	active: 'var(--atlas-celestial)',
+	paused: 'var(--atlas-bronze)',
 	done: 'var(--atlas-emerald)'
 };
 
@@ -420,9 +580,10 @@ function GoalNodeView({
 	onRunOperation: (opId: string, goalId: string) => void;
 	onChanged: () => void;
 }) {
-	const [mode, setMode] = useState<null | 'task' | 'subgoal'>(null);
+	const [mode, setMode] = useState<null | 'task' | 'subgoal' | 'conclude'>(null);
 	const [opsOpen, setOpsOpen] = useState(false);
 	const [busy, setBusy] = useState(false);
+	const [confirmDelete, setConfirmDelete] = useState(false);
 
 	async function addTask(title: string) {
 		setBusy(true);
@@ -448,6 +609,40 @@ function GoalNodeView({
 		const next = status === 'todo' ? 'doing' : status === 'doing' ? 'done' : 'todo';
 		await setTaskStatus(taskId, next as 'todo' | 'doing' | 'done');
 		onChanged();
+	}
+	async function togglePause() {
+		setBusy(true);
+		try {
+			await updateGoal(node.id, { status: node.status === 'paused' ? 'active' : 'paused' });
+			onChanged();
+		} finally {
+			setBusy(false);
+		}
+	}
+	async function conclude(note: string) {
+		setBusy(true);
+		try {
+			// Status first so a lost observation write cannot leave a "concluded"
+			// note on a goal that is still open; the note retry is cheap.
+			await updateGoal(node.id, { status: 'done' });
+			if (note.trim()) {
+				await createObservation({ body: note.trim(), goal: node.id, source: 'operator' });
+			}
+			onChanged();
+		} finally {
+			setBusy(false);
+			setMode(null);
+		}
+	}
+	async function removeGoal() {
+		setBusy(true);
+		try {
+			await deleteGoal(node.id);
+			onChanged();
+		} finally {
+			setBusy(false);
+			setConfirmDelete(false);
+		}
 	}
 
 	return (
@@ -489,8 +684,39 @@ function GoalNodeView({
 					<button type="button" title="Add task" onClick={() => setMode(mode === 'task' ? null : 'task')} style={miniIconStyle}>
 						<Plus size={13} strokeWidth={2} />
 					</button>
+					{node.status !== 'done' && (
+						<button
+							type="button"
+							title={node.status === 'paused' ? 'Resume goal' : 'Pause goal'}
+							disabled={busy}
+							onClick={() => void togglePause()}
+							style={{ ...miniIconStyle, color: node.status === 'paused' ? 'var(--atlas-bronze)' : 'var(--l2-fg-3)' }}
+						>
+							{node.status === 'paused' ? <Play size={12} strokeWidth={1.9} /> : <Pause size={12} strokeWidth={1.9} />}
+						</button>
+					)}
+					{node.status !== 'done' && (
+						<button
+							type="button"
+							title="Mark concluded (with optional observation)"
+							onClick={() => setMode(mode === 'conclude' ? null : 'conclude')}
+							style={{ ...miniIconStyle, color: mode === 'conclude' ? 'var(--atlas-emerald)' : 'var(--l2-fg-3)' }}
+						>
+							<CheckCircle2 size={12} strokeWidth={1.9} />
+						</button>
+					)}
 					<button type="button" title="Archive goal" onClick={() => { void archiveGoal(node.id).then(onChanged); }} style={miniIconStyle}>
 						<Archive size={12} strokeWidth={1.8} />
+					</button>
+					<button
+						type="button"
+						title={confirmDelete ? 'Click again to permanently delete' : 'Delete goal (and sub-goals)'}
+						disabled={busy}
+						onClick={() => (confirmDelete ? void removeGoal() : setConfirmDelete(true))}
+						onBlur={() => setConfirmDelete(false)}
+						style={{ ...miniIconStyle, color: confirmDelete ? 'var(--l2-error)' : 'var(--l2-fg-3)' }}
+					>
+						<Trash2 size={12} strokeWidth={1.8} />
 					</button>
 				</div>
 				{node.description && (
@@ -531,7 +757,12 @@ function GoalNodeView({
 						))}
 					</div>
 				)}
-				{mode && (
+				{mode === 'conclude' && (
+					<div style={{ marginLeft: 14, marginTop: 6 }}>
+						<ConcludeBox busy={busy} onSubmit={conclude} onCancel={() => setMode(null)} />
+					</div>
+				)}
+				{(mode === 'task' || mode === 'subgoal') && (
 					<div style={{ marginLeft: 14, marginTop: 6 }}>
 						<InlineAdd
 							placeholder={mode === 'task' ? 'New task…' : 'New sub-goal…'}
@@ -596,6 +827,39 @@ function OperationsMenu({ operations, onPick, onClose }: { operations: Operation
 				))}
 			</div>
 		</>
+	);
+}
+
+/// Conclude a goal: optional observation note, empty submit allowed.
+function ConcludeBox({ busy, onSubmit, onCancel }: { busy: boolean; onSubmit: (note: string) => void; onCancel: () => void }) {
+	const [note, setNote] = useState('');
+	return (
+		<div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
+			<input
+				autoFocus
+				value={note}
+				disabled={busy}
+				onChange={(e) => setNote(e.target.value)}
+				onKeyDown={(e) => {
+					if (e.key === 'Enter') onSubmit(note);
+					if (e.key === 'Escape') onCancel();
+				}}
+				placeholder="Closing observation (optional)…"
+				style={{ flex: 1, minWidth: 0, height: 32, borderRadius: 2, border: '1px solid rgba(70,240,160,0.35)', background: 'rgba(9,11,16,0.72)', color: 'var(--l2-fg-1)', fontSize: 12.5, padding: '0 10px', outline: 'none' }}
+			/>
+			<button
+				type="button"
+				onClick={() => onSubmit(note)}
+				disabled={busy}
+				style={{ ...ghostIconStyle, width: 'auto', padding: '0 10px', borderColor: 'rgba(70,240,160,0.4)', color: 'var(--atlas-emerald)', fontFamily: 'var(--l2-font-mono)', fontSize: 9.5, letterSpacing: '0.14em' }}
+				title="Mark concluded"
+			>
+				CONCLUDE
+			</button>
+			<button type="button" onClick={onCancel} style={ghostIconStyle} title="Cancel">
+				<X size={14} strokeWidth={2} />
+			</button>
+		</div>
 	);
 }
 

@@ -85,3 +85,23 @@ def test_focus_model_dump_is_json_safe(db, lock):
     dumped = focus.model_dump()
     assert isinstance(dumped["created_at"], str)
     assert isinstance(dumped["priorities"], str)  # JSON-array string column
+
+
+def test_activate_focus_switches_current(db, lock):
+    a = fs.create_focus(db, lock, title="Set A")
+    b = fs.create_focus(db, lock, title="Set B")  # archives A
+    assert fs.get_current_focus(db).id == b.id
+
+    activated = fs.activate_focus(db, lock, a.id)
+    assert activated.status == "active"
+    assert fs.get_current_focus(db).id == a.id
+    assert fs.get_focus(db, b.id).status == "archived"
+
+    # Idempotent: re-activating the current focus keeps it current.
+    fs.activate_focus(db, lock, a.id)
+    assert fs.get_current_focus(db).id == a.id
+
+
+def test_activate_unknown_focus_raises(db, lock):
+    with pytest.raises(fs.FocusError):
+        fs.activate_focus(db, lock, "no-such-id")

@@ -58,6 +58,8 @@ fn mission_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
         "project": row.get::<_, String>(4)?,
         "created_at": row.get::<_, String>(5)?,
         "updated_at": row.get::<_, String>(6)?,
+        // Legacy fallback (pre-0024 DB): origin is unknowable, serve "".
+        "origin": "",
     }))
 }
 
@@ -72,6 +74,9 @@ fn mission_row_with_archive(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> 
         "updated_at": row.get::<_, String>(6)?,
         "archived_at": row.get::<_, Option<String>>(7)?,
         "delete_after": row.get::<_, Option<String>>(8)?,
+        // origin (0024) is absent on older DBs — the fallback SQL omits the
+        // column, so the out-of-range get degrades to "" (legacy/unknown).
+        "origin": row.get::<_, String>(9).unwrap_or_default(),
     }))
 }
 
@@ -136,9 +141,14 @@ fn focus_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
 }
 
 const MISSION_COLS: &str = "id, title, intent, status, project, created_at, updated_at";
+const MISSION_COLS_ORIGIN: &str =
+    "id, title, intent, status, project, created_at, updated_at, NULL, NULL, origin";
 const MISSION_ARCHIVE_COLS: &str =
     "m.id, m.title, m.intent, m.status, m.project, m.created_at, m.updated_at, \
      a.archived_at, a.delete_after";
+const MISSION_ARCHIVE_COLS_ORIGIN: &str =
+    "m.id, m.title, m.intent, m.status, m.project, m.created_at, m.updated_at, \
+     a.archived_at, a.delete_after, m.origin";
 const RUN_COLS: &str =
     "id, mission_id, session_id, status, started_at, finished_at, summary, agent_runtime";
 const RUN_COLS_QUALIFIED: &str = "r.id, r.mission_id, r.session_id, r.status, r.started_at, \
@@ -149,51 +159,129 @@ const MODULE_COLS: &str =
 const FOCUS_COLS: &str =
     "id, title, framework, priorities, drivers, project_id, status, created_at, updated_at";
 
-pub fn list_missions(path: &Path, limit: i64) -> Result<Vec<Value>, DbError> {
-    let conn = open_ro(path)?;
-    let sql = format!(
-        "SELECT {MISSION_ARCHIVE_COLS} FROM missions m \
-         LEFT JOIN mission_archive a ON a.mission_id = m.id \
-         ORDER BY m.created_at DESC LIMIT ?1"
-    );
-    let rows = match conn.prepare(&sql) {
-        Ok(mut stmt) => stmt
-            .query_map([limit], mission_row_with_archive)?
-            .collect::<rusqlite::Result<Vec<_>>>()?,
-        Err(rusqlite::Error::SqliteFailure(_, Some(ref msg))) if msg.contains("no such table") => {
-            let sql =
-                format!("SELECT {MISSION_COLS} FROM missions ORDER BY created_at DESC LIMIT ?1");
-            let mut stmt = conn.prepare(&sql)?;
-            let rows = stmt
-                .query_map([limit], mission_row)?
-                .collect::<rusqlite::Result<Vec<_>>>()?;
-            rows
+/// True for prepare errors caused by schema drift (older DB without a table or
+/// the 0024 origin column) — the callers then try the next fallback SQL.
+fn is_schema_drift(err: &rusqlite::Error) -> bool {
+    match err {
+        // Statement-prepare failures surface as SqlInputError on current
+        // rusqlite; SqliteFailure covers older paths and execute-time errors.
+        rusqlite::Error::SqlInputError { msg, .. } => {
+            msg.contains("no such table") || msg.contains("no such column")
         }
-        Err(e) => return Err(e.into()),
+        rusqlite::Error::SqliteFailure(_, Some(msg)) => {
+            msg.contains("no such table") || msg.contains("no such column")
+        }
+        _ => false,
+    }
+}
+
+type RowMapper = fn(&rusqlite::Row<'_>) -> rusqlite::Result<Value>;
+
+pub fn list_missions(
+    path: &Path,
+    limit: i64,
+    origin: Option<&str>,
+) -> Result<Vec<Value>, DbError> {
+    let conn = open_ro(path)?;
+    // Filter semantics: "operator" means everything not machine- or
+    // prompt-created (pre-0024 "" rows count as operator); "chat"/"system"
+    // match exactly. Pre-0024 DBs fall back to unfiltered SQL below.
+    let where_origin = match origin {
+        Some("operator") => " WHERE m.origin NOT IN ('chat','system')",
+        Some("chat") => " WHERE m.origin = 'chat'",
+        Some("system") => " WHERE m.origin = 'system'",
+        _ => "",
     };
-    Ok(rows)
+    let candidates: [(String, RowMapper); 4] = [
+        (
+            format!(
+                "SELECT {MISSION_ARCHIVE_COLS_ORIGIN} FROM missions m \
+                 LEFT JOIN mission_archive a ON a.mission_id = m.id{where_origin} \
+                 ORDER BY m.created_at DESC LIMIT ?1"
+            ),
+            mission_row_with_archive,
+        ),
+        (
+            format!(
+                "SELECT {MISSION_COLS_ORIGIN} FROM missions m{where_origin} \
+                 ORDER BY m.created_at DESC LIMIT ?1"
+            ),
+            mission_row_with_archive,
+        ),
+        (
+            format!(
+                "SELECT {MISSION_ARCHIVE_COLS} FROM missions m \
+                 LEFT JOIN mission_archive a ON a.mission_id = m.id \
+                 ORDER BY m.created_at DESC LIMIT ?1"
+            ),
+            mission_row_with_archive,
+        ),
+        (
+            format!("SELECT {MISSION_COLS} FROM missions ORDER BY created_at DESC LIMIT ?1"),
+            mission_row,
+        ),
+    ];
+    let mut last_err: Option<rusqlite::Error> = None;
+    for (sql, mapper) in candidates {
+        match conn.prepare(&sql) {
+            Ok(mut stmt) => {
+                let rows = stmt
+                    .query_map([limit], mapper)?
+                    .collect::<rusqlite::Result<Vec<_>>>()?;
+                return Ok(rows);
+            }
+            Err(e) if is_schema_drift(&e) => last_err = Some(e),
+            Err(e) => return Err(e.into()),
+        }
+    }
+    Err(last_err.expect("candidates is non-empty").into())
 }
 
 /// Mission detail plus its runs. `None` when the mission id is unknown.
 pub fn get_mission(path: &Path, id: &str) -> Result<Option<(Value, Vec<Value>)>, DbError> {
     let conn = open_ro(path)?;
-    let sql = format!(
-        "SELECT {MISSION_ARCHIVE_COLS} FROM missions m \
-         LEFT JOIN mission_archive a ON a.mission_id = m.id \
-         WHERE m.id = ?1"
-    );
-    let mission = match conn.query_row(&sql, [id], mission_row_with_archive) {
-        Ok(v) => v,
-        Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(None),
-        Err(rusqlite::Error::SqliteFailure(_, Some(ref msg))) if msg.contains("no such table") => {
-            let sql = format!("SELECT {MISSION_COLS} FROM missions WHERE id = ?1");
-            match conn.query_row(&sql, [id], mission_row) {
-                Ok(v) => v,
-                Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(None),
-                Err(e) => return Err(e.into()),
+    let candidates: [(String, RowMapper); 4] = [
+        (
+            format!(
+                "SELECT {MISSION_ARCHIVE_COLS_ORIGIN} FROM missions m \
+                 LEFT JOIN mission_archive a ON a.mission_id = m.id WHERE m.id = ?1"
+            ),
+            mission_row_with_archive,
+        ),
+        (
+            format!("SELECT {MISSION_COLS_ORIGIN} FROM missions m WHERE m.id = ?1"),
+            mission_row_with_archive,
+        ),
+        (
+            format!(
+                "SELECT {MISSION_ARCHIVE_COLS} FROM missions m \
+                 LEFT JOIN mission_archive a ON a.mission_id = m.id WHERE m.id = ?1"
+            ),
+            mission_row_with_archive,
+        ),
+        (
+            format!("SELECT {MISSION_COLS} FROM missions WHERE id = ?1"),
+            mission_row,
+        ),
+    ];
+    let mut mission: Option<Value> = None;
+    let mut last_err: Option<rusqlite::Error> = None;
+    for (sql, mapper) in candidates {
+        match conn.query_row(&sql, [id], mapper) {
+            Ok(v) => {
+                mission = Some(v);
+                last_err = None;
+                break;
             }
+            Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(None),
+            Err(e) if is_schema_drift(&e) => last_err = Some(e),
+            Err(e) => return Err(e.into()),
         }
-        Err(e) => return Err(e.into()),
+    }
+    let mission = match (mission, last_err) {
+        (Some(v), _) => v,
+        (None, Some(e)) => return Err(e.into()),
+        (None, None) => return Ok(None),
     };
     let sql = format!("SELECT {RUN_COLS} FROM runs WHERE mission_id = ?1 ORDER BY started_at DESC");
     let mut stmt = conn.prepare(&sql)?;
@@ -259,12 +347,19 @@ pub fn get_project(path: &Path, id: &str) -> Result<Option<(Value, Vec<Value>)>,
     Ok(Some((project, missions)))
 }
 
-/// Active focus rows ordered by created_at DESC. Returns `Ok(vec![])` when the
-/// `focus` table does not exist yet (pre-0009 DB) so the gateway never 503s.
-pub fn list_focus(path: &Path, limit: i64) -> Result<Vec<Value>, DbError> {
+/// Focus rows ordered by created_at DESC — active only unless `include_archived`
+/// (the Command Center focus switcher lists archived goal sets so they can be
+/// reactivated). Returns `Ok(vec![])` when the `focus` table does not exist yet
+/// (pre-0009 DB) so the gateway never 503s.
+pub fn list_focus(path: &Path, limit: i64, include_archived: bool) -> Result<Vec<Value>, DbError> {
     let conn = open_ro(path)?;
+    let where_status = if include_archived {
+        ""
+    } else {
+        " WHERE status = 'active'"
+    };
     let sql = format!(
-        "SELECT {FOCUS_COLS} FROM focus WHERE status = 'active' ORDER BY created_at DESC LIMIT ?1"
+        "SELECT {FOCUS_COLS} FROM focus{where_status} ORDER BY created_at DESC LIMIT ?1"
     );
     let mut stmt = match conn.prepare(&sql) {
         Ok(s) => s,

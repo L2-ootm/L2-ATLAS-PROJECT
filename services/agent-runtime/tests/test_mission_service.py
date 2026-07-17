@@ -180,3 +180,35 @@ def test_purge_expired_archives_deletes_dependents(db, lock):
     assert db.execute(
         "SELECT run_id FROM memory_provenance WHERE id='prov-purge'"
     ).fetchone()[0] is None
+
+
+def test_create_mission_origin_defaults_to_operator(db, lock):
+    from atlas_runtime.mission_service import create_mission
+
+    mission = create_mission(db, lock, title="Deliberate")
+    assert mission.origin == "operator"
+    row = db.execute("SELECT origin FROM missions WHERE id=?", (mission.id,)).fetchone()
+    assert row[0] == "operator"
+
+
+def test_create_mission_origin_chat_persisted(db, lock):
+    from atlas_runtime.mission_service import create_mission, get_mission
+
+    mission = create_mission(db, lock, title="hi", intent="hi", origin="chat")
+    assert get_mission(db, mission.id).origin == "chat"
+
+
+def test_create_mission_invalid_origin_rejected(db, lock):
+    import pydantic
+    from atlas_runtime.mission_service import create_mission
+
+    with pytest.raises(pydantic.ValidationError):
+        create_mission(db, lock, title="bad", origin="martian")
+
+
+def test_ensure_operator_run_marks_system_origin(db, lock):
+    from atlas_runtime.mission_service import ensure_operator_run
+
+    ensure_operator_run(db, lock)
+    row = db.execute("SELECT origin FROM missions WHERE id='operator'").fetchone()
+    assert row[0] == "system"

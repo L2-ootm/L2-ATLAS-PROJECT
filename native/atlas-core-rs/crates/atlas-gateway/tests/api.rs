@@ -2646,3 +2646,139 @@ async fn vcs_reports_non_repo_directory() {
     assert_eq!(body["repo"], false);
     assert_eq!(body["branch"], Value::Null);
 }
+
+// ---------------------------------------------------------------------------
+// Mission origin (0024) + goal lifecycle + focus activation
+// ---------------------------------------------------------------------------
+
+fn seeded_db_origin(dir: &tempfile::TempDir) -> PathBuf {
+    let path = seeded_db(dir);
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    conn.execute_batch(
+        "ALTER TABLE missions ADD COLUMN origin TEXT NOT NULL DEFAULT '';
+         UPDATE missions SET origin='operator' WHERE id='m1';
+         UPDATE missions SET origin='chat' WHERE id='m2';
+         INSERT INTO missions (id, title, intent, status, project, origin, created_at, updated_at)
+         VALUES ('m3', 'actor: sweep', 'sweep', 'pending', '', 'system',
+                 '2026-06-03T10:00:00Z', '2026-06-03T10:00:00Z');",
+    )
+    .unwrap();
+    path
+}
+
+#[tokio::test]
+async fn missions_list_serves_origin_and_filters() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_app(seeded_db_origin(&dir));
+
+    let (status, body) = get_json(&router, "/v1/missions").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["count"], 3);
+    assert_eq!(body["missions"][0]["origin"], "system");
+
+    let (status, body) = get_json(&router, "/v1/missions?origin=operator").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["count"], 1);
+    assert_eq!(body["missions"][0]["id"], "m1");
+
+    let (status, body) = get_json(&router, "/v1/missions?origin=chat").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["count"], 1);
+    assert_eq!(body["missions"][0]["id"], "m2");
+
+    let (status, _) = get_json(&router, "/v1/missions?origin=martian").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn missions_list_pre_origin_db_defaults_to_empty_origin() {
+    // Pre-0024 DB: no origin column — rows serve origin:"" and filters degrade
+    // to the unfiltered legacy SQL instead of erroring.
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_app(seeded_db(&dir));
+    let (status, body) = get_json(&router, "/v1/missions").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["count"], 2);
+    assert_eq!(body["missions"][0]["origin"], "");
+    let (status, body) = get_json(&router, "/v1/missions?origin=operator").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["count"], 2);
+}
+
+#[tokio::test]
+async fn goal_update_patch_dispatches_and_returns_goal() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(seeded_db_goals(&dir), "updated", &stub_dir);
+    let (status, body) = patch_json(
+        &router,
+        "/v1/goals/g-root",
+        json!({ "status": "paused" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["updated"], true);
+    assert_eq!(body["goal"]["id"], "g-root");
+}
+
+#[tokio::test]
+async fn goal_update_rejects_invalid_status_and_empty_patch() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(seeded_db_goals(&dir), "updated", &stub_dir);
+    let (status, _) = patch_json(&router, "/v1/goals/g-root", json!({ "status": "bogus" })).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, _) = patch_json(&router, "/v1/goals/g-root", json!({})).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn goal_delete_dispatches_and_confirms() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(seeded_db_goals(&dir), "deleted 2", &stub_dir);
+    let resp = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/v1/goals/g-root")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = resp.status();
+    let body_bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let body: Value = serde_json::from_slice(&body_bytes).unwrap_or(Value::Null);
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["deleted"], true);
+    assert_eq!(body["id"], "g-root");
+}
+
+#[tokio::test]
+async fn focus_activate_dispatches_and_returns_focus() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(seeded_db_focus(&dir), "{}", &stub_dir);
+    let (status, body) = post_json(&router, "/v1/focus/f-old/activate", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["activated"], true);
+    assert_eq!(body["focus"]["id"], "f-old");
+}
+
+#[tokio::test]
+async fn focus_list_all_includes_archived_sets() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_app(seeded_db_focus(&dir));
+    let (status, body) = get_json(&router, "/v1/focus?all=true").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["count"], 2);
+    let ids: Vec<&str> = body["focus"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["id"].as_str().unwrap())
+        .collect();
+    assert!(ids.contains(&"f-old") && ids.contains(&"f-cur"));
+}

@@ -32,19 +32,41 @@ def ensure_operator_run(conn: sqlite3.Connection, lock: threading.Lock) -> str:
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
     with lock:
         with conn:
-            conn.execute(
-                "INSERT OR IGNORE INTO missions(id, title, intent, status, project, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (
-                    OPERATOR_RUN_ID,
-                    "Operator console",
-                    "Synthetic mission for operator-initiated writes outside agent runs",
-                    "archived",
-                    "",
-                    now,
-                    now,
-                ),
-            )
+            try:
+                conn.execute(
+                    "INSERT OR IGNORE INTO missions"
+                    "(id, title, intent, status, project, origin, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        OPERATOR_RUN_ID,
+                        "Operator console",
+                        "Synthetic mission for operator-initiated writes outside agent runs",
+                        "archived",
+                        "",
+                        "system",
+                        now,
+                        now,
+                    ),
+                )
+            except sqlite3.OperationalError as exc:
+                # Pre-0024 DB pending migration: write without origin rather than
+                # failing the operator action (0024 backfills it later).
+                if "origin" not in str(exc):
+                    raise
+                conn.execute(
+                    "INSERT OR IGNORE INTO missions"
+                    "(id, title, intent, status, project, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        OPERATOR_RUN_ID,
+                        "Operator console",
+                        "Synthetic mission for operator-initiated writes outside agent runs",
+                        "archived",
+                        "",
+                        now,
+                        now,
+                    ),
+                )
             conn.execute(
                 "INSERT OR IGNORE INTO runs(id, mission_id, session_id, status, started_at, summary) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
@@ -68,6 +90,7 @@ def create_mission(
     intent: str = "",
     project: str = "",
     project_id: Optional[str] = None,
+    origin: str = "operator",
 ) -> Mission:
     """Insert a new Mission row and return the constructed Mission.
 
@@ -76,9 +99,14 @@ def create_mission(
 
     If project_id is given it must reference an existing project (folder-backed
     working directory); a ValueError is raised before any write otherwise.
+
+    `origin` records authorship: 'operator' for deliberate missions, 'chat' for
+    per-prompt wrappers, 'system' for machine-created internals (0024).
     """
     # Pydantic-first: construct and validate before any SQL
-    mission = Mission(title=title, intent=intent, project=project, project_id=project_id)
+    mission = Mission(
+        title=title, intent=intent, project=project, project_id=project_id, origin=origin
+    )
     row = mission.model_dump()
 
     with lock:
@@ -89,13 +117,26 @@ def create_mission(
                 ).fetchone()
                 if exists is None:
                     raise ValueError(f"unknown project_id: {mission.project_id}")
-            conn.execute(
-                "INSERT INTO missions"
-                "(id, title, intent, status, project, project_id, created_at, updated_at) "
-                "VALUES (:id, :title, :intent, :status, :project, :project_id, "
-                ":created_at, :updated_at)",
-                row,
-            )
+            try:
+                conn.execute(
+                    "INSERT INTO missions"
+                    "(id, title, intent, status, project, project_id, origin, created_at, updated_at) "
+                    "VALUES (:id, :title, :intent, :status, :project, :project_id, :origin, "
+                    ":created_at, :updated_at)",
+                    row,
+                )
+            except sqlite3.OperationalError as exc:
+                # Pre-0024 DB pending migration: insert without origin so the
+                # mission is not lost; the 0024 backfill classifies it later.
+                if "origin" not in str(exc):
+                    raise
+                conn.execute(
+                    "INSERT INTO missions"
+                    "(id, title, intent, status, project, project_id, created_at, updated_at) "
+                    "VALUES (:id, :title, :intent, :status, :project, :project_id, "
+                    ":created_at, :updated_at)",
+                    row,
+                )
 
     return mission
 

@@ -125,8 +125,16 @@ export class GatewayClient {
 		);
 	}
 
-	async createMission(title: string, intent: string): Promise<Mission> {
-		const env = await this.request<{ mission: Mission }>('POST', '/v1/missions', { title, intent });
+	async createMission(
+		title: string,
+		intent: string,
+		origin: 'operator' | 'chat' | 'system' = 'chat'
+	): Promise<Mission> {
+		const env = await this.request<{ mission: Mission }>('POST', '/v1/missions', {
+			title,
+			intent,
+			origin
+		});
 		return env.mission;
 	}
 

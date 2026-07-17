@@ -10,12 +10,17 @@ export const GATEWAY = 'http://127.0.0.1:8484';
 
 // ── Type definitions (mirror db.rs mission_row / run_row) ─────────────────────
 
+/** Mission authorship (0024): deliberate operator missions vs auto-created
+ * prompt wrappers vs machine-created internals. "" on pre-0024 rows. */
+export type MissionOrigin = 'operator' | 'chat' | 'system';
+
 export interface Mission {
 	id: string;
 	title: string;
 	intent: string;
 	status: string;
 	project: string;
+	origin: MissionOrigin | '';
 	created_at: string;
 	updated_at: string;
 	archived_at?: string | null;
@@ -156,8 +161,12 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 // ── Mission endpoints ─────────────────────────────────────────────────────────
 
-export async function listMissions(limit = 50): Promise<{ missions: Mission[]; count: number }> {
-	return apiFetch(`/v1/missions?limit=${limit}`);
+export async function listMissions(
+	limit = 50,
+	origin?: MissionOrigin
+): Promise<{ missions: Mission[]; count: number }> {
+	const query = origin ? `&origin=${origin}` : '';
+	return apiFetch(`/v1/missions?limit=${limit}${query}`);
 }
 
 export async function getMission(id: string): Promise<{ mission: Mission; runs: Run[] }> {
@@ -167,10 +176,15 @@ export async function getMission(id: string): Promise<{ mission: Mission; runs: 
 export async function createMission(
 	title: string,
 	intent: string,
-	project?: string
+	project?: string,
+	origin?: MissionOrigin
 ): Promise<{ mission: Mission; runs: Run[] }> {
-	const body: { title: string; intent: string; project?: string } = { title, intent };
+	const body: { title: string; intent: string; project?: string; origin?: MissionOrigin } = {
+		title,
+		intent
+	};
 	if (project) body.project = project;
+	if (origin) body.origin = origin;
 	return apiFetch('/v1/missions', {
 		method: 'POST',
 		body: JSON.stringify(body)
@@ -231,9 +245,13 @@ export async function getVcsContext(path?: string): Promise<VcsContext> {
 
 // ── Focus endpoints (WP-2 — Command Center Current Focus) ─────────────────────
 
-export async function listFocus(limit = 50): Promise<{ focus: Focus[]; count: number }> {
+/** Focus rows (goal sets). `all` includes archived sets so the Command Center
+ * switcher can reactivate them. */
+export async function listFocus(all = false, limit = 50): Promise<{ focus: Focus[]; count: number }> {
 	try {
-		return await apiFetch<{ focus: Focus[]; count: number }>(`/v1/focus?limit=${limit}`);
+		return await apiFetch<{ focus: Focus[]; count: number }>(
+			`/v1/focus?limit=${limit}${all ? '&all=true' : ''}`
+		);
 	} catch (err) {
 		// A pre-0009 gateway (no /v1/focus route) or absent DB renders empty.
 		if (err instanceof ApiError && (err.status === 404 || err.status === 503)) {
@@ -275,6 +293,11 @@ export async function archiveFocus(id: string): Promise<{ archived: boolean; id:
 	return apiFetch(`/v1/focus/${encodeURIComponent(id)}/archive`, { method: 'POST' });
 }
 
+/** Make an existing goal set the Current Focus (archives the prior active one). */
+export async function activateFocus(id: string): Promise<{ activated: boolean; focus: Focus }> {
+	return apiFetch(`/v1/focus/${encodeURIComponent(id)}/activate`, { method: 'POST' });
+}
+
 // ── Goal hierarchy (loop-engineering slice: goals → tasks + observations) ──────
 
 /** A concrete objective under a Focus. Mirrors atlas_core.schemas.Goal. */
@@ -284,7 +307,7 @@ export interface Goal {
 	parent_goal_id: string | null;
 	title: string;
 	description: string;
-	status: 'open' | 'active' | 'done' | 'archived';
+	status: 'open' | 'active' | 'paused' | 'done' | 'archived';
 	position: number;
 	created_at: string;
 	updated_at: string;
@@ -343,6 +366,25 @@ export async function createGoal(input: CreateGoalInput): Promise<{ goal: Goal }
 
 export async function archiveGoal(id: string): Promise<{ archived: boolean; id: string }> {
 	return apiFetch(`/v1/goals/${encodeURIComponent(id)}/archive`, { method: 'POST' });
+}
+
+export interface UpdateGoalInput {
+	title?: string;
+	description?: string;
+	status?: Goal['status'];
+}
+
+/** Patch a goal's fields (pause/resume/conclude live here). */
+export async function updateGoal(id: string, patch: UpdateGoalInput): Promise<{ updated: boolean; goal: Goal }> {
+	return apiFetch(`/v1/goals/${encodeURIComponent(id)}`, {
+		method: 'PATCH',
+		body: JSON.stringify(patch)
+	});
+}
+
+/** Hard-delete a goal subtree (tasks removed, observations detached). */
+export async function deleteGoal(id: string): Promise<{ deleted: boolean; id: string }> {
+	return apiFetch(`/v1/goals/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
 export async function createTask(goal: string, title: string): Promise<{ created: boolean; id: string }> {

@@ -119,13 +119,14 @@ def test_json_schema_valid_mission() -> None:
 def test_json_schema_all_fields_present() -> None:
     """SCHEMA-03: Mission JSON Schema must contain exactly its canonical fields.
 
-    project_id is the folder-backed project link added in 0005_projects.sql (P3).
+    project_id is the folder-backed project link added in 0005_projects.sql (P3);
+    origin is the mission-authorship discriminator added in 0024_mission_origin.sql.
     """
     from atlas_core.schemas.core import Mission
 
     props = set(Mission.model_json_schema()["properties"].keys())
     expected = {
-        "id", "title", "intent", "status", "project", "project_id",
+        "id", "title", "intent", "status", "project", "project_id", "origin",
         "created_at", "updated_at",
     }
     assert props == expected, f"Unexpected field set: {props}"

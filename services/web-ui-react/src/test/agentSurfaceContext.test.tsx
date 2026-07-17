@@ -134,6 +134,13 @@ describe('AgentSurfaceProvider', () => {
 				'surface-1'
 			)
 		);
+		// Plain prompts are recorded as 'chat' wrappers, not operator missions.
+		expect(api.createMission).toHaveBeenCalledWith(
+			expect.any(String),
+			expect.any(String),
+			'project-1',
+			'chat'
+		);
 	});
 
 	it('creates one mission and starts goal mode for a long-horizon alias', async () => {
@@ -148,7 +155,7 @@ describe('AgentSurfaceProvider', () => {
 		await user.click(screen.getByRole('button', { name: 'goal' }));
 		await waitFor(() => expect(api.startRun).toHaveBeenCalledTimes(1));
 		expect(api.createMission).toHaveBeenCalledTimes(1);
-		expect(api.createMission).toHaveBeenCalledWith('Ship it', 'Ship it', undefined);
+		expect(api.createMission).toHaveBeenCalledWith('Ship it', 'Ship it', undefined, 'operator');
 		expect(api.startRun).toHaveBeenCalledWith(
 			'mission-1',
 			'native',
@@ -186,7 +193,8 @@ describe('AgentSurfaceProvider', () => {
 		expect(api.createMission).toHaveBeenCalledWith(
 			'Ship from palette',
 			'Ship from palette',
-			undefined
+			undefined,
+			'operator'
 		);
 		expect(api.startRun).toHaveBeenCalledWith(
 			'mission-1',

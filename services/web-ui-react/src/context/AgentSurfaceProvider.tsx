@@ -163,10 +163,14 @@ export function AgentSurfaceProvider({ children }: { children: ReactNode }) {
 			setBusy(true);
 			setError(null);
 			const runWith = async (surface: SurfaceSession) => {
+				// Plain prompts are 'chat' wrappers so the Missions page can separate
+				// them from deliberate missions; /goal and /mission launches are
+				// operator intent and stay first-class.
 				const created = await createMission(
 					missionPrompt.split(/\r?\n/, 1)[0].slice(0, 120) || 'Agent request',
 					missionPrompt,
-					workspace.kind === 'project' ? workspace.projectId : undefined
+					workspace.kind === 'project' ? workspace.projectId : undefined,
+					slashIntent?.kind === 'goal-launch' ? 'operator' : 'chat'
 				);
 				const started = slashIntent?.kind === 'goal-launch'
 					? await startRun(created.mission.id, agent, true, surface.id, { goalMode: true })

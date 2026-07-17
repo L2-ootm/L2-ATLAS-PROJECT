@@ -1,16 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Bot, ChevronDown, Check } from 'lucide-react';
 import { agentRuntimeLabel, type AgentRuntime } from '../../lib/api';
-
-/** Runtime catalog driving the picker. Order = display order. */
-export const AGENT_RUNTIME_OPTIONS: Array<{
-	value: AgentRuntime;
-	description: string;
-}> = [
-	{ value: 'native', description: 'ATLAS native runtime — audited, policy-bound' },
-	{ value: 'claude_code', description: 'Local Claude Code session — no API key' },
-	{ value: 'codex', description: 'Local OpenAI Codex CLI session' }
-];
+import { AGENT_RUNTIME_OPTIONS } from '../../lib/agentRuntimes';
 
 /** Accent color per runtime, used for the active chip and menu marks. */
 function runtimeAccent(agent: AgentRuntime): string {

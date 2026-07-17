@@ -53,6 +53,11 @@ class Mission(BaseModel):
     ] = "pending"
     project: str = ""
     project_id: str | None = None
+    # Who authored the mission: 'operator' (deliberate mission), 'chat'
+    # (auto-created wrapper for a surface prompt), 'system' (machine-created:
+    # operations, actor delegation, synthetic rows). '' only on pre-0024 rows
+    # that escaped the backfill; surfaces treat it as 'operator'.
+    origin: Literal["operator", "chat", "system", ""] = "operator"
     created_at: datetime.datetime = Field(
         default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
@@ -134,7 +139,7 @@ class Goal(BaseModel):
     parent_goal_id: str | None = None
     title: str
     description: str = ""
-    status: Literal["open", "active", "done", "archived"] = "open"
+    status: Literal["open", "active", "paused", "done", "archived"] = "open"
     position: int = 0
     created_at: datetime.datetime = Field(
         default_factory=lambda: datetime.datetime.now(datetime.UTC)

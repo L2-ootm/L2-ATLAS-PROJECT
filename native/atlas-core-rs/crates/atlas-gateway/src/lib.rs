@@ -12,7 +12,7 @@ use axum::middleware::{self, Next};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{Html, IntoResponse, Response};
 use axum::{
-    routing::{get, post},
+    routing::{get, patch, post},
     Json, Router,
 };
 use futures_util::stream::Stream;
@@ -216,13 +216,35 @@ fn clamp_limit(limit: Option<i64>, default: i64, max: i64) -> i64 {
     limit.unwrap_or(default).clamp(1, max)
 }
 
+#[derive(Deserialize)]
+struct MissionListParams {
+    limit: Option<i64>,
+    /// Filter by authorship (0024): operator | chat | system. Omitted = all.
+    origin: Option<String>,
+}
+
 async fn missions_list(
     State(state): State<AppState>,
-    Query(params): Query<ListParams>,
+    Query(params): Query<MissionListParams>,
 ) -> ApiResult {
     let path = state.db_path.clone();
     let limit = clamp_limit(params.limit, 100, 500);
-    let missions = blocking(move || db::list_missions(&path, limit)).await?;
+    let origin = match params
+        .origin
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        None => None,
+        Some(o @ ("operator" | "chat" | "system")) => Some(o.to_string()),
+        Some(_) => {
+            return Err(ApiError::BadRequest(
+                "origin must be one of: operator, chat, system",
+            ))
+        }
+    };
+    let missions =
+        blocking(move || db::list_missions(&path, limit, origin.as_deref())).await?;
     let count = missions.len();
     Ok(Json(json!({ "missions": missions, "count": count })))
 }
@@ -1691,6 +1713,8 @@ struct CreateMissionBody {
     intent: Option<String>,
     /// Optional project id — mission runs in that project's working directory.
     project: Option<String>,
+    /// Mission authorship (0024): operator (default) | chat | system.
+    origin: Option<String>,
 }
 
 async fn create_mission(
@@ -1705,11 +1729,27 @@ async fn create_mission(
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty());
+    let origin = match body
+        .origin
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        None => "operator",
+        Some(o @ ("operator" | "chat" | "system")) => o,
+        Some(_) => {
+            return Err(ApiError::BadRequest(
+                "origin must be one of: operator, chat, system",
+            ))
+        }
+    };
     let mut args: Vec<&str> = vec!["mission", "create", "--title", &title, "--intent", &intent];
     if let Some(pid) = project {
         args.push("--project");
         args.push(pid);
     }
+    args.push("--origin");
+    args.push(origin);
     let id = dispatch_atlas(&state.atlas_cmd, &args).await?;
     let path = state.db_path.clone();
     let id_clone = id.clone();
@@ -2068,10 +2108,22 @@ async fn projects_register(
 // Focus handlers (WP-2 — Command Center Current Focus, D-022 dispatch pattern)
 // ---------------------------------------------------------------------------
 
-async fn focus_list(State(state): State<AppState>, Query(params): Query<ListParams>) -> ApiResult {
+#[derive(Deserialize)]
+struct FocusListParams {
+    limit: Option<i64>,
+    /// Include archived goal sets so the switcher can reactivate them.
+    #[serde(default)]
+    all: bool,
+}
+
+async fn focus_list(
+    State(state): State<AppState>,
+    Query(params): Query<FocusListParams>,
+) -> ApiResult {
     let path = state.db_path.clone();
     let limit = clamp_limit(params.limit, 50, 200);
-    let focus = blocking(move || db::list_focus(&path, limit)).await?;
+    let include_archived = params.all;
+    let focus = blocking(move || db::list_focus(&path, limit, include_archived)).await?;
     let count = focus.len();
     Ok(Json(json!({ "focus": focus, "count": count })))
 }
@@ -2133,6 +2185,19 @@ async fn focus_archive(State(state): State<AppState>, AxPath(id): AxPath<String>
     Ok(Json(json!({ "archived": true, "id": id })))
 }
 
+/// Make an existing focus the Current Focus (multi-goal-set switcher).
+async fn focus_activate(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
+    require_arg(&id, "focus id must be non-empty")?;
+    dispatch_atlas(&state.atlas_cmd, &["focus", "activate", "--", &id]).await?;
+    let path = state.db_path.clone();
+    let id_clone = id.clone();
+    let focus = blocking(move || db::get_focus(&path, &id_clone)).await?;
+    match focus {
+        Some(focus) => Ok(Json(json!({ "activated": true, "focus": focus }))),
+        None => Err(ApiError::NotFound("focus")),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Goal hierarchy handlers (loop-engineering slice — D-022 dispatch pattern)
 // ---------------------------------------------------------------------------
@@ -2191,6 +2256,65 @@ async fn goal_archive(State(state): State<AppState>, AxPath(id): AxPath<String>)
     require_arg(&id, "goal id must be non-empty")?;
     dispatch_atlas(&state.atlas_cmd, &["goal", "archive", "--", &id]).await?;
     Ok(Json(json!({ "archived": true, "id": id })))
+}
+
+#[derive(Deserialize)]
+struct UpdateGoalBody {
+    title: Option<String>,
+    description: Option<String>,
+    /// open | active | paused | done | archived
+    status: Option<String>,
+}
+
+async fn goal_update(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    Json(body): Json<UpdateGoalBody>,
+) -> ApiResult {
+    require_arg(&id, "goal id must be non-empty")?;
+    let title = body.title.unwrap_or_default();
+    let description = body.description.unwrap_or_default();
+    let status = body.status.unwrap_or_default();
+    if !status.is_empty()
+        && !matches!(
+            status.as_str(),
+            "open" | "active" | "paused" | "done" | "archived"
+        )
+    {
+        return Err(ApiError::BadRequest(
+            "status must be one of: open, active, paused, done, archived",
+        ));
+    }
+    if title.is_empty() && description.is_empty() && status.is_empty() {
+        return Err(ApiError::BadRequest(
+            "at least one of title, description, status is required",
+        ));
+    }
+    let mut args: Vec<&str> = vec!["goal", "update"];
+    if !title.is_empty() {
+        args.extend_from_slice(&["--title", &title]);
+    }
+    if !description.is_empty() {
+        args.extend_from_slice(&["--description", &description]);
+    }
+    if !status.is_empty() {
+        args.extend_from_slice(&["--status", &status]);
+    }
+    args.extend_from_slice(&["--", &id]);
+    dispatch_atlas(&state.atlas_cmd, &args).await?;
+    let path = state.db_path.clone();
+    let id_clone = id.clone();
+    let goal = blocking(move || db::get_goal(&path, &id_clone)).await?;
+    match goal {
+        Some(goal) => Ok(Json(json!({ "updated": true, "goal": goal }))),
+        None => Err(ApiError::NotFound("goal")),
+    }
+}
+
+async fn goal_delete(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
+    require_arg(&id, "goal id must be non-empty")?;
+    dispatch_atlas(&state.atlas_cmd, &["goal", "delete", "--", &id]).await?;
+    Ok(Json(json!({ "deleted": true, "id": id })))
 }
 
 #[derive(Deserialize)]
@@ -2809,8 +2933,10 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/focus", get(focus_list).post(focus_create))
         .route("/v1/focus/current", get(focus_current))
         .route("/v1/focus/{id}/archive", post(focus_archive))
+        .route("/v1/focus/{id}/activate", post(focus_activate))
         .route("/v1/focus/{id}/tree", get(focus_tree))
         .route("/v1/goals", post(goal_create))
+        .route("/v1/goals/{id}", patch(goal_update).delete(goal_delete))
         .route("/v1/goals/{id}/archive", post(goal_archive))
         .route("/v1/tasks", post(task_create))
         .route("/v1/tasks/{id}/status", post(task_set_status))
