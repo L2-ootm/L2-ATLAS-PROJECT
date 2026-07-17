@@ -1,0 +1,17 @@
+Square icon mark for the ATLAS project in its celestial engraved identity. A reference image of the mark system sheet is attached — the "Icon / Monogram" row shows the canonical compact identity: a letter "A" inside a circle with a four-pointed compass star at its heart. Reproduce that construction.
+
+Subject: a single engraved letter "A" in a refined high-contrast serif, Ivory #EDEAE0, occupying 50% of frame height, dead center, inscribed inside two concentric hairline circles in Titan Bronze #B08A57; small node dots sit where the "A" strokes cross the inner circle. At the exact center of the A's counter, a luminous four-pointed star in Ivory with a Celestial Blue #4F88FF core, the only glowing element. Four tiny tick marks on the outer circle at the cardinal points.
+
+Background: Void Black #0B0D12, completely clean — no sparkles, no texture, no vignette, so the mark isolates at 64px.
+
+Light: only the central star luminesces, a soft glow falling off within its own diameter.
+
+Camera: orthographic, flat, perfectly centered, razor sharp.
+
+Negation: no wordmark text, no gradients, no 3D bevel or emboss, no gold fill inside the letterform (line and flat ivory only), no topographic lines, no extra ornaments beyond the described star and ticks.
+
+Color: void black, ivory, bronze circles, one blue star core.
+
+Finish: engraving-crisp lines, minimal glow, crushed black.
+
+Emotional register: a surveyor's benchmark — the fixed point everything is measured from.

@@ -54,7 +54,7 @@ a scrollback buffer.
   artifact loop with no API key configured.
 
 <!-- media: cockpit screenshot strip -->
-<!-- <img src="docs/media/atlas-cockpit.png" alt="ATLAS WebUI cockpit" width="880" /> -->
+<img src="docs/media/atlas-cockpit.png" alt="ATLAS WebUI cockpit" width="880" />
 
 ## Surfaces
 

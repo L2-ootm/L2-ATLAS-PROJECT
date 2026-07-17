@@ -1,5 +1,47 @@
 # Handoff — L2 ATLAS Finish Sprint
 
+## Session update — 2026-07-17 (later still): media day set 2 — ATLAS celestial identity, fusion pieces, WebUI-integrated scenes, real cockpit screenshot
+
+Operator loved set 1 and asked for a second set covering: more L2 style, the
+ATLAS-native identity (canon references at `brand/atlas/` — "The Operator
+Atlas" celestial engraved system: Titan Bronze #B08A57 / Ivory #EDEAE0 /
+Celestial Blue #4F88FF / Signal Cyan #46F0E0 / Signal Violet #A17BFF on Void
+Black #0B0D12, Trajan-style serif, pillars MISSION/AUDIT/STRUCTURE, seal
+motto LOAD·MEMORY·GOVERNANCE), fusion of both identities, and codex
+reference-image runs with the WebUI integrated. Then commit, push, PR to main.
+
+**Method additions over set 1.** `codex exec -i <ref.png>` attaches reference
+images (repeatable flag) — used brand marks for the celestial family, live
+cockpit captures for the UI-integrated pieces, and set-1's atlas-hero as a
+style ref for the fusion-summit crossover. Reference runs take longer
+(~2.5–4.5 min). To get WebUI references: booted the stack (`atlas up
+--services gateway,cockpit --json`, stale-gateway warning accepted — read
+endpoints only) and drove playwright-cli for captures. **Privacy note: raw
+Observatory/Command captures show real operator mission prompts — generated
+compositions were instructed to abstract all small UI text to dashes, and the
+only real capture shipped (`atlas-cockpit.png`) is the hero band cropped
+above the mission list.** That real screenshot fills the README's second
+media slot honestly; both README slots are now live.
+
+**Delivered 13 files in `docs/media/` (12 generated + 1 real capture), all
+visually QA'd:** atlas-emblem-hero, atlas-seal-bronze (physical medallion
+macro), atlas-celestial-banner, atlas-pillars-poster (portrait),
+atlas-monogram-star, atlas-fusion-bearer (portrait; the Bearer as contour
+lines — the strongest piece of the day), atlas-fusion-summit,
+atlas-feature-goal, atlas-feature-mesh, atlas-release-card (reusable
+template), atlas-cockpit-showcase, atlas-cockpit-observatory,
+atlas-cockpit (real). Prompts persisted in `docs/media/prompts/` (set-2
+prompts note their reference images inline); media inventory updated with a
+Set 2 table.
+
+**Stack state:** gateway (:8484) + cockpit (:5173) left running from the
+screenshot session; `atlas down` if unwanted.
+
+**Next:** 1) the branch PR to main is open (this session pushed); merge
+decision is the operator's; 2) upload atlas-og.png as GitHub social preview
+at public flip; 3) prior owed UAT unchanged (slash actions, `/gsd` live,
+installer sandbox run).
+
 ## Session update — 2026-07-17 (later): media day — full production media set generated via Codex imagegen
 
 Operator mission: generate the complete ATLAS media set (README + sharing +

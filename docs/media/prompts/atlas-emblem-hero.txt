@@ -1,0 +1,17 @@
+Landscape hero image for the ATLAS project in its own celestial engraved identity. A reference image of the Atlas Bearer emblem is attached — treat it as the canonical mark: a wireframe titan of fine engraved linework holding a celestial network sphere above an engraved citadel base. Reproduce the emblem's exact anatomy, proportions, and line character.
+
+Subject: the Atlas Bearer emblem centered-right in the frame at about 70% of frame height, rendered in fine Titan Bronze #B08A57 and Ivory #EDEAE0 engraved linework on near-black. The celestial sphere he holds carries network nodes glowing Celestial Blue #4F88FF, Signal Cyan #46F0E0, and Signal Violet #A17BFF, connected by hairline ivory lines. Centered-left, the wordmark "ATLAS" in an engraved Trajan-style serif, Ivory #EDEAE0, large, letter-spaced, with a thin bronze rule above and below and a small four-pointed star ornament under it. Beneath the rule one small tracked-out caption in Montserrat-like sans, bronze: "MISSION / AUDIT / STRUCTURE". No other text.
+
+Background: Void Black #0B0D12 with the faintest scattering of tiny four-pointed star sparkles (no more than a dozen), one thin engraved arc of orbit passing behind the composition. No nebulae, no photographic starfield, no clouds, no color gradients filling the sky.
+
+Light: the emblem's own luminous nodes and a soft cool glow from the sphere's core; linework reads as gilded ink catching light, not neon.
+
+Camera: flat frontal poster composition, orthographic, everything sharp.
+
+Negation: no muscles rendered as flesh, no photorealistic human, no marble statue, no gold gradient fills inside letterforms, no lens flare, no purple topographic contour lines (this is the celestial identity, not the L2 terrain identity), no modern UI elements.
+
+Color: void black, ivory linework, titan bronze accents, celestial blue / cyan / violet only inside the sphere's nodes.
+
+Finish: engraving-plate precision, extremely fine line detail, subtle paper-like grain, crushed blacks, no bloom beyond the node glows.
+
+Emotional register: for those who build what endures — a mark struck like a coin of a civilization that keeps records.

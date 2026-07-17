@@ -1,0 +1,17 @@
+Landscape feature card for "Provider Mesh" — a developer tool feature where multiple model providers route into one system with per-role routing. L2 Systems topographic identity.
+
+Subject: four thin luminous conduits enter the frame from the left edge at different heights, each a clean 1.5px line in its own color: electric violet #7B61FF, cyan #00F0FF, green #00FF94, and mercury gray #A0A0A0. They travel rightward over dark terrain, bending smoothly, and converge into a single junction node at center-right: a small obsidian glass hexagon with a 1px hairline border and a violet core glow. From the junction's right side, one single braided line exits toward the right frame edge, its strands subtly carrying all four colors twisted into one. Under each incoming conduit near the left edge, a tiny uppercase monospace label in gray #505050: "API KEY", "OAUTH", "SIDECAR", "LOCAL". Above the junction, small: "PROVIDER MESH" uppercase, wide-tracked, titanium white #E0E0E0 with a 1px violet underline. No other text.
+
+Background: void black #030305 with faint 1px blue-gray #20242e topographic contour lines across the lower half; the terrain directly beneath the junction node glows faint violet.
+
+Light: only the conduits, junction core, and braided output luminesce.
+
+Camera: flat orthographic diagram view, uniform sharpness.
+
+Negation: no clouds, no server racks, no plugs or cables with connectors, no company logos, no circuit board traces, no arrows, no glow bloom larger than 4px, no warm tones.
+
+Color: void black, blue-gray terrain, the four stated conduit colors, white headline.
+
+Finish: razor line work, restrained additive glow, fine grain, crushed blacks.
+
+Emotional register: many sources, one disciplined stream — routing as quiet infrastructure.

@@ -23,10 +23,33 @@ regenerating an asset means re-running its prompt, not improvising a new one.
 | `atlas-install.png` | Install promo (`npm i -g @l2/atlas`) for posts and docs | 3:2 landscape |
 | `atlas-wallpaper.png` | Operator desktop wallpaper; very dark, icon-safe | 3:2 landscape |
 
-Still owed (not generatable — must be a real capture): `atlas-cockpit.png`,
-the WebUI cockpit screenshot strip for the second README slot. Take it from a
-live cockpit session; do not substitute a generated mock for a product
-screenshot.
+### Set 2 — 2026-07-17 (ATLAS celestial identity, fusion, WebUI-integrated)
+
+Set 2 adds the ATLAS-native celestial engraved identity (canon references in
+`brand/atlas/`), fusion pieces that translate the Atlas Bearer into the L2
+topographic language, and compositions that integrate the real WebUI via
+reference screenshots. Reference-driven prompts note their refs inline.
+
+| File | Use case | Aspect |
+|------|----------|--------|
+| `atlas-cockpit.png` | **Real screenshot** (cropped Observatory hero band, no mission data) — wired into the root README cockpit slot | wide strip |
+| `atlas-emblem-hero.png` | ATLAS celestial hero — wordmark + Atlas Bearer emblem (ref: `brand/atlas/marks/emblem-figure.png`) | 3:2 landscape |
+| `atlas-seal-bronze.png` | Governance seal as physical bronze medallion macro (ref: `brand/atlas/marks/seal.png`) — stickers, coins, about pages | 1:1 |
+| `atlas-celestial-banner.png` | Wide celestial banner — bearer + orbit arcs + "FOR THOSE WHO BUILD WHAT ENDURES." | 3:2 landscape |
+| `atlas-pillars-poster.png` | MISSION / AUDIT / STRUCTURE pillars poster (ref: brand master sheet) | 2:3 portrait |
+| `atlas-monogram-star.png` | Celestial "A" monogram icon (ref: celestial mark system sheet) | 1:1 |
+| `atlas-fusion-bearer.png` | Fusion poster — the Bearer re-materialized as violet contour lines rising from terrain | 2:3 portrait |
+| `atlas-fusion-summit.png` | Fusion — celestial sphere docking onto a topographic summit ("STRUCTURE MEETS TERRITORY") | 3:2 landscape |
+| `atlas-feature-goal.png` | Feature card: /goal missions — switchback path with judge gates | 3:2 landscape |
+| `atlas-feature-mesh.png` | Feature card: provider mesh — API KEY / OAUTH / SIDECAR / LOCAL braided into one | 3:2 landscape |
+| `atlas-release-card.png` | Reusable release-announcement template (v1.0 placeholder) | 3:2 landscape |
+| `atlas-cockpit-showcase.png` | Real cockpit UI as floating obsidian monolith over terrain (ref: live screenshot, small text abstracted) | 3:2 landscape |
+| `atlas-cockpit-observatory.png` | Cinematic: operator silhouette before a monumental cockpit wall (ref: live screenshot, small text abstracted) | 3:2 landscape |
+
+WebUI-integrated pieces deliberately abstract all small interface text to
+placeholder dashes — the source captures contain private mission prompts.
+Only `atlas-cockpit.png` is an untouched real capture, cropped above the
+mission list for that reason.
 
 ## Conventions
 
