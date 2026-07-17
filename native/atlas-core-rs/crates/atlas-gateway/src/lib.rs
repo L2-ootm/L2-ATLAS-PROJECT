@@ -1538,16 +1538,33 @@ async fn select_folder(body: Option<Json<SelectFolderBody>>) -> ApiResult {
         .map(|t| t.trim().to_string())
         .filter(|t| !t.is_empty())
         .unwrap_or_else(|| "Choose folder".to_string());
+    // The dialog is spawned from a hidden background process; without an owner
+    // window Windows' foreground lock leaves it behind the browser. An invisible
+    // TopMost owner keeps the dialog on top of every window without stealing focus
+    // permissions the process does not have.
     let script = r#"
 Add-Type -AssemblyName System.Windows.Forms
 [System.Windows.Forms.Application]::EnableVisualStyles()
-$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-$dialog.Description = $env:ATLAS_FOLDER_DIALOG_TITLE
-$dialog.ShowNewFolderButton = $true
-$result = $dialog.ShowDialog()
-if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
-    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-    [Console]::Out.Write($dialog.SelectedPath)
+$owner = New-Object System.Windows.Forms.Form
+$owner.TopMost = $true
+$owner.ShowInTaskbar = $false
+$owner.FormBorderStyle = 'None'
+$owner.StartPosition = 'CenterScreen'
+$owner.Opacity = 0
+$owner.Show()
+$owner.Activate()
+try {
+    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+    $dialog.Description = $env:ATLAS_FOLDER_DIALOG_TITLE
+    $dialog.ShowNewFolderButton = $true
+    $result = $dialog.ShowDialog($owner)
+    if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        [Console]::Out.Write($dialog.SelectedPath)
+    }
+} finally {
+    $owner.Close()
+    $owner.Dispose()
 }
 "#;
     let mut cmd = tokio::process::Command::new("powershell.exe");
