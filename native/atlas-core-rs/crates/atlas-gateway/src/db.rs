@@ -561,6 +561,54 @@ pub fn run_status(path: &Path, id: &str) -> Result<Option<String>, DbError> {
     }
 }
 
+#[derive(Debug)]
+pub struct MissionLoopStreamSnapshot {
+    pub state: String,
+    pub last_run_id: Option<String>,
+    pub newer_running_run_id: Option<String>,
+}
+
+/// Goal-loop state relevant to a terminal run stream. `None` means the schema
+/// or mission loop is absent, preserving ordinary per-run SSE behavior.
+pub fn mission_loop_stream_snapshot(
+    path: &Path,
+    current_run_id: &str,
+) -> Result<Option<MissionLoopStreamSnapshot>, DbError> {
+    let conn = open_ro(path)?;
+    let has_table = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='mission_loops')",
+        [],
+        |row| row.get::<_, i64>(0),
+    )? != 0;
+    if !has_table {
+        return Ok(None);
+    }
+
+    match conn.query_row(
+        "SELECT ml.state, ml.last_run_id, \
+                (SELECT newer.id FROM runs newer \
+                 WHERE newer.mission_id = current.mission_id \
+                   AND newer.status = 'running' \
+                   AND newer.rowid > current.rowid \
+                 ORDER BY newer.rowid ASC LIMIT 1) \
+         FROM runs current \
+         JOIN mission_loops ml ON ml.mission_id = current.mission_id \
+         WHERE current.id = ?1",
+        [current_run_id],
+        |row| {
+            Ok(MissionLoopStreamSnapshot {
+                state: row.get(0)?,
+                last_run_id: row.get(1)?,
+                newer_running_run_id: row.get(2)?,
+            })
+        },
+    ) {
+        Ok(snapshot) => Ok(Some(snapshot)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
 /// Audit events for a run after a rowid cursor, ascending. Returns the events
 /// and the cursor of the last event (unchanged when no new events).
 pub fn list_events(

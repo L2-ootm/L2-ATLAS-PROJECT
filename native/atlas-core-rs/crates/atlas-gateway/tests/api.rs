@@ -18,6 +18,7 @@ const MIGRATION_0006: &str = include_str!("../../../../../infra/migrations/0006_
 const MIGRATION_0007: &str = include_str!("../../../../../infra/migrations/0007_modules.sql");
 const MIGRATION_0016: &str =
     include_str!("../../../../../infra/migrations/0016_surface_sessions.sql");
+const MIGRATION_0021: &str = include_str!("../../../../../infra/migrations/0021_mission_loops.sql");
 
 fn seeded_db(dir: &tempfile::TempDir) -> PathBuf {
     let path = dir.path().join("atlas.db");
@@ -58,6 +59,21 @@ fn seeded_db(dir: &tempfile::TempDir) -> PathBuf {
     )
     .unwrap();
     path
+}
+
+fn configure_mission_loop(path: &std::path::Path, state: &str, last_run_id: Option<&str>) {
+    let conn = rusqlite::Connection::open(path).unwrap();
+    conn.execute_batch(MIGRATION_0021).unwrap();
+    conn.execute(
+        "INSERT INTO mission_loops
+            (mission_id, objective, state, max_runs, runs_used, judge_model,
+             consecutive_parse_failures, last_run_id, last_verdict, last_reason,
+             created_at, updated_at)
+         VALUES ('m1', 'ship it', ?1, 3, 0, '', 0, ?2, '', '',
+                 '2026-06-01T10:00:00Z', '2026-06-01T10:00:00Z')",
+        rusqlite::params![state, last_run_id],
+    )
+    .unwrap();
 }
 
 fn test_app(db_path: PathBuf) -> axum::Router {
@@ -801,6 +817,141 @@ async fn sse_stream_replays_events_and_ends_for_finished_run() {
     assert!(text.contains("event: end"), "missing end event: {text}");
 }
 
+async fn read_sse_until(body: &mut Body, text: &mut String, marker: &str) {
+    while !text.contains(marker) {
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(3), body.frame())
+            .await
+            .unwrap_or_else(|_| panic!("timed out waiting for SSE marker {marker:?}: {text}"))
+            .unwrap_or_else(|| panic!("SSE ended before marker {marker:?}: {text}"))
+            .unwrap();
+        if let Ok(data) = frame.into_data() {
+            text.push_str(&String::from_utf8_lossy(&data));
+        }
+    }
+}
+
+#[tokio::test]
+async fn sse_goal_mode_stream_waits_for_judgement_and_follows_next_run() {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = seeded_db(&dir);
+    configure_mission_loop(&db_path, "active", None);
+    let router = test_app(db_path.clone());
+    let resp = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/v1/runs/r1/stream")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let mut body = resp.into_body();
+    let mut text = String::new();
+    read_sse_until(&mut body, &mut text, "run_finished").await;
+    assert!(!text.contains("event: end"));
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(450), body.frame())
+            .await
+            .is_err(),
+        "active loop closed before judgement"
+    );
+
+    {
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute(
+            "UPDATE mission_loops SET last_run_id='r1' WHERE mission_id='m1'",
+            [],
+        )
+        .unwrap();
+    }
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(450), body.frame())
+            .await
+            .is_err(),
+        "active loop closed before its next run started"
+    );
+
+    {
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute_batch(
+            "INSERT INTO runs
+                (id, mission_id, session_id, status, started_at, finished_at, summary,
+                 agent_runtime)
+             VALUES ('r2', 'm1', 'sess-2', 'running',
+                     '2026-06-01T11:01:00Z', NULL, '', 'native');
+             INSERT INTO audit_events
+                (id, run_id, event_type, timestamp, data)
+             VALUES ('e3', 'r2', 'agent_output', '2026-06-01T11:02:00Z',
+                     '{\"message\":\"continuing\"}');",
+        )
+        .unwrap();
+    }
+
+    read_sse_until(&mut body, &mut text, "event: continuation").await;
+    read_sse_until(&mut body, &mut text, "\"id\":\"e3\"").await;
+    assert!(text.contains("\"prior_run_id\":\"r1\""), "{text}");
+    assert!(text.contains("\"run_id\":\"r2\""), "{text}");
+    assert!(
+        text.find("event: continuation").unwrap() < text.find("\"id\":\"e3\"").unwrap(),
+        "continuation must precede the next run's audit events: {text}"
+    );
+
+    {
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute_batch(
+            "UPDATE runs SET status='succeeded',
+                finished_at='2026-06-01T11:03:00Z' WHERE id='r2';
+             UPDATE mission_loops SET state='done', last_run_id='r2'
+                WHERE mission_id='m1';",
+        )
+        .unwrap();
+    }
+    let remaining = tokio::time::timeout(std::time::Duration::from_secs(3), body.collect())
+        .await
+        .expect("goal-mode SSE did not close after loop completion")
+        .unwrap()
+        .to_bytes();
+    text.push_str(&String::from_utf8_lossy(&remaining));
+    assert!(
+        text.contains("event: end"),
+        "missing final end event: {text}"
+    );
+}
+
+#[tokio::test]
+async fn sse_goal_mode_stream_closes_for_all_terminal_loop_states() {
+    for loop_state in ["done", "paused", "exhausted", "failed"] {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = seeded_db(&dir);
+        configure_mission_loop(&db_path, loop_state, Some("r1"));
+        let router = test_app(db_path);
+        let resp = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/runs/r1/stream")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            resp.into_body().collect(),
+        )
+        .await
+        .unwrap_or_else(|_| panic!("stream stayed open for loop state {loop_state}"))
+        .unwrap()
+        .to_bytes();
+        let text = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(text.contains("event: end"), "state={loop_state}: {text}");
+        assert!(!text.contains("event: continuation"));
+    }
+}
+
 #[tokio::test]
 async fn sse_stream_unknown_run_is_404() {
     let dir = tempfile::tempdir().unwrap();
@@ -970,6 +1121,36 @@ fn test_app_with_arg_capture(
     })
 }
 
+/// Build a test app that records synchronous mission dispatch and detached run
+/// execution separately, avoiding a race on one shared argv file.
+fn test_app_with_start_and_exec_capture(
+    db_path: PathBuf,
+    stub_output: &str,
+    start_argv_path: &std::path::Path,
+    exec_argv_path: &std::path::Path,
+    dir: &tempfile::TempDir,
+) -> axum::Router {
+    let stub = dir.path().join("mock_atlas_start_exec_argv.py");
+    let start_argv = start_argv_path.to_string_lossy().replace('\\', "\\\\");
+    let exec_argv = exec_argv_path.to_string_lossy().replace('\\', "\\\\");
+    std::fs::write(
+        &stub,
+        format!(
+            "import sys\nargs = sys.argv[1:]\npath = r'{exec_argv}' if args[:2] == ['run', 'exec'] else r'{start_argv}'\nopen(path, 'w').write('\\n'.join(args))\nprint('{out}')\n",
+            start_argv = start_argv,
+            exec_argv = exec_argv,
+            out = stub_output.replace('\'', "\\'"),
+        ),
+    )
+    .unwrap();
+    let python = if cfg!(windows) { "python" } else { "python3" };
+    app(AppState {
+        db_path,
+        atlas_cmd: vec![python.to_string(), stub.to_string_lossy().to_string()],
+        repo_root: PathBuf::from("."),
+    })
+}
+
 #[tokio::test]
 async fn start_run_forwards_agent_claude_code() {
     let dir = tempfile::tempdir().unwrap();
@@ -993,6 +1174,115 @@ async fn start_run_forwards_agent_claude_code() {
         .position(|a| *a == "--agent")
         .expect("--agent flag missing from dispatched args");
     assert_eq!(args.get(idx + 1).copied(), Some("claude_code"));
+}
+
+#[tokio::test]
+async fn start_run_goal_mode_forwards_loop_options_before_mission_id() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let argv_path = stub_dir.path().join("argv.txt");
+    let router = test_app_with_arg_capture(seeded_db(&dir), "r1", &argv_path, &stub_dir);
+    let (status, body) = post_json(
+        &router,
+        "/v1/missions/m1/run",
+        json!({
+            "goal_mode": true,
+            "judge_model": " openai/gpt-5 ",
+            "max_runs": 7
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(body["run"]["id"], "r1");
+    let argv = std::fs::read_to_string(argv_path).unwrap();
+    assert_eq!(
+        argv.lines().collect::<Vec<_>>(),
+        vec![
+            "mission",
+            "run",
+            "--agent",
+            "native",
+            "--goal",
+            "--judge-model",
+            "openai/gpt-5",
+            "--max-runs",
+            "7",
+            "--",
+            "m1",
+        ]
+    );
+}
+
+#[tokio::test]
+async fn start_run_rejects_blank_judge_model() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_app(seeded_db(&dir));
+    let (status, body) = post_json(
+        &router,
+        "/v1/missions/m1/run",
+        json!({ "goal_mode": true, "judge_model": "   " }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "bad_request");
+}
+
+#[tokio::test]
+async fn start_run_rejects_max_runs_outside_bounds() {
+    for max_runs in [0, 101] {
+        let dir = tempfile::tempdir().unwrap();
+        let router = test_app(seeded_db(&dir));
+        let (status, body) = post_json(
+            &router,
+            "/v1/missions/m1/run",
+            json!({ "goal_mode": true, "max_runs": max_runs }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "max_runs={max_runs}");
+        assert_eq!(body["error"]["code"], "bad_request");
+    }
+}
+
+#[tokio::test]
+async fn start_run_and_retry_execute_use_persisted_policy_without_extra_exec_args() {
+    for endpoint in ["/v1/missions/m1/run", "/v1/missions/m1/retry"] {
+        let dir = tempfile::tempdir().unwrap();
+        let stub_dir = tempfile::tempdir().unwrap();
+        let start_argv_path = stub_dir.path().join("start-argv.txt");
+        let exec_argv_path = stub_dir.path().join("exec-argv.txt");
+        let router = test_app_with_start_and_exec_capture(
+            seeded_db(&dir),
+            "r1",
+            &start_argv_path,
+            &exec_argv_path,
+            &stub_dir,
+        );
+        let (status, body) = post_json(
+            &router,
+            endpoint,
+            json!({ "agent": "claude_code", "goal_mode": true, "execute": true }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "endpoint={endpoint}");
+        assert_eq!(body["executing"], true);
+
+        let mut exec_argv = None;
+        for _ in 0..200 {
+            if let Ok(argv) = std::fs::read_to_string(&exec_argv_path) {
+                if argv.lines().count() == 4 {
+                    exec_argv = Some(argv);
+                    break;
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        let exec_argv = exec_argv.expect("detached run exec argv was not captured");
+        assert_eq!(
+            exec_argv.lines().collect::<Vec<_>>(),
+            vec!["run", "exec", "--", "r1"],
+            "endpoint={endpoint}",
+        );
+    }
 }
 
 #[tokio::test]

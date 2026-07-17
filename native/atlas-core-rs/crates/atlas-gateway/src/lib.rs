@@ -409,12 +409,18 @@ async fn run_stream(
             let polled = tokio::task::spawn_blocking(move || {
                 let events = db::list_events(&db_path, &run_id, cursor, 500)?;
                 let status = db::run_status(&db_path, &run_id)?;
-                Ok::<_, db::DbError>((events, status))
+                let terminal = !matches!(status.as_deref(), Some("running") | Some("pending"));
+                let loop_snapshot = if terminal {
+                    db::mission_loop_stream_snapshot(&db_path, &run_id)?
+                } else {
+                    None
+                };
+                Ok::<_, db::DbError>((events, status, loop_snapshot))
             })
             .await;
 
             match polled {
-                Ok(Ok(((events, next_cursor), status))) => {
+                Ok(Ok(((events, next_cursor), status, loop_snapshot))) => {
                     s.cursor = next_cursor;
                     let had_events = !events.is_empty();
                     for ev in events {
@@ -441,12 +447,46 @@ async fn run_stream(
                                 );
                             }
                         }
-                        s.pending.push_back(
-                            Event::default()
-                                .event("end")
-                                .data(json!({"status": status}).to_string()),
-                        );
-                        s.done = true;
+                        let mut should_close = loop_snapshot.is_none();
+                        if let Some(snapshot) = loop_snapshot {
+                            match snapshot.state.as_str() {
+                                "active" => {
+                                    should_close = false;
+                                    if snapshot.last_run_id.as_deref() == Some(s.run_id.as_str()) {
+                                        if let Some(new_run_id) = snapshot.newer_running_run_id {
+                                            let prior_run_id =
+                                                std::mem::replace(&mut s.run_id, new_run_id);
+                                            s.cursor = 0;
+                                            s.pending.push_back(
+                                                Event::default().event("continuation").data(
+                                                    json!({
+                                                        "prior_run_id": prior_run_id,
+                                                        "run_id": s.run_id.as_str(),
+                                                    })
+                                                    .to_string(),
+                                                ),
+                                            );
+                                        }
+                                    }
+                                }
+                                "done" | "paused" | "exhausted" | "failed" => {
+                                    should_close = true;
+                                }
+                                _ => {
+                                    // Unknown loop states are not terminal. Keep the
+                                    // stream open rather than truncating a live loop.
+                                    should_close = false;
+                                }
+                            }
+                        }
+                        if should_close {
+                            s.pending.push_back(
+                                Event::default()
+                                    .event("end")
+                                    .data(json!({"status": status}).to_string()),
+                            );
+                            s.done = true;
+                        }
                     }
                 }
                 // DB went away mid-stream (or task panic): report and close.
@@ -1680,6 +1720,13 @@ struct StartRunBody {
     /// Attach the run to the shared surface that initiated it so normalized
     /// events and approvals remain owned by that surface.
     surface_session_id: Option<String>,
+    /// Enable the long-horizon goal loop for this mission run.
+    #[serde(default)]
+    goal_mode: bool,
+    /// Optional provider/model override used by the goal-loop judge.
+    judge_model: Option<String>,
+    /// Optional cap on goal-loop attempts.
+    max_runs: Option<i64>,
 }
 
 async fn start_run(
@@ -1689,9 +1736,16 @@ async fn start_run(
     body: Option<Json<StartRunBody>>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
     require_arg(&mission_id, "mission id must be non-empty")?;
-    let (agent_opt, execute, surface_session_id) = match body {
-        Some(Json(b)) => (b.agent, b.execute.unwrap_or(false), b.surface_session_id),
-        None => (None, false, None),
+    let (agent_opt, execute, surface_session_id, goal_mode, judge_model, max_runs) = match body {
+        Some(Json(b)) => (
+            b.agent,
+            b.execute.unwrap_or(false),
+            b.surface_session_id,
+            b.goal_mode,
+            b.judge_model,
+            b.max_runs,
+        ),
+        None => (None, false, None, false, None, None),
     };
     let agent = agent_opt
         .map(|a| a.trim().to_string())
@@ -1702,10 +1756,29 @@ async fn start_run(
             "agent must be 'native' or 'claude_code'",
         ));
     }
+    let judge_model = judge_model.map(|model| model.trim().to_string());
+    if let Some(model) = judge_model.as_deref() {
+        require_arg(model, "judge_model must be non-empty")?;
+    }
+    if let Some(max_runs) = max_runs {
+        if !(1..=100).contains(&max_runs) {
+            return Err(ApiError::BadRequest("max_runs must be between 1 and 100"));
+        }
+    }
+    let max_runs_arg = max_runs.map(|value| value.to_string());
     let mut args = vec!["mission", "run", "--agent", agent.as_str()];
     if let Some(session_id) = surface_session_id.as_deref() {
         require_arg(session_id, "surface_session_id must be non-empty")?;
         args.extend(["--session-id", session_id]);
+    }
+    if goal_mode {
+        args.push("--goal");
+        if let Some(model) = judge_model.as_deref() {
+            args.extend(["--judge-model", model]);
+        }
+        if let Some(max_runs) = max_runs_arg.as_deref() {
+            args.extend(["--max-runs", max_runs]);
+        }
     }
     args.extend(["--", mission_id.as_str()]);
     let run_id = dispatch_atlas(&state.atlas_cmd, &args).await?;
@@ -1718,10 +1791,7 @@ async fn start_run(
             // drives the just-started run to completion (assembles context, runs
             // the agent, emits audit/SSE) without blocking this response.
             if execute {
-                spawn_detached_atlas(
-                    &state.atlas_cmd,
-                    &["run", "exec", "--agent", &agent, "--", &run_id],
-                )?;
+                spawn_detached_atlas(&state.atlas_cmd, &["run", "exec", "--", &run_id])?;
             }
             Ok((
                 StatusCode::CREATED,
@@ -1771,10 +1841,7 @@ async fn retry_mission(
     match found {
         Some(run) => {
             if execute {
-                spawn_detached_atlas(
-                    &state.atlas_cmd,
-                    &["run", "exec", "--agent", &agent, "--", &run_id],
-                )?;
+                spawn_detached_atlas(&state.atlas_cmd, &["run", "exec", "--", &run_id])?;
             }
             Ok((
                 StatusCode::CREATED,
