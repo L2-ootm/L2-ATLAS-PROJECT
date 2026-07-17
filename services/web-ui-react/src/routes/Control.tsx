@@ -26,6 +26,7 @@ import { useGatewayHealth } from '../lib/useGatewayHealth';
 import { ProviderSettingsPanel } from './Settings';
 import { VisualsPanel } from '../components/control/VisualsPanel';
 import { StoragePanel } from '../components/control/StoragePanel';
+import { ComponentsPanel } from '../components/control/ComponentsPanel';
 import {
 	AboutPanel,
 	ChannelsPanel,
@@ -313,14 +314,17 @@ export default function Control() {
 				)}
 
 				{tab === 'modules' && (
-					<ModulesPanel
-						modules={modules}
-						loading={load.s === 'loading'}
-						offline={online === false}
-						busyId={busyId}
-						onToggle={toggleModule}
-						err={err}
-					/>
+					<>
+						<ModulesPanel
+							modules={modules}
+							loading={load.s === 'loading'}
+							offline={online === false}
+							busyId={busyId}
+							onToggle={toggleModule}
+							err={err}
+						/>
+						<ComponentsPanel />
+					</>
 				)}
 
 				{tab === 'about' && <AboutPanel />}

@@ -2409,6 +2409,49 @@ async fn operations_list(State(state): State<AppState>) -> ApiResult {
     Ok(Json(json!({ "operations": operations })))
 }
 
+/// Optional-component availability (claude/codex SDKs). Surfaces use this to
+/// hide agent runtimes whose SDK component is uninstalled.
+async fn components_list(State(state): State<AppState>) -> ApiResult {
+    let out = dispatch_atlas(&state.atlas_cmd, &["components", "list", "--json"]).await?;
+    let components: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("components list parse: {e}")))?;
+    Ok(Json(json!({ "components": components })))
+}
+
+#[derive(Deserialize)]
+struct ComponentActionBody {
+    /// "install" or "uninstall".
+    action: String,
+}
+
+/// Install or uninstall an optional component via the runtime CLI. Long
+/// timeout: a Codex SDK install downloads ~95 MB.
+async fn component_action(
+    State(state): State<AppState>,
+    AxPath(name): AxPath<String>,
+    Json(body): Json<ComponentActionBody>,
+) -> ApiResult {
+    require_arg(&name, "component name must be non-empty")?;
+    let action = match body.action.as_str() {
+        "install" => "install",
+        "uninstall" => "uninstall",
+        _ => {
+            return Err(ApiError::BadRequest(
+                "action must be 'install' or 'uninstall'",
+            ))
+        }
+    };
+    let out = dispatch_atlas_with_timeout(
+        &state.atlas_cmd,
+        &["components", action, "--json", "--", &name],
+        Duration::from_secs(900),
+    )
+    .await?;
+    let component: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("component {action} parse: {e}")))?;
+    Ok(Json(json!({ "component": component })))
+}
+
 #[derive(Deserialize)]
 struct OperationRunBody {
     goal_id: String,
@@ -2942,6 +2985,8 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/tasks/{id}/status", post(task_set_status))
         .route("/v1/observations", post(observation_create))
         .route("/v1/operations", get(operations_list))
+        .route("/v1/components", get(components_list))
+        .route("/v1/components/{name}", post(component_action))
         .route("/v1/operations/{id}/run", post(operation_run))
         .route("/v1/modules", get(modules_list))
         .route("/v1/commands", get(commands_list))

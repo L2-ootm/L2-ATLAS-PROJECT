@@ -212,6 +212,40 @@ export async function purgeArchivedMissions(): Promise<{ deleted: number }> {
 	}
 }
 
+// ── Optional components (claude/codex SDKs) ──────────────────────────────────
+
+/** Availability of one optional SDK component. Mirrors atlas components list. */
+export interface ComponentStatus {
+	name: string;
+	description: string;
+	agent_runtime: AgentRuntime;
+	pip_requirement: string;
+	installed: boolean;
+	cli_present: boolean;
+	changed?: boolean;
+}
+
+/** Component availability; empty on pre-components gateways so nothing hides. */
+export async function listComponents(): Promise<ComponentStatus[]> {
+	try {
+		const { components } = await apiFetch<{ components: ComponentStatus[] }>('/v1/components');
+		return components ?? [];
+	} catch {
+		return [];
+	}
+}
+
+/** Install or uninstall an optional component (long-running: SDK downloads). */
+export async function componentAction(
+	name: string,
+	action: 'install' | 'uninstall'
+): Promise<{ component: ComponentStatus }> {
+	return apiFetch(`/v1/components/${encodeURIComponent(name)}`, {
+		method: 'POST',
+		body: JSON.stringify({ action })
+	});
+}
+
 // ── Project endpoints (P3 — folder-backed working directories) ────────────────
 
 export async function listProjects(limit = 100): Promise<{ projects: Project[]; count: number }> {

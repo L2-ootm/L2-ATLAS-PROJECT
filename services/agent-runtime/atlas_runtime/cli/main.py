@@ -122,6 +122,9 @@ app.add_typer(provider_app, name="provider")
 from atlas_runtime.cli.channels import channels_app
 app.add_typer(channels_app, name="channels")
 
+from atlas_runtime.cli.components import components_app
+app.add_typer(components_app, name="components")
+
 from atlas_runtime.cli.discord import discord_app
 app.add_typer(discord_app, name="discord")
 

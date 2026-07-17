@@ -51,6 +51,7 @@ import {
 	type AgentRuntime,
 	type RunWithMission
 } from '../lib/api';
+import { useAgentRuntimeOptions } from '../lib/agentRuntimes';
 
 // Command Center (WP-4) — the execution-first surface over the autonomous loop.
 // Three bands: the operator's Current Focus, a launcher that turns that focus
@@ -58,7 +59,6 @@ import {
 // against a pre-WP-2 gateway (api.ts swallows 404/503), and real background
 // execution requires the rebuilt gateway — an old binary records the run only.
 
-const AGENTS: AgentRuntime[] = ['native', 'claude_code', 'codex'];
 const FEED_POLL_MS = 6000;
 
 function rel(iso: string): string {
@@ -935,6 +935,8 @@ function LaunchPanel({
 	const [agent, setAgent] = useState<AgentRuntime>('native');
 	const [prompt, setPrompt] = useState('');
 	const disabled = focus === null || busy;
+	// Runtimes whose SDK component is uninstalled are hidden here too.
+	const agents = useAgentRuntimeOptions().map((o) => o.value);
 
 	return (
 		<GlassPanel style={{ padding: 0, overflow: 'hidden' }}>
@@ -946,7 +948,7 @@ function LaunchPanel({
 				<div>
 					<FieldLabel>AGENT</FieldLabel>
 					<div style={{ display: 'flex', gap: 7 }}>
-						{AGENTS.map((a) => (
+						{agents.map((a) => (
 							<button
 								key={a}
 								type="button"

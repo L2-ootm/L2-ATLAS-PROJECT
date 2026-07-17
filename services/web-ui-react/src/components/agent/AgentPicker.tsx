@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Bot, ChevronDown, Check } from 'lucide-react';
 import { agentRuntimeLabel, type AgentRuntime } from '../../lib/api';
-import { AGENT_RUNTIME_OPTIONS } from '../../lib/agentRuntimes';
+import { useAgentRuntimeOptions } from '../../lib/agentRuntimes';
 
 /** Accent color per runtime, used for the active chip and menu marks. */
 function runtimeAccent(agent: AgentRuntime): string {
@@ -31,6 +31,8 @@ export function AgentPicker({
 }) {
 	const [open, setOpen] = useState(false);
 	const rootRef = useRef<HTMLDivElement | null>(null);
+	// Uninstalled SDK components hide their runtime from the menu.
+	const options = useAgentRuntimeOptions();
 
 	useEffect(() => {
 		if (!open) return;
@@ -67,7 +69,7 @@ export function AgentPicker({
 			{open && (
 				<div style={menuStyle} role="listbox" data-topo="atlas">
 					<div style={menuTitleStyle}>AGENT RUNTIME</div>
-					{AGENT_RUNTIME_OPTIONS.map((option) => {
+					{options.map((option) => {
 						const active = option.value === value;
 						const color = runtimeAccent(option.value);
 						return (

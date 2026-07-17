@@ -2782,3 +2782,55 @@ async fn focus_list_all_includes_archived_sets() {
         .collect();
     assert!(ids.contains(&"f-old") && ids.contains(&"f-cur"));
 }
+
+// ---------------------------------------------------------------------------
+// Optional SDK components (claude/codex) — availability + install/uninstall
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn components_list_serves_cli_report() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"[{"name": "claude", "agent_runtime": "claude_code", "installed": true, "cli_present": true}]"#,
+        &stub_dir,
+    );
+    let (status, body) = get_json(&router, "/v1/components").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["components"][0]["name"], "claude");
+    assert_eq!(body["components"][0]["installed"], true);
+}
+
+#[tokio::test]
+async fn component_action_dispatches_install() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"name": "codex", "installed": true, "changed": true}"#,
+        &stub_dir,
+    );
+    let (status, body) = post_json(
+        &router,
+        "/v1/components/codex",
+        json!({ "action": "install" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["component"]["changed"], true);
+}
+
+#[tokio::test]
+async fn component_action_rejects_unknown_action() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(seeded_db(&dir), "{}", &stub_dir);
+    let (status, _) = post_json(
+        &router,
+        "/v1/components/codex",
+        json!({ "action": "explode" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
