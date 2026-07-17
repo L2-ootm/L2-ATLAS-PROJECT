@@ -2,16 +2,33 @@
 	"name": "@l2/atlas",
 	"version": "0.1.0",
 	"private": false,
-	"description": "Thin lifecycle launcher for ATLAS - install/update/rollback/uninstall/doctor over versioned release bundles. See docs/plans/2026-07-03-wsb-installer-plan.md.",
+	"description": "ATLAS lifecycle launcher - install/update/rollback/uninstall/doctor over versioned release bundles for the ATLAS AI cockpit.",
 	"license": "MIT",
 	"type": "commonjs",
 	"bin": {
 		"atlas": "bin/atlas.js"
 	},
+	"files": [
+		"bin",
+		"src",
+		"README.md"
+	],
+	"engines": {
+		"node": ">=20"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/L2-ootm/L2-ATLAS-PROJECT.git",
+		"directory": "packages/atlas-cli"
+	},
+	"bugs": {
+		"url": "https://github.com/L2-ootm/L2-ATLAS-PROJECT/issues"
+	},
+	"homepage": "https://github.com/L2-ootm/L2-ATLAS-PROJECT#readme",
 	"scripts": {
 		"test": "node --test test/commands.test.js test/tarball.test.js"
-	},
-	"engines": {
-		"node": ">=18"
 	}
 }

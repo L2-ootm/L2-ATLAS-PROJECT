@@ -1,6 +1,18 @@
 #!/usr/bin/env node
 'use strict';
 
+const MIN_NODE_MAJOR = 20;
+const nodeMajor = Number.parseInt(process.versions.node.split('.')[0], 10);
+if (!Number.isFinite(nodeMajor) || nodeMajor < MIN_NODE_MAJOR) {
+	console.error('');
+	console.error(`ATLAS requires Node.js ${MIN_NODE_MAJOR} or newer.`);
+	console.error(`Detected: ${process.version}`);
+	console.error('');
+	console.error('Install a current Node.js LTS release and try again.');
+	console.error('');
+	process.exit(1);
+}
+
 const cmds = require('../src/commands');
 
 function parseArgs(argv) {

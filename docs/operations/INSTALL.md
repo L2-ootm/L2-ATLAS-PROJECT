@@ -15,11 +15,16 @@ irm https://raw.githubusercontent.com/L2-ootm/L2-ATLAS-PROJECT/main/install/inst
 What it does:
 
 1. Checks git / Node.js ≥ 20 / Python ≥ 3.11 and offers winget installs for
-   anything missing.
+   anything missing. Also offers Rust (cargo — builds the gateway; without it
+   `atlas up` cannot start the stack) and Bun (builds the terminal UI;
+   without it bare `atlas` has no interactive surface) — both optional but
+   recommended, each skipped build names exactly what it disables.
 2. Clones (or fast-forwards) the repo into `~\atlas` and runs
    `scripts/install-atlas-cli.ps1`: dedicated venv, editable installs, DB
-   migrations, `atlas` on PATH.
-3. Prints the next steps (`atlas doctor`, `atlas up`, `atlas`).
+   migrations.
+3. Adds the venv `Scripts` directory to the session and user PATH (no
+   duplicates), then validates that `atlas --help` runs.
+4. Prints the next steps (`atlas doctor`, `atlas up`, `atlas`).
 
 Parameters (call the script directly instead of `| iex` to pass them):
 `-InstallDir`, `-Repo`, `-Claude` (adds the Claude Code runtime extra),
