@@ -1,9 +1,9 @@
-"""CodexAgent — OpenAI Codex CLI on the operator's LOCAL session.
+"""CodexAgent — OpenAI Codex SDK on the operator's LOCAL session.
 
-Drives the installed `codex` CLI in headless mode (`codex exec --json`) so the
+Drives the official Python SDK against the installed `codex` binary so the
 run executes on the operator's local Codex login (ChatGPT subscription or API
 key — whatever their Codex CLI is configured with). ATLAS never handles the
-credential. The CLI's experimental JSONL event stream is mapped onto the ATLAS
+credential. SDK app-server notifications are normalized onto the ATLAS
 AuditEvent bus for audit parity with the other runtimes:
 
   item agent_message            -> llm_call   (assistant text)
@@ -13,24 +13,21 @@ AuditEvent bus for audit parity with the other runtimes:
   turn.completed                -> llm_call   (usage receipt)
   turn.failed / error           -> failure
 
-The subprocess inherits the CLI worker's cwd, which the dispatch path already
-chdirs to the mission's bound project root, so Codex works the operator's
-selected workspace exactly like the other runtimes.
+The SDK app-server inherits the runtime worker's cwd, which the dispatch path
+already chdirs to the mission's bound project root, so Codex works the
+operator's selected workspace exactly like the other runtimes.
 
-The CLI is an OPTIONAL external dependency, resolved at execute() time, so
-installs without Codex stay lean. The event source (`runner_fn`) is injectable
-so unit tests run without the CLI or a live session. Mapping is duck-typed and
-tolerant of unknown event/item types: Codex's JSON stream is documented as
-experimental, so unknown shapes are skipped, never fatal.
+The SDK is an OPTIONAL dependency, resolved at execute() time, so installs
+without Codex stay lean. The event source (`runner_fn`) is injectable so unit
+tests run without the SDK or a live session. Mapping is duck-typed and tolerant
+of unknown event/item types: unknown shapes are skipped, never fatal.
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
 import shutil
 import sqlite3
-import subprocess
 import threading
 from typing import Any, Callable, Iterable, Iterator, Optional
 
@@ -65,48 +62,99 @@ def _resolve_binary() -> str:
     return found
 
 
-def _default_runner(prompt: str, cancel_token: Optional[threading.Event]) -> Iterator[dict]:
-    """Spawn `codex exec --json` and yield parsed JSONL events.
+def _model_dict(value: Any) -> dict[str, Any]:
+    """Convert an SDK Pydantic/root model to a plain field-name-keyed dict."""
+    root = getattr(value, "root", value)
+    dump = getattr(root, "model_dump", None)
+    if callable(dump):
+        data = dump(mode="json", by_alias=False)
+        return data if isinstance(data, dict) else {}
+    return dict(root) if isinstance(root, dict) else {}
 
-    Cancellation: checked between lines; a set token terminates the child and
-    ends the stream (the caller records the cancelled outcome).
-    """
-    binary = _resolve_binary()
-    cmd = [binary, "exec", "--json", "--skip-git-repo-check", prompt]
-    proc = subprocess.Popen(  # noqa: S603 - operator-selected local CLI
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
+
+def _sdk_notification_to_event(
+    notification: Any, usage_state: dict[str, Any]
+) -> Optional[dict[str, Any]]:
+    """Normalize one official SDK notification into the existing audit shape."""
+    method = str(getattr(notification, "method", ""))
+    payload = getattr(notification, "payload", None)
+    if method == "thread/tokenUsage/updated":
+        token_usage = getattr(payload, "token_usage", None)
+        last = getattr(token_usage, "last", token_usage)
+        usage_state.clear()
+        usage_state.update(_model_dict(last))
+        return None
+    if method in {"item/started", "item/completed"}:
+        item = _model_dict(getattr(payload, "item", None))
+        item_types = {
+            "agentMessage": "agent_message",
+            "commandExecution": "command_execution",
+            "fileChange": "file_change",
+            "mcpToolCall": "mcp_tool_call",
+            "webSearch": "web_search",
+        }
+        raw_type = str(item.get("type") or "")
+        item["item_type"] = item_types.get(raw_type, raw_type)
+        if item["item_type"] == "reasoning" and not item.get("text"):
+            summary = item.get("summary") or []
+            if isinstance(summary, list):
+                item["text"] = "\n".join(
+                    str(part.get("text") if isinstance(part, dict) else part)
+                    for part in summary
+                ).strip()
+        return {"type": method.replace("/", "."), "item": item}
+    if method == "turn/completed":
+        turn = _model_dict(getattr(payload, "turn", None))
+        status = str(turn.get("status") or "")
+        if status == "completed":
+            return {"type": "turn.completed", "usage": dict(usage_state)}
+        error = turn.get("error")
+        return {"type": "turn.failed", "error": error or {"message": status or "failed"}}
+    return None
+
+
+def _default_runner(prompt: str, cancel_token: Optional[threading.Event]) -> Iterator[dict]:
+    """Run one ephemeral Codex SDK thread and yield normalized events."""
     try:
-        assert proc.stdout is not None
-        for line in proc.stdout:
-            if cancel_token is not None and cancel_token.is_set():
-                proc.terminate()
+        from openai_codex import ApprovalMode, Codex, CodexConfig, Sandbox
+    except ImportError as exc:
+        raise RuntimeError(
+            "Codex SDK support is not installed; install atlas-runtime[codex]"
+        ) from exc
+
+    config = CodexConfig(codex_bin=_resolve_binary(), cwd=os.getcwd())
+    usage_state: dict[str, Any] = {}
+    finished = threading.Event()
+    with Codex(config) as codex:
+        thread = codex.thread_start(
+            approval_mode=ApprovalMode.deny_all,
+            ephemeral=True,
+            sandbox=Sandbox.read_only,
+        )
+        turn = thread.turn(prompt)
+
+        def _watch_cancel() -> None:
+            if cancel_token is None:
                 return
-            line = line.strip()
-            if not line or not line.startswith("{"):
-                continue
-            try:
-                event = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(event, dict):
-                yield event
-        proc.wait(timeout=30)
-        if proc.returncode not in (0, None):
-            stderr_tail = ""
-            if proc.stderr is not None:
-                stderr_tail = (proc.stderr.read() or "")[-_OUTPUT_CAP:]
-            raise RuntimeError(
-                f"codex exec exited with code {proc.returncode}: {stderr_tail.strip()}"
-            )
-    finally:
-        if proc.poll() is None:
-            proc.terminate()
+            while not finished.wait(0.1):
+                if cancel_token.is_set():
+                    try:
+                        turn.interrupt()
+                    except Exception as exc:  # noqa: BLE001
+                        logger.debug("Codex SDK interrupt failed: %s", exc)
+                    return
+
+        if cancel_token is not None:
+            threading.Thread(target=_watch_cancel, daemon=True).start()
+        try:
+            for notification in turn.stream():
+                if cancel_token is not None and cancel_token.is_set():
+                    return
+                event = _sdk_notification_to_event(notification, usage_state)
+                if event is not None:
+                    yield event
+        finally:
+            finished.set()
 
 
 class CodexAgent(AgentRuntime):
