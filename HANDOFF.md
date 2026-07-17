@@ -1,5 +1,122 @@
 # Handoff — L2 ATLAS Finish Sprint
 
+## Session update — 2026-07-16: truncation authority fixed, session-first Runs, compact audit logs, systems/retention integrity
+
+The exact run shown stopping at `**2. Continuous Knowledge G` contained a complete
+7,700-character delta stream in SQLite. Its later authoritative `llm_call` event was
+exactly 2,000 characters because `NativeAtlasAgent._map_result` reused the capped run
+summary for final-surface reconciliation. The WebUI correctly replaced the streamed
+text with that authoritative—but truncated—event. The final audit event now carries
+the complete response; only the compact mission/run summary remains capped. A
+regression test uses a response longer than the cap and proves both contracts.
+
+Runs is now a session index backed by the real `runs.session_id`: expand a session to
+see its prompts/runs, then open one run to inspect its response and evidence. Legacy
+unbound rows with no session id remain independent. Run Detail and Ledger project
+adjacent `llm_delta` events into expandable bursts, and Console does the same for
+normalized text deltas. The underlying audit rows are untouched, with grouped/raw
+switching retained where appropriate.
+
+The systems pass found two truthfulness defects. Integrations previously converted a
+failed status request into a fabricated stopped/offline state; failed probes now show
+`UNKNOWN`. More importantly, the compiled ATLAS core policy was hashed and persisted
+but never delivered in the native harness system message. New immutable run snapshots
+store the exact policy text and the harness receives it. Prompt v1.0.1 now requires
+registered/configured/reachable/verified-live distinctions and separates optional
+provider memory from transcripts, audit records, and Brain Graph state. This directly
+addresses the unsupported claims in `C:\Users\Davi\Downloads\about-ATLAS.txt`.
+
+Retention is safe and operator-visible. Migration 0020 removes the snapshot DELETE
+trigger that accidentally blocked SQLite cascade/authorized purge while retaining the
+no-UPDATE immutability trigger. Expired archive purge now removes approvals, tool
+records, artifacts, audit events, and snapshots, while preserving compact observations
+with deleted run links detached. Control > Storage exposes only the real due-archive
+transaction with explicit confirmation. Automatic sweeps and arbitrary date filters
+are labeled planned until their scheduler/preview backend exists.
+
+**Verification:** agent-runtime 847 passed / 2 skipped; atlas-core 97; atlas-terminal
+59 + TypeScript; WebUI 94 + ESLint + TypeScript + production build/bundle budgets;
+`git diff --check` clean. Full forensic record:
+`.planning/ultra/ULTRAREVIEW-stream-run-log-and-system-integrity-2026-07-16.md`.
+
+**UAT owed:** restart/rebuild the local stack so migration 0020 and runtime policy
+v1.0.1 are active; run one response longer than 2,000 characters; expand a multi-prompt
+session in Runs; inspect grouped/raw deltas; verify unreachable integrations show
+UNKNOWN; use Storage only with a deliberately expired test archive.
+
+## Session update — 2026-07-16: shared Chat/Console session navigator, configurable streaming visuals, conditional auto-follow
+
+Chat and Console now share an ATLAS-styled session drawer modeled on the useful
+information architecture of the Codex sidebar without copying its visual treatment.
+The drawer includes session functions, filtering, direct `UNBOUND` sessions, and
+collapsible folder/project groups for bound sessions. Each surface persists its own
+payload shape behind one shared metadata catalog; cross-surface selections route to
+the owning page and restore the selected session. New sessions inherit the current
+binding, while `NEW UNBOUND` explicitly clears it. The durable catalog is browser
+local for this iteration because gateway surface sessions are ephemeral execution
+and permission leases, not conversation history.
+
+The chunk scan-line effect is restored on both pages through the shared
+`StreamReveal`. Coarse incoming chunks are paced into a smoother reveal, the visible
+prefix is rendered through Markdown continuously, and each new chunk restarts a
+restrained frontier scan. Control now has a `VISUALS` tab with effect on/off, slow /
+balanced / fast reveal speed, subtle / visible / high signal intensity, and
+near-bottom follow controls. Reduced-motion remains respected.
+
+Chat and Console auto-follow while the transcript is within 180 px of the bottom.
+Scrolling farther upward detaches follow so history can be read without being
+yanked; the existing jump-to-latest control reattaches it. Console route remounts
+also preserve active in-memory turns instead of allowing a stale debounced snapshot
+to overwrite the continuation.
+
+**Verification:** WebUI 84/84 tests, ESLint clean, TypeScript clean, production
+build and bundle budgets green, `git diff --check` clean. Design/architecture note:
+`docs/plans/2026-07-16-session-navigator-and-stream-visuals.md`.
+
+**UAT owed:** create/switch/reload unbound and folder-bound sessions on both pages;
+cross-route into a session owned by the other surface; tune Visuals during a
+Markdown-heavy stream; verify near-bottom follow and scroll-away detachment.
+
+## Session update — 2026-07-16: TUI R6 mutable-event regression fixed; native tool identity repaired; `/chat` renders Markdown during streaming
+
+Operator reported the TUI duplication failure was worse after R5 and supplied a
+screenshot showing three visually identical `session_search` rows plus an isolated
+`F`, and requested smoother/more visible WebUI streaming with formatting applied
+before completion.
+
+**1. TUI R6 — R5's offset guard exposed a shared-reference bug.**
+`ChatAdapter` emitted a `DonorPart` object and then continued mutating that same
+object for incoming deltas. Because the in-process TUI store held the same reference,
+its text length advanced before `message.part.delta` arrived; the R5 offset guard
+then rejected legitimate deltas as duplicates. `EventBus.emit` now snapshots every
+JSON-shaped payload with `structuredClone`, so emitted/replayed events are immutable
+historical state. A regression test proves the initial streamed part remains empty
+after later chunks while the final snapshot contains the complete text.
+
+**2. The repeated search rows were three real calls rendered without identity.**
+DB forensics on the exact run showed three distinct `session_search` invocations
+(browse, inspect one session, query Command Center history). Native audit events put
+identity in `data.call_id` and inputs in `data.arguments`; the adapter only read
+top-level `tool_call_id` and `data.input`, generated unrelated IDs, could not settle
+completions, and displayed each row as `[summary=]`. The adapter now reads both
+shapes, preserves arguments, accepts completion `text`, and suppresses provider
+engagement receipts such as `freellmapi` that are not tool invocations.
+
+**3. `/chat` streaming now formats in real time.**
+`StreamReveal` renders its paced visible prefix through `ChatMarkdown` continuously,
+so headings, lists, emphasis, links, and code formatting appear while the agent is
+still responding. The pacing uses fractional carry, a 28ms paint cadence, and a
+bounded adaptive rate to smooth coarse chunks. The previous bright trailing text
+effect was replaced by a restrained glow on the newest Markdown block and a short
+green/blue frontier line.
+
+**Verification:** atlas-terminal 59/59 + TypeScript clean; WebUI 78/78 + production
+build and bundle budgets green. Forensic report:
+`.planning/ultra/ULTRAREVIEW-tui-stream-snapshot-and-tool-identity-2026-07-16.md`.
+
+**UAT owed:** clean `atlas restart`, then repeat a tool-using TUI prompt and inspect
+the `/chat` live Markdown cadence.
+
 ## Session update — 2026-07-16: TUI duplication R5 (client delta replay), English-default language policy, `atlas restart`, dedicated WebUI Chat page + console truncation fix
 
 Operator reported duplication still live after clean restart (screenshots: TUI
@@ -1547,3 +1664,56 @@ Re-run fresh verification before claiming any new implementation is complete.
 - Do not split Settings/System further.
 - Do not start CRM, voice, or overlay work in this sprint.
 - Do not mark the sprint complete without explicit verification and operator UAT.
+## 2026-07-16 — Long-horizon mission judge loop and model-role integrity
+
+ATLAS now has a durable, bounded mission loop rather than a prompt-only imitation
+of `/goal`. `/goal` and `/mission` are exact aliases in WebUI Chat, Console, and
+atlas-terminal. Their command envelope is parsed before mission creation, so the
+agent receives only the objective.
+
+Implementation contract:
+
+- `infra/migrations/0021_mission_loops.sql` persists one loop policy per mission
+  and one immutable judgement receipt per run.
+- `mission_loop_service.py` adopts Hermes's strict judge semantics while keeping
+  ATLAS SQLite as authority. Successful runs are judged; failed/cancelled runs
+  stop. Three malformed replies pause. The default budget is 12, hard-capped at
+  100.
+- Judge model precedence is mission override, global `functions.judge_model`,
+  initiating surface session, then active provider/model. Settings renders the
+  empty override as `Inherit chat session`.
+- `atlas run exec` discovers the persisted agent runtime and owns the whole loop.
+  It allocates continuation runs serially under the same mission. The Rust gateway
+  SSE follows those runs and emits a `continuation` boundary instead of ending
+  after the first attempt.
+- WebUI and TUI remain pending until a final `goal_judgement` state. TUI clears
+  per-run delta reconciliation guards at continuation boundaries so later output
+  remains visible in the same response.
+- Surface model selection is now operational: NativeAtlasAgent reads the
+  initiating surface model, and atlas-terminal recreates its surface when the
+  selected provider/model changes. The judge inherits that same model by default.
+- Hermes `delegate_tool` is still the real child-agent implementation; ATLAS's
+  existing `ensure_foundation_bridge` makes its subagent hooks auditable. No new
+  queue/framework/dependency was introduced.
+
+Verification completed on Windows:
+
+- agent-runtime: 858 passed, 2 skipped.
+- atlas-core: 97 passed.
+- Rust gateway: 114 passed.
+- WebUI: 115 passed; TypeScript passed.
+- atlas-terminal: 66 passed; TypeScript passed.
+- Ruff on changed Python: passed.
+
+Ultra artifacts:
+
+- `.planning/ultra/ULTRAPLAN-long-horizon-mission-orchestration-2026-07-16.md`
+- `.planning/ultra/simulation/SIM-long-horizon-mission-orchestration-2026-07-16.md`
+
+Still owed: operator UAT against a live provider for continue→done, explicit judge
+override, TUI model switch, disconnect/reconnect, cancellation, and budget/pause
+presentation. Bare `/goal status` currently directs the operator to Missions; a
+dedicated loop-status control surface can be added when pause/resume UX is designed.
+The running Windows gateway held `target/release/atlas-gateway.exe` open, so the final
+release rebuild could not replace it in place; stop/restart the stack before building
+or deploying the release binary.

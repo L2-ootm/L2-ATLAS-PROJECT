@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
-last_updated: "2026-07-12"
-last_activity: 2026-07-12 -- Retarget shipped: bare `atlas`/`atlas tui` now launch atlas-terminal (Go TUI kept as hidden dev-go-tui fallback; retirement gated on operator UAT). First fully green atlas-ci run (29177170770, all 8 jobs) after 4 fix loops (wiki-runtime install order, POSIX spawn flags, flavor-aware policy _within via ntpath, ANSI-strip in debrand audit). TUI wordmark misalignment root-caused (ragged thin-logo rows) + theme retokened to L2 Dark Prism (operator visual judgment owed). Gateway /v1/vcs added (dependency-free git reader, cargo 108). Cockpit: Cmd+K command palette (six TUI slash commands, lockstep mirror of atlas-terminal commands.ts) + sidebar git-branch display (vitest 48, build+lint green). codebase-memory-mcp eval written (.planning/ultra/EVAL-codebase-memory-mcp-architecture-explorer-2026-07-12.md) -- viable backend, recommend /v1/graph gateway proxy. Next: operator UAT, Architecture Explorer v1, MASTER-PLAN waves 4-5, Phase 10.8.
+last_updated: "2026-07-16"
+last_activity: 2026-07-16 -- Live subagent lifecycle is now projected end-to-end without editing Hermes. NativeAtlasAgent threads Hermes tool_progress_callback into compact, deduplicated subagent_run audit rows (queued/running/working/completed with stable identity, parent, depth, model, tool, and count). WebUI Chat and Console render one expandable orchestration rail; global agent chrome renders a compact constellation with semantic active/completed/failed motion and reduced-motion support. Replay folds last-write-wins by subagent ID. Core policy now defines joined delegation, detached process completion, idempotent status/wait, and evidence ownership. Design contract documents the next durable actor-supervisor slice. Verification: 52 focused Python tests, 6 focused WebUI tests, TypeScript, production build, bundle budgets, and diff check green.
 prior_activity_2026_07_11: Pushed to origin (db772555..01623abe, 42 commits). Next session: retarget `atlas`/`atlas tui` to atlas-terminal, TUI visual polish (fix indentation, differentiate from MiMoCode clone using L2 Dark Prism tokens), WebUI completeness audit, operator UAT, CI watch. Prior: identity fix (DIV-F-007), atlas-terminal waves 2-3, UAT confirmed working (ATLAS identity, /vcs, freellmapi, no event crashes). Critical: atlas-terminal GlobalEvent envelope fix (crashed on every event) + silent reject-becomes-approve fix + nonce-bound approvals; DB indexes (0019). High: cold-start orphan reaper, cockpit SSE backoff, all env vars documented, atlas-ci.yml authored, adapter timeouts/retries. Medium: GET /v1/runs (N+1 gone, E2E-verified), 403 auto re-surface, config schema migration chain, centralized rotating log, cross-module E2E (enabled by env-aware db.default_db_path -- live-DB footgun fixed), goal_tree SQL filtering, PID-reuse guard. Low: ogl removed, atlas-core pinned, graph TTL, bundle budget green, Go TUI mission rows show intent+updated. All suites green (766/97/29/20/101/104/44/1 E2E). Release gateway rebuilt. Wiki CLI DB path also made env-aware (34 passed). main 38 ahead of origin, unpushed.
 progress:
   total_phases: 8
@@ -15,6 +15,82 @@ progress:
 ---
 
 # STATE — L2 ATLAS
+
+## Current Position — 2026-07-16 continuation: visible, replay-safe subagent orchestration
+
+- Native runtime now consumes Hermes's existing child progress callback instead
+  of discarding it. Stable child identity, parent/depth, model, goal, current
+  tool, tool count, and lifecycle are emitted as compact `subagent_run` rows.
+- Repeated thinking/progress noise is deliberately not copied into the ledger;
+  repeated state fingerprints are deduplicated before persistence.
+- Chat and Console share one expandable orchestration rail. Global agent chrome
+  shows a restrained constellation/count; state color and motion are semantic,
+  and reduced-motion disables pulses.
+- Surface replay is idempotent: UI projection folds immutable lifecycle events
+  last-write-wins by `subagent_id`, so reconnect cannot duplicate actors.
+- Agent policy now distinguishes joined `delegate_task` work from detached
+  `terminal(background=true, notify_on_complete=true)` work and requires stable
+  IDs plus status-before-respawn after ambiguous failures.
+- Architecture/design contract:
+  `docs/plans/2026-07-16-subagent-orchestration-design.md`. It specifies the
+  durable actor supervisor, completion inbox/lease, orphan recovery, and
+  run/spawn/status/wait/cancel contract for the next infrastructure slice.
+- Verification: 58 focused agent-runtime/contract tests; all 117 WebUI tests;
+  TypeScript; Vite production build; bundle budgets; `git diff --check`.
+
+## Current Position — 2026-07-16 continuation: judged long-horizon missions and operational session model routing
+
+- `/goal <objective>` and `/mission <objective>` now create the same bounded,
+  long-horizon mission in WebUI Chat, Console, and atlas-terminal. Bare/status
+  forms remain local and never become model prompts.
+- Migration 0021 adds `mission_loops` and immutable `run_judgements`. Each agent
+  attempt is a normal run under one mission; judge receipts record verdict,
+  reason, parse status, and effective provider/model.
+- One detached runtime worker is the sole continuation owner. `continue` returns
+  the mission to pending and starts exactly one next run; `done`, three malformed
+  judge replies, failed/cancelled work, or the hard run budget stop the loop.
+- Gateway run SSE waits for judgement and follows newer runs in the same mission,
+  emitting a `continuation` boundary. WebUI/TUI keep one live response open and
+  reset only per-run reconciliation guards.
+- Settings exposes a dedicated Judge Model. Empty means **Inherit chat session**;
+  precedence is mission override, global judge override, initiating session model,
+  then active provider/model. The judge is not silently routed to the light
+  compression/title model.
+- Persisted surface provider/model now drives NativeAtlasAgent execution. The TUI
+  recreates its owned surface when the selected model changes, fixing the prior
+  metadata-only selection path. Hermes `delegate_tool` remains the real subagent
+  spawner and its existing audit bridge remains active.
+- Ultra artifacts: `.planning/ultra/ULTRAPLAN-long-horizon-mission-orchestration-2026-07-16.md`
+  and `.planning/ultra/simulation/SIM-long-horizon-mission-orchestration-2026-07-16.md`.
+- Verification: agent-runtime 858 passed / 2 skipped; atlas-core 97;
+  Rust gateway 114; WebUI 115 + TypeScript; atlas-terminal 66 + TypeScript.
+- Owed: live provider operator UAT, especially a real multi-run continue→done
+  mission, judge override selection, model switch, cancellation, and reconnect.
+  The running Windows gateway currently locks `target/release/atlas-gateway.exe`;
+  stop/restart the stack before rebuilding/replacing that release binary.
+
+## Prior Position — 2026-07-16: full-response integrity, session-first Runs, compact audit logs, honest systems state
+
+- Fixed the screenshotted response cutoff at its authority boundary. Native audit
+  reconciliation now carries the full final response; only the compact `RunOutcome`
+  summary remains capped at 2,000 characters.
+- Fixed a separate contract-delivery defect: the deterministic ATLAS policy was
+  compiled and hashed but never sent to the foundation harness. New snapshots retain
+  the exact policy text, and native system messages include it. Capability claims now
+  distinguish registered, configured, reachable, and current live verification.
+- Runs now groups by the real persisted `runs.session_id`, with expandable prompt/run
+  rows leading to answer and audit evidence. Legacy null-session runs remain separate.
+- Consecutive LLM/text deltas are projected as expandable bursts in Run Detail,
+  Ledger, and Console audit views. Raw rows remain stored and can still be selected.
+- Integration status failures now render `UNKNOWN`, never a fabricated `OFFLINE`.
+- Retention integrity was repaired: migration 0020 permits authorized contract
+  snapshot deletion while preserving no-update immutability; expired archive purge
+  cleans raw dependents and detaches compact knowledge provenance. Control > Storage
+  exposes the real due-archive transaction behind explicit confirmation. Automatic
+  sweeping and arbitrary date filters remain visibly planned, not simulated.
+- Verification: agent-runtime 847 passed / 2 skipped; atlas-core 97 passed;
+  atlas-terminal 59 passed + TypeScript; WebUI 94 passed + ESLint + TypeScript +
+  production build/bundle budgets; `git diff --check` clean.
 
 > **ACCURACY NOTE (2026-07-08 review):** the `packages/atlas-cli` session entries
 > below historically log `npm test` as `10 → 11 → 12 → 15 → 16 passed`. Those
