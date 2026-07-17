@@ -1135,6 +1135,13 @@ def runtime_serve(
         )
         if reclaimed:
             typer.echo(f"reconciled {len(reclaimed)} orphaned surface session(s) at startup")
+        from atlas_runtime import actor_service
+
+        orphaned_actors = actor_service.reconcile_orphan_actors(
+            conn, _get_lock(), ttl_seconds=_HEARTBEAT_TTL_SECONDS
+        )
+        if orphaned_actors:
+            typer.echo(f"reconciled {len(orphaned_actors)} orphaned actor(s) at startup")
     except Exception as exc:  # noqa: BLE001 — never block the daemon on the sweep
         typer.echo(f"startup reconciliation skipped: {exc}", err=True)
 
@@ -1153,13 +1160,17 @@ def runtime_reconcile(
 
     Reads DB state (not in-process threads). Safe to run at startup and idempotent.
     """
-    from atlas_runtime import surface_session_service
+    from atlas_runtime import actor_service, surface_session_service
 
     conn = _get_connection()
     reclaimed = surface_session_service.reconcile_orphans(
         conn, _get_lock(), ttl_seconds=ttl_seconds
     )
     typer.echo(f"reconciled {len(reclaimed)} orphaned surface session(s)")
+    orphaned_actors = actor_service.reconcile_orphan_actors(
+        conn, _get_lock(), ttl_seconds=ttl_seconds
+    )
+    typer.echo(f"reconciled {len(orphaned_actors)} orphaned actor(s)")
 
 
 # ---------------------------------------------------------------------------
