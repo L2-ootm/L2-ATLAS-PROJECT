@@ -4,7 +4,7 @@ milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
 last_updated: "2026-07-16"
-last_activity: 2026-07-16 (later) -- Backlog committed (5 commits, stale prompt goldens caught+regenerated). Durable actor supervisor shipped (migration 0022, actor_service state machine + completion-inbox lease + orphan sweep, detached actor_worker, atlas_actor Hermes tool via D-001-safe bridge, pre/post-llm inbox hooks). Codex CLI wired as third agent runtime with full audit parity + AgentPicker dropdown replacing the two-button toggle. Module framework slice 1 (migration 0023, module.yaml discovery/sync/scaffold, gateway /v1/commands, WebUI ModuleHost /m/:id + palette merge, terminal command merge, skills/atlas pack, example-hello). irm install bootstrap + INSTALL.md. Verification: agent-runtime 905, gateway 117, terminal 66+tsc, WebUI 121+tsc. UAT owed: db init + gateway rebuild + restart, live actor/codex/module runs, clean-machine installer. Prior: Live subagent lifecycle is now projected end-to-end without editing Hermes. NativeAtlasAgent threads Hermes tool_progress_callback into compact, deduplicated subagent_run audit rows (queued/running/working/completed with stable identity, parent, depth, model, tool, and count). WebUI Chat and Console render one expandable orchestration rail; global agent chrome renders a compact constellation with semantic active/completed/failed motion and reduced-motion support. Replay folds last-write-wins by subagent ID. Core policy now defines joined delegation, detached process completion, idempotent status/wait, and evidence ownership. Design contract documents the next durable actor-supervisor slice. Verification: 52 focused Python tests, 6 focused WebUI tests, TypeScript, production build, bundle budgets, and diff check green.
+last_activity: 2026-07-16 (verification) -- Applied migrations 0022/0023, rebuilt and tested release gateway (117 passed), rebuilt WebUI, restarted gateway/cockpit, synced+activated example-hello, and verified the live AgentPicker and module page in-browser. Focused actor/module/Codex tests: 50 passed. Installer PowerShell parses cleanly. Live UAT found two blockers missed by injected-runner/unit tests: Codex passes the full prompt as argv and exceeds the Windows command-line limit; Hermes injects task_id into atlas_actor, but actor_bridge rejects that keyword before any actor is created. Also found atlas down/restart can leave the Vite child process listening on 5173 after killing its cmd.exe parent. Gateway, cockpit, and FreeLLMAPI are live; the model registry was refreshed (68 active models); optional cashflow/Discord are stopped. Clean-machine installer UAT remains owed.
 prior_activity_2026_07_11: Pushed to origin (db772555..01623abe, 42 commits). Next session: retarget `atlas`/`atlas tui` to atlas-terminal, TUI visual polish (fix indentation, differentiate from MiMoCode clone using L2 Dark Prism tokens), WebUI completeness audit, operator UAT, CI watch. Prior: identity fix (DIV-F-007), atlas-terminal waves 2-3, UAT confirmed working (ATLAS identity, /vcs, freellmapi, no event crashes). Critical: atlas-terminal GlobalEvent envelope fix (crashed on every event) + silent reject-becomes-approve fix + nonce-bound approvals; DB indexes (0019). High: cold-start orphan reaper, cockpit SSE backoff, all env vars documented, atlas-ci.yml authored, adapter timeouts/retries. Medium: GET /v1/runs (N+1 gone, E2E-verified), 403 auto re-surface, config schema migration chain, centralized rotating log, cross-module E2E (enabled by env-aware db.default_db_path -- live-DB footgun fixed), goal_tree SQL filtering, PID-reuse guard. Low: ogl removed, atlas-core pinned, graph TTL, bundle budget green, Go TUI mission rows show intent+updated. All suites green (766/97/29/20/101/104/44/1 E2E). Release gateway rebuilt. Wiki CLI DB path also made env-aware (34 passed). main 38 ahead of origin, unpushed.
 progress:
   total_phases: 8
@@ -15,6 +15,35 @@ progress:
 ---
 
 # STATE — L2 ATLAS
+
+## Current Position — 2026-07-16 verification: backlog structurally sound, live integration blockers identified
+
+- Database migrations `0022_actors.sql` and `0023_module_manifests.sql` are
+  applied. The release gateway rebuilt successfully and its full suite passed
+  (112 API + 5 contract tests).
+- The WebUI production bundle rebuilt successfully. Live browser UAT verified
+  the three-runtime AgentPicker (ATLAS / CLAUDE CODE / CODEX), selection of
+  CODEX, and the active `example-hello` module page at `/m/example-hello`.
+  The live command registry exposes `/hello` after module sync/activation.
+- Focused actor bridge/service, module service, and Codex adapter tests passed
+  (50 tests). `install/install.ps1` passes PowerShell parser validation.
+- Live Codex UAT is blocked on Windows: after updating the authenticated Codex
+  CLI to 0.144.5, `_default_runner` still sends the complete compiled prompt as
+  a positional argument and fails with `Linha de comando muito longa`. Pass the
+  prompt over stdin (or an equivalent non-argv channel) and add a real-process
+  Windows integration test.
+- Live durable-actor UAT is blocked at the Hermes plugin boundary: Hermes calls
+  `atlas_actor_tool(..., task_id=...)`, while the bridge handler does not accept
+  that framework keyword. The parent model can then return normally, causing the
+  run to be summarized as succeeded despite the failed tool call. Normalize the
+  injected context keyword and add an end-to-end Hermes invocation test.
+- Windows lifecycle UAT found `atlas down`/`restart` can stop the recorded
+  `cmd.exe` while leaving its Vite `node.exe` child bound to port 5173. Service
+  shutdown needs process-tree termination plus a post-stop port/PID check.
+- Current live services: gateway, cockpit, and FreeLLMAPI. The model registry
+  was refreshed and reports 68 active models. Optional cashflow and Discord
+  services remain intentionally stopped.
+  Remaining external UAT: run the bootstrap on a clean Windows VM/Sandbox.
 
 ## Current Position — 2026-07-16 continuation: visible, replay-safe subagent orchestration
 
@@ -1411,6 +1440,12 @@ Acknowledged at milestone close on 2026-06-15:
 | public-release | `PUBLIC_RELEASE_HARDENING.md §4` items 1–5, 7–8 | bounded, pre-public-publish / post-v1.0 (item 6 fonts RESOLVED) |
 
 ## Accumulated Context
+
+### Pending Todos
+
+- `2026-07-17-build-live-actor-workspace-and-queued-chat-composer.md` — use the
+  Chat right rail for live actor inspection and add a Codex-inspired ordered
+  composer queue (maximum four pending messages, force-next at safe boundaries).
 
 ### Roadmap Evolution
 
