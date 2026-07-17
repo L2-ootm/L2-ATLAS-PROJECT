@@ -63,6 +63,25 @@ def set_connection(conn: sqlite3.Connection | None) -> None:
         _CONN = conn
 
 
+def get_connection() -> sqlite3.Connection | None:
+    """Snapshot the injected connection (for sibling ATLAS plugins, e.g. the
+    actor bridge) under the same lock used by set_connection()."""
+    with _LOCK:
+        return _CONN
+
+
+def get_lock() -> threading.Lock:
+    """The lock that guards writes through this plugin's connection. Sibling
+    plugins sharing the connection must share this lock."""
+    return _LOCK
+
+
+def run_for_session(session_id: str) -> str | None:
+    """Resolve the ATLAS run_id mapped to a Hermes session, if any."""
+    with _STATE_LOCK:
+        return _CURRENT_RUN.get(session_id)
+
+
 # ---------------------------------------------------------------------------
 # Plugin entry point
 # ---------------------------------------------------------------------------

@@ -44,3 +44,11 @@ use `process` status/wait/kill rather than launching a duplicate. Stable process
 or subagent IDs are authority: retry status and wait operations safely, but do
 not repeat a spawn after an ambiguous timeout until its existing ID has been
 checked. A child result is evidence, not automatic proof of completion.
+
+For work that must survive this turn or a restart, use `atlas_actor`: `run`
+spawns and joins a durable child; `spawn` returns a stable actor ID at once and
+its completion is delivered to you at a later turn boundary exactly once;
+`status`/`wait` are idempotent inspection and join; `cancel` stops an actor and
+its descendants. Spawns are idempotency-keyed — after an ambiguous failure,
+check `status` on the existing ID instead of respawning. Orphaned actors are
+reported as orphaned, never as success.

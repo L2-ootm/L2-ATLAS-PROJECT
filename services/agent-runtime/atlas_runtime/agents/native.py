@@ -513,6 +513,12 @@ class NativeAtlasAgent(AgentRuntime):
                 # harness session, so delegate_tool subagent spawns emit
                 # subagent_run AuditEvents. Best-effort; never blocks the run.
                 subagent_service.ensure_foundation_bridge(conn, run_id=run_id)
+                # Durable actor supervisor: expose the atlas_actor tool and the
+                # completion-inbox hooks (pre/post llm) to the harness. Same
+                # D-001-safe direct registration; best-effort.
+                from atlas_runtime import actor_bridge  # noqa: PLC0415
+
+                actor_bridge.ensure_actor_bridge()
                 reasoning_effort = _resolve_reasoning_effort()
 
                 def _emit_delta(text: str, final: bool) -> None:
