@@ -4,7 +4,7 @@ milestone: v1.1
 milestone_name: ATLAS Agent Harness & Multi-Surface Workbench
 status: executing
 last_updated: "2026-07-17"
-last_activity: 2026-07-17 -- Codex production runtime migrated from argv-based `codex exec` to the official optional Python Codex SDK (`openai-codex` beta, local operator CLI/login selected explicitly), preserving final text, usage, shell/tool pairing, failures, and cancellation audit mapping. Live Codex text+tool UAT passed. ULTRAREVIEW traced atlas_actor through Hermes and fixed four layered defects: plugin handler ABI, wrong nested schema envelope, random turn task_id vs ATLAS run_id, and generic empty session-start overwriting the explicit run map. Live joined actor UAT completed ACTOR_CHILD_OK with queued/running/completed lifecycle events. Windows cockpit shutdown now uses verified process-tree termination; live down released 5173 and restart killed the old Vite listener before starting a new one. Ruff and pip check passed; full agent-runtime 913 passed / 1 skipped. UI actor workspace + four-message queued composer captured as pending todo (047a84d). Installer UAT intentionally deferred.
+last_activity: 2026-07-17 -- Durable actors no longer flash a Windows console, inherit the authoritative ATLAS surface session, bind child runs before execution, and support a configured actor model route. Chat now has a preserved 200px future file-tree rail, independently scrolling transcript, 400px actor workspace with live child event overlay, role-based model mesh, and persistent four-message FIFO composer queue. Wide/narrow Playwright QA passed, including measured scroll containment. Full verification: agent-runtime 918/1, atlas-core 97, WebUI 129 + build/budget/lint, Ruff clean. Work is on codex/chat-actor-workspace for operator review; installer remains deferred.
 prior_activity_2026_07_11: Pushed to origin (db772555..01623abe, 42 commits). Next session: retarget `atlas`/`atlas tui` to atlas-terminal, TUI visual polish (fix indentation, differentiate from MiMoCode clone using L2 Dark Prism tokens), WebUI completeness audit, operator UAT, CI watch. Prior: identity fix (DIV-F-007), atlas-terminal waves 2-3, UAT confirmed working (ATLAS identity, /vcs, freellmapi, no event crashes). Critical: atlas-terminal GlobalEvent envelope fix (crashed on every event) + silent reject-becomes-approve fix + nonce-bound approvals; DB indexes (0019). High: cold-start orphan reaper, cockpit SSE backoff, all env vars documented, atlas-ci.yml authored, adapter timeouts/retries. Medium: GET /v1/runs (N+1 gone, E2E-verified), 403 auto re-surface, config schema migration chain, centralized rotating log, cross-module E2E (enabled by env-aware db.default_db_path -- live-DB footgun fixed), goal_tree SQL filtering, PID-reuse guard. Low: ogl removed, atlas-core pinned, graph TTL, bundle budget green, Go TUI mission rows show intent+updated. All suites green (766/97/29/20/101/104/44/1 E2E). Release gateway rebuilt. Wiki CLI DB path also made env-aware (34 passed). main 38 ahead of origin, unpushed.
 progress:
   total_phases: 8
@@ -16,7 +16,33 @@ progress:
 
 # STATE — L2 ATLAS
 
-## Current Position — 2026-07-17: Codex SDK, durable actor, and lifecycle fixes verified live
+## Current Position — 2026-07-17: durable actor repair and three-zone Chat cockpit complete
+
+- Windows actor workers now prefer `pythonw.exe`, use `CREATE_NO_WINDOW` without
+  the conflicting detached-process flag, and close inherited descriptors.
+- The parent run owns the actor's ATLAS surface session. Child run IDs are bound
+  and emitted before execution, allowing the Chat actor overlay to display live
+  child reasoning/tool/completion events instead of an opaque tool card.
+- Chat is a real three-zone workspace: a 200px reserved left rail for the future
+  file tree, an independently scrolling transcript, and a 400px sparse actor
+  workspace. Compact widths hide the reserve first and then move actors into a
+  drawer.
+- The actor footer opens a model mesh over the existing registry/config plane.
+  It routes primary Chat, durable actors, curator, auxiliary, and judge roles.
+  Durable workers apply `functions.actor_model` unless the spawn call overrides
+  it explicitly.
+- The composer accepts and persists up to four prompts while a turn is live,
+  supports promote-next/edit/delete, and drains exactly once in FIFO order.
+- Verification: agent-runtime 918 passed / 1 skipped; atlas-core 97 passed;
+  WebUI 129 passed; TypeScript production build, bundle budget, ESLint, Ruff,
+  and `git diff --check` passed. Playwright wide/narrow pixel QA passed; the
+  transcript probe measured a 702px client viewport scrolling 1,603px.
+- Evidence: `.planning/ultra/ULTRAREVIEW-durable-actor-ui-regressions.md` and
+  `.planning/ultra/ULTRADESIGN-chat-three-zone-cockpit-contract.md`.
+- Branch for operator review: `codex/chat-actor-workspace`. Installer UAT stays
+  deferred until the operator accepts this slice.
+
+## Prior Position — 2026-07-17: Codex SDK, durable actor, and lifecycle fixes verified live
 
 - Codex now uses OpenAI's official Python SDK over the local app-server and the
   operator's existing Codex login. The beta dependency is an optional `codex`
