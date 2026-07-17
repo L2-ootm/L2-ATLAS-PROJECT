@@ -144,6 +144,34 @@ def test_native_executes_and_audits(db: sqlite3.Connection, lock: threading.Lock
     assert any(e.event_type == "llm_call" for e in events)
 
 
+def test_native_final_surface_event_is_not_capped_to_run_summary(
+    db: sqlite3.Connection, lock: threading.Lock
+) -> None:
+    mid = _pending_mission(db)
+    rid = _running_run(db, mid)
+    final_response = "A" * 2_400 + "\nCOMPLETE_ENDING"
+    agent = _native_with(
+        {
+            "final_response": final_response,
+            "api_calls": 1,
+            "completed": True,
+            "failed": False,
+            "error": None,
+        }
+    )
+
+    outcome = agent.execute(db, lock, mission_id=mid, run_id=rid, prompt="long answer")
+
+    # Durable run metadata remains compact for list/retrieval surfaces.
+    assert len(outcome.summary) == 2_000
+    # The llm_call text is the authoritative chat reconcile and must remain whole.
+    final_event = next(e for e in get_events_for_run(db, rid) if e.event_type == "llm_call")
+    payload = json.loads(final_event.data)
+    assert payload["text"] == final_response
+    assert payload["text_length"] == len(final_response)
+    assert payload["text"].endswith("COMPLETE_ENDING")
+
+
 def test_native_passes_goal_context_to_harness_system_message(
     db: sqlite3.Connection, lock: threading.Lock
 ) -> None:
@@ -167,6 +195,9 @@ def test_native_passes_goal_context_to_harness_system_message(
     assert len(harness.system_messages) == 1
     system_message = harness.system_messages[0] or ""
     assert "# ATLAS Run Contract" in system_message
+    assert "## Core Operating Policy" in system_message
+    assert "You are ATLAS" in system_message
+    assert "verified-live" in system_message
     assert "Ship Command Center" in system_message
     assert "Wire NativeAtlasAgent to the harness" in system_message
     assert "pass context as system_message" in system_message
@@ -243,7 +274,7 @@ def test_native_streams_deltas_into_llm_delta_events(
 
     monkeypatch.setattr("atlas_runtime.agents.native._default_factory", fake_default_factory)
     monkeypatch.setattr(
-        NativeAtlasAgent, "_resolve_provider", lambda self, conn: ("m", "p", None, "sk-real", "api_key")
+        NativeAtlasAgent, "_resolve_provider", lambda self, conn, run_id=None: ("m", "p", None, "sk-real", "api_key")
     )
     outcome = NativeAtlasAgent().execute(db, lock, mission_id=mid, run_id=rid, prompt="hi")
 
@@ -289,7 +320,7 @@ def test_native_flushes_delta_buffer_when_foundation_never_signals_end_of_turn(
 
     monkeypatch.setattr("atlas_runtime.agents.native._default_factory", fake_default_factory)
     monkeypatch.setattr(
-        NativeAtlasAgent, "_resolve_provider", lambda self, conn: ("m", "p", None, "sk-real", "api_key")
+        NativeAtlasAgent, "_resolve_provider", lambda self, conn, run_id=None: ("m", "p", None, "sk-real", "api_key")
     )
     outcome = NativeAtlasAgent().execute(db, lock, mission_id=mid, run_id=rid, prompt="hi")
 

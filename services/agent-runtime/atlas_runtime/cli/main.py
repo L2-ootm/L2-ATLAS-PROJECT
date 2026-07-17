@@ -441,6 +441,23 @@ def run_mission(
         "--session-id",
         help="Owning shared surface-session id.",
     ),
+    goal: bool = typer.Option(
+        False,
+        "--goal",
+        help="Enable the bounded judge-and-continue mission loop.",
+    ),
+    judge_model: str = typer.Option(
+        "",
+        "--judge-model",
+        help="Judge override in provider/model form; empty inherits the chat session.",
+    ),
+    max_runs: int = typer.Option(
+        12,
+        "--max-runs",
+        min=1,
+        max=100,
+        help="Maximum attempts for a goal mission.",
+    ),
     execute: bool = typer.Option(
         False,
         "--execute",
@@ -458,7 +475,7 @@ def run_mission(
     and emit the audit trail. Without --execute the run is recorded with the
     chosen runtime but not executed (gateway-safe, non-blocking).
     """
-    from atlas_runtime.agents import get_agent, known_agents
+    from atlas_runtime.agents import known_agents
 
     conn = _get_connection()
     lock = _get_lock()
@@ -472,6 +489,17 @@ def run_mission(
         raise typer.Exit(1)
 
     try:
+        if goal:
+            from atlas_runtime import mission_loop_service  # noqa: PLC0415
+
+            mission_loop_service.configure_loop(
+                conn,
+                lock,
+                mission_id=mission_id,
+                session_id=session_id,
+                judge_model=judge_model,
+                max_runs=max_runs,
+            )
         run = run_service.start_run(
             conn,
             lock,
@@ -490,9 +518,8 @@ def run_mission(
     # Intelligence Layer: feed the agent the live, secret-redacted ATLAS context
     # (Current Focus + Project + recent runs) ahead of the mission intent. The
     # executor owns the terminal transition and never leaves the run 'running'.
-    prompt = _run_prompt(conn, mission_id)
-    outcome = run_executor.execute_run(
-        conn, lock, agent=get_agent(agent), mission_id=mission_id, run_id=run.id, prompt=prompt
+    outcome = _execute_run_chain(
+        conn, lock, agent_name=agent, mission_id=mission_id, run_id=run.id
     )
     typer.echo(outcome.status)
 
@@ -722,7 +749,11 @@ def _print_context(conn: sqlite3.Connection, mission_id: str) -> None:
 @run_app.command("exec")
 def run_exec(
     run_id: str = typer.Argument(..., help="Run ID (already started, 'running') to execute"),
-    agent: str = typer.Option("native", "--agent", help="Agent runtime: native | claude_code"),
+    agent: str | None = typer.Option(
+        None,
+        "--agent",
+        help="Agent runtime override; default discovers the persisted run runtime.",
+    ),
 ) -> None:
     """Execute an already-started run to a terminal state.
 
@@ -730,32 +761,81 @@ def run_exec(
     spawned by the gateway as a detached subprocess for background execution, so
     `POST /v1/missions/{id}/run` can return the run_id immediately.
     """
-    from atlas_runtime.agents import get_agent, known_agents
+    from atlas_runtime.agents import known_agents
 
     conn = _get_connection()
     lock = _get_lock()
-    if agent not in known_agents():
-        typer.echo(f"Error: unknown agent {agent!r}; known: {known_agents()}", err=True)
-        raise typer.Exit(1)
-    row = conn.execute("SELECT mission_id, status FROM runs WHERE id=?", (run_id,)).fetchone()
+    row = conn.execute(
+        "SELECT mission_id, status, agent_runtime FROM runs WHERE id=?", (run_id,)
+    ).fetchone()
     if row is None:
         typer.echo(f"Error: run {run_id!r} not found", err=True)
         raise typer.Exit(1)
-    mission_id, status = row
+    mission_id, status, persisted_agent = row
+    agent_name = agent or persisted_agent or "native"
+    if agent_name not in known_agents():
+        typer.echo(f"Error: unknown agent {agent_name!r}; known: {known_agents()}", err=True)
+        raise typer.Exit(1)
     if status != "running":
         typer.echo(f"Error: run is {status!r}, not running", err=True)
         raise typer.Exit(1)
-    prompt = _run_prompt(conn, mission_id)
     # Execute inside the mission's bound project root. Safe process-wide:
     # this CLI command is spawned as a dedicated detached subprocess per run
     # (see docstring), so chdir cannot leak across runs.
     workdir = _mission_workdir(conn, mission_id)
     if workdir:
         os.chdir(workdir)
-    outcome = run_executor.execute_run(
-        conn, lock, agent=get_agent(agent), mission_id=mission_id, run_id=run_id, prompt=prompt
+    outcome = _execute_run_chain(
+        conn, lock, agent_name=agent_name, mission_id=mission_id, run_id=run_id
     )
     typer.echo(outcome.status)
+
+
+def _execute_run_chain(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    *,
+    agent_name: str,
+    mission_id: str,
+    run_id: str,
+):
+    """Execute one ordinary run or the bounded chain owned by a goal worker."""
+    from atlas_runtime import mission_loop_service  # noqa: PLC0415
+    from atlas_runtime.agents import get_agent  # noqa: PLC0415
+
+    agent = get_agent(agent_name)
+    current_run_id = run_id
+    outcome = None
+    while True:
+        prompt = _run_prompt(conn, mission_id)
+        outcome = run_executor.execute_run(
+            conn,
+            lock,
+            agent=agent,
+            mission_id=mission_id,
+            run_id=current_run_id,
+            prompt=prompt,
+        )
+        decision = mission_loop_service.evaluate_after_run(
+            conn,
+            lock,
+            mission_id=mission_id,
+            run_id=current_run_id,
+            run_status=outcome.status,
+        )
+        if decision.action != "continue":
+            return outcome
+        session_row = conn.execute(
+            "SELECT session_id FROM runs WHERE id=?", (current_run_id,)
+        ).fetchone()
+        next_run = run_service.start_run(
+            conn,
+            lock,
+            mission_id=mission_id,
+            session_id=session_row[0] if session_row else None,
+            agent_runtime=agent_name,
+        )
+        current_run_id = next_run.id
 
 
 # ---------------------------------------------------------------------------

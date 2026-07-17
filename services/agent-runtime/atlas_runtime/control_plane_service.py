@@ -33,6 +33,7 @@ _SETTING_METADATA: tuple[tuple[str, bool], ...] = (
     ("functions.autoconfig", False),
     ("functions.curator_model", False),
     ("functions.auxiliary_model", False),
+    ("functions.judge_model", False),
     ("runtime.default_agent", False),
     ("runtime.iteration_budget", False),
     ("runtime.compression", False),

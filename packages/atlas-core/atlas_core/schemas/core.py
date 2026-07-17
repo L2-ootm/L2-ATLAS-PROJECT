@@ -291,6 +291,8 @@ class AuditEvent(BaseModel):
         "model_call_start",
         "model_call_end",
         "provider_fallback",
+        # Long-horizon mission completion judge receipt.
+        "goal_judgement",
     ]
     tool_name: str | None = None
     timestamp: datetime.datetime = Field(

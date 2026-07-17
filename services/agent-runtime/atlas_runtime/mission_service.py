@@ -227,8 +227,9 @@ def purge_expired_archives(
     """Delete archived missions whose retention deadline has passed.
 
     SQLite foreign keys in the early schema do not cascade from missions to runs,
-    so dependent rows are removed explicitly. The purge is scoped only to rows
-    present in mission_archive and status='archived'.
+    so dependent raw evidence is removed explicitly and compact knowledge records
+    are detached from the deleted run. The purge is scoped only to rows present
+    in mission_archive and status='archived'.
     """
     now_iso = now or datetime.datetime.now(datetime.timezone.utc).isoformat()
 
@@ -249,10 +250,50 @@ def purge_expired_archives(
                     ).fetchall()
                 ]
                 for run_id in run_ids:
+                    # Preserve compiled knowledge while removing soft references
+                    # to history that is about to disappear.
+                    conn.execute("UPDATE observations SET run_id=NULL WHERE run_id=?", (run_id,))
+                    conn.execute(
+                        "UPDATE sources SET ingested_by_run_id=NULL WHERE ingested_by_run_id=?",
+                        (run_id,),
+                    )
+                    conn.execute(
+                        "UPDATE memory_provenance SET run_id=NULL, audit_event_id=NULL "
+                        "WHERE run_id=? OR audit_event_id IN "
+                        "(SELECT id FROM audit_events WHERE run_id=?)",
+                        (run_id, run_id),
+                    )
+                    conn.execute("DELETE FROM tool_approvals WHERE run_id=?", (run_id,))
+                    conn.execute("DELETE FROM discord_approvals WHERE run_id=?", (run_id,))
                     conn.execute("DELETE FROM tool_calls WHERE run_id=?", (run_id,))
                     conn.execute("DELETE FROM artifacts WHERE run_id=?", (run_id,))
+                    conn.execute("DELETE FROM run_judgements WHERE run_id=?", (run_id,))
+                    # Migration 0020 permits retention deletion while retaining
+                    # the no-UPDATE immutability guarantee for live snapshots.
+                    conn.execute("DELETE FROM agent_contract_snapshots WHERE run_id=?", (run_id,))
                     conn.execute("DELETE FROM audit_events WHERE run_id=?", (run_id,))
+
+                    session_row = conn.execute(
+                        "SELECT session_id FROM runs WHERE id=?", (run_id,)
+                    ).fetchone()
+                    session_id = session_row[0] if session_row else None
+                    if session_id:
+                        has_other_runs = conn.execute(
+                            "SELECT 1 FROM runs WHERE session_id=? AND id<>? LIMIT 1",
+                            (session_id, run_id),
+                        ).fetchone()
+                        if has_other_runs is None:
+                            conn.execute(
+                                "DELETE FROM approval_channels WHERE surface_session_id=?",
+                                (session_id,),
+                            )
+                            conn.execute(
+                                "DELETE FROM session_allow_rules WHERE surface_session_id=?",
+                                (session_id,),
+                            )
+                            conn.execute("DELETE FROM surface_sessions WHERE id=?", (session_id,))
                 conn.execute("DELETE FROM runs WHERE mission_id=?", (mission_id,))
+                conn.execute("DELETE FROM mission_loops WHERE mission_id=?", (mission_id,))
                 conn.execute(
                     "DELETE FROM mission_archive WHERE mission_id=?", (mission_id,)
                 )
