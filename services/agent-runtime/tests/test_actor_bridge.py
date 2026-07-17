@@ -12,7 +12,7 @@ import threading
 import pytest
 
 import atlas_audit
-from atlas_runtime import actor_bridge, actor_service
+from atlas_runtime import actor_bridge, actor_service, config_service
 
 
 class _Agent:
@@ -54,6 +54,24 @@ def test_tool_spawn_returns_immediately(bound, monkeypatch) -> None:
     assert out["status"] == "queued"
     assert out["mode"] == "detached"
     assert launched == [out["actor_id"]]
+
+
+def test_tool_spawn_uses_actor_model_route_when_call_has_no_override(
+    bound, monkeypatch
+) -> None:
+    agent, _ = bound
+    _launched(monkeypatch)
+    configured = config_service.set_value(
+        config_service.AtlasConfig(),
+        "functions.actor_model",
+        "openai-codex/gpt-5.4-mini",
+    )
+    monkeypatch.setattr(config_service, "load_config", lambda: configured)
+    out = json.loads(
+        actor_bridge.atlas_actor_tool(op="spawn", goal="route me", parent_agent=agent)
+    )
+    actor = actor_service.get_actor(atlas_audit.get_connection(), out["actor_id"])
+    assert actor["model"] == "openai-codex/gpt-5.4-mini"
 
 
 def test_tool_spawn_duplicate_returns_same_actor_without_relaunch(bound, monkeypatch) -> None:

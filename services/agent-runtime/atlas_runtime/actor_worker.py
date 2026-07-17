@@ -33,9 +33,16 @@ logger = logging.getLogger(__name__)
 
 HEARTBEAT_SECONDS = 5.0
 
-DETACHED_PROCESS = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
 CREATE_NEW_PROCESS_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+
+
+def _worker_python_executable() -> str:
+    """Prefer the windowless Python launcher for detached Windows workers."""
+    if os.name != "nt":
+        return sys.executable
+    pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+    return pythonw if os.path.exists(pythonw) else sys.executable
 
 
 def launch_actor_worker(
@@ -51,7 +58,7 @@ def launch_actor_worker(
     opens the same store regardless of its own cwd. Spawn failure transitions
     the actor to failed durably and returns None.
     """
-    cmd = [sys.executable, "-m", "atlas_runtime.actor_worker", actor_id]
+    cmd = [_worker_python_executable(), "-m", "atlas_runtime.actor_worker", actor_id]
     env = dict(os.environ)
     env["ATLAS_DB"] = db_path or str(atlas_db.default_db_path())
     try:
@@ -62,9 +69,10 @@ def launch_actor_worker(
                 stderr=subprocess.DEVNULL,
                 stdin=subprocess.DEVNULL,
                 env=env,
-                creationflags=DETACHED_PROCESS
-                | CREATE_NEW_PROCESS_GROUP
-                | CREATE_NO_WINDOW,
+                # DETACHED_PROCESS conflicts with CREATE_NO_WINDOW on Windows
+                # and can still flash a console for console-subsystem Python.
+                creationflags=CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
+                close_fds=True,
             )
         else:  # pragma: no cover - POSIX path exercised in CI only
             proc = subprocess.Popen(  # noqa: S603
@@ -142,9 +150,6 @@ def run_actor(
     beater = threading.Thread(target=_beat, name=f"actor-hb-{actor_id[:12]}", daemon=True)
     beater.start()
     try:
-        if agent_factory is None:
-            from atlas_runtime.agents import get_agent as agent_factory  # noqa: PLC0415
-
         workspace = actor.get("workspace_root")
         if workspace and os.path.isdir(workspace):
             os.chdir(workspace)
@@ -160,7 +165,21 @@ def run_actor(
             session_id=actor.get("session_id"),
             agent_runtime="native",
         )
-        runtime = agent_factory("native")
+        actor_service.bind_child_run(conn, lock, actor_id, child_run_id=run.id)
+        if agent_factory is not None:
+            runtime = agent_factory("native")
+        elif actor.get("model"):
+            from atlas_runtime.agents.native import NativeAtlasAgent  # noqa: PLC0415
+
+            provider, separator, model_id = str(actor["model"]).partition("/")
+            runtime = NativeAtlasAgent(
+                model=model_id if separator else provider,
+                provider=provider if separator else None,
+            )
+        else:
+            from atlas_runtime.agents import get_agent  # noqa: PLC0415
+
+            runtime = get_agent("native")
         outcome = runtime.execute(
             conn, lock,
             mission_id=mission.id,

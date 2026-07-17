@@ -14,6 +14,7 @@ def test_load_missing_returns_defaults(tmp_path):
     assert cfg.provider.name == "openrouter"
     assert cfg.runtime.default_agent == "native"
     assert cfg.modules["wiki"] is True
+    assert cfg.functions.actor_model == ""
 
 
 def test_save_then_load_roundtrips(tmp_path):

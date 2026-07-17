@@ -164,6 +164,13 @@ def atlas_actor_tool(
             if not goal or not goal.strip():
                 return _tool_error(f"op={op} requires a goal")
             mode = "joined" if op == "run" else "detached"
+            if not model:
+                try:
+                    from atlas_runtime import config_service  # noqa: PLC0415
+
+                    model = config_service.load_config().functions.actor_model or None
+                except Exception:  # noqa: BLE001 — inherit primary on config failure
+                    model = None
             actor, created = actor_service.spawn_actor(
                 conn, lock,
                 parent_run_id=run_id,

@@ -11,10 +11,12 @@ import datetime
 import json
 import sqlite3
 import threading
+from pathlib import Path
 
 import pytest
 
 from atlas_runtime import actor_service
+from atlas_runtime import actor_worker
 from atlas_runtime.actor_worker import run_actor
 from atlas_runtime.agents.base import RunOutcome
 from atlas_runtime.audit_service import get_events_for_run
@@ -65,6 +67,13 @@ def test_spawn_rejects_empty_goal_and_bad_mode(db, lock, run_id) -> None:
         _spawn(db, lock, run_id, depth=actor_service.MAX_DEPTH + 1)
 
 
+def test_spawn_uses_parent_run_surface_session(db, lock, run_id, surface_session) -> None:
+    db.execute("UPDATE runs SET session_id=? WHERE id=?", (surface_session, run_id))
+    db.commit()
+    actor, _ = _spawn(db, lock, run_id, session_id="hermes-session")
+    assert actor["session_id"] == surface_session
+
+
 # --- transitions -------------------------------------------------------------
 
 
@@ -97,6 +106,20 @@ def test_heartbeat_only_running(db, lock, run_id) -> None:
     assert not actor_service.heartbeat_actor(db, lock, actor["id"])
     actor_service.mark_running(db, lock, actor["id"])
     assert actor_service.heartbeat_actor(db, lock, actor["id"])
+
+
+def test_bind_child_run_emits_working_lifecycle(db, lock, run_id) -> None:
+    actor, _ = _spawn(db, lock, run_id)
+    actor_service.mark_running(db, lock, actor["id"])
+    assert actor_service.bind_child_run(db, lock, actor["id"], child_run_id=run_id)
+    assert not actor_service.bind_child_run(db, lock, actor["id"], child_run_id="child-2")
+    payloads = [
+        json.loads(event.data)
+        for event in get_events_for_run(db, run_id)
+        if event.event_type == "subagent_run"
+    ]
+    assert payloads[-1]["phase"] == "working"
+    assert payloads[-1]["child_run_id"] == run_id
 
 
 # --- cancel ------------------------------------------------------------------
@@ -262,6 +285,35 @@ def test_fresh_actor_survives_sweep(db, lock, run_id) -> None:
 # --- worker (injected agent, no subprocess) -----------------------------------
 
 
+def test_windows_worker_launch_is_hidden_without_detached_process(
+    db, lock, run_id, monkeypatch, tmp_path
+) -> None:
+    actor, _ = _spawn(db, lock, run_id)
+    python = tmp_path / "python.exe"
+    pythonw = tmp_path / "pythonw.exe"
+    python.write_text("", encoding="utf-8")
+    pythonw.write_text("", encoding="utf-8")
+    observed = {}
+
+    class _Proc:
+        pid = 4321
+
+    def _popen(cmd, **kwargs):
+        observed["cmd"] = cmd
+        observed.update(kwargs)
+        return _Proc()
+
+    monkeypatch.setattr(actor_worker.os, "name", "nt")
+    monkeypatch.setattr(actor_worker.sys, "executable", str(python))
+    monkeypatch.setattr(actor_worker.subprocess, "Popen", _popen)
+    assert actor_worker.launch_actor_worker(db, lock, actor["id"], db_path=str(tmp_path / "atlas.db")) == 4321
+    assert Path(observed["cmd"][0]).name == "pythonw.exe"
+    assert observed["creationflags"] & actor_worker.CREATE_NO_WINDOW
+    assert observed["creationflags"] & actor_worker.CREATE_NEW_PROCESS_GROUP
+    assert not (observed["creationflags"] & 0x00000008)
+    assert observed["close_fds"] is True
+
+
 class _FakeRuntime:
     def __init__(self, outcome: RunOutcome) -> None:
         self._outcome = outcome
@@ -285,6 +337,26 @@ def test_run_actor_success_completes_actor_and_child_run(db, lock, run_id) -> No
         "SELECT status FROM runs WHERE id=?", (final["child_run_id"],)
     ).fetchone()
     assert child[0] == "succeeded"
+
+
+def test_run_actor_applies_routed_provider_and_model(
+    db, lock, run_id, monkeypatch
+) -> None:
+    actor, _ = _spawn(
+        db, lock, run_id,
+        goal="use the routed model",
+        model="openai-codex/gpt-5.4-mini",
+    )
+    runtime = _FakeRuntime(RunOutcome(status="succeeded", summary="routed"))
+    observed = {}
+
+    def _native(**kwargs):
+        observed.update(kwargs)
+        return runtime
+
+    monkeypatch.setattr("atlas_runtime.agents.native.NativeAtlasAgent", _native)
+    assert run_actor(db, lock, actor["id"])
+    assert observed == {"provider": "openai-codex", "model": "gpt-5.4-mini"}
 
 
 def test_run_actor_failure_is_durable(db, lock, run_id) -> None:

@@ -94,6 +94,7 @@ def _emit_lifecycle(
         "background": actor.get("mode") == "detached",
         "mode": actor.get("mode"),
         "role": actor.get("role"),
+        "child_run_id": actor.get("child_run_id"),
     }
     payload.update(extra)
     try:
@@ -145,6 +146,14 @@ def spawn_actor(
     key = idempotency_key or default_idempotency_key(
         parent_run_id, goal, mode, model, role
     )
+    # The parent run is the authority for surface projection. Hermes' internal
+    # session id is a different namespace and must never detach child telemetry
+    # from the ATLAS surface session.
+    parent = conn.execute(
+        "SELECT session_id FROM runs WHERE id=?", (parent_run_id,)
+    ).fetchone()
+    if parent is not None and parent[0]:
+        session_id = str(parent[0])
     now = _now()
     actor_id = f"actor-{uuid.uuid4()}"
     with lock:
@@ -209,6 +218,32 @@ def heartbeat_actor(
                 (now, now, actor_id),
             )
             return cur.rowcount == 1
+
+
+def bind_child_run(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    actor_id: str,
+    *,
+    child_run_id: str,
+) -> bool:
+    """Attach a live child run before execution so its stream is discoverable."""
+    now = _now()
+    with lock:
+        with conn:
+            cur = conn.execute(
+                "UPDATE actors SET child_run_id=?, updated_at=?"
+                " WHERE id=? AND status='running' AND child_run_id IS NULL",
+                (child_run_id, now, actor_id),
+            )
+            changed = cur.rowcount == 1
+    if changed:
+        actor = _fetch_actor(conn, actor_id)
+        if actor:
+            _emit_lifecycle(
+                conn, lock, actor, "working", child_run_id=child_run_id
+            )
+    return changed
 
 
 def _finish(
