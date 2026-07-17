@@ -1,0 +1,19 @@
+Landscape social preview card (OpenGraph) for a developer tool called ATLAS. Must read clearly at small thumbnail size.
+
+Subject: a single obsidian glass slab panel, sharp 2px corners, occupying the center 70% of the frame, floating over a dark topographic terrain. On the slab, large uppercase wordmark "ATLAS" in a geometric grotesque, titanium white #E0E0E0, wide-tracked, positioned upper-left of the slab. Below it one monospace line in gray #A0A0A0: "AI COCKPIT FOR THE AGENTIC ERA". Bottom-left corner of the slab carries a tiny status pill: a 6px dot in green #00FF94 followed by the monospace word "ONLINE" in the same green. No other text.
+
+The slab material: translucent deep navy glass #050811 at roughly 70% opacity, background contour lines faintly visible through it, a 1px hairline border, a bright inner top-edge highlight like a specular light from above, and a hard 1px dark shadow shelf under its bottom edge so it sits with weight.
+
+Background: a field of thin topographic contour lines, 1px, blue-gray #20242e on void black #030305, drifting diagonally across the whole frame; the lines directly behind the slab glow electric violet #7B61FF in one elliptical region as if the slab's presence heats the terrain.
+
+Light: single cool source at 6500K above the frame creating the slab's top-edge specular hairline; no other lighting.
+
+Camera: straight-on front view, zero perspective tilt, flat graphic composition like a designed poster, everything razor sharp, f/11 equivalent.
+
+Negation: no stars, no clouds, no photos of people or hands, no laptop mockups, no browser chrome, no rainbow gradients, no lens flare, no rounded bubbly cards, no drop shadows in every direction, no extra icons, no small unreadable text paragraphs.
+
+Color: void black, blue-gray lines, violet #7B61FF glow, white and gray type, one green status accent. No warm tones anywhere.
+
+Finish: crisp, flat, premium print grain, crushed blacks, clean additive glow.
+
+Emotional register: a system reporting readiness — declarative, engineered, expensive.

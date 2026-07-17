@@ -1,0 +1,17 @@
+Landscape feature card for "One system, three surfaces" — a developer tool reachable from a web cockpit, a terminal UI, and a CLI.
+
+Subject: three obsidian glass panels standing in a row like monoliths, each a tall rectangle with sharp 2px corners and a 1px hairline border, evenly spaced across the center of the frame, all three connected underneath by a single glowing violet #7B61FF contour line running through the terrain like a shared root. Left panel: interior suggests a web cockpit — two hairline columns and three small rectangular blocks, no readable text. Center panel: interior suggests a terminal UI — five short monospace-looking dashes of gray text and one violet block cursor. Right panel: interior nearly empty except a single gray "$" glyph followed by a short dash line, a bare CLI. Above each panel a tiny uppercase monospace caption in gray #A0A0A0: "WEB", "TUI", "CLI" respectively. Headline top-center: "ONE SYSTEM. THREE SURFACES." uppercase, wide-tracked, titanium white #E0E0E0. No other text.
+
+Background: void black #030305; faint 1px blue-gray #20242e topographic contour lines across the lower third; the single connecting root line glows violet and is the brightest element below the panels.
+
+Light: cool 6500K top light — specular hairline on each panel's top edge; panel interiors dimly self-lit.
+
+Camera: straight-on, orthographic, symmetric composition, everything sharp.
+
+Negation: no laptops, no phones, no monitor bezels, no browser tabs with readable URLs, no people or hands, no clouds, no arrows between panels, no warm light, no rounded corners.
+
+Color: black, blue-gray, violet root line, gray captions, white headline.
+
+Finish: crisp, additive glow, fine grain, crushed blacks.
+
+Emotional register: three doors into the same room — coherence made visible.

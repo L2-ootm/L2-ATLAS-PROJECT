@@ -1,0 +1,17 @@
+Landscape promo card for installing a developer tool called ATLAS with one command.
+
+Subject: a single wide obsidian glass command bar — one row, like a spotlight input — centered horizontally and vertically, about 70% of frame width, sharp 2px corners, 1px hairline border with a faint violet #7B61FF tint, specular top-edge highlight. Inside it, one monospace command in titanium white #E0E0E0, large and legible: "npm i -g @l2/atlas" with a solid violet block cursor after it. Below the bar, centered, one small uppercase monospace caption in gray #A0A0A0: "ONE COMMAND. FULL COCKPIT." Above the bar, small and centered, the uppercase wordmark "ATLAS" wide-tracked in gray #E0E0E0 at 40% the command's size. No other text.
+
+Background: void black #030305. Behind and below the command bar, faint 1px blue-gray #20242e topographic contour lines form a basin centered under the bar, its innermost three lines glowing violet as if the command's presence warms the terrain. Upper corners fall to clean black.
+
+Light: single cool 6500K top source producing the bar's specular hairline; text self-luminous with a 2px phosphor halo.
+
+Camera: straight-on, flat, orthographic, everything razor sharp.
+
+Negation: no browser windows, no desktop screenshots, no download buttons, no progress bars, no boxes and arrows, no package cardboard metaphors, no rockets, no people, no warm tones, no rounded pillow corners.
+
+Color: black, blue-gray lines, violet accent, white command text, gray captions.
+
+Finish: crisp, additive glow, fine premium grain, crushed blacks.
+
+Emotional register: the single keystroke before everything starts — an ignition switch.

@@ -1,0 +1,17 @@
+Landscape desktop wallpaper for operators of a developer tool called ATLAS. Content must sit safely away from screen edges and tolerate desktop icons on the left.
+
+Subject: a vast topographic contour-line terrain filling the frame — hundreds of thin 1px blue-gray #20242e contour lines on void black #030305 describing a mountainous territory seen from directly above, map-like, with three well-separated features: a dominant summit right-of-center whose inner contour rings glow electric violet #7B61FF; a smaller ridge upper-left glowing faint cyan #00F0FF at one quarter intensity; a basin lower-right glowing faint green #00FF94 at one quarter intensity. In the lower-right corner, small, the uppercase wordmark "ATLAS" wide-tracked in gray #505050 with a 3px violet dot before it. No other text.
+
+The line density varies naturally: tight packed lines at steep slopes, wide spacing in flats — real cartographic rhythm, not a uniform pattern.
+
+Light: none; only the three glow regions and the tiny wordmark carry luminance. Overall the image is very dark — comfortable behind desktop icons.
+
+Camera: orthographic top-down map projection, uniform sharpness edge to edge.
+
+Negation: no 3D relief shading, no satellite-photo texture, no water rendered as blue fill, no labels or coordinates, no grid lines, no compass rose, no border, no stars, no vignette, no warm tones, no bright areas larger than 10% of the frame.
+
+Color: black canvas, blue-gray line work, violet primary glow, restrained cyan and green secondaries, gray wordmark.
+
+Finish: razor-crisp line work, soft additive glow, very fine grain, crushed blacks.
+
+Emotional register: the whole territory at rest under night instrumentation — calm scale.

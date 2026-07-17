@@ -1,0 +1,17 @@
+Wide landscape hero banner for a developer tool called ATLAS.
+
+Subject: the uppercase wordmark "ATLAS" centered in the upper half of the frame, set in a clean geometric grotesque typeface with wide letter-spacing, the letterforms cut from dark obsidian glass with a 1px pale hairline edge along their top contours, as if a light source above grazes each letter. Directly beneath the wordmark, one small uppercase monospace caption line reading "AI COCKPIT" in muted gray #A0A0A0, wide-tracked. No other text anywhere.
+
+The lower half of the frame is a topographic contour-line terrain seen at a shallow oblique angle, like geological survey strata: dozens of thin concentric contour lines, 1px weight, in desaturated blue-gray #20242e on a near-black canvas, describing ridges and basins that recede toward a horizon at mid-frame. One single ridge directly below the wordmark rises higher than the rest and its contour lines glow electric violet #7B61FF, the glow bleeding softly onto neighboring lines within 2-3 line intervals and no further. A second, smaller basin far right glows faint cyan #00F0FF at one third the violet's intensity.
+
+Light: one cool overhead source at 6500K, positioned upper center, grazing the glass letterforms so each has a bright top hairline and a dark face; the terrain is lit only by its own line glow, no external light on it.
+
+Camera: rendered like a 50mm equivalent shot at f/8, camera level with the wordmark, everything in focus edge to edge — this is crisp vector-like digital artwork, not a photograph with bokeh.
+
+Background by negation: no stars, no clouds, no fog banks, no city, no mountains as solid shapes (contour lines only), no gradient sunrise, no lens flare, no particles, no circuit-board patterns, no human figures. The canvas is flat void black #030305 with an almost imperceptible vignette toward the corners.
+
+Color: cool palette only — void black, blue-gray line work, electric violet #7B61FF as the single dominant accent, one restrained cyan secondary. No warm tones, no orange, no pink gradients, no rainbow iridescence, no desaturation of the accents.
+
+Texture and finish: micro fine grain like premium print, contour lines razor sharp, glow rendered as soft additive light with clean falloff. Crushed shadows, preserved highlights on the glass edges.
+
+Emotional register: the calm authority of a running system at night — mission control before launch, silent and certain.

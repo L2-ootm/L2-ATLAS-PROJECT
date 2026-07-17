@@ -1,0 +1,17 @@
+Landscape feature card for "Modules" — a developer tool feature where the system extends its own cockpit from manifest files.
+
+Subject: three obsidian glass slabs, sharp 2px corners, arranged in a shallow diagonal cascade from lower-left to upper-right, each slab a tall rectangle like a blank cockpit page. The rearmost slab is fully assembled: 1px hairline border, faint suggestion of interface bars inside (three horizontal hairline strips, no readable text). The middle slab is half-materialized: its lower half dissolves into thin violet #7B61FF contour lines still converging into place. The front slab is only beginning: just its 1px border traced in bright violet with one corner still open, drawn as if a pen of light is mid-stroke. Headline top-left of frame: "MODULES" uppercase, wide-tracked, titanium white #E0E0E0 with a 1px violet underline the width of the text. Beneath it one small monospace line in gray #A0A0A0: "module.yaml -> cockpit". No other text.
+
+Background: void black #030305, faint 1px blue-gray #20242e contour terrain across the bottom quarter, glowing faint violet beneath the front slab.
+
+Light: single cool 6500K top light giving each slab a specular top-edge hairline; the materializing lines are self-luminous.
+
+Camera: 50mm equivalent, f/8, slight 10-degree top-down angle, all slabs in focus.
+
+Negation: no puzzle pieces, no LEGO bricks, no plugs and sockets, no gears, no app-store grids of icons, no readable fake UI text, no people, no warm tones, no rounded cards.
+
+Color: black, blue-gray, violet as the only accent, white and gray type.
+
+Finish: crisp edges, restrained additive glow, fine grain, crushed blacks, preserved specular highlights.
+
+Emotional register: a system building its own instruments — construction as a native ability.

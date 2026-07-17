@@ -1,0 +1,17 @@
+Square 1:1 avatar and app-icon mark for a developer tool called ATLAS. Must stay legible at 64px.
+
+Subject: a bold uppercase letter "A" occupying about 55% of the frame height, dead center, constructed from thin concentric topographic contour lines — the letterform itself is drawn as if it were a mountain on a survey map, its outline traced by five to seven nested 1.5px contour strokes in electric violet #7B61FF, the outermost contour dimmest and the innermost brightest, with the very core of the "A" a solid small violet triangle. The crossbar of the A is one clean horizontal contour line in cyan #00F0FF, the only cyan element.
+
+Background: flat void black #050505, completely empty — no texture, no contour fragments, no gradient, so the mark isolates cleanly at small sizes. A single 1px hairline square border in #20242e inset 4% from the frame edge.
+
+Light: none; luminance is only the additive glow of the strokes, falling off within 3px.
+
+Camera: orthographic, flat, perfectly centered, razor sharp.
+
+Negation: no text other than the letterform, no wordmark, no 3D extrusion, no bevels, no chrome, no gradients across the background, no circles behind the mark, no shields or badges, no warm colors, no white.
+
+Color: black, violet #7B61FF at three brightness steps, one cyan line.
+
+Finish: vector-crisp, clean glow, crushed black.
+
+Emotional register: an instrument marking — precise, singular, unmistakable.

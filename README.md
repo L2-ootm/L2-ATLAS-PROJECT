@@ -14,7 +14,7 @@ context, execution, and review — with every action audited.
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](docs/operations/INSTALL.md)
 
 <!-- media: hero banner -->
-<!-- <img src="docs/media/atlas-hero.png" alt="ATLAS cockpit" width="880" /> -->
+<img src="docs/media/atlas-hero.png" alt="ATLAS — AI cockpit" width="880" />
 
 </div>
 

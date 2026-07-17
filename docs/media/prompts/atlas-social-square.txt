@@ -1,0 +1,17 @@
+Square 1:1 social post card for a developer tool called ATLAS, for LinkedIn and Instagram.
+
+Subject: dead-center composition. The uppercase wordmark "ATLAS" in a geometric grotesque, titanium white #E0E0E0, wide letter-spacing, sits at the exact center of the frame. Above it, a perfect circle of thin concentric topographic contour rings — like a mountain summit seen from directly overhead — about 45% of frame width, drawn in 1px blue-gray #20242e lines, with the innermost five rings glowing electric violet #7B61FF, brightest at the center point which is a single 4px violet dot. Below the wordmark, one monospace caption "AI COCKPIT FOR THE AGENTIC ERA" in gray #A0A0A0, small, wide-tracked. No other text.
+
+Background: flat void black #030305 with sparse continuation of faint contour line fragments near the edges only; the center area behind the rings is clean black so the summit reads instantly.
+
+Light: no scene lighting — luminance comes only from the glowing rings and the white type. The violet glow falls off within three ring intervals.
+
+Camera: perfectly orthographic top-down flat graphic, zero perspective, everything sharp.
+
+Negation: no photograph elements, no hands, no devices, no globes or planets, no starfields, no gradients spanning the frame, no extra icons or logos, no border frame, no watermark, no warm colors.
+
+Color: void black, blue-gray line work, electric violet #7B61FF, white and gray type only.
+
+Finish: vector-crisp lines, additive glow with clean falloff, fine premium grain, crushed blacks.
+
+Emotional register: a summit marked on a survey map — the single point everything routes through.

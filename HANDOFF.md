@@ -1,5 +1,41 @@
 # Handoff — L2 ATLAS Finish Sprint
 
+## Session update — 2026-07-17 (later): media day — full production media set generated via Codex imagegen
+
+Operator mission: generate the complete ATLAS media set (README + sharing +
+posts) by driving the Codex CLI's image generation from the terminal, saving
+into `docs/media/`. This closes item 4 of the previous entry's Next list
+(media assets + uncomment README slots), except the cockpit screenshot which
+must be a real capture.
+
+**Method.** Brand tokens pulled from the L2-Systems-Design-System skill
+(topographic canon: void black #030305–#050505, 1px #20242e contour terrain,
+electric violet #7B61FF primary, cyan/green/amber semantic signals, obsidian
+glass, 2px radii, monospace voice). 12 layered image specs written per the
+image-prompting skill (subject/light/camera/negation/color/finish/register).
+Generation: `codex exec - -C docs/media -s workspace-write` with the prompt
+piped through stdin — **gotcha: codex exec hangs forever on "Reading
+additional input from stdin..." when backgrounded with an open stdin pipe;
+pipe the prompt via `-` so the stream closes at EOF.** `image_generation` is
+a stable enabled codex feature; each image ≈ 2–4 min, ~34k codex tokens. Ran
+as 3 parallel background batches of 4.
+
+**Delivered (all visually QA'd, 12/12 on-brand, text rendered correctly):**
+`docs/media/` — atlas-hero, atlas-og (GitHub social preview; upload in repo
+Settings manually), atlas-social-x (`$ atlas up` terminal card),
+atlas-social-square, atlas-banner-wide, atlas-avatar (contour-A icon), four
+feature cards (actors / modules / surfaces / audit), atlas-install
+(`npm i -g @l2/atlas`), atlas-wallpaper. Exact prompts persisted at
+`docs/media/prompts/<name>.txt` for reproducible regeneration;
+`docs/media/README.md` rewritten as a use-case inventory. Root README hero
+slot uncommented; the `atlas-cockpit.png` slot stays commented — it needs a
+real WebUI screenshot, a generated mock would be dishonest product media.
+
+**Next:** 1) capture the real cockpit screenshot for the second README slot;
+2) upload atlas-og.png as the GitHub social preview when the repo flips
+public; 3) prior entry's owed UAT (slash actions, `/gsd` live, installer on
+clean sandbox) still stands.
+
 ## Session update — 2026-07-17: distribution sprint — slash actions, installer hardening, public README, GSD/L2 framework, security gate
 
 Operator mission: slash-command overhaul (WebUI first), installation workflow
