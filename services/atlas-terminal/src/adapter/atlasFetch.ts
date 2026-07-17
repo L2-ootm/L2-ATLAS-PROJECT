@@ -261,8 +261,19 @@ async function handleSessionCommand(
 	const args = typeof body['arguments'] === 'string' ? body['arguments'] : '';
 	const command = findAtlasCommand(name);
 	if (!command) return json({ error: 'not_found', message: `unknown command: ${name}` }, 404);
-	const text = expandCommandTemplate(command.template, args);
-	await chat.promptAsync(sessionID, { parts: [{ type: 'text', text }] });
+	const rawModel = typeof body['model'] === 'string' ? body['model'] : '';
+	const slash = rawModel.indexOf('/');
+	const model =
+		slash > 0 && slash < rawModel.length - 1
+			? { providerID: rawModel.slice(0, slash), modelID: rawModel.slice(slash + 1) }
+			: undefined;
+	if (command.kind === 'mission') {
+		const input = `/${command.name}${args.trim() ? ` ${args}` : ''}`;
+		await chat.promptAsync(sessionID, { parts: [{ type: 'text', text: input }], model });
+	} else {
+		const text = expandCommandTemplate(command.template, args);
+		await chat.promptAsync(sessionID, { parts: [{ type: 'text', text }], model });
+	}
 	return json({
 		info: { id: `msg_${name}`, sessionID, role: 'assistant', time: { created: Date.now() } },
 		parts: []

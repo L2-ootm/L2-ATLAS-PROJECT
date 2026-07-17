@@ -14,6 +14,7 @@
 
 import { EventBus } from './events';
 import { GatewayClient, GatewayError, type RunEvent, type SurfaceSession, type ToolApproval } from './gateway';
+import { parseMissionCommand } from './commands';
 
 interface DonorTime {
 	created: number;
@@ -92,6 +93,7 @@ export class ChatAdapter {
 	private readonly permissionPollMs: number;
 
 	private surface: SurfaceSession | null = null;
+	private surfaceModel: { provider: string; model: string } | null = null;
 	private counter = 0;
 	private readonly sessions = new Map<string, DonorSession>();
 	private readonly messages = new Map<string, DonorMessage[]>();
@@ -111,6 +113,8 @@ export class ChatAdapter {
 	 * part). Cleared when the message's run ends (`end` event).
 	 */
 	private readonly reconciledMessages = new Set<string>();
+	/** Assistant ids awaiting the first answer text from a continued goal run. */
+	private readonly freshRunMessages = new Set<string>();
 	/** Check whether a message already has a text part — prevents multiple
 	 *  event sources (llm_call, transition, llm_delta) from each creating
 	 *  their own part for the same response. */
@@ -143,8 +147,23 @@ export class ChatAdapter {
 		return `${prefix}_${Date.now().toString(36)}${this.counter.toString(36).padStart(4, '0')}`;
 	}
 
-	private async ensureSurface(): Promise<SurfaceSession> {
-		if (this.surface) return this.surface;
+	private async ensureSurface(model?: PromptBody['model']): Promise<SurfaceSession> {
+		const requested =
+			model?.providerID && model.modelID ? { provider: model.providerID, model: model.modelID } : null;
+		if (
+			this.surface &&
+			(!requested ||
+				(this.surfaceModel?.provider === requested.provider && this.surfaceModel.model === requested.model))
+		) {
+			return this.surface;
+		}
+		if (this.surface) {
+			const replaced = this.surface;
+			this.surface = null;
+			this.surfaceModel = null;
+			this.stopHeartbeat();
+			await this.gw.closeSurface(replaced).catch(() => undefined);
+		}
 		// gateway SurfaceIdentity.kind literal: cli|tui|webui|api|native|test
 		// Retry: a briefly unreachable gateway mid-prompt must not surface as an
 		// unhandled throw (2 retries, 1s backoff).
@@ -152,7 +171,13 @@ export class ChatAdapter {
 		for (let attempt = 0; attempt < 3; attempt++) {
 			if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 1000));
 			try {
-				this.surface = await this.gw.createSurface('tui', 'global');
+				this.surface = await this.gw.createSurface(
+					'tui',
+					'global',
+					requested?.provider,
+					requested?.model
+				);
+				this.surfaceModel = requested;
 				this.startHeartbeat();
 				return this.surface;
 			} catch (err) {
@@ -194,6 +219,7 @@ export class ChatAdapter {
 		} catch (err) {
 			if (err instanceof GatewayError && [401, 403, 404, 410].includes(err.status)) {
 				this.surface = null;
+				this.surfaceModel = null;
 				this.stopHeartbeat();
 			}
 		}
@@ -251,6 +277,29 @@ export class ChatAdapter {
 
 	// ── prompt → mission/run → SSE parts ────────────────────────────────────
 
+	private appendLocalNotice(sessionID: string, text: string, body: PromptBody): void {
+		const now = Date.now();
+		const assistant: DonorMessage = {
+			info: {
+				id: this.nextID('msg'),
+				sessionID,
+				role: 'assistant',
+				time: { created: now, completed: now },
+				providerID: body.model?.providerID ?? '',
+				modelID: body.model?.modelID ?? '',
+				mode: 'build',
+				agent: body.agent ?? this.atlasAgent,
+				cost: 0,
+				tokens: {},
+				path: { cwd: this.directory, root: this.directory }
+			},
+			parts: []
+		};
+		this.messages.get(sessionID)!.push(assistant);
+		this.bus.emit('message.updated', { sessionID, info: assistant.info });
+		this.appendPart(assistant, { type: 'text', text });
+	}
+
 	/**
 	 * Donor POST /session/{id}/prompt_async. Returns once the run is started;
 	 * parts stream onto the bus in the background.
@@ -264,6 +313,16 @@ export class ChatAdapter {
 			.join('\n')
 			.trim();
 		if (!text) throw new Error('prompt has no text parts');
+		const missionCommand = parseMissionCommand(text);
+		if (missionCommand?.action === 'status') {
+			this.appendLocalNotice(
+				sessionID,
+				'Mission status is not exposed by the terminal adapter yet. Start one with /goal <objective> or /mission <objective>.',
+				body
+			);
+			return;
+		}
+		const promptText = missionCommand?.action === 'start' ? missionCommand.objective : text;
 
 		const now = Date.now();
 		const userMsg: DonorMessage = {
@@ -275,22 +334,27 @@ export class ChatAdapter {
 			sessionID,
 			messageID: userMsg.info.id,
 			type: 'text',
-			text
+			text: promptText
 		};
 		userMsg.parts.push(userPart);
 		this.messages.get(sessionID)!.push(userMsg);
 		this.bus.emit('message.updated', { sessionID, info: userMsg.info });
 		this.bus.emit('message.part.updated', { sessionID, part: userPart, time: Date.now() });
 		if (session.title === 'New session') {
-			session.title = text.length > 64 ? `${text.slice(0, 61)}...` : text;
+			session.title = promptText.length > 64 ? `${promptText.slice(0, 61)}...` : promptText;
 			this.bus.emit('session.updated', { sessionID, info: session });
 		}
 
 		let runID: string;
 		try {
-			const surface = await this.ensureSurface();
-			const mission = await this.gw.createMission(session.title.slice(0, 120), text);
-			runID = await this.gw.startRun(mission.id, this.atlasAgent, surface.id);
+			const surface = await this.ensureSurface(body.model);
+			const mission = await this.gw.createMission(session.title.slice(0, 120), promptText);
+			runID = await this.gw.startRun(
+				mission.id,
+				this.atlasAgent,
+				surface.id,
+				missionCommand?.action === 'start' ? true : undefined
+			);
 		} catch (err) {
 			// Surface the failure in-session (not just as a 500 toast) and leave
 			// the session idle so the composer stays usable.
@@ -340,6 +404,7 @@ export class ChatAdapter {
 			})
 			.finally(() => {
 				this.streamingText.delete(assistant.info.id);
+				this.freshRunMessages.delete(assistant.info.id);
 				if (!assistant.info.time.completed) {
 					assistant.info.time.completed = Date.now();
 					this.bus.emit('message.updated', { sessionID, info: assistant.info });
@@ -366,10 +431,33 @@ export class ChatAdapter {
 	}
 
 	private onRunEvent(sessionID: string, assistant: DonorMessage, event: RunEvent): void {
+		if (event.name === 'continuation') {
+			// Goal-mode continuation keeps the gateway SSE open while moving to a
+			// fresh run. These guards are per run, so retaining them would classify
+			// the next run's deltas as stray and silently suppress its response.
+			this.streamingText.delete(assistant.info.id);
+			this.reconciledMessages.delete(assistant.info.id);
+			this.freshRunMessages.add(assistant.info.id);
+			const reason =
+				typeof event.data['reason'] === 'string'
+					? event.data['reason']
+					: typeof event.data['summary'] === 'string'
+						? event.data['summary']
+						: '';
+			if (reason) {
+				this.appendPart(assistant, {
+					type: 'reasoning',
+					text: `Continuing mission: ${reason}`,
+					time: { start: Date.now(), end: Date.now() }
+				});
+			}
+			return;
+		}
 		if (event.name === 'end') {
 			assistant.info.time.completed = Date.now();
 			this.bus.emit('message.updated', { sessionID, info: assistant.info });
 			this.reconciledMessages.delete(assistant.info.id);
+			this.freshRunMessages.delete(assistant.info.id);
 			return;
 		}
 		if (event.name === 'stream_error') {
@@ -388,6 +476,7 @@ export class ChatAdapter {
 		const data = frame.data ?? {};
 		const eventType = frame.event_type ?? '';
 		const str = (key: string): string => (typeof data[key] === 'string' ? (data[key] as string) : '');
+		const runtimeCallID = frame.tool_call_id || str('call_id');
 		const textOrSummary = str('text') || str('summary');
 
 		// mission lifecycle transitions ride on tool_call frames
@@ -404,7 +493,10 @@ export class ChatAdapter {
 				// transition summary may differ (truncation/post-processing)
 				// and the exact-text dupe check would fail — creating a
 				// duplicate part. Use the structural check instead.
-				if (!this.hasTextPart(assistant)) this.appendPart(assistant, { type: 'text', text: str('summary') });
+				const freshRun = this.freshRunMessages.delete(assistant.info.id);
+				if (freshRun || !this.hasTextPart(assistant)) {
+					this.appendPart(assistant, { type: 'text', text: str('summary') });
+				}
 			}
 			return;
 		}
@@ -435,6 +527,7 @@ export class ChatAdapter {
 			if (!entry && deltaText) {
 				entry = { part: this.appendPart(assistant, { type: 'text', text: '' }), open: true };
 				this.streamingText.set(assistant.info.id, entry);
+				this.freshRunMessages.delete(assistant.info.id);
 			}
 			if (entry?.open && deltaText) {
 				// `offset` = authoritative text length BEFORE this append. Lets
@@ -457,6 +550,7 @@ export class ChatAdapter {
 		}
 		if (eventType === 'llm_call' || eventType === 'model_call_end') {
 			if (textOrSummary) {
+				const freshRun = this.freshRunMessages.delete(assistant.info.id);
 				// A streamed part already carries this turn's text incrementally;
 				// reconcile it to the authoritative final text (post-processing
 				// like think-block stripping can differ from the raw stream)
@@ -466,7 +560,7 @@ export class ChatAdapter {
 					entry.part.text = textOrSummary;
 					this.bus.emit('message.part.updated', { sessionID, part: entry.part, time: Date.now() });
 					this.streamingText.delete(assistant.info.id);
-				} else if (!this.hasTextPart(assistant)) {
+				} else if (freshRun || !this.hasTextPart(assistant)) {
 					this.appendPart(assistant, { type: 'text', text: textOrSummary });
 				}
 			}
@@ -477,15 +571,24 @@ export class ChatAdapter {
 			return;
 		}
 		if (eventType === 'tool_call' || eventType === 'tool_requested') {
-			if (frame.tool_name === 'native_runtime') return; // engagement marker
-			const callID = frame.tool_call_id || this.nextID('call');
+			// Runtime/provider engagement rows are receipts, not invocations.
+			// Actual native tool events carry their call id in data.call_id.
+			if (
+				frame.tool_name === 'native_runtime' ||
+				(eventType === 'tool_call' && !runtimeCallID && typeof data['runtime'] === 'string')
+			) {
+				return;
+			}
+			const callID = runtimeCallID || this.nextID('call');
 			const part = this.appendPart(assistant, {
 				type: 'tool',
 				callID,
 				tool: frame.tool_name || 'tool',
 				state: {
 					status: 'running',
-					input: data['input'] ?? { summary: str('summary') || str('command') || str('path') },
+					input:
+						data['input'] ??
+						data['arguments'] ?? { summary: str('summary') || str('command') || str('path') },
 					time: { start: Date.now() }
 				}
 			});
@@ -493,11 +596,11 @@ export class ChatAdapter {
 			return;
 		}
 		if (eventType === 'tool_completed' || eventType === 'discord_action') {
-			this.settleTool(frame.tool_call_id, 'completed', str('summary') || str('result'));
+			this.settleTool(runtimeCallID, 'completed', str('summary') || str('result') || str('text'));
 			return;
 		}
 		if (eventType === 'tool_failed' || eventType === 'failure' || eventType.endsWith('_failed')) {
-			this.settleTool(frame.tool_call_id, 'error', str('error') || str('message') || 'failed');
+			this.settleTool(runtimeCallID, 'error', str('error') || str('message') || str('text') || 'failed');
 			return;
 		}
 		// unknown frames stay quiet; the audit ledger is redacted at write time
@@ -598,6 +701,7 @@ export class ChatAdapter {
 		if (this.surface) {
 			await this.gw.closeSurface(this.surface).catch(() => undefined);
 			this.surface = null;
+			this.surfaceModel = null;
 		}
 	}
 }

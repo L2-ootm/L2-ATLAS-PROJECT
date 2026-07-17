@@ -418,6 +418,74 @@ describe('STAGE 1 chat loop', () => {
 
 		const deltas = events.filter((e) => e.type === 'message.part.delta');
 		expect(deltas.map((e) => (e.properties as { offset?: number }).offset)).toEqual([0, 3, 7]);
+		const textSnapshots = events
+			.filter((e) => e.type === 'message.part.updated')
+			.map((e) => (e.properties as { part?: { type?: string; text?: string } }).part)
+			.filter((part) => part?.type === 'text' && part.text !== 'stream it');
+		// Emitted part updates must remain historical snapshots. Before the
+		// EventBus clone boundary this first event was mutated in place to the
+		// final text, so the TUI store advanced ahead of delta offsets.
+		expect(textSnapshots[0]?.text).toBe('');
+		expect(textSnapshots.at(-1)?.text).toBe('Hello, world');
+	});
+
+	it('uses nested runtime call_id to settle one tool part and preserves its arguments', async () => {
+		const state = newState();
+		const sse = [
+			frame('audit', {
+				event_type: 'tool_call',
+				tool_name: 'freellmapi',
+				data: { runtime: 'native', privacy_warning: 'free models may log prompts' }
+			}),
+			frame('audit', {
+				event_type: 'tool_requested',
+				tool_name: 'session_search',
+				data: {
+					call_id: 'call-runtime-1',
+					arguments: { query: 'Command Center goal model migration', limit: 5 }
+				}
+			}),
+			frame('audit', {
+				event_type: 'tool_completed',
+				tool_name: 'session_search',
+				data: { call_id: 'call-runtime-1', text: '{"success":true}' }
+			}),
+			frame('end', { status: 'succeeded' })
+		];
+		const handle = createAtlasFetchHandle({
+			gateway: GW,
+			fetchImpl: stubGateway(state, sse),
+			permissionPollMs: 0
+		});
+		const created = await handle.fetch('http://donor.local/session', { method: 'POST', body: '{}' });
+		const session = (await created.json()) as { id: string };
+		await handle.fetch(`http://donor.local/session/${session.id}/prompt_async`, {
+			method: 'POST',
+			body: JSON.stringify({ parts: [{ text: 'recall prior work' }] })
+		});
+		await settle();
+
+		const msgRes = await handle.fetch(`http://donor.local/session/${session.id}/message`);
+		const messages = (await msgRes.json()) as Array<{
+			info: { role: string };
+			parts: Array<{
+				type: string;
+				tool?: string;
+				callID?: string;
+				state?: { status?: string; input?: Record<string, unknown>; output?: string };
+			}>;
+		}>;
+		const toolParts = messages[1]!.parts.filter((part) => part.type === 'tool');
+		expect(toolParts).toHaveLength(1);
+		expect(toolParts[0]).toMatchObject({
+			tool: 'session_search',
+			callID: 'call-runtime-1',
+			state: {
+				status: 'completed',
+				input: { query: 'Command Center goal model migration', limit: 5 },
+				output: '{"success":true}'
+			}
+		});
 	});
 
 	it('SSE /event replay skips message.part.delta so a reconnect cannot re-append streamed text', async () => {

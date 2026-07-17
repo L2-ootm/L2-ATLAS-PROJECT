@@ -49,7 +49,7 @@ describe('ATLAS built-in slash commands', () => {
 		expect(res.status).toBe(200);
 		const list = (await res.json()) as Array<{ name: string; template: string }>;
 		const names = list.map((c) => c.name);
-		expect(names).toEqual(['init', 'review', 'dream', 'distill', 'goal', 'deep-research']);
+		expect(names).toEqual(['init', 'review', 'dream', 'distill', 'goal', 'mission', 'deep-research']);
 		expect(list.every((c) => c.template.length > 0)).toBe(true);
 	});
 
