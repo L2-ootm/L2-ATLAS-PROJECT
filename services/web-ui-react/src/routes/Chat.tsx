@@ -7,7 +7,6 @@ import {
 	Folder,
 	FolderSearch,
 	MessagesSquare,
-	Plus,
 	SendHorizontal,
 	Square,
 	Unlink
@@ -17,6 +16,8 @@ import { GlassPanel } from '../components/GlassFx';
 import { TopoScroll } from '../components/TopoScroll';
 import { ChatMarkdown } from '../components/ChatMarkdown';
 import { StreamReveal } from '../components/chat/StreamReveal';
+import { SubagentRail } from '../components/agent/SubagentActivity';
+import { SessionNavigator } from '../components/sessions/SessionNavigator';
 import {
 	agentRuntimeLabel,
 	getRun,
@@ -27,6 +28,7 @@ import {
 	type Project
 } from '../lib/api';
 import {
+	finalGoalJudgementState,
 	isRunTerminalEvent,
 	surfaceConsoleEvent,
 	surfaceEventsForTurn
@@ -34,7 +36,25 @@ import {
 import { useAgentSurface } from '../context/AgentSurfaceContext';
 import type { ConsoleMessage } from '../context/ConsoleSessionContext';
 import { selectFolder } from '../lib/host';
-import { ReasoningBlock, ToolCallCard, turnReceiptSignature } from './Console';
+import {
+	createChatSession,
+	emptyChatSnapshot,
+	loadActiveChatSession,
+	loadChatSession,
+	saveChatSession,
+	type ChatSnapshot
+} from '../lib/chatPersistence';
+import {
+	sessionBinding,
+	sessionTitleFromText,
+	setActiveSessionId,
+	upsertSessionCatalog
+} from '../lib/sessionCatalog';
+import { useVisualSettings } from '../lib/visualSettings';
+import { distanceFromBottom, isNearBottom } from '../lib/scrollFollow';
+import { turnReceiptSignature } from '../lib/turnReceipt';
+import { GOAL_STATUS_MESSAGE, parseMissionSlashIntent } from '../lib/missionSlash';
+import { ReasoningBlock, ToolCallCard } from './Console';
 
 /**
  * Dedicated operator chat — a single, full-page conversation with the agent.
@@ -46,45 +66,14 @@ import { ReasoningBlock, ToolCallCard, turnReceiptSignature } from './Console';
  * grace-drained watchdog so answers can never freeze mid-chunk.
  */
 
-const STORE_KEY = 'atlas.chatpage.v1';
-const MAX_STORED_MESSAGES = 150;
-
 type BindingMode = 'project' | 'folder';
 
 type ActiveChatTurn = {
 	turnId: string;
 	runId: string | null;
 	afterSeq: number;
+	goalMode: boolean;
 };
-
-interface ChatSnapshot {
-	messages: ConsoleMessage[];
-	draft: string;
-	agent: AgentRuntime;
-	bindingMode: BindingMode;
-	folderPath: string;
-	projectId: string;
-}
-
-function loadSnapshot(): ChatSnapshot | null {
-	try {
-		const raw = localStorage.getItem(STORE_KEY);
-		if (!raw) return null;
-		const parsed = JSON.parse(raw) as ChatSnapshot;
-		return {
-			...parsed,
-			// A turn that was pending when the tab closed can never complete —
-			// surface it honestly instead of showing an eternal LIVE badge.
-			messages: (parsed.messages ?? []).map((m) =>
-				m.status === 'pending'
-					? { ...m, status: 'failed', body: m.body || 'Interrupted — the session ended before this turn completed.' }
-					: m
-			)
-		};
-	} catch {
-		return null;
-	}
-}
 
 function nowLabel(): string {
 	return new Intl.DateTimeFormat(undefined, {
@@ -101,15 +90,15 @@ function pathTail(path: string): string {
 
 export default function Chat() {
 	const agentSurface = useAgentSurface();
-	const snapshot = useRef<ChatSnapshot | null | undefined>(undefined);
-	if (snapshot.current === undefined) snapshot.current = loadSnapshot();
-
-	const [messages, setMessages] = useState<ConsoleMessage[]>(snapshot.current?.messages ?? []);
-	const [draft, setDraft] = useState(snapshot.current?.draft ?? '');
-	const [agent, setAgent] = useState<AgentRuntime>(snapshot.current?.agent ?? 'native');
-	const [bindingMode, setBindingMode] = useState<BindingMode>(snapshot.current?.bindingMode ?? 'folder');
-	const [folderPath, setFolderPath] = useState(snapshot.current?.folderPath ?? '');
-	const [projectId, setProjectId] = useState(snapshot.current?.projectId ?? '');
+	const visualSettings = useVisualSettings();
+	const [initial] = useState(loadActiveChatSession);
+	const [catalogSessionId, setCatalogSessionId] = useState(initial.id);
+	const [messages, setMessages] = useState<ConsoleMessage[]>(initial.snapshot.messages);
+	const [draft, setDraft] = useState(initial.snapshot.draft);
+	const [agent, setAgent] = useState<AgentRuntime>(initial.snapshot.agent);
+	const [bindingMode, setBindingMode] = useState<BindingMode>(initial.snapshot.bindingMode);
+	const [folderPath, setFolderPath] = useState(initial.snapshot.folderPath);
+	const [projectId, setProjectId] = useState(initial.snapshot.projectId);
 	const [projects, setProjects] = useState<Project[]>([]);
 	const [activeTurn, setActiveTurn] = useState<ActiveChatTurn | null>(null);
 	const [bindOpen, setBindOpen] = useState(false);
@@ -132,23 +121,33 @@ export default function Chat() {
 	);
 	const boundCwd = bindingMode === 'project' ? activeProject?.root_path ?? null : folderPath.trim() || null;
 
-	// Persist the whole page state (debounce-free: writes are tiny and rare
-	// relative to render cost; the messages cap keeps the payload bounded).
 	useEffect(() => {
-		try {
-			const payload: ChatSnapshot = {
-				messages: messages.slice(-MAX_STORED_MESSAGES),
-				draft,
-				agent,
+		const payload: ChatSnapshot = { messages, draft, agent, bindingMode, folderPath, projectId };
+		saveChatSession(catalogSessionId, payload);
+		const firstOperator = messages.find((message) => message.role === 'operator');
+		upsertSessionCatalog({
+			id: catalogSessionId,
+			surface: 'chat',
+			title: sessionTitleFromText(firstOperator?.body, 'New chat session'),
+			agent,
+			binding: sessionBinding(
 				bindingMode,
 				folderPath,
-				projectId
-			};
-			localStorage.setItem(STORE_KEY, JSON.stringify(payload));
-		} catch {
-			// Quota/serialization failures must never break the chat.
-		}
-	}, [messages, draft, agent, bindingMode, folderPath, projectId]);
+				projectId,
+				activeProject?.name,
+				activeProject?.root_path
+			)
+		});
+	}, [
+		catalogSessionId,
+		messages,
+		draft,
+		agent,
+		bindingMode,
+		folderPath,
+		projectId,
+		activeProject
+	]);
 
 	// ── event merge (same contract as Console's, single transcript) ─────────
 	useEffect(() => {
@@ -161,7 +160,10 @@ export default function Chat() {
 				return { type: 'failure', error: cause instanceof Error ? cause.message : String(cause) };
 			}
 		});
-		const terminal = projected.some(isRunTerminalEvent);
+		const finalGoalState = finalGoalJudgementState(pending);
+		const terminal = activeTurn.goalMode
+			? finalGoalState !== null
+			: projected.some(isRunTerminalEvent);
 		const afterSeq = Math.max(...pending.map((event) => event.seq));
 		const { turnId, runId } = activeTurn;
 
@@ -197,6 +199,14 @@ export default function Chat() {
 									: next.status
 					};
 				}
+				if (activeTurn.goalMode) {
+					next = {
+						...next,
+						status: finalGoalState
+							? finalGoalState === 'failed' ? 'failed' : 'succeeded'
+							: 'pending'
+					};
+				}
 				return next;
 			})
 		);
@@ -209,6 +219,7 @@ export default function Chat() {
 	// ── stuck-turn watchdog with grace drain (see Console.tsx) ──────────────
 	const watchedRunId = activeTurn?.runId ?? null;
 	const watchedTurnId = activeTurn?.turnId ?? null;
+	const watchedGoalMode = activeTurn?.goalMode ?? false;
 	const terminalSeenRef = useRef<string | null>(null);
 	const refreshSurfaceEvents = agentSurface.refresh;
 	useEffect(() => {
@@ -218,6 +229,10 @@ export default function Chat() {
 			try {
 				const { run } = await getRun(watchedRunId);
 				if (!['succeeded', 'failed', 'cancelled'].includes(run.status)) return;
+				if (watchedGoalMode) {
+					void refreshSurfaceEvents().catch(() => undefined);
+					return;
+				}
 				// First terminal sighting: the tail surface events (last deltas +
 				// final reconcile) may not be polled yet — force a refresh and give
 				// them one more tick before finalizing, or the answer truncates.
@@ -244,7 +259,7 @@ export default function Chat() {
 			}
 		}, 8000);
 		return () => window.clearInterval(timer);
-	}, [watchedRunId, watchedTurnId, refreshSurfaceEvents]);
+	}, [watchedRunId, watchedTurnId, watchedGoalMode, refreshSurfaceEvents]);
 
 	// ── workspace binding → registered project resolution ───────────────────
 	const [folderProjectId, setFolderProjectId] = useState<string | null>(null);
@@ -281,6 +296,7 @@ export default function Chat() {
 	async function send() {
 		const prompt = draft.trim();
 		if (!prompt || activeTurn) return;
+		const goalMode = parseMissionSlashIntent(prompt)?.kind === 'goal-launch';
 		setDraft('');
 		const operator: ConsoleMessage = {
 			id: `${Date.now()}-operator`,
@@ -301,7 +317,7 @@ export default function Chat() {
 		};
 		setMessages((prev) => [...prev, operator, liveTurn]);
 		const afterSeq = agentSurface.events.reduce((highest, event) => Math.max(highest, event.seq), -1);
-		setActiveTurn({ turnId, runId: null, afterSeq });
+		setActiveTurn({ turnId, runId: null, afterSeq, goalMode });
 		try {
 			let workspace: { kind: 'global' } | { kind: 'project'; projectId: string } = { kind: 'global' };
 			if (bindingMode === 'project' && projectId) {
@@ -314,6 +330,15 @@ export default function Chat() {
 				}
 			}
 			const runId = await agentSurface.submitPrompt(prompt, agent, workspace);
+			if (runId === null) {
+				setMessages((prev) =>
+					prev.map((m) =>
+						m.id === turnId ? { ...m, status: 'succeeded', body: GOAL_STATUS_MESSAGE } : m
+					)
+				);
+				setActiveTurn((current) => (current?.turnId === turnId ? null : current));
+				return;
+			}
 			setActiveTurn((current) => (current?.turnId === turnId ? { ...current, runId } : current));
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
@@ -336,10 +361,36 @@ export default function Chat() {
 		}
 	}
 
-	function newSession() {
-		if (activeTurn) return;
-		setMessages([]);
+	function applySnapshot(id: string, snapshot: ChatSnapshot) {
+		setCatalogSessionId(id);
+		setActiveSessionId('chat', id);
+		setMessages(snapshot.messages);
+		setDraft(snapshot.draft);
+		setAgent(snapshot.agent);
+		setBindingMode(snapshot.bindingMode);
+		setFolderPath(snapshot.folderPath);
+		setProjectId(snapshot.projectId);
+		setActiveTurn(null);
+		setBindOpen(false);
 		void agentSurface.releaseSession();
+	}
+
+	function selectCatalogSession(id: string) {
+		if (activeTurn) return;
+		const snapshot = loadChatSession(id);
+		if (snapshot) applySnapshot(id, snapshot);
+	}
+
+	function newSession(unbound = false) {
+		if (activeTurn) return;
+		const snapshot = emptyChatSnapshot({
+			agent,
+			bindingMode: unbound ? 'folder' : bindingMode,
+			folderPath: unbound ? '' : folderPath,
+			projectId: unbound ? '' : projectId
+		});
+		const id = createChatSession(snapshot);
+		applySnapshot(id, snapshot);
 	}
 
 	async function chooseFolder() {
@@ -365,27 +416,29 @@ export default function Chat() {
 	const [unpinned, setUnpinned] = useState(false);
 	const busy = !!activeTurn;
 	const onViewportScroll = useCallback((el: HTMLDivElement) => {
-		const pinned = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+		const pinned =
+			visualSettings.autoFollow &&
+			isNearBottom(el);
 		pinnedRef.current = pinned;
 		setUnpinned(!pinned);
-	}, []);
+	}, [visualSettings.autoFollow]);
 	useEffect(() => {
 		const el = viewportRef.current;
-		if (el && pinnedRef.current) el.scrollTop = el.scrollHeight;
-	}, [messages]);
+		if (el && visualSettings.autoFollow && pinnedRef.current) el.scrollTop = el.scrollHeight;
+	}, [messages, visualSettings.autoFollow]);
 	useEffect(() => {
-		if (!busy) return;
+		if (!busy || !visualSettings.autoFollow) return;
 		let raf = 0;
 		const follow = () => {
 			const el = viewportRef.current;
-			if (el && pinnedRef.current && el.scrollHeight - el.scrollTop - el.clientHeight > 1) {
+			if (el && pinnedRef.current && distanceFromBottom(el) > 1) {
 				el.scrollTop = el.scrollHeight;
 			}
 			raf = requestAnimationFrame(follow);
 		};
 		raf = requestAnimationFrame(follow);
 		return () => cancelAnimationFrame(raf);
-	}, [busy]);
+	}, [busy, visualSettings.autoFollow]);
 	const jumpToLatest = useCallback(() => {
 		const el = viewportRef.current;
 		if (!el) return;
@@ -410,6 +463,19 @@ export default function Chat() {
 			max={null}
 			actions={
 				<>
+					<SessionNavigator
+						activeSessionId={catalogSessionId}
+						surface="chat"
+						bound={!!(boundCwd || projectId)}
+						disabled={busy}
+						onNewSession={newSession}
+						onSelectSession={selectCatalogSession}
+						onChooseFolder={() => {
+							setBindOpen(false);
+							void chooseFolder();
+						}}
+						onUnbind={unbind}
+					/>
 					<div style={segStyle}>
 						<SegmentButton active={agent === 'native'} onClick={() => !busy && setAgent('native')}>
 							ATLAS
@@ -467,9 +533,6 @@ export default function Chat() {
 							<Unlink size={14} strokeWidth={1.7} />
 						</IconAction>
 					)}
-					<IconAction title="New session (clears the transcript)" onClick={newSession}>
-						<Plus size={14} strokeWidth={1.8} />
-					</IconAction>
 				</>
 			}
 		>
@@ -637,7 +700,9 @@ function ChatAgentTurn({ message, hideStatus }: { message: ConsoleMessage; hideS
 				{pending && <span style={liveBadgeStyle}>LIVE</span>}
 			</div>
 			{events.length === 0 && pending && <div style={{ color: 'var(--l2-fg-3)', fontSize: 13 }}>Working…</div>}
+			<SubagentRail events={events} />
 			{displayEvents.map((event, idx) => {
+				if (event.type === 'task') return null;
 				if (event.type === 'text') {
 					return <TurnText key={idx} text={event.text ?? ''} streaming={!!event._open && pending} />;
 				}

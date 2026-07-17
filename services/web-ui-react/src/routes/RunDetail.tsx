@@ -10,6 +10,7 @@ import GlassTopo from '../components/GlassTopo';
 import SseEventRow, { ROW_GRID } from '../components/SseEventRow';
 import { useRunStream } from '../lib/useRunStream';
 import { getRun, getRunEvents, cancelRun, type Run } from '../lib/api';
+import { projectAuditEvents } from '../lib/logProjection';
 import { createTopoField, type TopoFieldAPI } from '../topo/topoEngine';
 
 function isActive(status: string): boolean {
@@ -28,6 +29,7 @@ export default function RunDetail() {
 	const [run, setRun] = useState<Run | null>(null);
 	const [nowTick, setNowTick] = useState(Date.now());
 	const [filter, setFilter] = useState('ALL');
+	const [compactDeltas, setCompactDeltas] = useState(true);
 	const [confirmCancel, setConfirmCancel] = useState(false);
 	const [cancelError, setCancelError] = useState<string | null>(null);
 	const [exportError, setExportError] = useState<string | null>(null);
@@ -141,7 +143,15 @@ export default function RunDetail() {
 		() => ['ALL', ...Array.from(new Set(stream.events.map((e) => e.event_type.toUpperCase())))],
 		[stream.events]
 	);
-	const visible = filter === 'ALL' ? stream.events : stream.events.filter((e) => e.event_type.toUpperCase() === filter);
+	const projectedEvents = useMemo(() => projectAuditEvents(stream.events), [stream.events]);
+	const visible = useMemo(() => {
+		const source = compactDeltas
+			? projectedEvents
+			: stream.events.map((event) => projectAuditEvents([event])[0]);
+		return filter === 'ALL'
+			? source
+			: source.filter((item) => item.event.event_type.toUpperCase() === filter);
+	}, [compactDeltas, filter, projectedEvents, stream.events]);
 
 	const elapsed = useMemo(() => {
 		if (!run) return '—';
@@ -268,12 +278,30 @@ export default function RunDetail() {
 			{/* controls */}
 			<div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
 				<HudLabel>AUDIT STREAM</HudLabel>
+				<button
+					type="button"
+					onClick={() => setCompactDeltas((value) => !value)}
+					aria-pressed={compactDeltas}
+					style={{
+						marginLeft: 'auto',
+						background: compactDeltas ? 'rgba(79,139,255,0.10)' : 'transparent',
+						border: `1px solid ${compactDeltas ? 'rgba(79,139,255,0.38)' : 'var(--l2-hairline)'}`,
+						color: compactDeltas ? 'var(--atlas-celestial)' : 'var(--l2-fg-3)',
+						fontFamily: 'var(--l2-font-mono)',
+						fontSize: 10,
+						letterSpacing: '0.12em',
+						padding: '6px 10px',
+						borderRadius: 2,
+						cursor: 'pointer'
+					}}
+				>
+					{compactDeltas ? 'DELTAS GROUPED' : 'RAW DELTAS'}
+				</button>
 				<select
 					value={filter}
 					onChange={(e) => setFilter(e.target.value)}
 					aria-label="Filter by event type"
 					style={{
-						marginLeft: 'auto',
 						background: 'var(--l2-glass-bg-lo)',
 						border: '1px solid var(--l2-hairline)',
 						color: 'var(--l2-fg-2)',
@@ -352,8 +380,13 @@ export default function RunDetail() {
 								</HudLabel>
 							</div>
 						)}
-						{visible.map((e) => (
-							<SseEventRow key={e.cursor} event={e} isNew={stream.newCursors.has(e.cursor)} />
+						{visible.map((item) => (
+							<SseEventRow
+								key={item.id}
+								event={item.event}
+								group={compactDeltas ? item : undefined}
+								isNew={item.members.some((event) => stream.newCursors.has(event.cursor))}
+							/>
 						))}
 					</div>
 				</div>

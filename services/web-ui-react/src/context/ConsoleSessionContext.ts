@@ -42,6 +42,7 @@ export type ActiveConsoleTurn = {
 	turnId: string;
 	runId: string | null;
 	afterSeq: number;
+	goalMode: boolean;
 };
 
 export type ConsoleSessionContextValue = {

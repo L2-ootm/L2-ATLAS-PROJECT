@@ -69,12 +69,18 @@ export default function Integrations() {
 			return;
 		}
 
-		const toolList: ToolManifest[] = tools.status === 'fulfilled' ? tools.value : [];
-		const channelList = channels.status === 'fulfilled' ? channels.value.channels : [];
-		const moduleList = modules.status === 'fulfilled' ? modules.value.modules : [];
-		const msgGw = msg.status === 'fulfilled' ? msg.value : { running: false, pid: null };
-		const discord = dis.status === 'fulfilled' ? dis.value : { running: false, ready: false, guild_count: 0, pid: null };
-		const cashflow = cash.status === 'fulfilled' ? cash.value : { running: false, backend: 'local' };
+		const toolsKnown = tools.status === 'fulfilled';
+		const channelsKnown = channels.status === 'fulfilled';
+		const modulesKnown = modules.status === 'fulfilled';
+		const messagingKnown = msg.status === 'fulfilled';
+		const discordKnown = dis.status === 'fulfilled';
+		const cashflowKnown = cash.status === 'fulfilled';
+		const toolList: ToolManifest[] = toolsKnown ? tools.value : [];
+		const channelList = channelsKnown ? channels.value.channels : [];
+		const moduleList = modulesKnown ? modules.value.modules : [];
+		const msgGw = messagingKnown ? msg.value : { running: false, pid: null };
+		const discord = discordKnown ? dis.value : { running: false, ready: false, guild_count: 0, pid: null };
+		const cashflow = cashflowKnown ? cash.value : { running: false, backend: 'local' };
 
 		const enabledChannels = channelList.filter((c) => c.enabled).length;
 		const writeTools = toolList.filter((t) => t.risk_level !== 'read').length;
@@ -85,17 +91,19 @@ export default function Integrations() {
 			{
 				name: 'Developer Tools',
 				kind: 'tool registry',
-				state: toolList.length > 0 ? 'online' : 'unknown',
+				state: toolsKnown && toolList.length > 0 ? 'online' : 'unknown',
 				posture: writeTools > 0 ? 'approval-gated' : 'read-only',
-				detail: `${toolList.length} registered · ${writeTools} write/shell gated`,
+				detail: toolsKnown ? `${toolList.length} registered · ${writeTools} write/shell gated` : 'registry status unavailable',
 				to: '/system'
 			},
 			{
 				name: 'Messaging Channels',
 				kind: 'foundation adapter',
-				state: msgGw.running ? 'online' : enabledChannels > 0 ? 'degraded' : 'offline',
+				state: !channelsKnown || !messagingKnown ? 'unknown' : msgGw.running ? 'online' : enabledChannels > 0 ? 'degraded' : 'offline',
 				posture: 'config-gated',
-				detail: channelList.length === 0
+				detail: !channelsKnown || !messagingKnown
+					? 'channel or gateway status unavailable'
+					: channelList.length === 0
 					? 'none configured'
 					: `${enabledChannels}/${channelList.length} enabled · gateway ${msgGw.running ? 'running' : 'stopped'}`,
 				to: '/system'
@@ -103,25 +111,25 @@ export default function Integrations() {
 			{
 				name: 'Discord',
 				kind: 'sidecar',
-				state: discord.running ? (discord.ready ? 'online' : 'degraded') : 'offline',
+				state: !discordKnown ? 'unknown' : discord.running ? (discord.ready ? 'online' : 'degraded') : 'offline',
 				posture: 'approval-gated writes',
-				detail: discord.running ? `${discord.guild_count} guild(s) · ${discord.ready ? 'ready' : 'connecting'}` : 'sidecar stopped',
+				detail: !discordKnown ? 'sidecar status unavailable' : discord.running ? `${discord.guild_count} guild(s) · ${discord.ready ? 'ready' : 'connecting'}` : 'sidecar stopped',
 				to: '/discord'
 			},
 			{
 				name: 'Cashflow',
 				kind: 'module',
-				state: cashflow.running ? 'online' : 'offline',
+				state: !cashflowKnown ? 'unknown' : cashflow.running ? 'online' : 'offline',
 				posture: 'optional module',
-				detail: cashflow.running ? `running · ${cashflow.backend} backend` : 'stopped',
+				detail: !cashflowKnown ? 'module status unavailable' : cashflow.running ? `running · ${cashflow.backend} backend` : 'stopped',
 				to: '/cashflow'
 			},
 			{
 				name: 'Optional Modules',
 				kind: 'module registry',
-				state: activeModules > 0 ? 'online' : 'offline',
+				state: !modulesKnown ? 'unknown' : activeModules > 0 ? 'online' : 'offline',
 				posture: 'operator-activated',
-				detail: moduleList.length === 0 ? 'none available' : `${activeModules}/${moduleList.length} active`,
+				detail: !modulesKnown ? 'module registry unavailable' : moduleList.length === 0 ? 'none available' : `${activeModules}/${moduleList.length} active`,
 				to: '/system'
 			}
 		];

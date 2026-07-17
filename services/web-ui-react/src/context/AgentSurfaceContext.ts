@@ -21,8 +21,9 @@ export interface AgentSurfaceValue {
 	submitPrompt: (
 		prompt: string,
 		agent: AgentRuntime,
-		workspace: WorkspaceRequest
-	) => Promise<string>;
+		workspace: WorkspaceRequest,
+		commandText?: string
+	) => Promise<string | null>;
 	cancel: () => Promise<void>;
 	/** Drop the held surface session (workspace rebind/unbind) — local release
 	 * first, then a best-effort close; the next prompt re-surfaces fresh. */

@@ -7,8 +7,10 @@ import {
 	saveConsoleSnapshot,
 	type ConsoleSnapshot
 } from '../lib/consolePersistence';
+import { setActiveSessionId } from '../lib/sessionCatalog';
 
-const STORAGE_KEY = 'atlas.console.v1';
+const STORAGE_KEY = 'atlas.console.sessions.v2';
+const SESSION_ID = 'console-test';
 
 function snapshot(overrides: Partial<ConsoleSnapshot> = {}): ConsoleSnapshot {
 	const windows: ConsoleWindow[] = [
@@ -31,6 +33,7 @@ function snapshot(overrides: Partial<ConsoleSnapshot> = {}): ConsoleSnapshot {
 describe('consolePersistence snapshot', () => {
 	beforeEach(() => {
 		localStorage.clear();
+		setActiveSessionId('console', SESSION_ID);
 		vi.useFakeTimers();
 	});
 
@@ -79,7 +82,7 @@ describe('consolePersistence snapshot', () => {
 	});
 
 	it('returns null when required slices are missing', () => {
-		localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 1, windows: [] }));
+		localStorage.setItem(STORAGE_KEY, JSON.stringify({ [SESSION_ID]: { version: 1, windows: [] } }));
 		expect(loadConsoleSnapshot()).toBeNull();
 	});
 

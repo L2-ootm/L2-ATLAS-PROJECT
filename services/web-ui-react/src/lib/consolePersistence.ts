@@ -6,6 +6,11 @@
 // reconnect to after a reload — see `normalizeMessages` below).
 
 import type { ConsoleMessage, ConsoleWindow, LayoutMode } from '../context/ConsoleSessionContext';
+import {
+	activeSessionId,
+	createSessionId,
+	setActiveSessionId
+} from './sessionCatalog';
 
 export type ConsoleBindingMode = 'project' | 'folder';
 
@@ -27,14 +32,15 @@ export type ConsoleSnapshot = {
 
 type StoredConsoleSnapshot = ConsoleSnapshot & { version: number };
 
-const STORAGE_KEY = 'atlas.console.v1';
+const LEGACY_STORAGE_KEY = 'atlas.console.v1';
+const SESSIONS_KEY = 'atlas.console.sessions.v2';
 const SNAPSHOT_VERSION = 1;
 const SAVE_DEBOUNCE_MS = 400;
 
 const RECENT_FOLDERS_KEY = 'atlas.console.recent-folders.v1';
 const RECENT_FOLDERS_LIMIT = 8;
 
-let saveTimer: ReturnType<typeof setTimeout> | null = null;
+const saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 /** A `pending` turn has no run left to reconnect to after a reload — drop the
  * status (and the LIVE badge it drives) but leave whatever text streamed in. */
@@ -58,28 +64,44 @@ function normalizeMessages(
 /** Debounced (trailing) write of the console snapshot. Best-effort: storage
  * quota/availability failures are swallowed since persistence is a nicety,
  * not a correctness requirement. */
-export function saveConsoleSnapshot(snapshot: ConsoleSnapshot): void {
+function loadStoredSessions(): Record<string, StoredConsoleSnapshot> {
+	if (typeof window === 'undefined') return {};
+	try {
+		const parsed = JSON.parse(localStorage.getItem(SESSIONS_KEY) ?? '{}') as unknown;
+		return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+			? (parsed as Record<string, StoredConsoleSnapshot>)
+			: {};
+	} catch {
+		return {};
+	}
+}
+
+export function saveConsoleSnapshot(snapshot: ConsoleSnapshot, sessionId?: string): void {
 	if (typeof window === 'undefined') return;
-	if (saveTimer !== null) clearTimeout(saveTimer);
-	saveTimer = setTimeout(() => {
-		saveTimer = null;
+	const id = sessionId ?? activeSessionId('console') ?? createSessionId('console');
+	if (!activeSessionId('console')) setActiveSessionId('console', id);
+	const priorTimer = saveTimers.get(id);
+	if (priorTimer) clearTimeout(priorTimer);
+	const timer = setTimeout(() => {
+		saveTimers.delete(id);
 		try {
 			const payload: StoredConsoleSnapshot = { version: SNAPSHOT_VERSION, ...snapshot };
-			window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+			const sessions = loadStoredSessions();
+			sessions[id] = payload;
+			window.localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
 		} catch {
 			// Storage unavailable, full, or disabled — persistence is best-effort.
 		}
 	}, SAVE_DEBOUNCE_MS);
+	saveTimers.set(id, timer);
 }
 
 /** Reads + parses the persisted snapshot. Returns `null` on missing, corrupt,
  * or version-mismatched data so callers fall back to fresh state cleanly. */
-export function loadConsoleSnapshot(): ConsoleSnapshot | null {
+export function loadConsoleSession(id: string): ConsoleSnapshot | null {
 	if (typeof window === 'undefined') return null;
 	try {
-		const raw = window.localStorage.getItem(STORAGE_KEY);
-		if (!raw) return null;
-		const parsed = JSON.parse(raw) as Partial<StoredConsoleSnapshot> | null;
+		const parsed = loadStoredSessions()[id] as Partial<StoredConsoleSnapshot> | undefined;
 		if (!parsed || parsed.version !== SNAPSHOT_VERSION) return null;
 		if (
 			!Array.isArray(parsed.windows) ||
@@ -105,6 +127,63 @@ export function loadConsoleSnapshot(): ConsoleSnapshot | null {
 	} catch {
 		return null;
 	}
+}
+
+export function loadConsoleSnapshot(): ConsoleSnapshot | null {
+	const active = activeSessionId('console');
+	if (active) {
+		const snapshot = loadConsoleSession(active);
+		if (snapshot) return snapshot;
+	}
+	if (typeof window === 'undefined') return null;
+	try {
+		const raw = window.localStorage.getItem(LEGACY_STORAGE_KEY);
+		if (!raw) return null;
+		const parsed = JSON.parse(raw) as Partial<StoredConsoleSnapshot> | null;
+		if (!parsed || parsed.version !== SNAPSHOT_VERSION) return null;
+		if (
+			!Array.isArray(parsed.windows) ||
+			typeof parsed.messagesByWindow !== 'object' || parsed.messagesByWindow === null ||
+			typeof parsed.draftByWindow !== 'object' || parsed.draftByWindow === null ||
+			typeof parsed.layout !== 'string' ||
+			typeof parsed.binding !== 'object' || parsed.binding === null
+		) return null;
+		const snapshot: ConsoleSnapshot = {
+			windows: parsed.windows,
+			messagesByWindow: normalizeMessages(parsed.messagesByWindow),
+			draftByWindow: parsed.draftByWindow,
+			layout: parsed.layout as LayoutMode,
+			binding: {
+				bindingMode: parsed.binding.bindingMode === 'project' ? 'project' : 'folder',
+				folderPath: typeof parsed.binding.folderPath === 'string' ? parsed.binding.folderPath : '',
+				projectId: typeof parsed.binding.projectId === 'string' ? parsed.binding.projectId : ''
+			}
+		};
+		createConsoleSession(snapshot);
+		localStorage.removeItem(LEGACY_STORAGE_KEY);
+		return snapshot;
+	} catch {
+		return null;
+	}
+}
+
+export function createConsoleSession(snapshot: ConsoleSnapshot): string {
+	const id = createSessionId('console');
+	const sessions = loadStoredSessions();
+	sessions[id] = { version: SNAPSHOT_VERSION, ...snapshot };
+	try {
+		localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+	} catch {
+		// Best-effort persistence.
+	}
+	setActiveSessionId('console', id);
+	return id;
+}
+
+export function ensureActiveConsoleSession(snapshot: ConsoleSnapshot): string {
+	const active = activeSessionId('console');
+	if (active && loadConsoleSession(active)) return active;
+	return createConsoleSession(snapshot);
 }
 
 /** MRU list of bound folder paths (most-recent-first, deduped, capped). Kept

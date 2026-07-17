@@ -33,13 +33,14 @@ vi.mock('../lib/api', async importOriginal => ({
 function surfaceEvent(
 	seq: number,
 	kind: SurfaceEvent['kind'],
-	payload: Record<string, unknown>
+	payload: Record<string, unknown>,
+	runId = 'run-1'
 ): SurfaceEvent {
 	return {
 		session_id: 'surface-1',
 		seq,
 		kind,
-		run_id: 'run-1',
+		run_id: runId,
 		occurred_at: '2026-07-02T12:00:00Z',
 		payload_json: JSON.stringify(payload)
 	};
@@ -47,8 +48,12 @@ function surfaceEvent(
 
 function RouteHarness() {
 	const [consoleRoute, setConsoleRoute] = useState(true);
+	const [, setTick] = useState(0);
 	return (
 		<>
+			<button type="button" onClick={() => setTick((current) => current + 1)}>
+				tick events
+			</button>
 			<button type="button" onClick={() => setConsoleRoute((current) => !current)}>
 				navigate
 			</button>
@@ -90,6 +95,7 @@ describe('Console route continuation', () => {
 		};
 		surface.value.events = [];
 		surface.value.submitPrompt.mockReset();
+		surface.value.refresh.mockClear();
 		api.listProjects.mockReset().mockResolvedValue({ projects: [] });
 		api.getRun.mockReset();
 	});
@@ -174,5 +180,39 @@ describe('Console route continuation', () => {
 		expect(screen.getByTestId('turn-status')).toHaveTextContent('succeeded');
 		expect(screen.getByPlaceholderText('Message ATLAS')).toBeEnabled();
 		expect(screen.getByText('Recovered from run record.')).toBeInTheDocument();
+	});
+
+	it('does not let the initial run watchdog finalize a goal continuation', async () => {
+		vi.useFakeTimers();
+		surface.value.submitPrompt.mockResolvedValue('run-1');
+		api.getRun.mockResolvedValue({
+			run: { status: 'succeeded', summary: 'Initial run completed.' }
+		});
+		renderConsole();
+
+		fireEvent.change(screen.getByPlaceholderText('Message ATLAS'), {
+			target: { value: '/mission finish all phases' }
+		});
+		fireEvent.click(screen.getByTitle('Send'));
+		await act(async () => {});
+
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(16_000);
+		});
+		expect(screen.getByTestId('active-run')).toHaveTextContent('run-1');
+		expect(screen.getByTestId('turn-status')).toHaveTextContent('pending');
+		expect(surface.value.refresh).toHaveBeenCalled();
+
+		surface.value.events = [
+			surfaceEvent(1, 'completion', { status: 'succeeded' }),
+			surfaceEvent(2, 'task', { state: 'active', verdict: 'continue' }),
+			surfaceEvent(3, 'text', { text: 'Continuation completed.' }, 'run-2'),
+			surfaceEvent(4, 'completion', { state: 'exhausted', verdict: 'continue' }, 'run-2')
+		];
+		await act(async () => fireEvent.click(screen.getByText('tick events')));
+
+		expect(screen.getByTestId('active-run')).toHaveTextContent('idle');
+		expect(screen.getByTestId('turn-status')).toHaveTextContent('succeeded');
+		expect(screen.getAllByText('Continuation completed.').length).toBeGreaterThan(0);
 	});
 });

@@ -18,7 +18,8 @@ vi.mock('../lib/api', async () => {
 		listToolApprovals: vi.fn(),
 		getProviderStatus: vi.fn(),
 		getProviderModes: vi.fn(),
-		listModels: vi.fn()
+		listModels: vi.fn(),
+		purgeArchivedMissions: vi.fn()
 	};
 });
 
@@ -36,6 +37,7 @@ beforeEach(() => {
 	vi.mocked(api.getProviderStatus).mockResolvedValue(null as unknown as api.ProviderStatusView);
 	vi.mocked(api.getProviderModes).mockResolvedValue([]);
 	vi.mocked(api.listModels).mockResolvedValue({ models: [], count: 0 });
+	vi.mocked(api.purgeArchivedMissions).mockResolvedValue({ deleted: 2 });
 });
 
 function renderAt(path: string) {
@@ -55,7 +57,7 @@ describe('Control route', () => {
 		renderAt('/control');
 		const tablist = screen.getByRole('tablist', { name: /system control sections/i });
 		expect(tablist).toBeInTheDocument();
-		for (const label of ['STATUS', 'PROVIDER', 'TOOLS & POLICY', 'CHANNELS', 'MODULES', 'ABOUT']) {
+		for (const label of ['STATUS', 'PROVIDER', 'VISUALS', 'STORAGE', 'TOOLS & POLICY', 'CHANNELS', 'MODULES', 'ABOUT']) {
 			expect(screen.getByRole('tab', { name: new RegExp(label.replace(/[&]/g, '&'), 'i') })).toBeInTheDocument();
 		}
 		await waitFor(() => expect(screen.getByText('GATEWAY')).toBeInTheDocument());
@@ -74,6 +76,26 @@ describe('Control route', () => {
 		renderAt('/control');
 		await userEvent.click(screen.getByRole('tab', { name: /about/i }));
 		expect(await screen.findByText(/Bearing Complexity Through Structure/i)).toBeInTheDocument();
+	});
+
+	it('configures the shared streaming visual protocol', async () => {
+		renderAt('/control');
+		await userEvent.click(screen.getByRole('tab', { name: /visuals/i }));
+		expect(screen.getByText('Streaming response')).toBeInTheDocument();
+		await userEvent.click(screen.getByRole('button', { name: 'FAST' }));
+		await userEvent.click(screen.getByRole('button', { name: 'HIGH' }));
+		const stored = JSON.parse(localStorage.getItem('atlas.visual-settings.v1') ?? '{}');
+		expect(stored).toMatchObject({ streamSpeed: 'fast', streamIntensity: 'high' });
+	});
+
+	it('requires confirmation before purging due archived history', async () => {
+		renderAt('/control');
+		await userEvent.click(screen.getByRole('tab', { name: /storage/i }));
+		expect(screen.getByText('RUN HISTORY RETENTION')).toBeInTheDocument();
+		await userEvent.click(screen.getByRole('button', { name: 'REVIEW PURGE' }));
+		expect(api.purgeArchivedMissions).not.toHaveBeenCalled();
+		await userEvent.click(screen.getByRole('button', { name: 'PURGE DUE NOW' }));
+		expect(await screen.findByText('2 archived missions purged.')).toBeInTheDocument();
 	});
 
 	it('opens the PROVIDER tab from the /settings redirect shim', async () => {

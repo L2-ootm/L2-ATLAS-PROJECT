@@ -45,7 +45,7 @@ function configView(overrides: Partial<AtlasConfigView['provider']> = {}): Atlas
 			reasoning_effort: '',
 			...overrides
 		},
-		functions: { autoconfig: true, curator_model: '', auxiliary_model: '' },
+		functions: { autoconfig: true, curator_model: '', auxiliary_model: '', judge_model: '' },
 		runtime: { default_agent: 'native', iteration_budget: 25, compression: 'auto' },
 		gateway: { rust_port: 4780, messaging_enabled: false, messaging_port: 4781 },
 		cockpit: { port: 5173, branding: 'atlas' },
@@ -122,6 +122,9 @@ describe('Settings route', () => {
 		await user.click(screen.getByRole('button', { name: 'HIGH' }));
 		const curator = screen.getByLabelText('Curator model override');
 		await user.type(curator, 'openai-codex/gpt-5.4-mini');
+		const judge = screen.getByLabelText('Judge model override');
+		expect(judge).toHaveAttribute('placeholder', 'Inherit chat session');
+		await user.type(judge, 'openai-codex/gpt-5.4-mini');
 		await user.click(screen.getByRole('button', { name: 'SAVE CONFIGURATION' }));
 		await waitFor(() => expect(patchConfig).toHaveBeenCalledTimes(1));
 		expect(patchConfig).toHaveBeenCalledWith(7, {
@@ -132,7 +135,8 @@ describe('Settings route', () => {
 			'provider.reasoning_effort': 'high',
 			'functions.autoconfig': true,
 			'functions.curator_model': 'openai-codex/gpt-5.4-mini',
-			'functions.auxiliary_model': ''
+			'functions.auxiliary_model': '',
+			'functions.judge_model': 'openai-codex/gpt-5.4-mini'
 		});
 		expect(storeProviderKey).not.toHaveBeenCalled();
 		expect(await screen.findByText('Provider configuration saved.')).toBeInTheDocument();

@@ -66,6 +66,7 @@ export function ProviderSettingsPanel() {
 	const [fnAutoconfig, setFnAutoconfig] = useState(true);
 	const [fnCurator, setFnCurator] = useState('');
 	const [fnAuxiliary, setFnAuxiliary] = useState('');
+	const [fnJudge, setFnJudge] = useState('');
 
 	const [busy, setBusy] = useState(false);
 	const [banner, setBanner] = useState<Banner>(null);
@@ -101,6 +102,7 @@ export function ProviderSettingsPanel() {
 			setFnAutoconfig(cfg.functions?.autoconfig ?? true);
 			setFnCurator(cfg.functions?.curator_model ?? '');
 			setFnAuxiliary(cfg.functions?.auxiliary_model ?? '');
+			setFnJudge(cfg.functions?.judge_model ?? '');
 		}
 		setStatus(sv);
 		setModes(m.status === 'fulfilled' ? m.value : []);
@@ -136,7 +138,8 @@ export function ProviderSettingsPanel() {
 				'provider.reasoning_effort': effort,
 				'functions.autoconfig': fnAutoconfig,
 				'functions.curator_model': fnCurator.trim(),
-				'functions.auxiliary_model': fnAuxiliary.trim()
+				'functions.auxiliary_model': fnAuxiliary.trim(),
+				'functions.judge_model': fnJudge.trim()
 			});
 			setBanner({ tone: 'good', text: 'Provider configuration saved.' });
 			await refresh();
@@ -165,6 +168,7 @@ export function ProviderSettingsPanel() {
 		fnAutoconfig,
 		fnCurator,
 		fnAuxiliary,
+		fnJudge,
 		refresh
 	]);
 
@@ -420,7 +424,7 @@ export function ProviderSettingsPanel() {
 				</section>
 
 				<section style={{ ...glassPanel(), padding: 20 }}>
-					<SectionTitle icon={<RefreshCw size={13} />} text="FUNCTION ROUTING (CURATOR / AUXILIARY)" />
+					<SectionTitle icon={<RefreshCw size={13} />} text="FUNCTION ROUTING (CURATOR / AUXILIARY / JUDGE)" />
 					<p style={{ ...mono(9.5, 'var(--l2-fg-3)'), marginTop: 8 }}>
 						With autoconfig on, side tasks (curator review, compression, titles) bind to the lightest
 						model on the active provider — e.g. Codex runs them on the mini tier. Overrides use
@@ -448,6 +452,15 @@ export function ProviderSettingsPanel() {
 						</Field>
 						<Field label="AUXILIARY MODEL">
 							<TextInput value={fnAuxiliary} onChange={setFnAuxiliary} placeholder="auto" ariaLabel="Auxiliary model override" />
+						</Field>
+						<Field label="JUDGE MODEL">
+							<TextInput
+								value={fnJudge}
+								onChange={setFnJudge}
+								placeholder="Inherit chat session"
+								ariaLabel="Judge model override"
+								options={modelOptions}
+							/>
 						</Field>
 					</div>
 				</section>

@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import {
+	finalGoalJudgementState,
 	isRunTerminalEvent,
 	surfaceConsoleEvent,
 	surfaceEventsForTurn
@@ -116,6 +117,40 @@ describe('Console shared session transport', () => {
 
 		expect(surfaceEventsForTurn(buffered, unresolved)).toEqual([]);
 		expect(surfaceEventsForTurn(buffered, { ...unresolved, runId: 'run-2' })).toEqual(buffered);
+	});
+
+	it('keeps following shared session events across goal continuation run IDs', () => {
+		const events = [
+			{ ...event('completion', { status: 'succeeded' }), seq: 13, run_id: 'run-1' },
+			{ ...event('task', { state: 'active', verdict: 'continue' }), seq: 14, run_id: 'run-1' },
+			{ ...event('text', { text: 'continued work' }), seq: 15, run_id: 'run-2' },
+			{ ...event('completion', { state: 'done', verdict: 'done' }), seq: 16, run_id: 'run-2' }
+		];
+		const turn = {
+			windowId: 'chat-1',
+			turnId: 'turn-1',
+			runId: 'run-1',
+			afterSeq: 12,
+			goalMode: true
+		};
+
+		expect(surfaceEventsForTurn(events, turn)).toEqual(events);
+		expect(finalGoalJudgementState(events.slice(0, 2))).toBeNull();
+		expect(finalGoalJudgementState(events)).toBe('done');
+		expect(surfaceConsoleEvent(events.at(-1)!).is_error).toBe(false);
+	});
+
+	it.each([
+		['done', false],
+		['paused', false],
+		['exhausted', false],
+		['failed', true]
+	] as const)('projects final goal state %s as a terminal result', (state, isError) => {
+		const judgement = event('completion', { state });
+		expect(finalGoalJudgementState([judgement])).toBe(state);
+		expect(surfaceConsoleEvent(judgement)).toEqual(
+			expect.objectContaining({ type: 'result', is_error: isError })
+		);
 	});
 
 	it('contains no production dependency on the legacy console stream', () => {

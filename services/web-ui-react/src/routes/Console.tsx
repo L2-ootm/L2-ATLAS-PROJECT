@@ -38,6 +38,9 @@ import { GlassPanel } from '../components/GlassFx';
 import CommandPalette from '../components/CommandPalette';
 import { TopoScroll } from '../components/TopoScroll';
 import { ChatMarkdown } from '../components/ChatMarkdown';
+import { StreamReveal } from '../components/chat/StreamReveal';
+import { AgentConstellation, SubagentRail } from '../components/agent/SubagentActivity';
+import { SessionNavigator } from '../components/sessions/SessionNavigator';
 import {
 	agentRuntimeLabel,
 	getRun,
@@ -48,6 +51,7 @@ import {
 	type Project
 } from '../lib/api';
 import {
+	finalGoalJudgementState,
 	isRunTerminalEvent,
 	surfaceConsoleEvent,
 	surfaceEventsForTurn
@@ -65,10 +69,26 @@ import { selectFolder } from '../lib/host';
 import { computeDwindle, type Rect } from '../lib/bspLayout';
 import {
 	addRecentFolder,
+	createConsoleSession,
+	ensureActiveConsoleSession,
+	loadConsoleSession,
 	loadConsoleSnapshot,
-	loadRecentFolders,
-	saveConsoleSnapshot
+	saveConsoleSnapshot,
+	type ConsoleSnapshot
 } from '../lib/consolePersistence';
+import {
+	activeSessionId,
+	sessionBinding,
+	sessionTitleFromText,
+	setActiveSessionId,
+	upsertSessionCatalog
+} from '../lib/sessionCatalog';
+import { useVisualSettings } from '../lib/visualSettings';
+import { distanceFromBottom, isNearBottom } from '../lib/scrollFollow';
+import { turnReceiptSignature } from '../lib/turnReceipt';
+import { subagentsFromSurfaceEvents } from '../lib/subagents';
+import { GOAL_STATUS_MESSAGE, parseMissionSlashIntent } from '../lib/missionSlash';
+import { projectConsoleEvents } from '../lib/logProjection';
 
 type Load = { s: 'loading' } | { s: 'ready'; projects: Project[] } | { s: 'error' };
 type DragState = { id: string; pointerId?: number; startX: number; startY: number; x: number; y: number } | null;
@@ -137,7 +157,6 @@ export default function Console() {
 	const projectId = params.get('project') ?? '';
 	const [load, setLoad] = useState<Load>({ s: 'loading' });
 	const [folderErr, setFolderErr] = useState<string | null>(null);
-	const [recentFolders, setRecentFolders] = useState<string[]>(loadRecentFolders);
 	const [drag, setDrag] = useState<DragState>(null);
 	const [resize, setResize] = useState<ResizeState>(null);
 	const [tileDragId, setTileDragId] = useState<string | null>(null);
@@ -149,6 +168,16 @@ export default function Console() {
 	const windowsRef = useRef(windows);
 	windowsRef.current = windows;
 	const busyWindow = activeTurn?.windowId ?? null;
+	const [catalogSessionId, setCatalogSessionId] = useState(() =>
+		activeSessionId('console') ??
+		ensureActiveConsoleSession({
+			windows,
+			messagesByWindow,
+			draftByWindow,
+			layout,
+			binding: { bindingMode, folderPath, projectId }
+		})
+	);
 
 	// ── Cmd+K / Ctrl+K slash-command palette (TUI parity) ────────────────────
 	const [paletteOpen, setPaletteOpen] = useState(false);
@@ -220,7 +249,7 @@ export default function Console() {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
-	const projects = load.s === 'ready' ? load.projects : [];
+	const projects = useMemo(() => (load.s === 'ready' ? load.projects : []), [load]);
 	const activeProject = useMemo(() => {
 		if (load.s !== 'ready' || !projectId) return null;
 		return load.projects.find((p) => p.id === projectId) ?? null;
@@ -251,6 +280,34 @@ export default function Console() {
 		return { label: 'BOUND', detail: activeProject.name, tone: 'good' as const };
 	}, [activeProject, bindingMode, boundCwd, load.s, projectId]);
 
+	// The provider outlives route navigation. When the shared drawer routes
+	// from Chat to a specific Console session, reload the newly-active console
+	// snapshot instead of reusing whichever workbench state the provider held.
+	const initialCatalogRestore = useRef(false);
+	useEffect(() => {
+		if (initialCatalogRestore.current) return;
+		initialCatalogRestore.current = true;
+		// A provider-held active turn is newer than any debounced localStorage
+		// snapshot. Preserve it across route remounts so buffered completion
+		// events can reconcile the live message instead of restoring stale data.
+		if (activeTurn) return;
+		const snapshot = loadConsoleSession(catalogSessionId);
+		if (!snapshot) return;
+		setWindows(snapshot.windows);
+		setActiveWindow(snapshot.windows[0]?.id ?? '');
+		setMessagesByWindow(snapshot.messagesByWindow);
+		setDraftByWindow(snapshot.draftByWindow);
+		setLayout(snapshot.layout);
+		setBindingMode(snapshot.binding.bindingMode);
+		setFolderPath(snapshot.binding.folderPath);
+		setParams(snapshot.binding.projectId ? { project: snapshot.binding.projectId } : {}, { replace: true });
+		setAuditEvents([]);
+		setActiveTurn(null);
+		// Mount-only: catalogSessionId is fixed from the active key for this
+		// route instance; in-page switches call applyConsoleSnapshot directly.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
+
 	useEffect(() => {
 		setMessagesByWindow((prev) => {
 			const next = { ...prev };
@@ -270,7 +327,7 @@ export default function Console() {
 	// just explicit "Change folder…" picks.
 	useEffect(() => {
 		if (!boundCwd) return;
-		setRecentFolders(addRecentFolder(boundCwd));
+		addRecentFolder(boundCwd);
 	}, [boundCwd]);
 
 	// The gateway workspace model is global|project (registered roots with
@@ -317,14 +374,42 @@ export default function Console() {
 	// Single debounced writer for the whole console snapshot. `auditEvents` and
 	// `activeTurn` are intentionally excluded — see consolePersistence.ts.
 	useEffect(() => {
-		saveConsoleSnapshot({
+		const snapshot: ConsoleSnapshot = {
 			windows,
 			messagesByWindow,
 			draftByWindow,
 			layout,
 			binding: { bindingMode, folderPath, projectId }
+		};
+		saveConsoleSnapshot(snapshot, catalogSessionId);
+		const firstOperator = Object.values(messagesByWindow)
+			.flat()
+			.find((message) => message.role === 'operator');
+		upsertSessionCatalog({
+			id: catalogSessionId,
+			surface: 'console',
+			title: sessionTitleFromText(firstOperator?.body, 'New console session'),
+			agent: activeChatAgent,
+			binding: sessionBinding(
+				bindingMode,
+				folderPath,
+				projectId,
+				activeProject?.name,
+				activeProject?.root_path
+			)
 		});
-	}, [windows, messagesByWindow, draftByWindow, layout, bindingMode, folderPath, projectId]);
+	}, [
+		catalogSessionId,
+		windows,
+		messagesByWindow,
+		draftByWindow,
+		layout,
+		bindingMode,
+		folderPath,
+		projectId,
+		activeChatAgent,
+		activeProject
+	]);
 
 	useEffect(() => {
 		const pendingSurfaceEvents = surfaceEventsForTurn(agentSurface.events, activeTurn);
@@ -340,7 +425,10 @@ export default function Console() {
 				};
 			}
 		});
-		const terminal = projectedEvents.some(isRunTerminalEvent);
+		const finalGoalState = finalGoalJudgementState(pendingSurfaceEvents);
+		const terminal = activeTurn.goalMode
+			? finalGoalState !== null
+			: projectedEvents.some(isRunTerminalEvent);
 		const afterSeq = Math.max(...pendingSurfaceEvents.map((event) => event.seq));
 		const { windowId, turnId, runId } = activeTurn;
 
@@ -383,6 +471,18 @@ export default function Console() {
 					};
 				});
 			}
+			if (activeTurn.goalMode) {
+				messages = messages.map((message) =>
+					message.id === turnId
+						? {
+								...message,
+								status: finalGoalState
+									? finalGoalState === 'failed' ? 'failed' : 'succeeded'
+									: 'pending'
+							}
+						: message
+				);
+			}
 			return { ...prev, [windowId]: messages };
 		});
 		setAuditEvents((prior) => [...projectedEvents].reverse().concat(prior).slice(0, 80));
@@ -399,6 +499,7 @@ export default function Console() {
 	const watchedRunId = activeTurn?.runId ?? null;
 	const watchedTurnId = activeTurn?.turnId ?? null;
 	const watchedWindowId = activeTurn?.windowId ?? null;
+	const watchedGoalMode = activeTurn?.goalMode ?? false;
 	// Grace pass: the run record goes terminal BEFORE the tail surface events
 	// (last deltas + the final text reconcile) have been polled and applied.
 	// Finalizing on the first terminal observation froze answers mid-chunk
@@ -415,6 +516,10 @@ export default function Console() {
 			try {
 				const { run } = await getRun(watchedRunId);
 				if (!['succeeded', 'failed', 'cancelled'].includes(run.status)) return;
+				if (watchedGoalMode) {
+					void refreshSurfaceEvents().catch(() => undefined);
+					return;
+				}
 				if (terminalSeenRef.current !== watchedRunId) {
 					terminalSeenRef.current = watchedRunId;
 					void refreshSurfaceEvents().catch(() => undefined);
@@ -445,6 +550,7 @@ export default function Console() {
 		watchedRunId,
 		watchedTurnId,
 		watchedWindowId,
+		watchedGoalMode,
 		refreshSurfaceEvents,
 		setActiveTurn,
 		setMessagesByWindow
@@ -479,12 +585,6 @@ export default function Console() {
 		resetChatSessions();
 	}
 
-	function pickRecentFolder(path: string) {
-		setBindingMode('folder');
-		setFolderPath(path);
-		resetChatSessions();
-	}
-
 	async function chooseFolder() {
 		setBindingMode('folder');
 		setFolderErr(null);
@@ -502,6 +602,53 @@ export default function Console() {
 		setFolderProjectId(null);
 		if (projectId) setParams({});
 		resetChatSessions();
+	}
+
+	function applyConsoleSnapshot(id: string, snapshot: ConsoleSnapshot) {
+		setCatalogSessionId(id);
+		setActiveSessionId('console', id);
+		setWindows(snapshot.windows);
+		setActiveWindow(snapshot.windows[0]?.id ?? '');
+		setMessagesByWindow(snapshot.messagesByWindow);
+		setDraftByWindow(snapshot.draftByWindow);
+		setLayout(snapshot.layout);
+		setBindingMode(snapshot.binding.bindingMode);
+		setFolderPath(snapshot.binding.folderPath);
+		setParams(snapshot.binding.projectId ? { project: snapshot.binding.projectId } : {});
+		setAuditEvents([]);
+		setActiveTurn(null);
+		void agentSurface.releaseSession();
+	}
+
+	function selectCatalogSession(id: string) {
+		if (activeTurn) return;
+		const snapshot = loadConsoleSession(id);
+		if (snapshot) applyConsoleSnapshot(id, snapshot);
+	}
+
+	function newCatalogSession(unbound = false) {
+		if (activeTurn) return;
+		const nextMessages: Record<string, ConsoleMessage[]> = {};
+		const nextDrafts: Record<string, string> = {};
+		for (const win of windows) {
+			if (win.kind === 'chat') {
+				nextMessages[win.id] = [];
+				nextDrafts[win.id] = '';
+			}
+		}
+		const snapshot: ConsoleSnapshot = {
+			windows,
+			messagesByWindow: nextMessages,
+			draftByWindow: nextDrafts,
+			layout,
+			binding: {
+				bindingMode: unbound ? 'folder' : bindingMode,
+				folderPath: unbound ? '' : folderPath,
+				projectId: unbound ? '' : projectId
+			}
+		};
+		const id = createConsoleSession(snapshot);
+		applyConsoleSnapshot(id, snapshot);
 	}
 
 	function addWindow(kind: WindowKind = 'chat', windowAgent: AgentRuntime = 'native') {
@@ -583,6 +730,7 @@ export default function Console() {
 	 * is the text actually sent to the agent (the expanded command template). */
 	async function dispatchPrompt(windowId: string, display: string, prompt: string) {
 		if (activeTurn) return;
+		const goalMode = parseMissionSlashIntent(display)?.kind === 'goal-launch';
 		const win = windows.find((item) => item.id === windowId);
 		const windowAgent = win?.kind === 'chat' ? win.agent ?? 'native' : 'native';
 		const operator: ConsoleMessage = {
@@ -611,7 +759,7 @@ export default function Console() {
 			(highest, event) => Math.max(highest, event.seq),
 			-1
 		);
-		setActiveTurn({ windowId, turnId, runId: null, afterSeq });
+		setActiveTurn({ windowId, turnId, runId: null, afterSeq, goalMode });
 
 		try {
 			let workspace: { kind: 'global' } | { kind: 'project'; projectId: string } = {
@@ -628,7 +776,19 @@ export default function Console() {
 					workspace = { kind: 'project', projectId: pid };
 				}
 			}
-			const runId = await agentSurface.submitPrompt(prompt, windowAgent, workspace);
+			const runId = display === prompt
+				? await agentSurface.submitPrompt(prompt, windowAgent, workspace)
+				: await agentSurface.submitPrompt(prompt, windowAgent, workspace, display);
+			if (runId === null) {
+				setMessagesByWindow((prev) => ({
+					...prev,
+					[windowId]: (prev[windowId] ?? []).map((m) =>
+						m.id === turnId ? { ...m, status: 'succeeded', body: GOAL_STATUS_MESSAGE } : m
+					)
+				}));
+				setActiveTurn((current) => (current?.turnId === turnId ? null : current));
+				return;
+			}
 			setActiveTurn((current) =>
 				current?.turnId === turnId ? { ...current, runId } : current
 			);
@@ -833,17 +993,18 @@ export default function Console() {
 			max={null}
 			actions={
 				<>
+					<SessionNavigator
+						activeSessionId={catalogSessionId}
+						surface="console"
+						bound={!!(boundCwd || projectId)}
+						disabled={!!busyWindow}
+						onNewSession={newCatalogSession}
+						onSelectSession={selectCatalogSession}
+						onChooseFolder={() => void chooseFolder()}
+						onUnbind={unbindWorkspace}
+					/>
 					<SessionLaunchers onSpawn={(sessionAgent) => addWindow('chat', sessionAgent)} disabled={!!busyWindow} />
 					<StatePill tone={projectState.tone}>{projectState.label}</StatePill>
-					<SessionSwitcher
-						recentFolders={recentFolders}
-						projects={projects}
-						activeProjectId={projectId}
-						bindingMode={bindingMode}
-						boundCwd={boundCwd}
-						onPickFolder={pickRecentFolder}
-						onPickProject={pickProject}
-					/>
 					<IconAction title="Change bound folder" onClick={() => void chooseFolder()}>
 						<FolderSearch size={15} strokeWidth={1.7} />
 					</IconAction>
@@ -1115,6 +1276,11 @@ function WorkbenchWindow({
 	onTileDragEnd: () => void;
 	onReorder: (sourceId: string, targetId: string) => void;
 }) {
+	const agentSurface = useAgentSurface();
+	const windowActors = useMemo(
+		() => win.kind === 'chat' ? subagentsFromSurfaceEvents(agentSurface.events) : [],
+		[agentSurface.events, win.kind]
+	);
 	const Icon = KIND_ICON[win.kind];
 	const windowAgent = win.kind === 'chat' ? win.agent ?? 'native' : undefined;
 	const freeStyle =
@@ -1192,6 +1358,7 @@ function WorkbenchWindow({
 				</span>
 				<Icon size={14} strokeWidth={1.6} style={{ color: 'var(--atlas-celestial)' }} />
 				<span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{win.title}</span>
+				<AgentConstellation actors={windowActors} compact />
 				<span style={busy ? liveBadgeStyle : tinyBadgeStyle}>{busy ? 'LIVE' : win.kind.toUpperCase()}</span>
 				<button
 					type="button"
@@ -1253,33 +1420,36 @@ function ChatPane({
 	// bottom of the transcript; only then does new streamed content auto-follow.
 	// Scrolling up detaches (reading history must never be yanked away); the
 	// jump pill re-pins.
+	const visualSettings = useVisualSettings();
 	const viewportRef = useRef<HTMLDivElement | null>(null);
 	const pinnedRef = useRef(true);
 	const [unpinned, setUnpinned] = useState(false);
 	const onViewportScroll = useCallback((el: HTMLDivElement) => {
-		const pinned = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+		const pinned =
+			visualSettings.autoFollow &&
+			isNearBottom(el);
 		pinnedRef.current = pinned;
 		setUnpinned(!pinned);
-	}, []);
+	}, [visualSettings.autoFollow]);
 	useEffect(() => {
 		const el = viewportRef.current;
-		if (el && pinnedRef.current) el.scrollTop = el.scrollHeight;
-	}, [messages]);
+		if (el && visualSettings.autoFollow && pinnedRef.current) el.scrollTop = el.scrollHeight;
+	}, [messages, visualSettings.autoFollow]);
 	// While a turn streams, content height also grows between message-state
 	// updates (paced reveal) — keep following via rAF as long as we're pinned.
 	useEffect(() => {
-		if (!busy) return;
+		if (!busy || !visualSettings.autoFollow) return;
 		let raf = 0;
 		const follow = () => {
 			const el = viewportRef.current;
-			if (el && pinnedRef.current && el.scrollHeight - el.scrollTop - el.clientHeight > 1) {
+			if (el && pinnedRef.current && distanceFromBottom(el) > 1) {
 				el.scrollTop = el.scrollHeight;
 			}
 			raf = requestAnimationFrame(follow);
 		};
 		raf = requestAnimationFrame(follow);
 		return () => cancelAnimationFrame(raf);
-	}, [busy]);
+	}, [busy, visualSettings.autoFollow]);
 	const jumpToLatest = useCallback(() => {
 		const el = viewportRef.current;
 		if (!el) return;
@@ -1528,19 +1698,34 @@ function GraphBrainSurface({ activeProject, boundCwd, onSpawnBrain }: { activePr
 	);
 }
 function AuditPane({ events }: { events: ConsoleChatEvent[] }) {
+	const projected = useMemo(() => projectConsoleEvents(events), [events]);
 	return (
 		<TopoScroll tone="good" style={{ height: '100%' }} viewportStyle={auditBodyStyle}>
 			{events.length === 0 ? (
 				<div style={emptyAuditStyle}>No console events recorded.</div>
 			) : (
-				events.map((event, idx) => (
-					<div key={`${idx}-${event.type}`} style={auditRowStyle}>
-						<span style={monoLabelStyle}>{event.type}</span>
-						<span style={{ ...pathTextStyle, color: 'var(--l2-fg-2)' }}>
-							{event.text ?? event.tool_name ?? event.error ?? event.subtype ?? 'event'}
-						</span>
-					</div>
-				))
+				projected.map((item) =>
+					item.count > 1 ? (
+						<details key={item.id} style={{ borderBottom: '1px solid var(--l2-hairline)' }}>
+							<summary style={{ ...auditRowStyle, cursor: 'pointer', listStyle: 'none' }}>
+								<span style={monoLabelStyle}>text_delta ×{item.count}</span>
+								<span style={{ ...pathTextStyle, color: 'var(--l2-fg-2)' }}>
+									{item.charCount.toLocaleString()} chars · expand burst
+								</span>
+							</summary>
+							<pre style={{ margin: 0, padding: '8px 12px 12px', color: 'var(--l2-fg-2)', fontFamily: 'var(--l2-font-mono)', fontSize: 10.5, lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 200, overflowY: 'auto', background: 'rgba(4,7,12,0.58)' }}>
+								{item.text}
+							</pre>
+						</details>
+					) : (
+						<div key={item.id} style={auditRowStyle}>
+							<span style={monoLabelStyle}>{item.event.type}</span>
+							<span style={{ ...pathTextStyle, color: 'var(--l2-fg-2)' }}>
+								{item.event.text ?? item.event.tool_name ?? item.event.error ?? item.event.subtype ?? 'event'}
+							</span>
+						</div>
+					)
+				)
 			)}
 		</TopoScroll>
 	);
@@ -1730,65 +1915,6 @@ export function ReasoningBlock({ text }: { text: string }) {
 	);
 }
 
-/** Smooth chunk-buffered streaming reveal. The gateway relays deltas in
- * ~200ms poll batches, so raw rendering jumps a sentence at a time. This
- * buffers the incoming text and reveals it with a calculated catch-up rate —
- * the backlog drains over ~320ms so the reveal never falls behind the stream,
- * but never teleports either. Honors prefers-reduced-motion (instant), and
- * the parent swaps to ChatMarkdown on the final reconcile. */
-export function SmoothStreamText({ text }: { text: string }) {
-	// Text present at mount is already history — paint it whole; only growth
-	// that arrives while mounted animates.
-	const [shown, setShown] = useState(() => text.length);
-	const shownRef = useRef(text.length);
-	const textRef = useRef(text);
-	textRef.current = text;
-	useEffect(() => {
-		if (
-			typeof window.matchMedia === 'function' &&
-			window.matchMedia('(prefers-reduced-motion: reduce)').matches
-		) {
-			shownRef.current = textRef.current.length;
-			setShown(shownRef.current);
-			return;
-		}
-		let raf = 0;
-		let last = performance.now();
-		const step = (now: number) => {
-			const target = textRef.current.length;
-			const current = shownRef.current;
-			if (current < target) {
-				const backlog = target - current;
-				const rate = Math.max(45, backlog / 0.32); // chars/sec, backlog-adaptive
-				const advance = Math.max(1, Math.round(((now - last) / 1000) * rate));
-				shownRef.current = Math.min(target, current + advance);
-				setShown(shownRef.current);
-			}
-			last = now;
-			raf = requestAnimationFrame(step);
-		};
-		raf = requestAnimationFrame(step);
-		return () => cancelAnimationFrame(raf);
-	}, []);
-	return (
-		<div style={agentTextStyle}>
-			{text.slice(0, shown)}
-			<span className="atlas-stream-caret" aria-hidden>
-				▍
-			</span>
-		</div>
-	);
-}
-
-/** Stable signature of a turn's run-boundary receipt (run started · runtime ·
- * privacy notice). Used to suppress receipts that repeat the previous turn's
- * verbatim — the information is session-level, not per-message. */
-export function turnReceiptSignature(message: ConsoleMessage): string | null {
-	const statuses = (message.events ?? []).filter((e) => e.type === 'status');
-	if (statuses.length === 0) return null;
-	return statuses.map((e) => e.text ?? '').join(' · ');
-}
-
 function AgentTurn({ message, hideStatus = false }: { message: ConsoleMessage; hideStatus?: boolean }) {
 	const events = useMemo(() => message.events ?? [], [message.events]);
 	// 'text_delta' (streamed chunk) and 'text' (the run's final authoritative
@@ -1860,13 +1986,14 @@ function AgentTurn({ message, hideStatus = false }: { message: ConsoleMessage; h
 			{events.length === 0 && message.status === 'pending' && (
 				<div style={{ ...agentTextStyle, opacity: 0.6 }}>Working…</div>
 			)}
+			<SubagentRail events={events} />
 			{displayEvents.map((event, idx) => {
+				if (event.type === 'task') return null;
 				if (event.type === 'text') {
-					// An open streaming run renders as smoothly-revealed plain text
-					// (markdown parses once, at the final reconcile — no half-parsed
-					// flicker while tokens arrive).
+					// Chat and Console share the same live-Markdown reveal and
+					// chunk scan protocol; settings apply to both surfaces.
 					if (event._open && message.status === 'pending') {
-						return <SmoothStreamText key={idx} text={event.text ?? ''} />;
+						return <StreamReveal key={idx} text={event.text ?? ''} />;
 					}
 					return event.text ? <ChatMarkdown key={idx} text={event.text} /> : null;
 				}
@@ -1967,88 +2094,6 @@ function MessageBubble({ message }: { message: ConsoleMessage }) {
 					</div>
 				)}
 			</div>
-		</div>
-	);
-}
-
-/** In-context session switcher — recent folders + known projects, reachable
- * from inside an active chat without leaving the page (unlike the global
- * Sidebar, which only supports app-wide back-navigation to /projects). */
-function SessionSwitcher({
-	recentFolders,
-	projects,
-	activeProjectId,
-	bindingMode,
-	boundCwd,
-	onPickFolder,
-	onPickProject
-}: {
-	recentFolders: string[];
-	projects: Project[];
-	activeProjectId: string;
-	bindingMode: BindingMode;
-	boundCwd: string | null;
-	onPickFolder: (path: string) => void;
-	onPickProject: (project: Project) => void;
-}) {
-	const [open, setOpen] = useState(false);
-	return (
-		<div style={{ position: 'relative' }}>
-			<button
-				type="button"
-				onClick={() => setOpen((v) => !v)}
-				style={sessionSwitcherButtonStyle}
-				title="Switch session"
-			>
-				<ListTree size={14} strokeWidth={1.7} />
-				<ChevronDown size={12} />
-			</button>
-			{open && (
-				<div style={sessionSwitcherPanelStyle} data-topo="info">
-					<SectionTitle>Recent folders</SectionTitle>
-					{recentFolders.length === 0 && <div style={emptyTinyStyle}>No recent folders</div>}
-					{recentFolders.map((path) => {
-						const selected = bindingMode === 'folder' && boundCwd === path;
-						return (
-							<button
-								key={path}
-								type="button"
-								title={path}
-								onClick={() => {
-									onPickFolder(path);
-									setOpen(false);
-								}}
-								style={sessionSwitcherItemStyle}
-							>
-								<Folder size={13} />
-								<span style={sessionSwitcherItemLabelStyle}>{shortPath(path)}</span>
-								<Check size={13} style={{ color: selected ? 'var(--atlas-emerald)' : 'transparent' }} />
-							</button>
-						);
-					})}
-					<SectionTitle>Projects</SectionTitle>
-					{projects.length === 0 && <div style={emptyTinyStyle}>No projects loaded</div>}
-					{projects.map((project) => {
-						const selected = bindingMode === 'project' && activeProjectId === project.id;
-						return (
-							<button
-								key={project.id}
-								type="button"
-								title={project.root_path}
-								onClick={() => {
-									onPickProject(project);
-									setOpen(false);
-								}}
-								style={sessionSwitcherItemStyle}
-							>
-								<FolderOpen size={13} />
-								<span style={sessionSwitcherItemLabelStyle}>{project.name}</span>
-								<Check size={13} style={{ color: selected ? 'var(--atlas-emerald)' : 'transparent' }} />
-							</button>
-						);
-					})}
-				</div>
-			)}
 		</div>
 	);
 }
@@ -2816,61 +2861,6 @@ const miniMenuStyle: React.CSSProperties = {
 	background: 'rgba(8,10,15,0.98)',
 	boxShadow: '0 18px 50px rgba(0,0,0,0.5)',
 	overflow: 'hidden'
-};
-
-const sessionSwitcherButtonStyle: React.CSSProperties = {
-	height: 34,
-	display: 'inline-flex',
-	alignItems: 'center',
-	gap: 5,
-	padding: '0 9px',
-	borderRadius: 2,
-	border: '1px solid var(--l2-hairline)',
-	background: 'rgba(237,234,224,0.025)',
-	color: 'var(--l2-fg-2)',
-	cursor: 'pointer'
-};
-
-const sessionSwitcherPanelStyle: React.CSSProperties = {
-	position: 'absolute',
-	top: 38,
-	right: 0,
-	zIndex: 90,
-	minWidth: 260,
-	maxWidth: 340,
-	maxHeight: 420,
-	overflowY: 'auto',
-	borderRadius: 2,
-	border: '1px solid var(--l2-hairline)',
-	background: 'rgba(8,10,15,0.98)',
-	boxShadow: '0 18px 50px rgba(0,0,0,0.5)',
-	padding: '2px 10px 12px'
-};
-
-const sessionSwitcherItemStyle: React.CSSProperties = {
-	width: '100%',
-	display: 'grid',
-	gridTemplateColumns: '16px minmax(0,1fr) 16px',
-	alignItems: 'center',
-	gap: 8,
-	minWidth: 0,
-	marginBottom: 5,
-	border: '1px solid rgba(237,234,224,0.06)',
-	background: 'rgba(237,234,224,0.025)',
-	color: 'var(--l2-fg-2)',
-	fontFamily: 'var(--l2-font-mono)',
-	fontSize: 11,
-	textAlign: 'left',
-	padding: '7px 9px',
-	borderRadius: 2,
-	cursor: 'pointer'
-};
-
-const sessionSwitcherItemLabelStyle: React.CSSProperties = {
-	minWidth: 0,
-	overflow: 'hidden',
-	textOverflow: 'ellipsis',
-	whiteSpace: 'nowrap'
 };
 
 const miniMenuItemStyle: React.CSSProperties = {

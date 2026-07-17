@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ChevronDown, ChevronRight, MessagesSquare } from 'lucide-react';
 import { Page } from '../components/Page';
 import { AgentBadge, HudLabel, StatusBadge } from '../components/hud';
 import LiveBadge from '../components/LiveBadge';
@@ -7,6 +8,7 @@ import GlowBorder from '../components/GlowBorder';
 import { GlassPanel } from '../components/GlassFx';
 import { listRuns, type RunWithMission } from '../lib/api';
 import { useGatewayHealth } from '../lib/useGatewayHealth';
+import { groupRunsBySession, type RunSessionGroup } from '../lib/runSessions';
 import sealMark from '../brand/assets/seal.webp';
 
 type Load = { s: 'loading' } | { s: 'ready'; runs: RunWithMission[] } | { s: 'error' };
@@ -38,12 +40,13 @@ function duration(r: RunWithMission): string {
 export default function Runs() {
 	const [load, setLoad] = useState<Load>({ s: 'loading' });
 	const [status, setStatus] = useState('ALL');
+	const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
 	const nav = useNavigate();
 	const { epoch } = useGatewayHealth();
 
 	useEffect(() => {
 		let alive = true;
-		listRuns(100)
+		listRuns(500)
 			.then(({ runs }) => alive && setLoad({ s: 'ready', runs }))
 			.catch(() => alive && setLoad({ s: 'error' }));
 		return () => {
@@ -56,7 +59,16 @@ export default function Runs() {
 		return status === 'ALL' ? load.runs : load.runs.filter((r) => r.status.toUpperCase() === status);
 	}, [load, status]);
 
-	const count = load.s === 'ready' ? load.runs.length : null;
+	const sessions = useMemo(() => groupRunsBySession(filtered), [filtered]);
+	const count = load.s === 'ready' ? filtered.length : null;
+	function toggleSession(id: string) {
+		setExpanded((current) => {
+			const next = new Set(current);
+			if (next.has(id)) next.delete(id);
+			else next.add(id);
+			return next;
+		});
+	}
 
 	return (
 		<Page
@@ -64,14 +76,14 @@ export default function Runs() {
 			title="Runs"
 			actions={
 				<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 11, letterSpacing: '0.14em', color: 'var(--l2-fg-3)' }}>
-					{count === null ? '—' : `${count} TOTAL`}
+					{count === null ? '—' : `${sessions.length} SESSIONS · ${count} RUNS`}
 				</span>
 			}
 		>
-			{/* interim-source note + filters */}
+			{/* session-first run index + filters */}
 			<div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
 				<HudLabel style={{ fontSize: 9.5, color: 'var(--l2-fg-3)' }}>
-					AGGREGATED FROM MISSIONS — INTERIM UNTIL /v1/runs SHIPS
+					SESSION INDEX · EXPAND SESSION TO INSPECT PROMPT RUNS
 				</HudLabel>
 				<div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
 					{STATUSES.map((s) => (
@@ -101,10 +113,19 @@ export default function Runs() {
 				{load.s === 'loading' && <SkeletonRows />}
 				{load.s === 'error' && <Offline />}
 				{load.s === 'ready' &&
-					(filtered.length === 0 ? (
+					(sessions.length === 0 ? (
 						<Empty hasAny={load.runs.length > 0} />
 					) : (
-						filtered.map((r, i) => <Row key={r.id} r={r} first={i === 0} onClick={() => nav(`/runs/${r.id}`)} />)
+						sessions.map((session, i) => (
+							<SessionBlock
+								key={session.id}
+								session={session}
+								first={i === 0}
+								expanded={expanded.has(session.id)}
+								onToggle={() => toggleSession(session.id)}
+								onOpenRun={(id) => nav(`/runs/${id}`)}
+							/>
+						))
 					))}
 			</GlassPanel>
 		</Page>
@@ -127,18 +148,94 @@ function Header() {
 				textTransform: 'uppercase'
 			}}
 		>
-			<span>Run</span>
-			<span>Mission</span>
+			<span>Session</span>
+			<span>Latest prompt</span>
 			<span>Status</span>
 			<span>Started</span>
-			<span style={{ textAlign: 'right' }}>Duration</span>
+			<span style={{ textAlign: 'right' }}>Inspect / duration</span>
 		</div>
 	);
 }
 
-function Row({ r, first, onClick }: { r: RunWithMission; first: boolean; onClick: () => void }) {
+function SessionBlock({
+	session,
+	first,
+	expanded,
+	onToggle,
+	onOpenRun
+}: {
+	session: RunSessionGroup;
+	first: boolean;
+	expanded: boolean;
+	onToggle: () => void;
+	onOpenRun: (id: string) => void;
+}) {
+	const row = (
+		<div>
+			<SessionRow session={session} first={first} expanded={expanded} onToggle={onToggle} />
+			{expanded && (
+				<div style={{ background: 'rgba(4,7,12,0.52)', borderTop: '1px solid rgba(79,139,255,0.14)' }}>
+					{session.runs.map((run, index) => (
+						<TurnRow key={run.id} r={run} first={index === 0} onClick={() => onOpenRun(run.id)} />
+					))}
+				</div>
+			)}
+		</div>
+	);
+	return session.active ? <GlowBorder active>{row}</GlowBorder> : row;
+}
+
+function SessionRow({ session, first, expanded, onToggle }: { session: RunSessionGroup; first: boolean; expanded: boolean; onToggle: () => void }) {
+	const idLabel = session.id.startsWith('run:') ? 'LEGACY' : session.id.slice(0, 8);
+	return (
+		<div
+			role="button"
+			tabIndex={0}
+			aria-expanded={expanded}
+			data-topo={session.active ? 'info' : 'atlas'}
+			onClick={onToggle}
+			onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onToggle()}
+			style={{
+				display: 'grid',
+				gridTemplateColumns: GRID,
+				gap: 14,
+				alignItems: 'center',
+				padding: '15px 18px',
+				borderTop: first ? 'none' : '1px solid var(--l2-hairline)',
+				cursor: 'pointer',
+				background: expanded ? 'rgba(79,139,255,0.055)' : 'transparent',
+				transition: 'background var(--l2-duration-xs) var(--l2-ease)'
+			}}
+		>
+			<span style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'var(--l2-font-mono)', fontSize: 11.5, color: 'var(--l2-fg-2)' }}>
+				{expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+				{idLabel}
+			</span>
+			<span style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
+				<span style={{ color: 'var(--l2-fg-1)', fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+					{session.latest.mission_title}
+				</span>
+				<span style={{ display: 'flex', alignItems: 'center', gap: 7, fontFamily: 'var(--l2-font-mono)', fontSize: 10, color: 'var(--l2-fg-3)', letterSpacing: '0.08em' }}>
+					<MessagesSquare size={12} strokeWidth={1.5} /> {session.runs.length} PROMPT{session.runs.length === 1 ? '' : 'S'}
+				</span>
+			</span>
+			<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+				<StatusBadge status={session.status} />
+				{session.active && <LiveBadge connected />}
+			</span>
+			<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 11, color: 'var(--l2-fg-3)', fontVariantNumeric: 'tabular-nums' }}>
+				{fmt(session.latest.started_at)}
+			</span>
+			<span style={{ textAlign: 'right', fontFamily: 'var(--l2-font-mono)', fontSize: 10, color: 'var(--l2-fg-3)', letterSpacing: '0.08em' }}>
+				{expanded ? 'COLLAPSE' : 'EXPAND'}
+			</span>
+		</div>
+	);
+}
+
+function TurnRow({ r, first, onClick }: { r: RunWithMission; first: boolean; onClick: () => void }) {
 	const active = isActive(r.status);
-	const inner = (
+	return (
 		<div
 			role="button"
 			tabIndex={0}
@@ -150,8 +247,8 @@ function Row({ r, first, onClick }: { r: RunWithMission; first: boolean; onClick
 				gridTemplateColumns: GRID,
 				gap: 14,
 				alignItems: 'center',
-				padding: '13px 18px',
-				borderTop: first ? 'none' : '1px solid var(--l2-hairline)',
+				padding: '11px 18px 11px 42px',
+				borderTop: first ? 'none' : '1px solid rgba(237,234,224,0.035)',
 				cursor: 'pointer',
 				transition: 'background var(--l2-duration-xs) var(--l2-ease)'
 			}}
@@ -159,17 +256,13 @@ function Row({ r, first, onClick }: { r: RunWithMission; first: boolean; onClick
 			onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
 		>
 			<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 12, color: 'var(--l2-fg-2)', fontVariantNumeric: 'tabular-nums' }}>
-				{r.id.slice(0, 8)}
+				RUN {r.id.slice(0, 8)}
 			</span>
 			<span style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
 				<span style={{ color: 'var(--l2-fg-1)', fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
 					{r.mission_title}
 				</span>
-				{r.agent_runtime && (
-					<span>
-						<AgentBadge agent={r.agent_runtime} />
-					</span>
-				)}
+				<span>{r.agent_runtime && <AgentBadge agent={r.agent_runtime} />}</span>
 			</span>
 			<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
 				<StatusBadge status={r.status} />
@@ -183,8 +276,6 @@ function Row({ r, first, onClick }: { r: RunWithMission; first: boolean; onClick
 			</span>
 		</div>
 	);
-	// Running rows get the electric border treatment.
-	return active ? <GlowBorder active>{inner}</GlowBorder> : inner;
 }
 
 function SkeletonRows() {

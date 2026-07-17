@@ -1,4 +1,4 @@
-// ATLAS slash commands — the same six prompt templates the TUI ships
+// ATLAS slash commands — kept in lockstep with the TUI command catalog.
 // (services/atlas-terminal/src/adapter/commands.ts). Each command expands to a
 // prompt executed through the existing chat/mission/run pipeline; no dedicated
 // gateway endpoint. Keep the two files in lockstep: one command set, every
@@ -45,11 +45,13 @@ export const ATLAS_COMMANDS: AtlasCommand[] = [
 	},
 	{
 		name: 'goal',
-		description: "set a stop-condition goal; runs until a judge says it's met. /goal clear to abort",
-		template:
-			'Set an explicit stop-condition goal: $ARGUMENTS\n' +
-			"Work toward this goal, re-checking after each meaningful step whether it has been met. Stop and " +
-			"report as soon as the goal is genuinely satisfied, or if truly blocked."
+		description: "start or inspect a stop-condition mission that runs until its judge says it's met",
+		template: '$ARGUMENTS'
+	},
+	{
+		name: 'mission',
+		description: 'alias of /goal for a judged long-horizon mission',
+		template: '$ARGUMENTS'
 	},
 	{
 		name: 'deep-research',
