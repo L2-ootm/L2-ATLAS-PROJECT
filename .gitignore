@@ -60,6 +60,12 @@ l2_atlas_30_day_mass_adoption_wedge_plan.md
 # Internal Discord development material
 services/discord-bot/dev-utils/
 
+# Internal Cashflow research and generated briefing material
+services/cashflow/research/
+services/cashflow/docs/compose/
+services/cashflow/BRIEF.md
+services/cashflow/scripts/generate-brief-pdf.py
+
 # Twenty CRM sidecar — fetched upstream files + local secrets (script-managed, never commit)
 infra/compose/twenty/
 

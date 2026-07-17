@@ -1,0 +1,762 @@
+@import "tailwindcss";
+
+/* Explicit sources: automatic detection misses this vendored subdir, which
+   silently drops every spacing utility (p-*, m-*, gap-*) from the build. */
+@source "../app";
+@source "../components";
+@source "../lib";
+
+@theme inline {
+  /* ── Atlas Void — blue-temperature near-black ── */
+  --color-bg-base: #0B0D12;
+  --color-bg-surface: #151820;
+  --color-bg-card: #181C26;
+  --color-bg-muted: #1E2230;
+  --color-bg-hover: #222838;
+  --color-bg-elevated: #282E3E;
+
+  /* ── Borders — glass hairlines ── */
+  --color-border-default: rgba(237, 234, 224, 0.08);
+  --color-border-subtle: rgba(237, 234, 224, 0.05);
+  --color-border-strong: rgba(237, 234, 224, 0.15);
+
+  /* ── Text — ivory family ── */
+  --color-text-primary: #EDEAE0;
+  --color-text-secondary: #9BA0AD;
+  --color-text-muted: #565C6B;
+
+  /* ── Primary — Atlas Celestial Blue (primary luminous accent) ── */
+  --color-primary: #4F8BFF;
+  --color-primary-hover: #7DA8FF;
+  --color-primary-ink: #9CC0FF;
+  --color-primary-subtle: rgba(79, 139, 255, 0.14);
+  --color-primary-muted: rgba(79, 139, 255, 0.06);
+
+  /* ── Atlas Celestial Blue ── */
+  --color-celestial: #4F8BFF;
+  --color-celestial-subtle: rgba(79, 139, 255, 0.12);
+
+  /* ── Atlas Bronze ── */
+  --color-bronze: #B08A57;
+  --color-bronze-subtle: rgba(176, 138, 87, 0.12);
+
+  /* ── Semantic — Atlas neon ── */
+  --color-success: #00FF94;
+  --color-success-subtle: rgba(0, 255, 148, 0.10);
+  --color-warning: #FFD600;
+  --color-warning-subtle: rgba(255, 214, 0, 0.10);
+  --color-danger: #FF0055;
+  --color-danger-subtle: rgba(255, 0, 85, 0.10);
+
+  /* ── Fonts — matching Atlas system ── */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+  --font-display: 'Inter', system-ui, sans-serif;
+}
+
+:root {
+  /* ── TOPOGRAPHIC FIELD — Atlas void, blue-temperature near-black ── */
+  --topo-field-1:  #07080C;
+  --topo-field-2:  #0B0D12;
+  --topo-field-3:  #0A0C11;
+
+  /* ── Atlas Void tokens ── */
+  --l2-void-page:      #0B0D12;
+  --l2-void-deep:      #07080C;
+  --l2-void-base:      #0E1118;
+  --l2-void-surface:   #151820;
+  --l2-void-card:      #181C26;
+
+  /* ── Glass system ── */
+  --glass-bg:        rgba(20, 20, 20, 0.60);
+  --glass-bg-lo:     rgba(255, 255, 255, 0.02);
+  --glass-bg-med:    rgba(255, 255, 255, 0.05);
+  --glass-bg-hi:     rgba(255, 255, 255, 0.08);
+  --glass-border:    rgba(255, 255, 255, 0.08);
+  --glass-border-lo: rgba(255, 255, 255, 0.05);
+  --glass-border-hi: rgba(255, 255, 255, 0.30);
+  --glass-blur:      12px;
+
+  /* ── Atlas glass ── */
+  --l2-glass-border:   rgba(237, 234, 224, 0.10);
+  --l2-hairline:       rgba(237, 234, 224, 0.08);
+  --l2-hairline-bronze: rgba(176, 138, 87, 0.32);
+
+  /* ── Atlas signals ── */
+  --l2-electric-violet: #7F00FF;
+  --l2-cyber-blue:      #00F0FF;
+  --l2-signal-teal:     #00E5C8;
+
+  /* ── Live-telemetry core (Atlas SIGNAL CYAN — legacy emerald names kept for consumers) ── */
+  --emerald-core:   #46F0E0;
+  --emerald-glow:   rgba(70, 240, 224, 0.18);
+  --emerald-quiet:  rgba(70, 240, 224, 0.08);
+  --emerald-edge:   rgba(140, 255, 245, 0.80);
+  --emerald-ring:   rgba(70, 240, 224, 0.45);
+
+  /* ── Signal channels — Atlas semantic palette ── */
+  --sig-violet: #A17BFF;
+  --sig-violet-tint: rgba(161, 123, 255, 0.40);
+  --sig-violet-bg:   rgba(161, 123, 255, 0.10);
+  --sig-violet-edge: rgba(161, 123, 255, 0.60);
+  --sig-blue:   #4F8BFF;
+  --sig-teal:   #46F0E0;
+  --sig-amber:  #FFD600;
+  --sig-crimson: #FF0055;
+
+  /* ── Topo text ── */
+  --topo-fg-1: oklch(0.95 0.01 200);
+  --topo-fg-2: oklch(0.72 0.02 200);
+  --topo-fg-3: oklch(0.50 0.02 200);
+  --topo-fg-4: oklch(0.35 0.02 200);
+
+  /* ── Topo ring ── */
+  --topo-ring-neutral: oklch(1 0 0 / 10%);
+  --topo-ring-good:   oklch(0.85 0.28 145 / 20%);
+  --topo-ring-info:   oklch(0.82 0.24 230 / 20%);
+  --topo-ring-warn:   oklch(0.88 0.22 85 / 20%);
+  --topo-ring-bad:    oklch(0.68 0.32 25 / 25%);
+  --topo-ring-brand:  oklch(0.72 0.30 290 / 25%);
+
+  /* ── Topo geometry ── */
+  --topo-r-sys:    2px;
+  --topo-r-surf:   8px;
+  --topo-r-pill:   9999px;
+  --topo-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* ── Atlas status ── */
+  --l2-success: #00FF94;
+  --l2-warning: #FFD600;
+  --l2-error:   #FF0055;
+
+  /* ── Atlas foreground ── */
+  --l2-fg-1:    #EDEAE0;
+  --l2-fg-2:    #9BA0AD;
+  --l2-fg-3:    #565C6B;
+
+  /* ── Atlas brand ── */
+  --atlas-celestial:  #4F8BFF;
+  --atlas-celestial-soft: #9CC0FF;
+  --atlas-mythic:     #3D68FF;
+  --atlas-bronze:     #B08A57;
+  --atlas-violet:     #A17BFF;
+  --atlas-cyan:       #46F0E0;
+  --topo-resting-line: rgba(126, 151, 181, 0.62);
+  --panel-bg-top: rgba(17, 21, 30, 0.88);
+  --panel-bg-bottom: rgba(8, 11, 17, 0.94);
+
+  /* ── Atlas geometry ── */
+  --l2-radius:    2px;
+  --l2-radius-md: 4px;
+  --l2-radius-lg: 8px;
+
+  /* ── Grid texture ── */
+  --grid-line: rgba(255, 255, 255, 0.03);
+
+  --background: #0B0D12;
+  --foreground: #EDEAE0;
+}
+
+/* Reset lives in @layer base so Tailwind spacing utilities (layered) can
+   override it. Unlayered, this rule nulled every padding/margin/gap utility. */
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ==========================================================================
+   TOPOGRAPHIC PLASMA FIELD — the living background
+   ========================================================================== */
+.topo-field {
+  position: relative;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(79,139,255,0.06) 0%, transparent 45%),
+    radial-gradient(circle at 75% 65%, rgba(70,240,224,0.04) 0%, transparent 40%),
+    linear-gradient(180deg, var(--topo-field-1) 0%, var(--topo-field-2) 48%, var(--topo-field-3) 100%);
+  isolation: isolate;
+}
+
+.topo-field::before {
+  content: '';
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(79,139,255,0.08), transparent 50%),
+    radial-gradient(circle at 50% 50%, rgba(161,123,255,0.04), transparent 45%);
+  background-repeat: no-repeat, no-repeat;
+  background-size: 180% 180%, 170% 170%;
+  background-position: 20% 30%, 75% 65%;
+  animation: topo-plasma 18s ease-in-out infinite alternate;
+  pointer-events: none;
+  z-index: 0;
+}
+
+@keyframes topo-plasma {
+  0%   { background-position: 20% 30%, 75% 65%; }
+  100% { background-position: 35% 55%, 60% 40%; }
+}
+
+.topo-field > * { position: relative; z-index: 2; }
+.topo-field > .ambient-topo { z-index: 0; }
+
+.app-shell {
+  display: flex;
+  min-height: 100dvh;
+  position: relative;
+  z-index: 2;
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  padding: clamp(20px, 2vw, 32px);
+}
+
+/* SVG contour lattice overlay */
+.topo-lattice::after {
+  content: '';
+  position: absolute; inset: 0;
+  background-image:
+    repeating-radial-gradient(circle at 22% 38%,
+      transparent 0, transparent 28px,
+      rgba(180,200,235,0.055) 28px, rgba(180,200,235,0.055) 29px),
+    repeating-radial-gradient(circle at 72% 62%,
+      transparent 0, transparent 34px,
+      rgba(180,200,235,0.04) 34px, rgba(180,200,235,0.04) 35px);
+  mix-blend-mode: screen;
+  opacity: .5;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ==========================================================================
+   GLASS SURFACES — topo-surface (used for cards, sidebar, panels)
+   ========================================================================== */
+.topo-surface {
+  position: relative;
+  isolation: isolate;
+  background: linear-gradient(180deg, var(--panel-bg-top), var(--panel-bg-bottom));
+  backdrop-filter: blur(16px) saturate(125%);
+  -webkit-backdrop-filter: blur(16px) saturate(125%);
+  border: 1px solid var(--topo-ring-neutral);
+  border-radius: var(--l2-radius);
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 6%), 0 2px 0 oklch(0 0 0 / 30%);
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* Specular top-edge hairline */
+.topo-shelf::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, oklch(1 0 0 / 40%), transparent);
+  pointer-events: none; z-index: 3;
+}
+
+/* l2-border — data-panel glass slab (page cards/tables sit on this) */
+.l2-border {
+  border: 1px solid var(--l2-hairline);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 1px 0 rgba(0,0,0,0.4);
+  border-radius: var(--l2-radius);
+}
+
+/* l2-glass — lower intensity glass */
+.l2-glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border-radius: var(--l2-radius);
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+.l2-glass-lo {
+  background: var(--glass-bg-lo);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur));
+  border-radius: var(--l2-radius);
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* ==========================================================================
+   TOPOGRAPHIC-GLOW BUTTONS
+   ========================================================================== */
+.topo-btn {
+  position: relative;
+  padding: 10px 20px;
+  background: transparent;
+  border: 0;
+  color: var(--topo-fg-1);
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  border-radius: var(--topo-r-sys);
+  cursor: pointer;
+  box-shadow:
+    0 0 0 1px rgba(70,240,224,0.22),
+    0 0 12px rgba(70,240,224,0.08);
+  transition: box-shadow .25s var(--topo-ease), transform .25s var(--topo-ease);
+  overflow: hidden;
+}
+
+.topo-btn::before {
+  content: '';
+  position: absolute; left: 0; right: 0; top: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--emerald-edge), transparent);
+  opacity: .6;
+}
+
+.topo-btn:hover {
+  box-shadow:
+    0 0 0 1px rgba(70,240,224,0.50),
+    0 0 24px rgba(70,240,224,0.16),
+    0 0 48px rgba(70,240,224,0.06);
+}
+
+.topo-btn:hover::before { opacity: 1; }
+
+.topo-btn--violet {
+  box-shadow:
+    0 0 0 1px rgba(161,123,255,0.25),
+    0 0 12px rgba(161,123,255,0.12);
+}
+.topo-btn--violet::before { background: linear-gradient(90deg, transparent, var(--sig-violet-edge), transparent); }
+.topo-btn--violet:hover {
+  box-shadow:
+    0 0 0 1px rgba(161,123,255,0.55),
+    0 0 24px rgba(161,123,255,0.28);
+}
+
+.topo-btn--muted {
+  box-shadow: inset 0 0 0 1px oklch(1 0 0 / 10%);
+  color: var(--topo-fg-2);
+}
+.topo-btn--muted::before { display: none; }
+.topo-btn--muted:hover { box-shadow: inset 0 0 0 1px oklch(1 0 0 / 25%); color: var(--topo-fg-1); }
+
+.topo-btn--amber {
+  box-shadow: 0 0 0 1px rgba(255,214,0,0.25), 0 0 12px rgba(255,214,0,0.10);
+  color: #FFD600;
+}
+.topo-btn--amber::before { background: linear-gradient(90deg, transparent, rgba(255,214,0,0.7), transparent); }
+.topo-btn--amber:hover { box-shadow: 0 0 0 1px rgba(255,214,0,0.55), 0 0 24px rgba(255,214,0,0.22); }
+
+/* Primary action — celestial tinted glass slab */
+.btn-primary {
+  position: relative;
+  background: rgba(79, 139, 255, 0.12);
+  color: var(--atlas-celestial-soft);
+  border: 1px solid rgba(79, 139, 255, 0.36);
+  box-shadow: 0 0 16px rgba(79, 139, 255, 0.12);
+  border-radius: var(--l2-radius);
+  overflow: hidden;
+}
+
+.btn-primary::before {
+  content: '';
+  position: absolute; left: 0; right: 0; top: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(157,192,255,0.7), transparent);
+  opacity: .8;
+}
+
+.btn-primary:hover {
+  background: rgba(79, 139, 255, 0.20);
+  color: #C4D8FF;
+  box-shadow:
+    0 0 0 1px rgba(79, 139, 255, 0.45),
+    0 0 24px rgba(79, 139, 255, 0.25);
+}
+
+/* ==========================================================================
+   BADGES / SIGNAL CHIPS
+   ========================================================================== */
+.topo-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  border-radius: var(--topo-r-sys);
+  border: 1px solid currentColor;
+  background: color-mix(in oklch, currentColor 8%, transparent);
+}
+
+/* ==========================================================================
+   TABLE — topo style
+   ========================================================================== */
+.topo-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--topo-fg-2);
+}
+.topo-table thead th {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--topo-fg-3);
+  text-align: left;
+  padding: 12px 16px;
+  border-bottom: 1px solid oklch(1 0 0 / 5%);
+}
+.topo-table tbody td { padding: 10px 16px; border-bottom: 1px solid oklch(1 0 0 / 3%); }
+.topo-table tbody tr { transition: background .15s var(--topo-ease); }
+.topo-table tbody tr:hover { background: oklch(1 0 0 / 3%); }
+.topo-table td.mono { font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; }
+
+/* ==========================================================================
+   SCROLLBAR — Atlas style (celestial-tinted thin)
+   ========================================================================== */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(79, 139, 255, 0.32);
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(79, 139, 255, 0.52);
+}
+
+/* ==========================================================================
+   HUD DIVIDER
+   ========================================================================== */
+.l2-hud-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--glass-border), transparent);
+}
+
+.l2-grid-bg {
+  background-image:
+    linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+  background-size: 50px 50px;
+}
+
+/* ==========================================================================
+   STAT CARD — topo glass variants
+   ========================================================================== */
+.stat-card {
+  position: relative;
+  isolation: isolate;
+  background: linear-gradient(180deg, var(--panel-bg-top), var(--panel-bg-bottom));
+  backdrop-filter: blur(16px) saturate(125%);
+  -webkit-backdrop-filter: blur(16px) saturate(125%);
+  border: 1px solid var(--topo-ring-neutral);
+  border-radius: var(--l2-radius-md);
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 6%), 0 2px 0 oklch(0 0 0 / 30%);
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  transition: border-color .25s var(--topo-ease), box-shadow .25s var(--topo-ease);
+}
+
+.stat-card::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, oklch(1 0 0 / 20%), transparent);
+  pointer-events: none; z-index: 3; border-radius: var(--l2-radius-md) var(--l2-radius-md) 0 0;
+}
+
+.stat-card:hover {
+  border-color: oklch(1 0 0 / 18%);
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 8%), 0 4px 24px oklch(0 0 0 / 30%);
+}
+
+.stat-card .stat-icon-bg {
+  border-radius: var(--l2-radius-md);
+}
+
+.stat-primary .stat-icon-bg { background: var(--color-primary-subtle); }
+.stat-primary .stat-icon { color: var(--color-primary); }
+
+.stat-success .stat-icon-bg { background: var(--color-success-subtle); }
+.stat-success .stat-icon { color: var(--color-success); }
+
+.stat-danger .stat-icon-bg { background: var(--color-danger-subtle); }
+.stat-danger .stat-icon { color: var(--color-danger); }
+
+.stat-warning .stat-icon-bg { background: var(--color-warning-subtle); }
+.stat-warning .stat-icon { color: var(--color-warning); }
+
+.stat-violet .stat-icon-bg { background: var(--color-primary-subtle); }
+.stat-violet .stat-icon { color: var(--color-primary); }
+.stat-cyan .stat-icon-bg { background: var(--color-celestial-subtle); }
+.stat-cyan .stat-icon { color: var(--color-celestial); }
+.stat-red .stat-icon-bg { background: var(--color-danger-subtle); }
+.stat-red .stat-icon { color: var(--color-danger); }
+.stat-yellow .stat-icon-bg { background: var(--color-warning-subtle); }
+.stat-yellow .stat-icon { color: var(--color-warning); }
+
+/* ==========================================================================
+   CATEGORY BADGES — Atlas palette
+   ========================================================================== */
+.cat-software { background: rgba(161, 123, 255, 0.10); color: #A17BFF; }
+.cat-marketing { background: rgba(255, 214, 0, 0.10); color: #FFD600; }
+.cat-equipamento { background: rgba(0, 255, 148, 0.10); color: #00FF94; }
+.cat-infraestrutura { background: rgba(155, 160, 173, 0.10); color: #9BA0AD; }
+.cat-pessoal { background: rgba(79, 139, 255, 0.10); color: #4F8BFF; }
+.cat-outros { background: rgba(155, 160, 173, 0.06); color: #565C6B; }
+
+.bar-software { background: #A17BFF; }
+.bar-marketing { background: #FFD600; }
+.bar-equipamento { background: #00FF94; }
+.bar-infraestrutura { background: #9BA0AD; }
+.bar-pessoal { background: #4F8BFF; }
+.bar-outros { background: #565C6B; }
+
+/* ==========================================================================
+   NAVIGATION — active item
+   ========================================================================== */
+.nav-active {
+  background: var(--color-primary-subtle);
+  border: 1px solid rgba(79, 139, 255, 0.22);
+  color: var(--color-primary);
+}
+
+/* ==========================================================================
+   STATUS BADGES
+   ========================================================================== */
+.badge-active { background: var(--color-success-subtle); color: var(--color-success); }
+.badge-inactive { background: var(--color-bg-muted); color: var(--color-text-muted); }
+
+/* ==========================================================================
+   FORM INPUTS — Atlas glass style
+   ========================================================================== */
+.input-l2 {
+  background: var(--color-bg-card);
+  border: 1px solid var(--l2-hairline);
+  color: var(--color-text-primary);
+  border-radius: var(--l2-radius-md);
+  transition: border-color 0.15s ease;
+}
+.input-l2::placeholder { color: var(--color-text-muted); }
+.input-l2:focus {
+  border-color: var(--color-primary);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(79, 139, 255, 0.14);
+}
+
+/* Number & date inputs */
+input[type="number"], input[type="date"] {
+  accent-color: var(--color-primary);
+  color-scheme: dark;
+}
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  opacity: 1; height: 28px; cursor: pointer;
+}
+input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; filter: invert(0.6); }
+
+/* ==========================================================================
+   ANIMATIONS
+   ========================================================================== */
+@keyframes l2SlideIn {
+  0% { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.animate-l2-enter {
+  animation: l2SlideIn 300ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes growUp {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+.animate-grow-up {
+  animation: growUp 500ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  transform-origin: bottom;
+}
+
+@keyframes l2-thrum {
+  0%, 100% { border-color: var(--glass-border); }
+  50%      { border-color: rgba(79, 139, 255, 0.40); }
+}
+.l2-status-pulse { animation: l2-thrum 3s linear infinite; }
+
+@keyframes l2-scan {
+  0%   { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
+@keyframes l2-blink { 50% { opacity: 0; } }
+.l2-blink { animation: l2-blink 1s step-end infinite; }
+
+@keyframes topo-glow-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* ==========================================================================
+   SIDEBAR — Glassmorphism + topography
+   ========================================================================== */
+.sidebar-wrapper {
+  background: linear-gradient(180deg, rgba(7,8,12,0.88), rgba(11,13,18,0.92));
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  border-right: 1px solid var(--l2-hairline);
+  box-shadow: 1px 0 0 rgba(0,0,0,0.6), 8px 0 32px rgba(0,0,0,0.45);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex: 0 0 248px;
+  flex-direction: column;
+  width: 248px;
+  height: 100dvh;
+  position: sticky;
+  top: 0;
+}
+
+.sidebar-wrapper::before {
+  content: '';
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(79,139,255,0.05) 0%, transparent 50%),
+    radial-gradient(circle at 70% 80%, rgba(161,123,255,0.03), transparent 40%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.sidebar-wrapper > * { position: relative; z-index: 1; }
+
+/* ==========================================================================
+   DASHBOARD — stable operator grid
+   ========================================================================== */
+.dashboard-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+}
+
+.dashboard-overview-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.85fr) minmax(0, 1.65fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.dashboard-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.dashboard-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.goal-panel {
+  min-height: 260px;
+}
+
+.dashboard-data-panel {
+  min-height: 270px;
+}
+
+.dashboard-empty-state {
+  min-height: 150px;
+  padding: 24px;
+}
+
+.dashboard-activity-rail > div {
+  position: static;
+}
+
+.dashboard-activity-panel {
+  min-height: 220px;
+  max-height: 620px;
+}
+
+.dashboard-activity-panel:not(.is-empty) {
+  height: min(620px, calc(100dvh - 48px));
+}
+
+@media (min-width: 1536px) {
+  .dashboard-layout {
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+
+  .dashboard-activity-rail > div {
+    position: sticky;
+    top: 24px;
+  }
+}
+
+@media (min-width: 1850px) {
+  .dashboard-layout {
+    grid-template-columns: minmax(0, 1fr) 360px;
+  }
+}
+
+@media (max-width: 1199px) {
+  .dashboard-overview-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .goal-panel {
+    min-height: 250px;
+  }
+}
+
+@media (max-width: 767px) {
+  .app-main {
+    padding: 72px 16px 24px;
+  }
+
+  .dashboard-stat-grid,
+  .dashboard-chart-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .goal-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .goal-summary > div:last-child {
+    text-align: left;
+  }
+}
+
+/* ==========================================================================
+   RESPONSIVE
+   ========================================================================== */
+@media (max-width: 1023px) {
+  .sidebar-wrapper {
+    position: fixed !important;
+    top: 0; left: 0; bottom: 0;
+    z-index: 40;
+    transform: translateX(-100%);
+    transition: transform 200ms ease-out;
+    width: min(82vw, 288px);
+    height: 100dvh;
+  }
+  .sidebar-wrapper.open { transform: translateX(0); }
+  .mobile-menu-btn { display: block !important; }
+}
