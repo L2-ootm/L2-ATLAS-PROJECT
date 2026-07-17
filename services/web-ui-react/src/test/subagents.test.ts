@@ -19,6 +19,13 @@ describe('subagent activity projection', () => {
 		expect(actors[0]).toMatchObject({ phase: 'working', tool: 'search', toolCount: 2 });
 	});
 
+	it('retains the live child run link for actor stream projection', () => {
+		const actors = subagentsFromSurfaceEvents([
+			{ session_id: 's', seq: 1, kind: 'task', run_id: 'parent', occurred_at: '', payload_json: JSON.stringify(payload('working', { child_run_id: 'child-run' })) }
+		]);
+		expect(actors[0].childRunId).toBe('child-run');
+	});
+
 	it('maps a failed completion to a failed visual state', () => {
 		const actor = subagentFromConsoleEvent({ type: 'task', content: payload('completed', { status: 'failed' }) });
 		expect(actor?.phase).toBe('failed');

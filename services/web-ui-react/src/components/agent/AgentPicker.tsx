@@ -1,16 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Bot, ChevronDown, Check } from 'lucide-react';
 import { agentRuntimeLabel, type AgentRuntime } from '../../lib/api';
-
-/** Runtime catalog driving the picker. Order = display order. */
-export const AGENT_RUNTIME_OPTIONS: Array<{
-	value: AgentRuntime;
-	description: string;
-}> = [
-	{ value: 'native', description: 'ATLAS native runtime — audited, policy-bound' },
-	{ value: 'claude_code', description: 'Local Claude Code session — no API key' },
-	{ value: 'codex', description: 'Local OpenAI Codex CLI session' }
-];
+import { AGENT_RUNTIME_OPTIONS } from '../../lib/agentRuntimeOptions';
 
 /** Accent color per runtime, used for the active chip and menu marks. */
 function runtimeAccent(agent: AgentRuntime): string {
@@ -32,11 +23,13 @@ function runtimeAccent(agent: AgentRuntime): string {
 export function AgentPicker({
 	value,
 	onChange,
-	disabled
+	disabled,
+	placement = 'bottom'
 }: {
 	value: AgentRuntime;
 	onChange: (agent: AgentRuntime) => void;
 	disabled?: boolean;
+	placement?: 'top' | 'bottom';
 }) {
 	const [open, setOpen] = useState(false);
 	const rootRef = useRef<HTMLDivElement | null>(null);
@@ -74,7 +67,15 @@ export function AgentPicker({
 				<ChevronDown size={12} strokeWidth={1.8} style={{ transform: open ? 'rotate(180deg)' : undefined, transition: 'transform 120ms' }} />
 			</button>
 			{open && (
-				<div style={menuStyle} role="listbox" data-topo="atlas">
+				<div
+					style={{
+						...menuStyle,
+						top: placement === 'bottom' ? 'calc(100% + 6px)' : 'auto',
+						bottom: placement === 'top' ? 'calc(100% + 6px)' : 'auto'
+					}}
+					role="listbox"
+					data-topo="atlas"
+				>
 					<div style={menuTitleStyle}>AGENT RUNTIME</div>
 					{AGENT_RUNTIME_OPTIONS.map((option) => {
 						const active = option.value === value;

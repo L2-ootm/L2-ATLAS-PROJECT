@@ -1042,6 +1042,7 @@ export interface AtlasConfigView {
 		autoconfig: boolean;
 		curator_model: string;
 		auxiliary_model: string;
+		actor_model?: string;
 		judge_model?: string;
 	};
 	runtime: { default_agent: string; iteration_budget: number; compression: string };

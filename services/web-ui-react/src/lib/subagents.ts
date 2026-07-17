@@ -14,6 +14,13 @@ export interface SubagentActivity {
 	depth: number;
 	background: boolean;
 	durationSeconds: number | null;
+	childRunId: string | null;
+}
+
+export interface SubagentLifecycleStep {
+	seq: number;
+	occurredAt: string;
+	activity: SubagentActivity;
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -41,7 +48,8 @@ function activity(value: unknown): SubagentActivity | null {
 		toolCount: Number.isFinite(Number(data.tool_count)) ? Number(data.tool_count) : 0,
 		depth: Number.isFinite(Number(data.depth)) ? Number(data.depth) : 1,
 		background: data.background === true,
-		durationSeconds: data.duration_seconds == null ? null : Number(data.duration_seconds)
+		durationSeconds: data.duration_seconds == null ? null : Number(data.duration_seconds),
+		childRunId: typeof data.child_run_id === 'string' ? data.child_run_id : null
 	};
 }
 
@@ -60,7 +68,29 @@ export function subagentsFromSurfaceEvents(events: SurfaceEvent[]): SubagentActi
 	return [...latest.values()];
 }
 
+export function subagentFromSurfaceEvent(event: SurfaceEvent): SubagentActivity | null {
+	if (event.kind !== 'task') return null;
+	try {
+		return activity(JSON.parse(event.payload_json));
+	} catch {
+		return null;
+	}
+}
+
+export function subagentLifecycleFromSurfaceEvents(
+	events: SurfaceEvent[],
+	actorId: string
+): SubagentLifecycleStep[] {
+	const steps: SubagentLifecycleStep[] = [];
+	for (const event of events) {
+		const next = subagentFromSurfaceEvent(event);
+		if (next?.id === actorId) {
+			steps.push({ seq: event.seq, occurredAt: event.occurred_at, activity: next });
+		}
+	}
+	return steps;
+}
+
 export function subagentFromConsoleEvent(event: ConsoleChatEvent): SubagentActivity | null {
 	return event.type === 'task' ? activity(event.content) : null;
 }
-

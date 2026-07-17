@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { AgentPicker, AGENT_RUNTIME_OPTIONS } from '../components/agent/AgentPicker';
+import { AgentPicker } from '../components/agent/AgentPicker';
+import { AGENT_RUNTIME_OPTIONS } from '../lib/agentRuntimeOptions';
 
 describe('AgentPicker', () => {
 	it('lists all three runtimes and reports a selection', () => {
