@@ -18,6 +18,7 @@ import { ChatMarkdown } from '../components/ChatMarkdown';
 import { StreamReveal } from '../components/chat/StreamReveal';
 import { SubagentRail } from '../components/agent/SubagentActivity';
 import { SessionNavigator } from '../components/sessions/SessionNavigator';
+import { AgentPicker } from '../components/agent/AgentPicker';
 import {
 	agentRuntimeLabel,
 	getRun,
@@ -476,14 +477,7 @@ export default function Chat() {
 						}}
 						onUnbind={unbind}
 					/>
-					<div style={segStyle}>
-						<SegmentButton active={agent === 'native'} onClick={() => !busy && setAgent('native')}>
-							ATLAS
-						</SegmentButton>
-						<SegmentButton active={agent === 'claude_code'} onClick={() => !busy && setAgent('claude_code')}>
-							CLAUDE CODE
-						</SegmentButton>
-					</div>
+					<AgentPicker value={agent} onChange={setAgent} disabled={busy} />
 					<div style={{ position: 'relative' }}>
 						<button
 							type="button"
@@ -597,7 +591,9 @@ export default function Chat() {
 								? 'Turn in progress — streaming'
 								: agent === 'claude_code'
 									? 'Ask Claude Code in this workspace'
-									: 'Message ATLAS'
+									: agent === 'codex'
+										? 'Ask Codex in this workspace'
+										: 'Message ATLAS'
 						}
 						disabled={busy}
 						rows={3}
@@ -795,28 +791,6 @@ function ChatBubble({ message }: { message: ConsoleMessage }) {
 
 // ── small chrome ────────────────────────────────────────────────────────────
 
-function SegmentButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-	return (
-		<button
-			type="button"
-			onClick={onClick}
-			style={{
-				border: 'none',
-				borderRadius: 1,
-				padding: '6px 11px',
-				fontFamily: 'var(--l2-mono)',
-				fontSize: 10,
-				letterSpacing: '0.12em',
-				cursor: 'pointer',
-				background: active ? 'rgba(79,139,255,0.16)' : 'transparent',
-				color: active ? 'var(--l2-fg-1)' : 'var(--l2-fg-3)'
-			}}
-		>
-			{children}
-		</button>
-	);
-}
-
 function IconAction({ title, onClick, children }: { title: string; onClick: () => void; children: React.ReactNode }) {
 	return (
 		<button type="button" title={title} onClick={onClick} style={iconActionStyle}>
@@ -969,13 +943,6 @@ const cancelButtonStyle: React.CSSProperties = {
 	alignItems: 'center',
 	justifyContent: 'center',
 	cursor: 'pointer'
-};
-
-const segStyle: React.CSSProperties = {
-	display: 'inline-flex',
-	border: '1px solid rgba(237,234,224,0.10)',
-	borderRadius: 2,
-	overflow: 'hidden'
 };
 
 const iconActionStyle: React.CSSProperties = {

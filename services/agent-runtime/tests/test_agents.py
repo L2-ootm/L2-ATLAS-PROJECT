@@ -91,7 +91,7 @@ def _make_query(messages: list):
 
 
 def test_known_agents() -> None:
-    assert known_agents() == ["claude_code", "native"]
+    assert known_agents() == ["claude_code", "codex", "native"]
 
 
 def test_get_agent_resolves() -> None:

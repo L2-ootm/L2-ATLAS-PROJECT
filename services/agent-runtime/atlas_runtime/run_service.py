@@ -34,7 +34,7 @@ def start_run(
     *,
     mission_id: str,
     session_id: Optional[str] = None,
-    agent_runtime: Literal["native", "claude_code"] = "native",
+    agent_runtime: Literal["native", "claude_code", "codex"] = "native",
 ) -> Run:
     """Create a Run row, update mission to running, emit tool_call AuditEvent.
 

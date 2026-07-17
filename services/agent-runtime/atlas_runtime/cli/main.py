@@ -434,7 +434,7 @@ def create(
 def run_mission(
     mission_id: str = typer.Argument(..., help="Mission ID to execute"),
     agent: str = typer.Option(
-        "native", "--agent", help="Agent runtime to record/use: native | claude_code"
+        "native", "--agent", help="Agent runtime to record/use: native | claude_code | codex"
     ),
     session_id: str | None = typer.Option(
         None,
@@ -528,7 +528,7 @@ def run_mission(
 def retry_mission(
     mission_id: str = typer.Argument(..., help="Failed/cancelled mission ID to retry"),
     agent: str = typer.Option(
-        "native", "--agent", help="Agent runtime to record/use: native | claude_code"
+        "native", "--agent", help="Agent runtime to record/use: native | claude_code | codex"
     ),
     session_id: str | None = typer.Option(
         None,

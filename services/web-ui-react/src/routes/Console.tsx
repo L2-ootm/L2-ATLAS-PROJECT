@@ -661,6 +661,10 @@ export default function Console() {
 					? agentCount === 1
 						? 'claude.code'
 						: `claude.code.${agentCount}`
+					: windowAgent === 'codex'
+						? agentCount === 1
+							? 'codex'
+							: `codex.${agentCount}`
 					: agentCount === 1
 						? 'atlas.chat'
 						: `atlas.chat.${agentCount}`
@@ -1042,7 +1046,7 @@ export default function Console() {
 			}
 		>
 			<GlassPanel
-				data-topo={activeChatAgent === 'claude_code' ? 'ai' : 'atlas'}
+				data-topo={activeChatAgent !== 'native' ? 'ai' : 'atlas'}
 				style={{
 					height: 'calc(100vh - 142px)',
 					minHeight: 620,
@@ -1476,7 +1480,7 @@ function ChatPane({
 			</div>
 			<div style={{ position: 'relative', minHeight: 0, display: 'grid' }}>
 				<TopoScroll
-					tone={agent === 'claude_code' ? 'atlas' : 'info'}
+					tone={agent !== 'native' ? 'atlas' : 'info'}
 					style={{ minHeight: 0 }}
 					viewportStyle={messageListStyle}
 					viewportRef={viewportRef}
@@ -1516,7 +1520,9 @@ function ChatPane({
 							? 'Turn in progress — streaming'
 							: agent === 'claude_code'
 								? 'Ask Claude Code in this folder'
-								: 'Message ATLAS'
+								: agent === 'codex'
+									? 'Ask Codex in this folder'
+									: 'Message ATLAS'
 					}
 					rows={3}
 					style={composerStyle}
@@ -2103,6 +2109,7 @@ function SessionLaunchers({ onSpawn, disabled }: { onSpawn: (agent: AgentRuntime
 		<div style={agentToggleStyle}>
 			<SegmentButton active={false} disabled={disabled} onClick={() => onSpawn('native')}>+ Native</SegmentButton>
 			<SegmentButton active={false} disabled={disabled} onClick={() => onSpawn('claude_code')} tone="orange">+ Claude Code</SegmentButton>
+			<SegmentButton active={false} disabled={disabled} onClick={() => onSpawn('codex')} tone="orange">+ Codex</SegmentButton>
 		</div>
 	);
 }
@@ -2162,6 +2169,7 @@ function MiniMenu({ onPick }: { onPick: (kind: WindowKind, agent?: AgentRuntime)
 	const items: Array<{ label: string; kind: WindowKind; agent?: AgentRuntime }> = [
 		{ label: 'native chat', kind: 'chat', agent: 'native' },
 		{ label: 'claude code', kind: 'chat', agent: 'claude_code' },
+		{ label: 'codex', kind: 'chat', agent: 'codex' },
 		{ label: 'audit', kind: 'audit' },
 		{ label: 'tools', kind: 'tools' },
 		{ label: 'context', kind: 'context' }

@@ -37,7 +37,7 @@ import {
 // against a pre-WP-2 gateway (api.ts swallows 404/503), and real background
 // execution requires the rebuilt gateway — an old binary records the run only.
 
-const AGENTS: AgentRuntime[] = ['native', 'claude_code'];
+const AGENTS: AgentRuntime[] = ['native', 'claude_code', 'codex'];
 const FEED_POLL_MS = 6000;
 
 function rel(iso: string): string {

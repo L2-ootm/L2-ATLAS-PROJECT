@@ -1708,10 +1708,13 @@ async fn create_mission(
     }
 }
 
+/// Agent runtime keys the gateway accepts; mirrors atlas_runtime.agents.base.VALID_AGENTS.
+const VALID_AGENTS: [&str; 3] = ["native", "claude_code", "codex"];
+
 #[derive(Deserialize, Default)]
 struct StartRunBody {
-    /// Agent runtime selector: "native" (default) or "claude_code". Mirrors the
-    /// `atlas mission run --agent` flag (P4 — modular agents).
+    /// Agent runtime selector: "native" (default), "claude_code" or "codex".
+    /// Mirrors the `atlas mission run --agent` flag (P4 — modular agents).
     agent: Option<String>,
     /// When true, the gateway spawns a *detached* `atlas run exec` after creating
     /// the run, so it executes in the background (autonomous loop) while this
@@ -1751,9 +1754,9 @@ async fn start_run(
         .map(|a| a.trim().to_string())
         .filter(|a| !a.is_empty())
         .unwrap_or_else(|| "native".to_string());
-    if agent != "native" && agent != "claude_code" {
+    if !VALID_AGENTS.contains(&agent.as_str()) {
         return Err(ApiError::BadRequest(
-            "agent must be 'native' or 'claude_code'",
+            "agent must be 'native', 'claude_code' or 'codex'",
         ));
     }
     let judge_model = judge_model.map(|model| model.trim().to_string());
@@ -1823,9 +1826,9 @@ async fn retry_mission(
         .map(|a| a.trim().to_string())
         .filter(|a| !a.is_empty())
         .unwrap_or_else(|| "native".to_string());
-    if agent != "native" && agent != "claude_code" {
+    if !VALID_AGENTS.contains(&agent.as_str()) {
         return Err(ApiError::BadRequest(
-            "agent must be 'native' or 'claude_code'",
+            "agent must be 'native', 'claude_code' or 'codex'",
         ));
     }
     let mut args = vec!["mission", "retry", "--agent", agent.as_str()];
@@ -2286,9 +2289,9 @@ async fn operation_run(
         .map(|a| a.trim().to_string())
         .filter(|a| !a.is_empty())
         .unwrap_or_else(|| "native".to_string());
-    if agent != "native" && agent != "claude_code" {
+    if !VALID_AGENTS.contains(&agent.as_str()) {
         return Err(ApiError::BadRequest(
-            "agent must be 'native' or 'claude_code'",
+            "agent must be 'native', 'claude_code' or 'codex'",
         ));
     }
     let run_id = dispatch_atlas(

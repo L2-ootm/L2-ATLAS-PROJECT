@@ -16,7 +16,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Literal, Optional
 
-VALID_AGENTS = ("native", "claude_code")
+VALID_AGENTS = ("native", "claude_code", "codex")
 
 
 @dataclass(frozen=True)

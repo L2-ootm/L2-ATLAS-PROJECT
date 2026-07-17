@@ -49,18 +49,21 @@ export interface Focus {
 	updated_at: string;
 }
 
-/** Agent runtime that executes a run: native ATLAS in-process, or the operator's
- * local Claude Code session. Mirrors the gateway's `agent` request field /
- * `agent_runtime` response field (P4 — modular agents). */
-export type AgentRuntime = 'native' | 'claude_code';
+/** Agent runtime that executes a run: native ATLAS in-process, the operator's
+ * local Claude Code session, or the local OpenAI Codex CLI. Mirrors the
+ * gateway's `agent` request field / `agent_runtime` response field (P4 —
+ * modular agents). */
+export type AgentRuntime = 'native' | 'claude_code' | 'codex';
 
 /** Human display label for an agent runtime (e.g. "claude_code" → "CLAUDE CODE"). */
 export function agentRuntimeLabel(agent: AgentRuntime): string {
 	switch (agent) {
 		case 'native':
-			return 'NATIVE';
+			return 'ATLAS';
 		case 'claude_code':
 			return 'CLAUDE CODE';
+		case 'codex':
+			return 'CODEX';
 		default:
 			return String(agent).toUpperCase();
 	}
