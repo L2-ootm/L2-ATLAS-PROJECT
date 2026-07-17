@@ -143,6 +143,7 @@ def test_stop_signals_when_pid_is_alive(tmp_path, monkeypatch):
     pid_file.write_text("4242")
     monkeypatch.setattr(cockpit_control, "PID_FILE", pid_file)
     monkeypatch.setattr(cockpit_control, "_pid_alive", lambda pid: True)
+    monkeypatch.setattr(cockpit_control, "_wait_for_exit", lambda pid: True)
     monkeypatch.setattr(cockpit_control.os, "name", "posix")
     with patch("os.kill") as mock_kill:
         ok, message = cockpit_control.stop()
@@ -150,6 +151,35 @@ def test_stop_signals_when_pid_is_alive(tmp_path, monkeypatch):
     assert "4242" in message
     mock_kill.assert_called_once_with(4242, 15)
     assert not pid_file.exists()
+
+
+def test_stop_windows_kills_entire_process_tree(tmp_path, monkeypatch):
+    pid_file = tmp_path / "cockpit.pid"
+    pid_file.write_text("4242")
+    monkeypatch.setattr(cockpit_control, "PID_FILE", pid_file)
+    monkeypatch.setattr(cockpit_control, "_pid_alive", lambda pid: True)
+    monkeypatch.setattr(cockpit_control, "_wait_for_exit", lambda pid: True)
+    monkeypatch.setattr(cockpit_control.os, "name", "nt")
+    with patch("subprocess.run") as mock_run:
+        ok, message = cockpit_control.stop()
+    assert ok is True
+    assert "4242" in message
+    assert mock_run.call_args.args[0] == ["taskkill", "/PID", "4242", "/T", "/F"]
+    assert not pid_file.exists()
+
+
+def test_stop_retains_pid_file_when_tree_survives(tmp_path, monkeypatch):
+    pid_file = tmp_path / "cockpit.pid"
+    pid_file.write_text("4242")
+    monkeypatch.setattr(cockpit_control, "PID_FILE", pid_file)
+    monkeypatch.setattr(cockpit_control, "_pid_alive", lambda pid: True)
+    monkeypatch.setattr(cockpit_control, "_wait_for_exit", lambda pid: False)
+    monkeypatch.setattr(cockpit_control.os, "name", "nt")
+    with patch("subprocess.run"):
+        ok, message = cockpit_control.stop()
+    assert ok is False
+    assert "still running" in message
+    assert pid_file.exists()
 
 
 def test_pid_alive_posix_returns_false_for_dead_pid(monkeypatch):

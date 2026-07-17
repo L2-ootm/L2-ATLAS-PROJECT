@@ -146,6 +146,16 @@ def _pid_alive(pid: int) -> bool:
     return True
 
 
+def _wait_for_exit(pid: int, timeout: float = 5.0) -> bool:
+    """Wait briefly for a signalled process tree to release its recorded PID."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not _pid_alive(pid):
+            return True
+        time.sleep(0.1)
+    return not _pid_alive(pid)
+
+
 def stop() -> tuple[bool, str]:
     """Stop a cockpit started by this primitive (via its PID file)."""
     if not PID_FILE.exists():
@@ -160,9 +170,19 @@ def stop() -> tuple[bool, str]:
         return False, f"cockpit process already gone (pid {pid}, removed)"
     try:
         if os.name == "nt":
-            subprocess.run(["taskkill", "/PID", str(pid), "/F"], check=False)
+            # npm.cmd is only the recorded root. /T is required to terminate
+            # the Vite node.exe descendant that owns the listening port.
+            subprocess.run(
+                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
         else:
             os.kill(pid, 15)
-    finally:
-        PID_FILE.unlink(missing_ok=True)
+    except OSError as exc:
+        return False, f"failed to stop cockpit process tree (pid {pid}): {exc}"
+    if not _wait_for_exit(pid):
+        return False, f"cockpit process tree still running (pid {pid}); pid file retained"
+    PID_FILE.unlink(missing_ok=True)
     return True, f"stopped (pid {pid})"
