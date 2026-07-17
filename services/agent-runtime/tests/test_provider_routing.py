@@ -162,6 +162,26 @@ def test_native_execute_uses_config_model(db, lock, monkeypatch, tmp_path):
     assert cap.kw["provider"] == "openrouter"
 
 
+def test_native_execute_uses_persisted_surface_session_model(
+    db, lock, surface_session, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    _configure_fake_api_key(monkeypatch, tmp_path)
+    cap = _Capture()
+    monkeypatch.setattr(native, "_default_factory", cap)
+    mid, rid = _insert_mission_run(db)
+    db.execute(
+        "UPDATE surface_sessions SET model_provider='openrouter',model_id='google/gemini-2.5-pro' WHERE id=?",
+        (surface_session,),
+    )
+    db.execute("UPDATE runs SET session_id=? WHERE id=?", (surface_session, rid))
+    db.commit()
+    outcome = NativeAtlasAgent().execute(db, lock, mission_id=mid, run_id=rid, prompt="go")
+    assert outcome.status == "succeeded"
+    assert cap.kw["provider"] == "openrouter"
+    assert cap.kw["model"] == "google/gemini-2.5-pro"
+
+
 def test_native_execute_focus_overrides_model(db, lock, monkeypatch, tmp_path):
     monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
     _configure_fake_api_key(monkeypatch, tmp_path)

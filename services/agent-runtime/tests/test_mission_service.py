@@ -130,11 +130,34 @@ def test_retry_mission_preserves_prior_runs(db, lock):
 def test_purge_expired_archives_deletes_dependents(db, lock):
     from atlas_runtime.mission_service import archive_mission, create_mission, purge_expired_archives
     from atlas_runtime import run_service
+    from atlas_runtime.agent_contract_service import persist_contract, prepare_run_contract
 
     mission = create_mission(db, lock, title="Purge Test")
     run = run_service.start_run(db, lock, mission_id=mission.id)
     run_service.complete_run(
         db, lock, run_id=run.id, mission_id=mission.id, status="succeeded"
+    )
+    persist_contract(
+        db,
+        prepare_run_contract(db, run_id=run.id, mission_id=mission.id, prompt="retain safely"),
+    )
+    db.execute(
+        "INSERT INTO observations(id,run_id,body,source,created_at) VALUES (?,?,?,?,?)",
+        ("obs-purge", run.id, "compiled knowledge", "test", "2025-01-01T00:00:00+00:00"),
+    )
+    db.execute(
+        "INSERT INTO memory_provenance(id,layer,item_id,run_id,written_at) VALUES (?,?,?,?,?)",
+        ("prov-purge", "session", "obs-purge", run.id, "2025-01-01T00:00:00+00:00"),
+    )
+    db.execute(
+        "INSERT INTO tool_approvals(id,tool_name,risk_level,run_id,requested_at) "
+        "VALUES (?,?,?,?,?)",
+        ("tool-purge", "workspace_write", "write", run.id, "2025-01-01T00:00:00+00:00"),
+    )
+    db.execute(
+        "INSERT INTO discord_approvals(id,action,guild_id,run_id,requested_at) "
+        "VALUES (?,?,?,?,?)",
+        ("discord-purge", "send_message", "guild", run.id, "2025-01-01T00:00:00+00:00"),
     )
     archive_mission(db, lock, mission_id=mission.id, delete_after_days=1)
     db.execute(
@@ -146,3 +169,14 @@ def test_purge_expired_archives_deletes_dependents(db, lock):
     assert purge_expired_archives(db, lock, now="2026-01-01T00:00:00+00:00") == 1
     assert db.execute("SELECT 1 FROM missions WHERE id=?", (mission.id,)).fetchone() is None
     assert db.execute("SELECT 1 FROM runs WHERE id=?", (run.id,)).fetchone() is None
+    assert db.execute(
+        "SELECT 1 FROM agent_contract_snapshots WHERE run_id=?", (run.id,)
+    ).fetchone() is None
+    assert db.execute("SELECT 1 FROM tool_approvals WHERE run_id=?", (run.id,)).fetchone() is None
+    assert db.execute("SELECT 1 FROM discord_approvals WHERE run_id=?", (run.id,)).fetchone() is None
+    assert db.execute(
+        "SELECT run_id FROM observations WHERE id='obs-purge'"
+    ).fetchone()[0] is None
+    assert db.execute(
+        "SELECT run_id FROM memory_provenance WHERE id='prov-purge'"
+    ).fetchone()[0] is None

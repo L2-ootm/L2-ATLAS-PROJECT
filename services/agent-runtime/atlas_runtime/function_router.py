@@ -7,7 +7,8 @@ keeps those slots in sync with the ATLAS provider mesh: when
 ``functions.autoconfig`` is on, managed slots bind to the lightest model
 available on the active provider (Codex -> gpt-5.4-mini class), and the
 ``functions.curator_model`` / ``functions.auxiliary_model`` overrides always
-win.
+win. Completion judgement has a separate explicit slot; when unset it inherits
+the initiating session model at call time.
 
 D-001 holds: the foundation is used as a library, never edited. ATLAS writes
 only slots it stamped ``managed_by: atlas`` (or untouched auto slots) so an
@@ -30,6 +31,7 @@ MANAGED_MARKER = "atlas"
 # excluded: they need capability-matched (multimodal) models, not light ones.
 CURATOR_TASK = "curator"
 AUXILIARY_TASKS = ("compression", "title_generation")
+JUDGE_TASK = "goal_judge"
 
 # Best-effort lightest chat-capable model per provider. Unknown providers
 # return no binding and the foundation's own "auto" chain stays in charge.
@@ -98,6 +100,9 @@ def resolve_bindings(
 
     curator = _slot_from_override(functions.curator_model) or auto
     auxiliary = _slot_from_override(functions.auxiliary_model) or auto
+    # Judge inheritance is intentionally not auto-bound to the light model.
+    # With no override, the caller supplies the live session runtime.
+    judge = _slot_from_override(functions.judge_model)
 
     bindings: dict[str, dict[str, str]] = {}
     if curator:
@@ -105,6 +110,8 @@ def resolve_bindings(
     if auxiliary:
         for task in AUXILIARY_TASKS:
             bindings[task] = dict(auxiliary)
+    if judge:
+        bindings[JUDGE_TASK] = dict(judge)
     return bindings
 
 
@@ -197,6 +204,7 @@ def apply_autoconfig(
 __all__ = [
     "AUXILIARY_TASKS",
     "CURATOR_TASK",
+    "JUDGE_TASK",
     "apply_autoconfig",
     "lightest_model_for",
     "resolve_bindings",

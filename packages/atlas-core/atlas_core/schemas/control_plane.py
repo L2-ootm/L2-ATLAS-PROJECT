@@ -59,6 +59,9 @@ class FunctionsConfig(_FrozenControlPlaneModel):
     autoconfig: bool = True
     curator_model: str = ""
     auxiliary_model: str = ""
+    # Empty deliberately means inherit the initiating chat session model.
+    # Completion judgement is a correctness role, not a light auxiliary role.
+    judge_model: str = ""
 
 
 class RuntimeConfig(_FrozenControlPlaneModel):

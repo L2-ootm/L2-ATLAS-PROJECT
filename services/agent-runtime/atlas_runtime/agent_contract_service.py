@@ -24,7 +24,7 @@ from atlas_runtime.memory_router import redact
 from atlas_runtime.prompt_compiler import compile_prompt
 from atlas_runtime.tool_catalog import build_shipped_catalog
 
-PROMPT_VERSION = "1.0.0"
+PROMPT_VERSION = "1.0.1"
 CONTEXT_POLICY_VERSION = "1.0.0"
 _CORE_PATH = Path(__file__).parent / "prompts" / "atlas_core.md"
 
@@ -41,6 +41,9 @@ class RunContractSnapshot(BaseModel):
     mission_id: str | None
     contract_sha256: str
     prompt_version: str
+    # Stored alongside its digest so the exact policy delivered to the model is
+    # auditable. The default keeps pre-1.0.1 persisted snapshots loadable.
+    stable_prompt: str = ""
     stable_prompt_sha256: str
     tool_catalog_version: str
     tool_catalog_sha256: str
@@ -108,6 +111,27 @@ def _context_envelope(agent_context, policy: ContractVersion) -> ContextEnvelope
     )
 
 
+def _surface_and_workspace(
+    conn: sqlite3.Connection,
+    run_id: str,
+) -> tuple[SurfaceIdentity, WorkspaceIdentity]:
+    """Resolve the persisted execution surface; fall back for legacy CLI runs."""
+    row = conn.execute(
+        "SELECT s.id,s.surface_kind,s.workspace_kind,s.workspace_root,s.project_id "
+        "FROM runs r JOIN surface_sessions s ON s.id=r.session_id WHERE r.id=?",
+        (run_id,),
+    ).fetchone()
+    if row is None:
+        return (
+            SurfaceIdentity(kind="cli", session_id=run_id),
+            WorkspaceIdentity(kind="global", root=str(Path.cwd())),
+        )
+    return (
+        SurfaceIdentity(kind=row[1], session_id=row[0]),
+        WorkspaceIdentity(kind=row[2], root=row[3], project_id=row[4]),
+    )
+
+
 def prepare_run_contract(
     conn: sqlite3.Connection,
     *,
@@ -120,9 +144,10 @@ def prepare_run_contract(
     context_ref = _version(CONTEXT_POLICY_VERSION, b"ATLAS_CONTEXT_POLICY_V1")
     context = assemble_context(conn, mission_id=mission_id)
     envelope = _context_envelope(context, context_ref)
+    surface, workspace = _surface_and_workspace(conn, run_id)
     bootstrap = SessionBootstrap(
-        surface=SurfaceIdentity(kind="cli", session_id=run_id),
-        workspace=WorkspaceIdentity(kind="global", root=str(Path.cwd())),
+        surface=surface,
+        workspace=workspace,
         mission_id=mission_id,
         run_id=run_id,
         agent="native",
@@ -143,6 +168,7 @@ def prepare_run_contract(
         "run_id": run_id,
         "mission_id": mission_id,
         "prompt_version": prompt_ref.version,
+        "stable_prompt": compilation.stable_prompt.decode("utf-8"),
         "stable_prompt_sha256": compilation.stable_prompt_sha256,
         "tool_catalog_version": catalog.catalog_version,
         "tool_catalog_sha256": catalog.catalog_sha256,

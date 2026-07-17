@@ -97,6 +97,27 @@ def test_bindings_cover_curator_and_auxiliary_tasks(monkeypatch) -> None:
         assert slot["managed_by"] == "atlas"
 
 
+def test_judge_is_not_silently_bound_to_light_auxiliary_model() -> None:
+    config = AtlasConfig.model_validate(
+        {"provider": {"name": "anthropic"}, "functions": {"autoconfig": True}}
+    )
+    assert "goal_judge" not in function_router.resolve_bindings(config)
+
+
+def test_explicit_judge_override_gets_its_own_slot() -> None:
+    config = AtlasConfig.model_validate(
+        {
+            "provider": {"name": "anthropic"},
+            "functions": {"judge_model": "openai-codex/gpt-5.5"},
+        }
+    )
+    assert function_router.resolve_bindings(config)["goal_judge"] == {
+        "provider": "openai-codex",
+        "model": "gpt-5.5",
+        "managed_by": "atlas",
+    }
+
+
 def test_overrides_beat_autoconfig(monkeypatch) -> None:
     monkeypatch.setattr(codex_auth, "codex_model_ids", lambda: ["gpt-5.4-mini"])
     config = AtlasConfig.model_validate(
@@ -264,6 +285,26 @@ def test_default_factory_threads_reasoning_config(monkeypatch) -> None:
     assert "reasoning_config" not in captured
 
 
+def test_default_factory_threads_subagent_progress_callback(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class _FakeAgent:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+    import sys
+    import types
+
+    fake = types.ModuleType("run_agent")
+    fake.AIAgent = _FakeAgent
+    monkeypatch.setitem(sys.modules, "run_agent", fake)
+    callback = lambda *_args, **_kwargs: None
+
+    _REAL_DEFAULT_FACTORY("session-actor", 5, tool_progress_callback=callback)
+
+    assert captured["tool_progress_callback"] is callback
+
+
 def test_execute_passes_effort_and_syncs_functions(db, lock, monkeypatch) -> None:
     from atlas_runtime import function_router as router_module
     from atlas_runtime.agents.native import NativeAtlasAgent
@@ -271,7 +312,7 @@ def test_execute_passes_effort_and_syncs_functions(db, lock, monkeypatch) -> Non
     monkeypatch.setattr(
         NativeAtlasAgent,
         "_resolve_provider",
-        lambda self, conn: ("m", "anthropic", None, "key", "api_key"),
+        lambda self, conn, run_id=None: ("m", "anthropic", None, "key", "api_key"),
     )
     monkeypatch.setattr(native_module, "_resolve_reasoning_effort", lambda: "high")
     sync_calls: list[bool] = []

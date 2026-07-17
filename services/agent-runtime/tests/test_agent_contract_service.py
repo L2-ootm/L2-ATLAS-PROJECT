@@ -35,7 +35,29 @@ def test_prepare_persist_load_and_replay_round_trip(db, run_id):
     replay = replay_contract(db, run_id)
     assert replay.contract_sha256 == snapshot.contract_sha256
     assert replay.stable_prompt_sha256 == snapshot.stable_prompt_sha256
+    assert "You are ATLAS" in replay.stable_prompt
+    assert "verified-live" in replay.stable_prompt
     assert replay.context_markdown.startswith("# ATLAS Operator Context")
+
+
+def test_prepare_uses_the_run_surface_and_workspace(db, run_id, surface_session):
+    db.execute(
+        "UPDATE surface_sessions SET surface_kind='webui', workspace_kind='project', "
+        "workspace_root='C:/work/atlas', project_id='atlas' WHERE id=?",
+        (surface_session,),
+    )
+    db.execute("UPDATE runs SET session_id=? WHERE id=?", (surface_session, run_id))
+    db.commit()
+
+    snapshot = prepare_run_contract(db, run_id=run_id, mission_id=None, prompt="identify surface")
+    bootstrap = json.loads(snapshot.bootstrap_message)["payload"]
+
+    assert bootstrap["surface"] == {"kind": "webui", "session_id": surface_session}
+    assert bootstrap["workspace"] == {
+        "kind": "project",
+        "project_id": "atlas",
+        "root": "C:/work/atlas",
+    }
 
 
 def test_snapshot_is_redacted_and_excludes_hidden_reasoning(db, run_id):
@@ -52,7 +74,10 @@ def test_snapshot_is_redacted_and_excludes_hidden_reasoning(db, run_id):
     assert "abc.def.ghi" not in raw
     assert "[REDACTED]" in raw
     assert "chain_of_thought" not in raw
-    assert "reasoning" not in raw.lower()
+    # Policy prose may mention reasoning traces; no hidden reasoning payload or
+    # field may be persisted in the auditable contract snapshot.
+    assert '"reasoning":' not in raw.lower()
+    assert "reasoning_content" not in raw.lower()
     json.loads(raw)
 
 

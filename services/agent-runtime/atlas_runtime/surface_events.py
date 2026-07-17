@@ -57,6 +57,7 @@ _KIND_MAP: dict[str, EventKind] = {
     "model_call_start": "text",
     "model_call_end": "text",
     "provider_fallback": "error",
+    "goal_judgement": "task",
 }
 
 
@@ -78,6 +79,13 @@ def _kind_for(event_type: str, payload: dict) -> EventKind:
         return "completion"
     if event_type == "llm_call":
         return "reasoning" if payload.get("reasoning") else "text"
+    if event_type == "goal_judgement" and payload.get("state") in {
+        "done",
+        "paused",
+        "exhausted",
+        "failed",
+    }:
+        return "completion"
     return _KIND_MAP.get(event_type, "task")
 
 

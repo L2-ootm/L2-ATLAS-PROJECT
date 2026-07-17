@@ -231,6 +231,7 @@ def _default_factory(
     stream_delta_callback: Optional[Callable[[Optional[str]], None]] = None,
     tool_start_callback: Optional[Callable[[Any, Any, Any], None]] = None,
     tool_complete_callback: Optional[Callable[[Any, Any, Any, Any], None]] = None,
+    tool_progress_callback: Optional[Callable[..., None]] = None,
 ) -> Any:
     """Construct a real foundation AIAgent (lazy import; path-injected).
 
@@ -284,6 +285,11 @@ def _default_factory(
         kwargs["tool_start_callback"] = tool_start_callback
     if tool_complete_callback is not None:
         kwargs["tool_complete_callback"] = tool_complete_callback
+    # Delegate children relay their lifecycle and current tool through this
+    # callback. Keeping it at the ATLAS adapter boundary preserves D-001 while
+    # letting every surface reconstruct one honest live actor tree.
+    if tool_progress_callback is not None:
+        kwargs["tool_progress_callback"] = tool_progress_callback
     return AIAgent(**kwargs)
 
 
@@ -318,7 +324,7 @@ class NativeAtlasAgent(AgentRuntime):
         self._provider = provider
 
     def _resolve_provider(
-        self, conn: sqlite3.Connection
+        self, conn: sqlite3.Connection, run_id: str | None = None
     ) -> tuple[str, Optional[str], Optional[str], Optional[str], str]:
         """Resolve (model, provider, base_url, api_key, auth_mode) for this run
         from ATLAS config, with the active Focus.framework overriding the model.
@@ -358,6 +364,42 @@ class NativeAtlasAgent(AgentRuntime):
                 # ("The '<model>' model is not supported ..."); project the
                 # configured model onto what Codex will actually accept.
                 model = codex_auth.effective_codex_model(model)
+
+            # A shared surface freezes the model selected by that chat session.
+            # Make the persisted identity operational, not decorative: the run
+            # and its judge must observe the same provider/model. Constructor
+            # overrides still win for tests and explicit programmatic callers.
+            if run_id and not self._model and not self._provider:
+                session_row = conn.execute(
+                    "SELECT s.model_provider,s.model_id "
+                    "FROM runs r JOIN surface_sessions s ON s.id=r.session_id "
+                    "WHERE r.id=?",
+                    (run_id,),
+                ).fetchone()
+                if session_row and session_row[0] and session_row[1]:
+                    selected_provider, selected_model = str(session_row[0]), str(session_row[1])
+                    if selected_provider != provider:
+                        provider, model = selected_provider, selected_model
+                        if provider == "openai-codex":
+                            from atlas_runtime import codex_auth  # noqa: PLC0415
+
+                            creds = codex_auth.resolve_codex_credentials()
+                            base_url = creds["base_url"] or None
+                            api_key = creds["api_key"] or None
+                            auth_mode = "oauth_import"
+                            model = codex_auth.effective_codex_model(model)
+                        else:
+                            from atlas_runtime import auth_service  # noqa: PLC0415
+
+                            api_key = auth_service.resolve_secret(provider)
+                            provider_row = conn.execute(
+                                "SELECT default_base_url FROM provider_registry WHERE provider_id=?",
+                                (provider,),
+                            ).fetchone()
+                            base_url = str(provider_row[0]) if provider_row and provider_row[0] else None
+                            auth_mode = "api_key"
+                    else:
+                        model = selected_model
         except Exception as exc:  # noqa: BLE001 — never block a run on config
             logger.debug("native provider resolution fell back to defaults: %s", exc)
         return model, provider, base_url, api_key, auth_mode
@@ -424,7 +466,7 @@ class NativeAtlasAgent(AgentRuntime):
         delta_buffer: Optional[_DeltaBuffer] = None
         factory = self._agent_factory
         if factory is None:
-            model, provider, base_url, api_key, auth_mode = self._resolve_provider(conn)
+            model, provider, base_url, api_key, auth_mode = self._resolve_provider(conn, run_id)
             # freellmapi resolves a KEYLESS base_url — free OpenAI-compatible
             # endpoints need a base_url, not a key — so it is a real run even
             # with an empty api_key. Every other mode requires a resolved
@@ -511,6 +553,62 @@ class NativeAtlasAgent(AgentRuntime):
                         },
                     )
 
+                # Hermes normalises nested delegate activity onto this single
+                # callback. Emit compact state changes only: thinking deltas
+                # stay inside the child and repeated progress summaries are
+                # deduplicated so the ledger remains navigable on long runs.
+                _subagent_last: dict[str, tuple[str, str, int]] = {}
+
+                def _emit_subagent_progress(
+                    event: Any,
+                    tool_name: Any = None,
+                    preview: Any = None,
+                    args: Any = None,
+                    **meta: Any,
+                ) -> None:
+                    event_name = str(getattr(event, "value", event))
+                    if event_name in {"subagent.thinking", "subagent_progress"}:
+                        return
+                    phase_map = {
+                        "subagent.spawn_requested": "queued",
+                        "subagent.start": "running",
+                        "subagent.tool": "working",
+                        "subagent.progress": "working",
+                        "subagent.complete": "completed",
+                    }
+                    phase = phase_map.get(event_name)
+                    if phase is None:
+                        return
+                    actor_id = str(meta.get("subagent_id") or f"child-{meta.get('task_index', 0)}")
+                    current_tool = str(tool_name or meta.get("last_tool") or "")
+                    tool_count = int(meta.get("tool_count") or 0)
+                    fingerprint = (phase, current_tool, tool_count)
+                    if _subagent_last.get(actor_id) == fingerprint:
+                        return
+                    _subagent_last[actor_id] = fingerprint
+                    payload = {
+                        "runtime": "native",
+                        "surface_kind": "task",
+                        "orchestration": "subagent",
+                        "phase": phase,
+                        "subagent_id": actor_id,
+                        "parent_id": str(meta.get("parent_id") or run_id),
+                        "depth": int(meta.get("depth") or 1),
+                        "goal": str(meta.get("goal") or preview or "")[:1000],
+                        "model": str(meta.get("model") or model),
+                        "toolsets": _json_safe_preview(meta.get("toolsets") or [], 1000),
+                        "tool": current_tool,
+                        "tool_count": tool_count,
+                        "background": bool(meta.get("background", False)),
+                    }
+                    if phase == "completed":
+                        payload["status"] = str(meta.get("status") or "succeeded")
+                        payload["duration_seconds"] = meta.get("duration_seconds")
+                    self._safe_emit(
+                        conn, lock, run_id, event_type="subagent_run",
+                        task_id=actor_id, tool_name=current_tool or None, data=payload,
+                    )
+
                 factory = lambda session_id: _default_factory(  # noqa: E731
                     session_id,
                     self._max_iterations,
@@ -522,6 +620,7 @@ class NativeAtlasAgent(AgentRuntime):
                     stream_delta_callback=delta_buffer.push,
                     tool_start_callback=_emit_tool_start,
                     tool_complete_callback=_emit_tool_complete,
+                    tool_progress_callback=_emit_subagent_progress,
                 )
         try:
             agent = factory(session_id=run_id)
@@ -641,7 +740,12 @@ class NativeAtlasAgent(AgentRuntime):
                 "completed": completed,
                 "failed": failed,
                 "api_calls": api_calls,
-                "text": final_response[:_SUMMARY_CAP],
+                # This event is the authoritative surface reconcile, not the
+                # compact run summary. Capping it at _SUMMARY_CAP made every
+                # long response visibly snap back to 2,000 characters when
+                # the final event replaced the complete delta-built text.
+                "text": final_response,
+                "text_length": len(final_response),
             },
         )
 
@@ -713,6 +817,8 @@ def _contract_system_message(snapshot: Any) -> str:
     """
     return (
         "# ATLAS Run Contract\n\n"
+        "## Core Operating Policy\n"
+        f"{snapshot.stable_prompt.rstrip()}\n\n"
         "## Session Bootstrap\n"
         f"{snapshot.bootstrap_message}\n\n"
         "## Operator Context\n"
