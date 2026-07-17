@@ -1,0 +1,35 @@
+name: Publish GitHub npm Package
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: publish @l2-ootm/atlas mirror
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: https://npm.pkg.github.com
+          scope: "@l2-ootm"
+      - name: Prepare repository-linked package
+        shell: bash
+        run: |
+          package_dir="$RUNNER_TEMP/atlas-github-package"
+          cp -R packages/atlas-cli "$package_dir"
+          cp packages/atlas-cli/README.github.md "$package_dir/README.md"
+          rm "$package_dir/README.github.md"
+          cd "$package_dir"
+          npm pkg set 'name=@l2-ootm/atlas'
+          npm pkg set 'repository.url=git+https://github.com/L2-ootm/L2-ATLAS-PROJECT.git'
+          npm pkg set 'repository.directory=packages/atlas-cli'
+          npm pack --dry-run
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

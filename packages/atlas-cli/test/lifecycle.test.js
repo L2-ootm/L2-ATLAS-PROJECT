@@ -23,7 +23,7 @@ test('application install root is separate from ATLAS_HOME state', () => {
 		LOCALAPPDATA: 'C:\\Users\\operator\\AppData\\Local',
 		ATLAS_HOME: 'C:\\Users\\operator\\atlas-state'
 	};
-	assert.equal(atlasInstallRoot(env, 'win32'), path.resolve('C:\\Users\\operator\\AppData\\Local', 'atlas'));
+	assert.equal(atlasInstallRoot(env, 'win32'), path.join(env.LOCALAPPDATA, 'atlas'));
 	assert.equal(atlasStateHome(env), path.resolve(env.ATLAS_HOME));
 	assert.notEqual(atlasInstallRoot(env, 'win32'), atlasStateHome(env));
 });
