@@ -1,0 +1,74 @@
+id: gsd
+name: GSD/L2
+version: 0.1.0
+description: Goal · Slice · Deliver — the L2 execution doctrine as slash commands.
+author: L2 Systems
+capabilities:
+  commands:
+    - name: gsd
+      description: progress report + route to the next GSD/L2 step
+      template: |
+        Read skills/atlas/gsd/progress.md in this repository and follow it
+        exactly: read the planning state, report the situation compactly,
+        and route to exactly one next step. Additional operator input: $ARGUMENTS
+    - name: gsd-init
+      description: bootstrap the .planning contract (PROJECT/ROADMAP/STATE)
+      template: |
+        Read skills/atlas/gsd/init.md in this repository and follow it to
+        bootstrap the GSD/L2 planning contract. Operator input: $ARGUMENTS
+    - name: gsd-discuss
+      description: lock phase context and decisions before planning
+      template: |
+        Read skills/atlas/gsd/discuss.md in this repository and follow it for
+        the current (or named) phase. Operator input: $ARGUMENTS
+    - name: gsd-plan
+      description: write a goal-backward-checked phase plan
+      template: |
+        Read skills/atlas/gsd/plan.md in this repository and follow it to
+        produce PLAN.md for the current (or named) phase. Operator input: $ARGUMENTS
+    - name: gsd-execute
+      description: execute the phase plan with atomic commits
+      template: |
+        Read skills/atlas/gsd/execute.md in this repository and follow it to
+        execute the current phase plan. Operator input: $ARGUMENTS
+    - name: gsd-verify
+      description: verify the phase goal backward with evidence tiers
+      template: |
+        Read skills/atlas/gsd/verify.md in this repository and follow it to
+        verify the current phase. Operator input: $ARGUMENTS
+    - name: gsd-debug
+      description: systematic debugging — proven root cause before any fix
+      template: |
+        Read skills/atlas/gsd/debug.md in this repository and follow it for
+        this problem: $ARGUMENTS
+    - name: gsd-ship
+      description: milestone audit, entropy pass, handoff, archive
+      template: |
+        Read skills/atlas/gsd/ship.md in this repository and follow it to
+        close out the current milestone/work. Operator input: $ARGUMENTS
+  pages:
+    - id: main
+      title: GSD/L2
+      icon: compass
+      blocks:
+        - kind: heading
+          text: GSD/L2 — Goal · Slice · Deliver
+        - kind: markdown
+          text: >
+            The L2 execution doctrine, native to ATLAS. Verified progress over
+            apparent progress: every goal becomes a bounded slice, every slice
+            ends delivered or honestly blocked. Doctrine files live in
+            `skills/atlas/gsd/`.
+        - kind: markdown
+          text: >
+            **Loop:** goal → discuss → plan → execute → verify → ship, with
+            `/gsd` routing and `/gsd-debug` on any failure. Claims carry
+            evidence tiers: registered → configured → reachable → verified-live.
+        - kind: actions
+          items:
+            - label: Where am I? Route me
+              command: /gsd
+            - label: Plan the current phase
+              command: /gsd-plan
+            - label: Verify the current phase
+              command: /gsd-verify

@@ -1,8 +1,6 @@
 <p align="center">
-  <img src="brand/atlas/marks/emblem-full.png" width="180" alt="ATLAS emblem">
+  <img src="docs/media/atlas-hero.png" width="880" alt="ATLAS — AI Cockpit">
 </p>
-
-<h1 align="center">ATLAS</h1>
 
 <p align="center">
   <strong>An auditable AI operator cockpit for developers and power users.</strong><br>
@@ -10,20 +8,29 @@
 </p>
 
 <p align="center">
-  <img src="docs/media/atlas-npm-install.png" width="960" alt="Install ATLAS with npm i -g @systemsl2/atlas">
+  <a href="https://www.npmjs.com/package/@systemsl2/atlas"><img src="https://img.shields.io/npm/v/@systemsl2/atlas?color=7B61FF&label=npm&logo=npm" alt="npm version"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-00F0FF" alt="MIT License"></a>
+  <img src="https://img.shields.io/badge/platform-Windows%20x64-20242e?logo=windows" alt="Platform: Windows x64">
+  <a href="../../actions/workflows/atlas-ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/L2-ootm/L2-ATLAS-PROJECT/atlas-ci.yml?branch=main&label=CI&logo=github" alt="CI status"></a>
 </p>
 
 <p align="center">
-  <a href="LICENSE">MIT License</a> ·
+  <a href="#installation">Install</a> ·
   <a href="docs/architecture/OVERVIEW.md">Architecture</a> ·
-  <a href="docs/operations/INSTALL.md">Install</a> ·
+  <a href="docs/operations/INSTALL.md">Operations</a> ·
   <a href="docs/known-failures.md">Known limitations</a> ·
   <a href="SECURITY.md">Security</a>
 </p>
 
+```powershell
+npm install --global @systemsl2/atlas
+```
+
 > **Open research preview.** The repository and Windows x64 npm package are public.
 > Independent clean-machine feedback is welcome; do not use the preview with
 > sensitive production data.
+
+---
 
 ## What ATLAS is
 
@@ -33,15 +40,59 @@ persistent knowledge, provider routing, and a WebUI cockpit. The product is desi
 so every meaningful action can be traced from intent to tool call, output, and
 verification.
 
-- **Operator cockpit** — chat-first WebUI, mission control, runs, ledger, models,
-  integrations, system health, and slash-command palette.
-- **Auditable runtime** — structured missions/runs, tool approvals, artifacts, and
-  append-oriented operational evidence.
-- **Persistent knowledge** — wiki/codex ingestion, provenance, and local search.
-- **Extensible modules** — bundled modules ship with releases; operator and agent
-  modules live separately under `ATLAS_HOME/modules` and survive updates.
-- **Native direction** — the gateway and new infrastructure are Rust-first; the
-  Hermes plugin surface and LLM adapters remain Python where that boundary is useful.
+<p align="center">
+  <img src="docs/media/atlas-cockpit.png" width="880" alt="The ATLAS cockpit — Observatory view">
+</p>
+
+## Capabilities
+
+<table>
+  <tr>
+    <td width="33%" valign="top">
+      <img src="docs/media/atlas-feature-actors.png" alt="Durable actors">
+      <br><strong>Durable actors</strong><br>
+      Persistent subagent supervision — spawn is idempotent, terminal transitions are
+      monotonic, and detached results are delivered exactly once across crashes.
+    </td>
+    <td width="33%" valign="top">
+      <img src="docs/media/atlas-feature-goal.png" alt="Goal-driven missions">
+      <br><strong>Goal-driven missions</strong><br>
+      A Command Center of focus, goals, and tasks. Autonomous <code>/goal</code> loops
+      run to judge-gated completion with pause, resume, and mark-concluded.
+    </td>
+    <td width="33%" valign="top">
+      <img src="docs/media/atlas-feature-audit.png" alt="Audit ledger">
+      <br><strong>Audit ledger</strong><br>
+      Structured missions and runs, tool approvals, artifacts, and append-oriented
+      operational evidence — every action on the record.
+    </td>
+  </tr>
+  <tr>
+    <td width="33%" valign="top">
+      <img src="docs/media/atlas-feature-surfaces.png" alt="Three surfaces">
+      <br><strong>One system, three surfaces</strong><br>
+      A chat-first WebUI cockpit, a terminal UI, and a scriptable CLI over the same
+      runtime and the same audited state.
+    </td>
+    <td width="33%" valign="top">
+      <img src="docs/media/atlas-feature-mesh.png" alt="Provider mesh">
+      <br><strong>Provider mesh</strong><br>
+      Route across API-key, OAuth, local, and sidecar model providers. Optional Claude
+      and Codex SDK runtimes install and uninstall on demand.
+    </td>
+    <td width="33%" valign="top">
+      <img src="docs/media/atlas-feature-modules.png" alt="Module framework">
+      <br><strong>Extensible modules</strong><br>
+      Bundled modules ship with releases; operator and agent modules live under
+      <code>ATLAS_HOME/modules</code> and survive updates.
+    </td>
+  </tr>
+</table>
+
+- **Persistent knowledge** — wiki/codex ingestion, provenance, a queryable knowledge
+  graph the agent can read and write, and configurable graph scopes.
+- **Native direction** — the gateway and new infrastructure are Rust-first; the Hermes
+  plugin surface and LLM adapters remain Python where that boundary is useful.
 
 ## Installation
 
@@ -66,8 +117,8 @@ irm https://raw.githubusercontent.com/L2-ootm/L2-ATLAS-PROJECT/main/install/inst
 ```
 
 The PowerShell URL is public and now uses the same npm release path by default. See
-[the installation guide](docs/operations/INSTALL.md) for source,
-release, update, rollback, and clean-machine details.
+[the installation guide](docs/operations/INSTALL.md) for source, release, update,
+rollback, and clean-machine details.
 
 ## First run
 
@@ -114,8 +165,8 @@ ATLAS is intentionally honest about unfinished work. The Windows x64 npm package
 published and passed an anonymous-registry isolated install UAT; the repository is
 public. Independent clean-Windows and future cross-version update/rollback UAT remain
 recommended. Repository cleanup and the configured full-history secret scan are
-complete. Release status is tracked
-in [`docs/release/RELEASE_CHECKLIST.md`](docs/release/RELEASE_CHECKLIST.md); internal
+complete. Release status is tracked in
+[`docs/release/RELEASE_CHECKLIST.md`](docs/release/RELEASE_CHECKLIST.md); internal
 planning/session state is deliberately excluded from the public repository.
 
 The foundation is vendored and evolved in place rather than treated as a black-box
@@ -134,3 +185,9 @@ private process in [SECURITY.md](SECURITY.md).
 ATLAS is available under the [MIT License](LICENSE). Third-party licenses and derived
 code attribution are documented in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)
 and [ATTRIBUTION.md](ATTRIBUTION.md).
+
+<p align="center">
+  <img src="docs/media/atlas-seal-bronze.png" width="90" alt="ATLAS governance seal">
+  <br>
+  <sub><strong>FOR THOSE WHO BUILD WHAT ENDURES.</strong></sub>
+</p>
