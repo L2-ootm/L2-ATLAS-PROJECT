@@ -403,7 +403,7 @@ def test_restore_skill_finds_nested_archive_subdir(skills_home):
     external imports — must still be restorable by name."""
     from tools.skill_usage import restore_skill, get_record
     skills_dir = skills_home / "skills"
-    nested = skills_dir / ".archive" / "openclaw-imports" / "nested-skill"
+    nested = skills_dir / ".archive" / "GSD" / "nested-skill"
     nested.mkdir(parents=True)
     (nested / "SKILL.md").write_text(
         "---\nname: nested-skill\ndescription: x\n---\n", encoding="utf-8",

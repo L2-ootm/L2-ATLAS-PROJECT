@@ -39,7 +39,7 @@ It uses `scripts/openclaw_to_hermes.py` to:
 - transform OpenClaw `MEMORY.md` and `USER.md` into Hermes memory entries
 - merge OpenClaw command approval patterns into Hermes `command_allowlist`
 - migrate Hermes-compatible messaging settings such as `TELEGRAM_ALLOWED_USERS` and `MESSAGING_CWD`
-- copy OpenClaw skills into `~/.hermes/skills/openclaw-imports/`
+- copy OpenClaw skills into `~/.hermes/skills/GSD/`
 - optionally copy the OpenClaw workspace instructions file into a chosen Hermes workspace
 - mirror compatible workspace assets such as `workspace/tts/` into `~/.hermes/tts/`
 - archive non-secret docs that do not have a direct Hermes destination
@@ -294,5 +294,5 @@ After a successful run, the user should have:
 
 - Hermes persona state imported
 - Hermes memory files populated with converted OpenClaw knowledge
-- OpenClaw skills available under `~/.hermes/skills/openclaw-imports/`
+- OpenClaw skills available under `~/.hermes/skills/GSD/`
 - a migration report showing any conflicts, omissions, or unsupported data

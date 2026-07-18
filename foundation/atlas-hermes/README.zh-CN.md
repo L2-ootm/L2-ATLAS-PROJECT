@@ -148,7 +148,7 @@ hermes claw migrate --overwrite  # 覆盖已有冲突
 导入内容：
 - **SOUL.md** — 人格文件
 - **记忆** — MEMORY.md 和 USER.md 条目
-- **技能** — 用户创建的技能 → `~/.hermes/skills/openclaw-imports/`
+- **技能** — 用户创建的技能 → `~/.hermes/skills/GSD/`
 - **命令白名单** — 审批模式
 - **消息设置** — 平台配置、允许用户、工作目录
 - **API 密钥** — 白名单中的密钥（Telegram、OpenRouter、OpenAI、Anthropic、ElevenLabs）

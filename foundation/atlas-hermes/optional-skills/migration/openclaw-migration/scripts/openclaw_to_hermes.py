@@ -28,9 +28,9 @@ except Exception:  # pragma: no cover - handled at runtime
 ENTRY_DELIMITER = "\n§\n"
 DEFAULT_MEMORY_CHAR_LIMIT = 2200
 DEFAULT_USER_CHAR_LIMIT = 1375
-SKILL_CATEGORY_DIRNAME = "openclaw-imports"
+SKILL_CATEGORY_DIRNAME = "GSD"
 SKILL_CATEGORY_DESCRIPTION = (
-    "Skills migrated from an OpenClaw workspace."
+    "Goal-Slice-Deliver execution doctrine skills."
 )
 SKILL_CONFLICT_MODES = {"skip", "overwrite", "rename"}
 SUPPORTED_SECRET_TARGETS={
@@ -73,7 +73,7 @@ MIGRATION_OPTION_METADATA: Dict[str, Dict[str, str]] = {
     },
     "skills": {
         "label": "User skills",
-        "description": "Copy OpenClaw skills into ~/.hermes/skills/openclaw-imports/.",
+        "description": "Copy OpenClaw skills into ~/.hermes/skills/GSD/.",
     },
     "tts-assets": {
         "label": "TTS assets",
@@ -1834,10 +1834,10 @@ class Migrator:
                 self._import_skill_directory(source_root, kind_label, desc)
         if not found_any:
             destination_root = self.target_root / "skills" / SKILL_CATEGORY_DIRNAME
-            self.record("shared-skills", None, destination_root, "skipped", "No shared OpenClaw skills directories found")
+            self.record("shared-skills", None, destination_root, "skipped", "No shared skills directories found")
 
     def _import_skill_directory(self, source_root: Path, kind_label: str, desc: str) -> None:
-        """Import skills from a single source directory into openclaw-imports."""
+        """Import skills from a single source directory into GSD."""
         destination_root = self.target_root / "skills" / SKILL_CATEGORY_DIRNAME
 
         skill_dirs = [p for p in sorted(source_root.iterdir()) if p.is_dir() and (p / "SKILL.md").exists()]
@@ -1947,7 +1947,7 @@ class Migrator:
         source_root = self.source_candidate("workspace/skills")
         destination_root = self.target_root / "skills" / SKILL_CATEGORY_DIRNAME
         if not source_root or not source_root.exists():
-            self.record("skills", None, destination_root, "skipped", "No OpenClaw skills directory found")
+            self.record("skills", None, destination_root, "skipped", "No skills directory found")
             return
 
         skill_dirs = [p for p in sorted(source_root.iterdir()) if p.is_dir() and (p / "SKILL.md").exists()]
