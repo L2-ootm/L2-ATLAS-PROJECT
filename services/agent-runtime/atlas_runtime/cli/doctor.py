@@ -17,9 +17,15 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
+import shutil
+import socket
+import subprocess
+import urllib.parse
 from datetime import datetime, timezone
 
 import typer
+import yaml
 
 from atlas_runtime import config_service, db
 
@@ -176,6 +182,126 @@ def _doctor_cmd(json_output: bool = typer.Option(False, "--json", help="Emit the
             echo("claude_code", f"unavailable - {cc['detail']}", ok=False)
     except Exception as exc:  # noqa: BLE001
         echo("claude_code", f"error - {exc}", ok=False)
+
+    # 9. DB schema — detailed migration state (supplements check #1 with counts
+    # and the latest version; never double-fails all_ok, check #1 already does).
+    try:
+        conn2 = db.connect()
+        applied2 = db.applied_versions(conn2)
+        migration_files = sorted(db.MIGRATIONS_DIR.glob("*.sql"))
+        total = len(migration_files)
+        applied_count = len(applied2)
+        latest = migration_files[-1].name if migration_files else None
+        pending_count = total - applied_count
+        if pending_count == 0:
+            echo("db_schema", f"{applied_count}/{total} applied, latest={latest}", ok=True)
+        else:
+            pending_names = [f.name for f in migration_files if f.name not in applied2]
+            echo(
+                "db_schema",
+                f"{applied_count}/{total} applied, pending={pending_count} ({', '.join(pending_names)})",
+                ok=False,
+            )
+    except Exception as exc:  # noqa: BLE001
+        echo("db_schema", f"error - {exc}", ok=False)
+
+    # 10. Config schema version/revision — informational; check #2 already
+    # fails the run on an unparseable or unsupported config.
+    try:
+        config_path = config_service.default_config_path()
+        if config_path.is_file():
+            raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                schema_ver = raw.get("schema_version", config_service.CONFIG_SCHEMA_VERSION)
+                revision = raw.get("revision", 0)
+                ver_ok = isinstance(schema_ver, int) and 1 <= schema_ver <= config_service.CONFIG_SCHEMA_VERSION
+                echo(
+                    "config_schema",
+                    f"v{schema_ver} rev={revision} (supported 1..{config_service.CONFIG_SCHEMA_VERSION})",
+                    ok=ver_ok,
+                )
+            else:
+                echo("config_schema", "non-object config file", ok=False)
+        else:
+            echo("config_schema", "no config file (using defaults)", ok=True)
+    except Exception as exc:  # noqa: BLE001
+        echo("config_schema", f"error - {exc}", ok=False)
+
+    # 11. Gateway process + port — beyond the HTTP-only check #3: PID
+    # liveness and port binding, so "down" and "wedged behind a dead PID with
+    # something else on the port" are distinguishable. Fails all_ok only on
+    # that specific inconsistent state; check #3 already covers plain "down".
+    try:
+        from atlas_runtime import gateway_control
+
+        pid_file = gateway_control.PID_FILE
+        pid_alive = False
+        pid_info = "no pid file"
+        if pid_file.is_file():
+            try:
+                pid = int(pid_file.read_text(encoding="utf-8").strip())
+                if os.name == "nt":
+                    tasklist = subprocess.run(
+                        ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
+                        capture_output=True, text=True, timeout=5,
+                    )
+                    pid_alive = str(pid) in tasklist.stdout
+                else:
+                    os.kill(pid, 0)
+                    pid_alive = True
+                pid_info = f"pid={pid}, alive={pid_alive}"
+            except (ValueError, OSError):
+                pid_info = "pid file unreadable or invalid"
+
+        port_ok = False
+        port_info = "port not reachable"
+        try:
+            parsed = urllib.parse.urlparse(gateway_control.GATEWAY_URL)
+            host = parsed.hostname or "127.0.0.1"
+            port = parsed.port or 8484
+            with socket.create_connection((host, port), timeout=1):
+                port_ok = True
+                port_info = f"{host}:{port} listening"
+        except OSError:
+            pass
+
+        inconsistent = pid_alive and not port_ok
+        echo("gateway_process", f"{pid_info}, {port_info}", ok=not inconsistent)
+    except Exception as exc:  # noqa: BLE001
+        echo("gateway_process", f"error - {exc}", ok=False)
+
+    # 12. Toolchain — Python and Node.js must be on PATH (D-022 routes through
+    # both); Rust/cargo is optional (only needed to rebuild the gateway).
+    try:
+        toolchain_info: dict[str, str] = {}
+        for tool_name, cmd in (("python3", "python3"), ("python", "python"), ("node", "node"), ("cargo", "cargo")):
+            found = shutil.which(cmd)
+            if not found:
+                continue
+            try:
+                probe = subprocess.run([found, "--version"], capture_output=True, text=True, timeout=5)
+                toolchain_info[tool_name] = probe.stdout.strip() if probe.returncode == 0 else f"found at {found}"
+            except Exception:  # noqa: BLE001
+                toolchain_info[tool_name] = f"found at {found}"
+
+        python_ok = bool(toolchain_info.get("python") or toolchain_info.get("python3"))
+        node_ok = bool(toolchain_info.get("node"))
+        parts = [f"{name}={value}" for name, value in toolchain_info.items()]
+        missing = [name for name, ok in (("python", python_ok), ("node", node_ok)) if not ok]
+
+        if missing:
+            echo("toolchain", f"missing: {', '.join(missing)} ({'; '.join(parts)})", ok=False)
+            all_ok = False
+        else:
+            echo("toolchain", "; ".join(parts), ok=True)
+    except Exception as exc:  # noqa: BLE001
+        echo("toolchain", f"error - {exc}", ok=False)
+
+    # 13. Version — the runtime version the npm launcher materialized and
+    # handed off to us (ATLAS_RUNTIME_VERSION, set by launcher.js). Purely
+    # informational context; unset means doctor was invoked directly (dev).
+    runtime_version = os.environ.get("ATLAS_RUNTIME_VERSION", "").strip()
+    echo("version", runtime_version or "unknown (invoked outside the npm launcher)", ok=True)
 
     if json_output:
         typer.echo(json.dumps(report))

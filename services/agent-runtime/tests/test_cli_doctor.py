@@ -5,6 +5,9 @@ convention (tests/test_cli.py, tests/test_cli_up.py).
 """
 from __future__ import annotations
 
+import json
+import shutil
+
 from typer.testing import CliRunner
 
 from atlas_runtime import cockpit_control, config_service, db, gateway_control
@@ -121,3 +124,70 @@ def test_doctor_invalid_config_exits_nonzero_without_raising(monkeypatch):
     result = runner.invoke(app, ["doctor"])
     assert result.exit_code == 1
     assert "config: invalid" in result.output
+
+
+def test_doctor_db_schema_reports_applied_and_pending_counts(monkeypatch):
+    """db_schema supplements check #1 with counts, without double-failing all_ok."""
+    _patch_all_healthy(monkeypatch)
+    monkeypatch.setattr(db, "applied_versions", lambda conn: {"0001_core.sql"})
+    monkeypatch.setattr(db, "MIGRATIONS_DIR", db.MIGRATIONS_DIR)  # real dir, has real files
+    result = runner.invoke(app, ["doctor"])
+    assert result.exit_code == 0, result.output
+    assert "db_schema:" in result.output
+
+
+def test_doctor_config_schema_reports_no_file_when_absent(monkeypatch, tmp_path):
+    _patch_all_healthy(monkeypatch)
+    monkeypatch.setattr(config_service, "default_config_path", lambda: tmp_path / "missing-config.yaml")
+    result = runner.invoke(app, ["doctor"])
+    assert result.exit_code == 0, result.output
+    assert "config_schema: no config file" in result.output
+
+
+def test_doctor_toolchain_reports_python_and_node(monkeypatch):
+    _patch_all_healthy(monkeypatch)
+    result = runner.invoke(app, ["doctor"])
+    assert result.exit_code == 0, result.output
+    assert "toolchain:" in result.output
+
+
+def test_doctor_toolchain_missing_python_and_node_fails(monkeypatch):
+    _patch_all_healthy(monkeypatch)
+    monkeypatch.setattr(shutil, "which", lambda cmd: None)
+    result = runner.invoke(app, ["doctor"])
+    assert result.exit_code == 1
+    assert "toolchain: missing: python, node" in result.output
+
+
+def test_doctor_gateway_process_check_runs(monkeypatch):
+    _patch_all_healthy(monkeypatch)
+    result = runner.invoke(app, ["doctor"])
+    assert result.exit_code == 0, result.output
+    assert "gateway_process:" in result.output
+
+
+def test_doctor_version_reports_env_passed_by_launcher(monkeypatch):
+    _patch_all_healthy(monkeypatch)
+    monkeypatch.setenv("ATLAS_RUNTIME_VERSION", "0.1.1")
+    result = runner.invoke(app, ["doctor"])
+    assert result.exit_code == 0, result.output
+    assert "version: 0.1.1" in result.output
+
+
+def test_doctor_version_reports_unknown_when_env_unset(monkeypatch):
+    _patch_all_healthy(monkeypatch)
+    monkeypatch.delenv("ATLAS_RUNTIME_VERSION", raising=False)
+    result = runner.invoke(app, ["doctor"])
+    assert result.exit_code == 0, result.output
+    assert "version: unknown" in result.output
+
+
+def test_doctor_json_output_includes_new_checks(monkeypatch):
+    _patch_all_healthy(monkeypatch)
+    result = runner.invoke(app, ["doctor", "--json"])
+    assert result.exit_code == 0, result.output
+    report = json.loads(result.output)
+    for key in ("db_schema", "config_schema", "gateway_process", "toolchain", "version"):
+        assert key in report, f"missing key: {key}"
+        assert "ok" in report[key], f"missing ok in {key}"
+        assert "status" in report[key], f"missing status in {key}"
