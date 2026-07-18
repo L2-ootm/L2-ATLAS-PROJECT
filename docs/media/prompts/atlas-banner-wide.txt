@@ -1,0 +1,17 @@
+Ultra-wide landscape profile banner for a developer tool called ATLAS (will be cropped tighter vertically on some platforms, so all critical content stays in the vertical center band).
+
+Subject: a continuous topographic contour-line terrain running the full width of the frame like a geological cross-country survey: thin 1px blue-gray #20242e contour lines on void black #030305 describing a long ridgeline that rises left-of-center to one dominant peak. At the peak, the contour lines glow electric violet #7B61FF. Right of center, in the vertical middle of the frame, the uppercase wordmark "ATLAS" in titanium white #E0E0E0, geometric grotesque, wide-tracked, followed on the line below by a small monospace caption "L2 SYSTEMS" in gray #505050. No other text.
+
+Three tiny signal marks sit far apart along the terrain like surveyor beacons: a 3px cyan #00F0FF point far left, a 3px green #00FF94 point lower right, each with a 1px vertical hairline riser and a soft 4px halo. Nothing else decorates the terrain.
+
+Light: none besides the line glow and beacon halos; the wordmark is self-luminous white with no halo.
+
+Camera: flat oblique map view, consistent line weight edge to edge, everything sharp, no depth-of-field blur.
+
+Negation: no solid mountain silhouettes, no sky, no stars, no clouds, no horizon glow, no photographs, no devices, no people, no grid overlays, no border, no vignette strong enough to darken the wordmark, no warm tones.
+
+Color: black canvas, blue-gray line work, violet primary accent, single cyan and single green micro-accents, white and gray type.
+
+Finish: razor line work, additive glow, fine grain, crushed blacks.
+
+Emotional register: quiet territory under instrumentation — a mapped frontier, lights on.

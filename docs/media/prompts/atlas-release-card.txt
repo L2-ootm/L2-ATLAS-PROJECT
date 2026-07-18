@@ -1,0 +1,17 @@
+Landscape release-announcement template card for the ATLAS developer tool. L2 Systems topographic identity. This is a reusable template: the version text must be large and generic.
+
+Subject: an obsidian glass slab, sharp 2px corners, centered, occupying 65% of frame width and 55% of height, 1px hairline border with faint violet #7B61FF tint, specular top-edge highlight, hard 1px dark shelf under the bottom edge. On the slab, top-left: "ATLAS" uppercase wordmark in titanium white #E0E0E0, wide-tracked, small. Center of slab: "RELEASE" in very large uppercase geometric grotesque, titanium white, wide-tracked, with a thin 1px violet rule directly beneath the full width of the word. Below the rule, a monospace line in violet #7B61FF: "v1.0" followed by a solid violet block cursor. Bottom-right of the slab, tiny monospace in gray #505050: "changelog inside". No other text.
+
+Background: void black #030305 crossed by faint 1px blue-gray #20242e topographic contour lines; behind the slab a single elliptical violet glow region in the terrain, brightest directly under the slab's center. Upper corners clean black.
+
+Light: single cool 6500K top source for the slab's specular hairline; type self-luminous with a restrained 2px halo.
+
+Camera: straight-on, flat, orthographic, razor sharp.
+
+Negation: no confetti, no rockets, no gift boxes, no download buttons, no browser chrome, no badges, no sparkles, no warm tones, no rounded corners, no drop shadows in multiple directions.
+
+Color: void black, blue-gray terrain, violet accents, white type, gray microtext.
+
+Finish: crisp, additive glow, fine premium grain, crushed blacks.
+
+Emotional register: a shipped increment stated as fact — the system reports its own growth.

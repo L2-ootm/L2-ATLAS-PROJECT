@@ -1,0 +1,17 @@
+Landscape feature card for "/goal missions" — a developer tool feature where a long-horizon mission loops until an LLM judge confirms the stop condition is met. L2 Systems topographic identity.
+
+Subject: a single continuous contour path rendered as a glowing electric violet #7B61FF line that spirals inward across a dark terrain from the lower-left frame edge toward a summit at center-right — like a switchback trail climbing a mountain on a survey map. The terrain beneath is thin 1px blue-gray #20242e contour lines on void black #030305. Along the spiral path, three evenly spaced checkpoint gates: each gate is a small 1px ivory-white vertical bracket pair straddling the path with a tiny green #00FF94 dot above it — passed judgments. A fourth gate just before the summit is amber #FFD600 with its brackets still open — the judgment in progress. The summit itself is a compact set of concentric violet rings with a bright core — the stop condition. Headline top-left: "GOAL MISSIONS" uppercase, wide-tracked, titanium white #E0E0E0 with a 1px violet underline the width of the text; beneath it a monospace caption in gray #A0A0A0: "loop until the judge says done". No other text.
+
+Background: void black, faint terrain everywhere, corners fall to clean black.
+
+Light: only the path, gates, and summit rings luminesce; the path is brightest where it nears the summit.
+
+Camera: flat oblique map view, uniform sharpness.
+
+Negation: no flags, no trophies, no finish-line ribbons, no runners or figures, no arrows, no dashed "route" cliches, no compass rose, no warm tones beyond the single amber gate.
+
+Color: void black, blue-gray terrain, violet path and summit, green passed-gates, one amber active gate, white and gray type.
+
+Finish: razor line work, additive glow, fine grain, crushed blacks.
+
+Emotional register: patience with a verdict at the top — the loop that refuses to stop early.

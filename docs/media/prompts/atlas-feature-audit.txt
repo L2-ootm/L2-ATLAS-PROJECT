@@ -1,0 +1,17 @@
+Landscape feature card for "Audit-first" — a developer tool where every agent action becomes a replayable evidence record.
+
+Subject: a vertical ledger column rendered as a stack of eight thin obsidian glass strips, each strip a wide 1px-bordered rectangle, stacked with 6px gaps, occupying the right half of the frame, receding upward with the topmost strips slightly dimmer — a stratigraphic core sample of events. Each strip carries only abstract marks: a small 4px square status dot on its left edge (six green #00FF94, one amber #FFD600, one violet #7B61FF) and two short hairline dashes suggesting redacted text — no readable words inside strips. The third strip from the bottom is pulled 12px out of the stack toward the viewer and glows violet along its border: the record under inspection. A single thin vertical hairline in gray connects all strips through their left dots, like a timeline spine. Headline on the left half, vertically centered: "EVERY ACTION, ON THE RECORD" uppercase, wide-tracked, titanium white #E0E0E0, two lines. Beneath it one monospace caption in gray #A0A0A0: "audit_event / replayable". No other text.
+
+Background: void black #030305 with faint 1px blue-gray #20242e contour terrain in the lower-left corner only.
+
+Light: cool 6500K top light for specular top edges on each strip; the inspected strip self-glows violet.
+
+Camera: 50mm equivalent, f/8, very slight left three-quarter angle so the stack reads as physical, all strips sharp.
+
+Negation: no paper documents, no magnifying glasses, no shields, no padlocks, no scales of justice, no readable fake log text, no scrolling code walls, no people, no warm tones.
+
+Color: black, blue-gray, green dots as the dominant status field, one amber, violet only on the inspected record, white headline.
+
+Finish: crisp edges, restrained glow, fine grain, crushed blacks.
+
+Emotional register: nothing is lost here — the quiet confidence of a complete record.

@@ -1,0 +1,17 @@
+Landscape launch-announcement card for X/Twitter for a developer tool called ATLAS.
+
+Subject: a dark terminal window rendered as an obsidian glass slab, sharp 2px corners, centered, taking about 60% of frame width, tilted 4 degrees of perspective toward the viewer's left. Its title bar is a 1px hairline strip with three tiny 2px-radius square window controls in gray (not colored circles). The terminal body shows exactly three lines of monospace text, large enough to read at feed size: line one in gray #A0A0A0 "$ atlas up", line two in green #00FF94 "GATEWAY :8484 — ONLINE", line three in violet #7B61FF "MISSION CONTROL READY" followed by a solid block cursor in the same violet. No other text in the image except a small uppercase wordmark "ATLAS" wide-tracked in titanium white #E0E0E0 at the top-center of the frame above the slab.
+
+Background: void black #030305 crossed by faint 1px topographic contour lines in #20242e; the contour region directly beneath the slab glows electric violet as if the running terminal heats the terrain below it. Corners of the frame fall to pure black.
+
+Light: single cool 6500K source above; specular hairline along the slab's top edge; the terminal text glows additively with a 2px soft halo, like phosphor.
+
+Camera: 35mm equivalent, f/8, slight top-down angle of 5 degrees, all text plane in sharp focus.
+
+Negation: no human hands, no laptop or monitor hardware, no browser chrome, no code walls of tiny text, no stock-photo desks, no rainbow syntax highlighting, no emoji, no rounded pillow UI, no warm light, no lens flare.
+
+Color: black, blue-gray, violet #7B61FF, one green line #00FF94, white wordmark. Nothing warm.
+
+Finish: crushed blacks, razor-sharp monospace glyphs, restrained glow, fine print grain.
+
+Emotional register: the moment a machine comes online for the first time — quiet ignition.

@@ -1,0 +1,19 @@
+Landscape image fusing the ATLAS celestial identity with the L2 topographic identity. Two reference images are attached: the Atlas Bearer emblem (canonical celestial sphere with glowing network nodes and engraved orbit rings) and the L2 topographic hero banner (contour-line terrain with a violet-glowing summit). Merge their worlds.
+
+Subject: the celestial network sphere from the emblem — fine ivory #EDEAE0 mesh, nodes glowing Celestial Blue #4F88FF and Signal Violet #A17BFF, one thin Titan Bronze #B08A57 orbit ring around it — descends from the upper third of the frame toward a topographic terrain below: blue-gray #20242e contour lines on void black #030305 rising into one dominant summit directly beneath the sphere, its innermost contour rings glowing electric violet #7B61FF. At the exact point where the sphere's lowest node aligns with the summit's peak, a single vertical hairline of light connects them — the celestial system docking with the territory. The sphere's bronze orbit ring continues past the sphere and grazes the terrain, its arc becoming a contour line where it touches — the two line systems interleaving in the middle band of the image.
+
+Bottom-left corner, small: "ATLAS" in geometric grotesque, titanium white, wide-tracked, above a monospace caption in gray #A0A0A0: "STRUCTURE MEETS TERRITORY". No other text.
+
+Background: void black, five tiny ivory star sparkles high above, nothing else.
+
+Light: sphere nodes, the violet summit, and the connecting hairline are the only luminous elements.
+
+Camera: flat frontal composition, slight low-angle reverence toward the sphere, everything sharp.
+
+Negation: no titan figure, no clouds, no nebula, no photographic space, no solid planet surface, no lens flare, no warm tones except the restrained bronze line.
+
+Color: void black, ivory mesh, bronze ring, blue/violet nodes, violet summit glow, blue-gray terrain lines.
+
+Finish: engraving-fine lines above, razor contour lines below, additive glow, fine grain, crushed blacks.
+
+Emotional register: first contact between doctrine and ground — the moment the plan takes terrain.

@@ -1,0 +1,17 @@
+Ultra-wide landscape banner for the ATLAS project in its celestial engraved identity. A reference image of the Atlas Bearer emblem is attached — canonical mark, reproduce its anatomy and line character faithfully.
+
+Subject: the Atlas Bearer stands far left of frame, fine ivory #EDEAE0 wireframe engraving, holding the celestial network sphere whose nodes glow Celestial Blue #4F88FF, Signal Cyan #46F0E0, Signal Violet #A17BFF. From the sphere, three thin engraved orbit arcs sweep rightward across the entire banner width like planetary orbit paths on an old star chart, in Titan Bronze #B08A57 hairlines; small four-pointed stars sit sparsely along the arcs. Right of center, vertically centered, the wordmark "ATLAS PROJECT" in engraved Trajan-style serif, Ivory, on two lines ("ATLAS" large, "PROJECT" small and widely tracked beneath a thin bronze rule with a tiny star at each end). Below it one bronze Montserrat-like caption line: "FOR THOSE WHO BUILD WHAT ENDURES." No other text.
+
+Background: Void Black #0B0D12, at most fifteen tiny star sparkles scattered wide, one faint engraved circle fragment upper right. Critical content stays in the vertical center band so platform crops are safe.
+
+Light: only the sphere nodes and star sparkles luminesce; linework reads as gilded ink.
+
+Camera: flat orthographic chart composition, uniform sharpness.
+
+Negation: no nebula clouds, no photographic space, no planets as solid bodies, no topographic contour lines, no neon glow bloom, no modern sans-serif headline, no UI elements, no human flesh.
+
+Color: void black, ivory line work, bronze arcs and captions, blue/cyan/violet node accents only.
+
+Finish: engraving precision, paper grain, crushed blacks.
+
+Emotional register: a navigator's chart of a mission already underway — patient, exact, celestial.

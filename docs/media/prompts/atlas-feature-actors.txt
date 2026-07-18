@@ -1,0 +1,17 @@
+Landscape feature card for "Durable Actors" — a developer tool feature where detached AI worker agents run under a crash-safe supervisor.
+
+Subject: a constellation diagram over dark terrain. One large node at center-left: a 14px obsidian glass hexagon with 1px violet #7B61FF border, glowing softly — the supervisor. From it, four thin 1px hairline lines run to four smaller 8px square nodes spread across the right two-thirds of the frame — the actors. Three actor nodes are green #00FF94 with a steady soft halo; one lower actor node is amber #FFD600 with a 1px dashed connection line instead of solid, reading as a worker being recovered. Along each connection line, two or three 2px light pulses in the line's color, like packets in transit. Small uppercase monospace label under the center node: "SUPERVISOR" in gray #A0A0A0; the frame's top-left carries the only headline text: "DURABLE ACTORS" uppercase, wide-tracked, titanium white #E0E0E0, with a thin 1px violet underline exactly the width of the text. No other text.
+
+Background: void black #030305 with faint 1px topographic contour lines #20242e across the lower half only; the terrain under each green node glows its color at very low intensity.
+
+Light: none but the node halos and line pulses.
+
+Camera: flat orthographic diagram view, everything sharp.
+
+Negation: no robots, no humanoid figures, no brains, no circuit boards, no swirling particles, no hexagon meshes filling the background, no warm gradients, no rounded speech bubbles, no extra labels or numbers.
+
+Color: black, blue-gray lines, violet supervisor, green healthy actors, single amber recovery accent, white headline.
+
+Finish: crisp vector line work, additive glow, fine grain, crushed blacks.
+
+Emotional register: delegation under supervision — workers out in the dark, all accounted for.

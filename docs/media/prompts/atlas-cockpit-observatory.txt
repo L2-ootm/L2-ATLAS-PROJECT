@@ -1,0 +1,15 @@
+Landscape cinematic scene integrating the real ATLAS web cockpit. A reference screenshot of the cockpit's Observatory page is attached: dark interface, engraved "ATLAS" serif wordmark, celestial titan artwork holding a network sphere, stat tiles, mission list panels. Reproduce the interface faithfully on the described screen — same layout and artwork — but render all small text lines as abstract unreadable placeholder dashes; only the large "ATLAS" heading may remain readable.
+
+Subject: a vast dark observatory chamber. The cockpit interface fills a monumental curved display wall, 60% of frame width, standing at center like the main screen of a mission control room, slightly concave toward the viewer, its glass surface carrying a faint 1px hairline frame. In the foreground, silhouetted from behind at lower-center, one operator stands small before the wall — a simple dark human silhouette, no visible face or details, hands at their sides — conveying scale: the screen towers over them. The chamber floor is polished black stone that catches a dim reflection of the screen. Thin electric violet #7B61FF topographic contour lines are inlaid into the floor like veins, radiating from beneath the operator toward the screen wall.
+
+Light: the screen is the only major light source, washing the operator's silhouette edges in cool celestial blue; the floor inlay lines self-luminesce faintly; ceiling and walls fall to absolute black.
+
+Camera: 28mm equivalent, f/5.6, camera at the operator's shoulder height, 10 meters back, centered, screen sharp, operator silhouette slightly soft.
+
+Negation: no visible face or identifiable person, no chairs or desks, no other people, no windows, no readable small text on the screen, no invented UI beyond the reference, no warm light, no lens flare, no sci-fi hologram projections floating in the air.
+
+Color: screen's dark navy and celestial blues, violet floor lines, black chamber.
+
+Finish: cinematic, fine grain, crushed blacks, preserved screen highlights.
+
+Emotional register: one person directing something enormous — command, not spectacle.

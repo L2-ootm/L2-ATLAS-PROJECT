@@ -1,0 +1,17 @@
+Portrait poster for the ATLAS project's three pillars, in the celestial engraved identity. A reference image of the master brand sheet is attached — match its engraved linework character, star ornaments, and typography exactly.
+
+Subject: three engraved classical columns standing side by side on a shared plinth, drawn in fine Ivory #EDEAE0 and Titan Bronze #B08A57 linework — not solid marble, but wireframe engraving like the brand's citadel. Above each column floats a small glowing emblem: left column a compass-node rosette in Celestial Blue #4F88FF, center column a concentric audit ring in Signal Violet #A17BFF, right column a meshed sphere in Signal Cyan #46F0E0. Under each column, on the plinth face, one engraved word in Trajan-style serif, Ivory, tracked wide: "MISSION", "AUDIT", "STRUCTURE" respectively. Top of poster: "ATLAS" wordmark large in the same engraved serif with a thin bronze rule and a four-pointed star beneath. Bottom edge, small bronze caption: "FOR THOSE WHO BUILD WHAT ENDURES." No other text.
+
+Background: Void Black #0B0D12; a faint engraved arch frames the three columns; a dozen tiny star sparkles; nothing else.
+
+Light: each floating emblem casts a soft colored glow down its column's upper third; linework otherwise reads as gilded ink.
+
+Camera: flat frontal elevation view like an architectural plate, orthographic, all sharp.
+
+Negation: no photorealistic marble, no Greek statues with faces, no clouds, no rays of god-light, no gradients filling the background, no topographic contour lines, no UI elements.
+
+Color: void black, ivory, bronze, one blue + one violet + one cyan accent.
+
+Finish: engraving-plate line discipline, paper grain, crushed blacks.
+
+Emotional register: doctrine carved into architecture — three commitments holding one roof.

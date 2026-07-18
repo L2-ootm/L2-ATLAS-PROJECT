@@ -1,0 +1,15 @@
+Landscape product showcase for the ATLAS developer tool. A reference screenshot of the real ATLAS web cockpit is attached: a dark interface whose hero panel shows the engraved serif "ATLAS" wordmark, an italic serif subtitle, and a celestial wireframe titan holding a glowing network sphere, with a row of four stat tiles beneath. Reproduce that interface faithfully as the screen content — same layout, same hero panel, same titan artwork, same stat tile row — but render every line of small text as abstract unreadable placeholder dashes; only the large "ATLAS" heading inside the screen may remain readable.
+
+Subject: the cockpit interface floats in dark space as a thin obsidian glass monolith, tilted 8 degrees in gentle perspective, occupying 70% of the frame. The screen surface has a subtle glass reflection along its top edge and a 1px hairline border. Below the monolith, an L2 topographic terrain: thin 1px blue-gray #20242e contour lines on void black #030305, with an electric violet #7B61FF glow region directly beneath the slab, its light catching the monolith's bottom edge. The interface's own celestial blues and the terrain's violet coexist — two identities of the same system, screen above, territory below. Above the monolith, small, centered: "THE COCKPIT" uppercase monospace in gray #A0A0A0, wide-tracked. No other readable text outside the screen.
+
+Light: the screen is the primary light source, casting a faint cool sheen downward; violet terrain glow secondary; a specular hairline along the monolith's top edge from a cool overhead source.
+
+Camera: 35mm equivalent, f/8, slight low angle looking up at the monolith with reverence, screen plane fully sharp.
+
+Negation: no laptop or monitor hardware, no browser chrome, no desk, no hands, no keyboard, no readable small text anywhere on the screen, no invented UI panels that are not in the reference, no warm tones, no lens flare.
+
+Color: the screenshot's own dark navy and celestial tones on the screen; void black, blue-gray and violet in the environment.
+
+Finish: crisp screen rendering, fine grain, crushed blacks, restrained glow.
+
+Emotional register: the instrument panel of something serious — you are looking at the real thing, elevated.

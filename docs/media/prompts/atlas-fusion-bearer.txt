@@ -1,0 +1,17 @@
+Portrait poster fusing the ATLAS celestial identity with the L2 Systems topographic identity. A reference image of the Atlas Bearer emblem is attached — keep the titan's exact pose and proportions, but re-materialize him as described.
+
+Subject: the Atlas Bearer titan, centered, drawn not in bronze engraving but as stacked horizontal topographic contour lines — his entire body is a heightfield of thin 1px electric violet #7B61FF contour strokes, denser at his shoulders and hands, sparser at his base, as if the terrain itself rose into the shape of the bearer. He holds aloft a sphere that is a topographic globe: concentric contour rings wrapping a sphere, its summit pole glowing bright violet with a cyan #00F0FF meridian ring. Below him, his legs dissolve seamlessly into a real topographic terrain field of blue-gray #20242e contour lines on void black #030305 — the terrain and the titan are one continuous line system. At the bottom of the frame, the wordmark "ATLAS" in a clean geometric grotesque (the L2 voice, not the serif), titanium white #E0E0E0, wide-tracked, with a small monospace caption beneath in gray #A0A0A0: "THE TITAN BEARS THE WEIGHT". No other text.
+
+Background: void black, three tiny four-pointed star sparkles in ivory #EDEAE0 high above the sphere — the only celestial remnant. Nothing else.
+
+Light: luminance only from the contour strokes themselves — brightest at the sphere's pole, dimming down the body, faint in the ground terrain.
+
+Camera: flat frontal poster composition, orthographic, all sharp.
+
+Negation: no bronze color, no serif typography, no engraved circles, no flesh or muscle shading, no solid silhouette fill inside the titan (contour lines only, black between them), no starfield, no nebula, no warm tones.
+
+Color: void black, violet line work at three brightness steps, one cyan meridian, blue-gray ground lines, white and gray type, three ivory star points.
+
+Finish: razor line work, additive glow with tight falloff, fine grain, crushed blacks.
+
+Emotional register: the myth translated into the machine's native language — the same bearer, now made of the territory he carries.
