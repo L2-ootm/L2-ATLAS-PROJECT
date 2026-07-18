@@ -72,6 +72,8 @@ run_app = typer.Typer(name="run", help="Execute an already-started run (backgrou
 app.add_typer(run_app, name="run")
 focus_app = typer.Typer(name="focus", help="Command Center: the operator's Current Focus.")
 app.add_typer(focus_app, name="focus")
+retention_app = typer.Typer(name="retention", help="Data lifecycle: compress, preview, usage.")
+app.add_typer(retention_app, name="retention")
 goal_app = typer.Typer(name="goal", help="Command Center: goals, sub-goals, and the goal tree.")
 app.add_typer(goal_app, name="goal")
 task_app = typer.Typer(name="task", help="Command Center: tasks under a goal.")
@@ -742,6 +744,27 @@ def status(
     typer.echo(row[0])
 
 
+@mission_app.command("update")
+def mission_update(
+    mission_id: str = typer.Argument(..., help="Mission ID to update"),
+    title: str = typer.Option(None, "--title", help="New title"),
+    intent: str = typer.Option(None, "--intent", help="New intent"),
+    project: str = typer.Option(None, "--project", help="New project ID"),
+) -> None:
+    """Update a pending/failed/cancelled mission."""
+    conn = _get_connection()
+    lock = _get_lock()
+    try:
+        mission = mission_service.update_mission(
+            conn, lock, mission_id=mission_id,
+            title=title, intent=intent, project_id=project,
+        )
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(mission.id)
+
+
 # ---------------------------------------------------------------------------
 # project subcommands
 # ---------------------------------------------------------------------------
@@ -1040,6 +1063,46 @@ def focus_archive(focus_id: str = typer.Argument(..., help="Focus ID to archive"
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1)
     typer.echo("archived")
+
+
+# ---------------------------------------------------------------------------
+# retention subcommands — data lifecycle management
+# ---------------------------------------------------------------------------
+
+
+@retention_app.command("compress")
+def retention_compress(
+    after_days: int = typer.Option(14, "--after-days", help="Compress archives older than N days"),
+) -> None:
+    """Compress old archived mission data."""
+    from atlas_runtime import retention_service
+
+    conn = _get_connection()
+    lock = _get_lock()
+    count = retention_service.compress_mission_data(conn, lock, after_archive_days=after_days)
+    typer.echo(str(count))
+
+
+@retention_app.command("usage")
+def retention_usage() -> None:
+    """Show storage usage statistics."""
+    from atlas_runtime import retention_service
+    import json as json_mod
+
+    conn = _get_connection()
+    usage = retention_service.get_storage_usage(conn)
+    typer.echo(json_mod.dumps(usage, indent=2))
+
+
+@retention_app.command("preview")
+def retention_preview() -> None:
+    """Preview missions that would be purged."""
+    from atlas_runtime import retention_service
+    import json as json_mod
+
+    conn = _get_connection()
+    preview = retention_service.get_purge_preview(conn)
+    typer.echo(json_mod.dumps(preview, indent=2))
 
 
 # ---------------------------------------------------------------------------

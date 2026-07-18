@@ -141,6 +141,72 @@ def create_mission(
     return mission
 
 
+def update_mission(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    *,
+    mission_id: str,
+    title: Optional[str] = None,
+    intent: Optional[str] = None,
+    project_id: Optional[str] = None,
+) -> Mission:
+    """Update a pending/failed/cancelled mission's fields.
+
+    Only missions in terminal-but-reopenable states can be edited.
+    Running/succeeded/archived missions are immutable.
+    """
+    editable_statuses = {"pending", "failed", "cancelled"}
+    updates = []
+    params = []
+
+    if title is not None:
+        if not title.strip():
+            raise ValueError("title cannot be empty")
+        updates.append("title=?")
+        params.append(title.strip())
+    if intent is not None:
+        updates.append("intent=?")
+        params.append(intent.strip())
+    if project_id is not None:
+        updates.append("project_id=?")
+        params.append(project_id if project_id else None)
+
+    if not updates:
+        raise ValueError("at least one field (title, intent, project_id) must be provided")
+
+    updates.append("updated_at=?")
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    params.append(now)
+    params.append(mission_id)
+
+    with lock:
+        with conn:
+            row = conn.execute(
+                "SELECT status FROM missions WHERE id=?", (mission_id,)
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"Mission {mission_id!r} not found")
+            status = str(row[0]).lower()
+            if status not in editable_statuses:
+                raise ValueError(
+                    f"Cannot edit mission in state {row[0]!r} "
+                    "(only pending, failed, or cancelled missions can be edited)"
+                )
+            if project_id is not None and project_id:
+                exists = conn.execute(
+                    "SELECT 1 FROM projects WHERE id=?", (project_id,)
+                ).fetchone()
+                if exists is None:
+                    raise ValueError(f"unknown project_id: {project_id}")
+            sql = f"UPDATE missions SET {', '.join(updates)} WHERE id=?"
+            conn.execute(sql, params)
+
+    mission = get_mission(conn, mission_id)
+    if mission is None:
+        raise ValueError(f"Mission {mission_id!r} not found after update")
+    return mission
+
+
 def get_mission(
     conn: sqlite3.Connection,
     mission_id: str,

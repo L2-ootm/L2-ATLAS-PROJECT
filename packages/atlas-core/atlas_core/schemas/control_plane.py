@@ -255,6 +255,37 @@ class ModulesConfig(_FrozenControlPlaneModel):
         return value
 
 
+class RetentionConfig(_FrozenControlPlaneModel):
+    """Data lifecycle and cleanup configuration."""
+
+    # Mission lifecycle
+    auto_archive_enabled: bool = False
+    auto_archive_after_days: int = Field(default=7, ge=1, le=365)
+    default_delete_after_days: int = Field(default=30, ge=1, le=3650)
+    max_delete_after_days: int = Field(default=365, ge=30, le=3650)
+
+    # Automatic purge
+    auto_purge_enabled: bool = False
+    auto_purge_interval_hours: int = Field(default=24, ge=1, le=168)
+
+    # Compression
+    compress_enabled: bool = False
+    compress_after_archive_days: int = Field(default=14, ge=1, le=365)
+
+    # Non-mission data
+    archive_completed_goals_after_days: int = Field(default=90, ge=7, le=365)
+    archive_stale_focus_after_days: int = Field(default=30, ge=7, le=365)
+    cleanup_old_logs_enabled: bool = False
+    max_log_age_days: int = Field(default=30, ge=1, le=365)
+
+    # Database maintenance
+    vacuum_after_purge: bool = True
+    checkpoint_wal_hours: int = Field(default=6, ge=1, le=72)
+
+    # Protection
+    min_missions_keep: int = Field(default=5, ge=0, le=100)
+
+
 class AtlasConfig(_FrozenControlPlaneModel):
     schema_version: Literal[2] = 2
     revision: int = Field(default=0, ge=0)
@@ -266,6 +297,7 @@ class AtlasConfig(_FrozenControlPlaneModel):
     context: ContextConfig = Field(default_factory=ContextConfig)
     permission: PermissionConfig = Field(default_factory=PermissionConfig)
     modules: ModulesConfig = Field(default_factory=ModulesConfig)
+    retention: RetentionConfig = Field(default_factory=RetentionConfig)
 
 
 class ConfigPatchRequest(_FrozenControlPlaneModel):
@@ -385,6 +417,7 @@ __all__ = [
     "PermissionSourceLayer",
     "ProviderConfig",
     "ProviderModelStatus",
+    "RetentionConfig",
     "RuntimeConfig",
     "SettingStatus",
 ]

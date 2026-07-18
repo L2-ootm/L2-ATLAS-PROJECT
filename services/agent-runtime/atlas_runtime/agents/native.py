@@ -655,6 +655,50 @@ class NativeAtlasAgent(AgentRuntime):
 
         system_message = _contract_system_message(contract_snapshot)
 
+        # Load conversation history from previous runs in the same session
+        # so the agent has context from earlier turns (session continuity).
+        conversation_history: list[dict[str, Any]] = []
+        try:
+            session_row = conn.execute(
+                "SELECT session_id FROM runs WHERE id=?", (run_id,)
+            ).fetchone()
+            if session_row and session_row[0]:
+                session_id = session_row[0]
+                # Get all completed runs in this session, ordered by start time
+                prev_runs = conn.execute(
+                    "SELECT id, summary FROM runs "
+                    "WHERE session_id=? AND id<>? AND status IN ('succeeded','completed') "
+                    "ORDER BY started_at ASC",
+                    (session_id, run_id),
+                ).fetchall()
+                for prev_run_id, prev_summary in prev_runs:
+                    # Load LLM call events to reconstruct the conversation
+                    events = conn.execute(
+                        "SELECT event_type, data FROM audit_events "
+                        "WHERE run_id=? AND event_type IN ('llm_call','model_call_end') "
+                        "ORDER BY timestamp ASC",
+                        (prev_run_id,),
+                    ).fetchall()
+                    for event_type, data_str in events:
+                        try:
+                            data = json.loads(data_str) if data_str else {}
+                        except (json.JSONDecodeError, TypeError):
+                            data = {}
+                        if event_type == "llm_call" and data.get("prompt"):
+                            conversation_history.append({"role": "user", "content": data["prompt"]})
+                        elif event_type == "model_call_end" and data.get("response"):
+                            conversation_history.append({"role": "assistant", "content": data["response"]})
+                    # Also add the summary as assistant response if available
+                    if prev_summary and not any(
+                        m.get("role") == "assistant" and m.get("content") == prev_summary
+                        for m in conversation_history[-2:]
+                    ):
+                        conversation_history.append({"role": "assistant", "content": prev_summary})
+        except Exception as exc:
+            logger.debug("Failed to load conversation history for session continuity: %s", exc)
+            # Non-fatal: proceed without history
+            conversation_history = []
+
         def _drive() -> None:
             try:
                 run_method = agent.run_conversation
@@ -667,6 +711,8 @@ class NativeAtlasAgent(AgentRuntime):
                 kwargs: dict[str, Any] = {"system_message": system_message}
                 if supports_task_id:
                     kwargs["task_id"] = run_id
+                if conversation_history:
+                    kwargs["conversation_history"] = conversation_history
                 result_holder["result"] = run_method(prompt, **kwargs)
             except BaseException as exc:  # noqa: BLE001 — surfaced below
                 error_holder["error"] = exc

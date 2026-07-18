@@ -5,6 +5,7 @@
 //! `atlas` CLI contract. Loopback-only bind, no auth (v1.0 single operator).
 
 pub mod db;
+pub mod retention;
 
 use axum::extract::{Path as AxPath, Query, Request, State};
 use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
@@ -12,7 +13,7 @@ use axum::middleware::{self, Next};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{Html, IntoResponse, Response};
 use axum::{
-    routing::{get, patch, post},
+    routing::{get, patch, post, put},
     Json, Router,
 };
 use futures_util::stream::Stream;
@@ -301,6 +302,61 @@ async fn purge_archived_missions(State(state): State<AppState>) -> ApiResult {
     let out = dispatch_atlas(&state.atlas_cmd, &["mission", "purge-archived"]).await?;
     let deleted = out.trim().parse::<i64>().unwrap_or(0);
     Ok(Json(json!({ "deleted": deleted })))
+}
+
+#[derive(Deserialize)]
+struct UpdateMissionBody {
+    title: Option<String>,
+    intent: Option<String>,
+    project: Option<String>,
+}
+
+async fn mission_update(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    Json(body): Json<UpdateMissionBody>,
+) -> ApiResult {
+    require_arg(&id, "mission id must be non-empty")?;
+    let title = body.title.unwrap_or_default();
+    let intent = body.intent.unwrap_or_default();
+    let project = body.project.unwrap_or_default();
+    if title.is_empty() && intent.is_empty() && project.is_empty() {
+        return Err(ApiError::BadRequest(
+            "at least one of title, intent, project is required",
+        ));
+    }
+    let mut args: Vec<&str> = vec!["mission", "update"];
+    if !title.is_empty() {
+        args.extend_from_slice(&["--title", &title]);
+    }
+    if !intent.is_empty() {
+        args.extend_from_slice(&["--intent", &intent]);
+    }
+    if !project.is_empty() {
+        args.extend_from_slice(&["--project", &project]);
+    }
+    args.extend_from_slice(&["--", &id]);
+    dispatch_atlas(&state.atlas_cmd, &args).await?;
+    let path = state.db_path.clone();
+    let id_clone = id.clone();
+    let found = blocking(move || db::get_mission(&path, &id_clone)).await?;
+    match found {
+        Some((mission, runs)) => Ok(Json(json!({ "mission": mission, "runs": runs }))),
+        None => Err(ApiError::Internal("mission updated but not found".into())),
+    }
+}
+
+async fn mission_context(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+) -> ApiResult {
+    require_arg(&id, "mission id must be non-empty")?;
+    let out = dispatch_atlas(
+        &state.atlas_cmd,
+        &["mission", "context", "--show", "--", &id],
+    )
+    .await?;
+    Ok(Json(json!({ "mission_id": id, "context_markdown": out })))
 }
 
 /// GET /v1/runs — cross-mission run feed, one JOIN query (no N+1 fan-out).
@@ -1188,6 +1244,34 @@ async fn discord_reject(
 // No DB reads/writes, no policy, no approval state in Rust — that all lives in
 // Python/SQLite. User-controlled values are passed AFTER `--` (injection guard).
 // ---------------------------------------------------------------------------
+
+/// GET /api/skills — return the skills manifest (dispatches to atlas skills list --json).
+async fn skills_list(State(state): State<AppState>) -> ApiResult {
+    let out = dispatch_atlas(&state.atlas_cmd, &["skills", "list", "--json"]).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("skills list parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+#[derive(Deserialize)]
+struct SetSkillTierBody {
+    id: String,
+    tier: String,
+}
+
+/// PUT /api/skills/tier — change a skill's loading tier.
+async fn skills_set_tier(
+    State(state): State<AppState>,
+    Json(body): Json<SetSkillTierBody>,
+) -> ApiResult {
+    require_arg(&body.id, "skill id must be non-empty")?;
+    dispatch_atlas(
+        &state.atlas_cmd,
+        &["skills", "set-tier", "--id", &body.id, "--tier", &body.tier],
+    )
+    .await?;
+    Ok(Json(json!({ "ok": true })))
+}
 
 /// GET /v1/tools/manifests — the tool manifest list (name/risk_level/permissions/…).
 async fn tool_manifests(State(state): State<AppState>) -> ApiResult {
@@ -3045,7 +3129,8 @@ pub fn app(state: AppState) -> Router {
         .route("/health", get(health))
         .route("/v1/missions", get(missions_list).post(create_mission))
         .route("/v1/missions/purge-archived", post(purge_archived_missions))
-        .route("/v1/missions/{id}", get(mission_detail))
+        .route("/v1/missions/{id}", get(mission_detail).patch(mission_update))
+        .route("/v1/missions/{id}/context", get(mission_context))
         .route("/v1/missions/{id}/archive", post(archive_mission))
         .route("/v1/missions/{id}/run", post(start_run))
         .route("/v1/missions/{id}/retry", post(retry_mission))
@@ -3087,6 +3172,8 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/discord/approvals/{id}/reject", post(discord_reject))
         .route("/v1/tools/manifests", get(tool_manifests))
         .route("/v1/tools/calls", post(tool_call))
+        .route("/api/skills", get(skills_list))
+        .route("/api/skills/tier", put(skills_set_tier))
         .route("/v1/tools/approvals", get(tool_approval_outcomes))
         .route(
             "/v1/surface-sessions",

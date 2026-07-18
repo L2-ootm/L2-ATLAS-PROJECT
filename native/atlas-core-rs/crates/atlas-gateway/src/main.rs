@@ -22,6 +22,7 @@ async fn main() {
         .await
         .expect("failed to bind 127.0.0.1");
     println!("atlas-gateway v{VERSION} listening on http://{addr}");
+    atlas_gateway::retention::spawn_retention_worker(state.clone(), 24);
     axum::serve(listener, app(state))
         .await
         .expect("server error");
