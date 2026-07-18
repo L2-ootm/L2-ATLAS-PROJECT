@@ -10,6 +10,7 @@
 #      and runs scripts/install-atlas-cli.ps1.
 #
 # Idempotent: re-running updates an existing source checkout in place.
+# User content (config, DB, skills, wiki) is preserved across updates.
 # Design: docs/plans/2026-07-03-wsb-installer-plan.md (npm wrapper + bundles).
 
 [CmdletBinding()]
@@ -23,13 +24,34 @@ param(
     # Optional advanced release manifest override.
     [string]$ReleaseManifest = $env:ATLAS_RELEASE_MANIFEST,
     # Also install the optional Claude Code runtime extra (SOURCE mode).
-    [switch]$Claude
+    [switch]$Claude,
+    # Force update even if already on latest version.
+    [switch]$Force,
+    # Skip user content preservation (destructive reinstall).
+    [switch]$NoPreserve
 )
 
 $ErrorActionPreference = 'Stop'
 
+# ── ATLAS home directory ──────────────────────────────────────────────────────
+$AtlasHome = "$env:LOCALAPPDATA\atlas"
+$VersionsDir = Join-Path $AtlasHome 'versions'
+$CurrentLink = Join-Path $AtlasHome 'current'
+$ConfigDir = Join-Path $AtlasHome 'config'
+$DataDir = Join-Path $AtlasHome 'data'
+$SkillsDir = Join-Path $AtlasHome 'skills'
+$InstallFile = Join-Path $AtlasHome 'install.json'
+
 function Write-Step([string]$msg) {
     Write-Host "==> $msg" -ForegroundColor Cyan
+}
+
+function Write-Ok([string]$msg) {
+    Write-Host "  [OK] $msg" -ForegroundColor Green
+}
+
+function Write-Warn([string]$msg) {
+    Write-Host "  [WARN] $msg" -ForegroundColor Yellow
 }
 
 function Test-Command([string]$name) {
@@ -107,10 +129,113 @@ function Assert-PythonVersion {
     }
 }
 
+# ── User content preservation ──────────────────────────────────────────────────
+function Preserve-UserContent {
+    param([string]$FromVersion, [string]$ToVersion)
+
+    if ($NoPreserve) {
+        Write-Warn "Skipping user content preservation (-NoPreserve)"
+        return
+    }
+
+    $fromDir = Join-Path $VersionsDir $FromVersion
+    if (-not (Test-Path $fromDir)) { return }
+
+    Write-Step "Preserving user content from $FromVersion -> $ToVersion"
+
+    # User content to preserve (outside versions directory)
+    $preservePaths = @(
+        @{ Source = $ConfigDir; Dest = $ConfigDir; Name = 'config' },
+        @{ Source = $DataDir; Dest = $DataDir; Name = 'data (DB, wiki, memory)' },
+        @{ Source = $SkillsDir; Dest = $SkillsDir; Name = 'user skills' }
+    )
+
+    foreach ($item in $preservePaths) {
+        if (Test-Path $item.Source) {
+            Write-Ok "$($item.Name) preserved at $($item.Dest)"
+        }
+    }
+
+    # Backup install metadata
+    if (Test-Path $InstallFile) {
+        $backupFile = Join-Path $AtlasHome "install-backup-$FromVersion.json"
+        Copy-Item -LiteralPath $InstallFile -Destination $backupFile -Force
+        Write-Ok "Install metadata backed up"
+    }
+}
+
+# ── DB migration runner ────────────────────────────────────────────────────────
+function Run-DbMigrations {
+    param([string]$Version)
+
+    $dbFile = Join-Path $DataDir 'atlas.db'
+    if (-not (Test-Path $dbFile)) { return }
+
+    $migrationsDir = Join-Path $VersionsDir "$Version\infra\migrations"
+    if (-not (Test-Path $migrationsDir)) { return }
+
+    Write-Step 'Running database migrations'
+
+    # Find the atlas CLI in the new version
+    $atlasCmd = Join-Path $VersionsDir "$Version\bin\atlas.js"
+    if (-not (Test-Path $atlasCmd)) { return }
+
+    try {
+        & node $atlasCmd db migrate 2>&1 | ForEach-Object { Write-Host "  $_" }
+        Write-Ok 'Database migrations complete'
+    } catch {
+        Write-Warn "DB migration failed (non-fatal): $_"
+    }
+}
+
+# ── Get current version ────────────────────────────────────────────────────────
+function Get-CurrentVersion {
+    if (-not (Test-Path $InstallFile)) { return $null }
+    try {
+        $state = Get-Content -LiteralPath $InstallFile -Raw | ConvertFrom-Json
+        return $state.installedVersion
+    } catch {
+        return $null
+    }
+}
+
+# ── Check for updates ──────────────────────────────────────────────────────────
+function Get-LatestVersion {
+    try {
+        $npm = Resolve-NpmCommand
+        $version = & $npm view @systemsl2/atlas version 2>&1
+        return $version.Trim()
+    } catch {
+        return $null
+    }
+}
+
+# ── Main banner ────────────────────────────────────────────────────────────────
 Write-Host ''
 Write-Host '  A T L A S  —  operator install' -ForegroundColor White
 Write-Host '  L2 Systems' -ForegroundColor DarkGray
 Write-Host ''
+
+# ── Check existing installation ────────────────────────────────────────────────
+$currentVersion = Get-CurrentVersion
+$isUpdate = $null -ne $currentVersion
+
+if ($isUpdate) {
+    Write-Host "  Current installation: $currentVersion" -ForegroundColor DarkGray
+
+    # Check if update is needed
+    $latestVersion = Get-LatestVersion
+    if ($latestVersion -and $latestVersion -eq $currentVersion -and -not $Force) {
+        Write-Host ''
+        Write-Host "  Already on latest version ($currentVersion)" -ForegroundColor Green
+        Write-Host '  Run with -Force to reinstall, or: atlas update' -ForegroundColor DarkGray
+        Write-Host ''
+        exit 0
+    }
+    if ($latestVersion) {
+        Write-Host "  Available update: $latestVersion" -ForegroundColor Yellow
+    }
+}
 
 # ── RELEASE mode (default) ───────────────────────────────────────────────────
 if (-not $Source) {
@@ -128,10 +253,21 @@ if (-not $Source) {
         throw "npm installed ATLAS but the launcher was not found at $launcher"
     }
 
+    # Preserve user content before update
+    if ($isUpdate) {
+        Preserve-UserContent -FromVersion $currentVersion -ToVersion 'latest'
+    }
+
     Write-Step 'Materializing the verified, self-contained ATLAS runtime'
     if ($ReleaseManifest) { & $launcher install --manifest $ReleaseManifest }
     else { & $launcher install }
     if ($LASTEXITCODE -ne 0) { throw 'atlas install failed' }
+
+    # Run DB migrations
+    $newVersion = Get-CurrentVersion
+    if ($newVersion -and $isUpdate) {
+        Run-DbMigrations -Version $newVersion
+    }
 
     # Older source installers placed a Python-forwarding shim before npm on
     # PATH. Replace only that ATLAS-owned compatibility shim so `atlas update`
@@ -144,7 +280,19 @@ if (-not $Source) {
 
     & $launcher doctor --install-only
     if ($LASTEXITCODE -ne 0) { throw 'ATLAS package integrity verification failed' }
-    Write-Step 'Done — run: atlas up, then atlas doctor'
+
+    Write-Host ''
+    if ($isUpdate) {
+        Write-Host "  Updated: $currentVersion -> $newVersion" -ForegroundColor Green
+    } else {
+        Write-Host "  Installed: $newVersion" -ForegroundColor Green
+    }
+    Write-Host ''
+    Write-Host '  Next steps:' -ForegroundColor Yellow
+    Write-Host '    atlas up       # start gateway + cockpit (+ sidecars)'
+    Write-Host '    atlas doctor   # verify the installation'
+    Write-Host '    atlas          # launch the terminal UI'
+    Write-Host ''
     exit 0
 }
 
@@ -155,6 +303,11 @@ if (-not (Ensure-Tool -Command 'node' -Display 'Node.js' -WingetId 'OpenJS.NodeJ
 Assert-NodeVersion
 Assert-PythonVersion
 Write-Host '    git / node / python OK'
+
+# Preserve user content before update
+if ($isUpdate) {
+    Preserve-UserContent -FromVersion $currentVersion -ToVersion 'source'
+}
 
 Write-Step "Source install into $InstallDir"
 if (Test-Path (Join-Path $InstallDir '.git')) {
