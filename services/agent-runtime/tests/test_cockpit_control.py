@@ -222,7 +222,9 @@ def test_pid_alive_posix_returns_true_for_live_pid(monkeypatch):
 def test_pid_alive_windows_checks_tasklist_output(monkeypatch):
     monkeypatch.setattr(cockpit_control.os, "name", "nt")
     mock_result = MagicMock()
-    mock_result.stdout = "node.exe                      4242 Console"
+    # subprocess.run(capture_output=True) without text=True yields bytes; the
+    # code decodes with errors="replace" to survive CP1252 console output.
+    mock_result.stdout = b"node.exe                      4242 Console"
     with patch("subprocess.run", return_value=mock_result) as mock_run:
         assert cockpit_control._pid_alive(4242) is True
         args = mock_run.call_args[0][0]
@@ -233,6 +235,6 @@ def test_pid_alive_windows_checks_tasklist_output(monkeypatch):
 def test_pid_alive_windows_returns_false_when_pid_absent(monkeypatch):
     monkeypatch.setattr(cockpit_control.os, "name", "nt")
     mock_result = MagicMock()
-    mock_result.stdout = "INFO: No tasks are running which match the specified criteria."
+    mock_result.stdout = b"INFO: No tasks are running which match the specified criteria."
     with patch("subprocess.run", return_value=mock_result):
         assert cockpit_control._pid_alive(4242) is False
