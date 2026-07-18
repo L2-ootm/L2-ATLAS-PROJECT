@@ -29,7 +29,7 @@ from atlas_runtime.cli.interactive_select import _read_key
 # Names not listed here still show up, grouped under a trailing "Other" tab.
 _CATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Getting Started", ("setup", "doctor", "version", "up", "down", "restart", "tui", "logs")),
-    ("Missions & Runs", ("mission", "run", "golden", "runtime")),
+    ("Missions & Runs", ("mission", "run", "golden", "runtime", "team")),
     ("Command Center", ("focus", "goal", "task", "observe", "operation")),
     ("Services & Sidecars", ("gateway", "cashflow", "freellmapi", "discord", "module", "terminal")),
     ("Providers & Models", ("provider", "models", "auth", "config", "components")),

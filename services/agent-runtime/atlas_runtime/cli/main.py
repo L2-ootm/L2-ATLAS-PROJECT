@@ -74,6 +74,12 @@ focus_app = typer.Typer(name="focus", help="Command Center: the operator's Curre
 app.add_typer(focus_app, name="focus")
 retention_app = typer.Typer(name="retention", help="Data lifecycle: compress, preview, usage.")
 app.add_typer(retention_app, name="retention")
+team_app = typer.Typer(name="team", help="Agent presets, team rosters, and group-chat team runs.")
+app.add_typer(team_app, name="team")
+team_preset_app = typer.Typer(name="preset", help="Reusable single-agent presets.")
+team_app.add_typer(team_preset_app, name="preset")
+team_run_cli_app = typer.Typer(name="run", help="Start/inspect a team's round-robin group-chat run.")
+team_app.add_typer(team_run_cli_app, name="run")
 goal_app = typer.Typer(name="goal", help="Command Center: goals, sub-goals, and the goal tree.")
 app.add_typer(goal_app, name="goal")
 task_app = typer.Typer(name="task", help="Command Center: tasks under a goal.")
@@ -1103,6 +1109,242 @@ def retention_preview() -> None:
     conn = _get_connection()
     preview = retention_service.get_purge_preview(conn)
     typer.echo(json_mod.dumps(preview, indent=2))
+
+
+# ---------------------------------------------------------------------------
+# team subcommands — agent presets, team rosters, group-chat team runs
+# ---------------------------------------------------------------------------
+
+
+@team_preset_app.command("create")
+def team_preset_create(
+    name: str = typer.Option(..., "--name", help="Unique preset name"),
+    role_label: str = typer.Option(..., "--role", help="Role label (e.g. researcher)"),
+    goal_template: str = typer.Option(..., "--goal", help="Goal template text"),
+    description: str = typer.Option("", "--description"),
+    model: str = typer.Option("", "--model"),
+    provider: str = typer.Option("", "--provider"),
+    mode: str = typer.Option("joined", "--mode", help="joined|detached"),
+) -> None:
+    """Create a reusable agent preset; prints it as JSON."""
+    from atlas_runtime import team_service
+
+    conn, lock = _get_connection(), _get_lock()
+    try:
+        preset = team_service.create_preset(
+            conn, lock, name=name, role_label=role_label, goal_template=goal_template,
+            description=description, model=model or None, provider=provider or None, mode=mode,
+        )
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(json.dumps(preset))
+
+
+@team_preset_app.command("list")
+def team_preset_list() -> None:
+    """List all agent presets as a JSON array."""
+    from atlas_runtime import team_service
+
+    conn = _get_connection()
+    typer.echo(json.dumps(team_service.list_presets(conn)))
+
+
+@team_preset_app.command("update")
+def team_preset_update(
+    preset_id: str = typer.Argument(...),
+    name: str = typer.Option("", "--name"),
+    role_label: str = typer.Option("", "--role"),
+    goal_template: str = typer.Option("", "--goal"),
+    description: str = typer.Option("", "--description"),
+    model: str = typer.Option("", "--model"),
+    provider: str = typer.Option("", "--provider"),
+    mode: str = typer.Option("", "--mode"),
+) -> None:
+    """Patch a preset's fields (only provided ones change); prints it as JSON."""
+    from atlas_runtime import team_service
+
+    conn, lock = _get_connection(), _get_lock()
+    fields = {
+        k: v for k, v in {
+            "name": name, "role_label": role_label, "goal_template": goal_template,
+            "description": description, "model": model, "provider": provider, "mode": mode,
+        }.items() if v
+    }
+    try:
+        preset = team_service.update_preset(conn, lock, preset_id, **fields)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(json.dumps(preset))
+
+
+@team_preset_app.command("delete")
+def team_preset_delete(preset_id: str = typer.Argument(...)) -> None:
+    """Delete a preset (refuses if it's still on a team roster)."""
+    from atlas_runtime import team_service
+
+    conn, lock = _get_connection(), _get_lock()
+    try:
+        ok = team_service.delete_preset(conn, lock, preset_id)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo("deleted" if ok else "not found")
+
+
+@team_app.command("create")
+def team_create(
+    name: str = typer.Option(..., "--name", help="Unique team name"),
+    description: str = typer.Option("", "--description"),
+) -> None:
+    """Create a team; prints it as JSON."""
+    from atlas_runtime import team_service
+
+    conn, lock = _get_connection(), _get_lock()
+    try:
+        team = team_service.create_team(conn, lock, name=name, description=description)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(json.dumps(team))
+
+
+@team_app.command("list")
+def team_list() -> None:
+    """List all teams (with resolved members) as a JSON array."""
+    from atlas_runtime import team_service
+
+    conn = _get_connection()
+    typer.echo(json.dumps(team_service.list_teams(conn)))
+
+
+@team_app.command("get")
+def team_get(team_id: str = typer.Argument(...)) -> None:
+    """Print one team (with resolved members) as JSON."""
+    from atlas_runtime import team_service
+
+    conn = _get_connection()
+    team = team_service.get_team(conn, team_id)
+    if team is None:
+        typer.echo("Error: team not found", err=True)
+        raise typer.Exit(1)
+    typer.echo(json.dumps(team))
+
+
+@team_app.command("update")
+def team_update(
+    team_id: str = typer.Argument(...),
+    name: str = typer.Option("", "--name"),
+    description: str = typer.Option("", "--description"),
+) -> None:
+    """Patch a team's name/description; prints it as JSON."""
+    from atlas_runtime import team_service
+
+    conn, lock = _get_connection(), _get_lock()
+    fields = {k: v for k, v in {"name": name, "description": description}.items() if v}
+    try:
+        team = team_service.update_team(conn, lock, team_id, **fields)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(json.dumps(team))
+
+
+@team_app.command("delete")
+def team_delete(team_id: str = typer.Argument(...)) -> None:
+    """Delete a team (refuses while it has an active run)."""
+    from atlas_runtime import team_service
+
+    conn, lock = _get_connection(), _get_lock()
+    try:
+        ok = team_service.delete_team(conn, lock, team_id)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo("deleted" if ok else "not found")
+
+
+@team_app.command("set-members")
+def team_set_members(
+    team_id: str = typer.Argument(...),
+    preset_ids: str = typer.Option(..., "--presets", help="Comma-separated preset ids, in order"),
+) -> None:
+    """Replace a team's roster and ordering; prints the team as JSON."""
+    from atlas_runtime import team_service
+
+    conn, lock = _get_connection(), _get_lock()
+    ids = [p.strip() for p in preset_ids.split(",") if p.strip()]
+    try:
+        team = team_service.set_team_members(conn, lock, team_id, ids)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(json.dumps(team))
+
+
+@team_run_cli_app.command("start")
+def team_run_start(
+    team_id: str = typer.Option(..., "--team", help="Team id to run"),
+    message: str = typer.Option(..., "--message", help="Kickoff message"),
+    mission_id: str = typer.Option("", "--mission", help="Originating mission id (optional)"),
+    max_rounds: int = typer.Option(
+        6, "--max-rounds", help="Round-robin round cap (server-capped at 20)"
+    ),
+) -> None:
+    """Start a team's round-robin group-chat run; prints the team_run as JSON."""
+    from atlas_runtime import team_run_service
+    from atlas_runtime.team_run_worker import launch_team_run_worker
+
+    conn, lock = _get_connection(), _get_lock()
+    try:
+        run = team_run_service.create_team_run(
+            conn, lock, team_id=team_id, kickoff_message=message,
+            mission_id=mission_id or None, max_rounds=max_rounds,
+        )
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    pid = launch_team_run_worker(run["id"])
+    if pid is None:
+        typer.echo("Error: team run worker failed to launch", err=True)
+        raise typer.Exit(1)
+    typer.echo(json.dumps(run))
+
+
+@team_run_cli_app.command("status")
+def team_run_status(team_run_id: str = typer.Argument(...)) -> None:
+    """Print one team_run's state as JSON."""
+    from atlas_runtime import team_run_service
+
+    conn = _get_connection()
+    run = team_run_service.get_team_run(conn, team_run_id)
+    if run is None:
+        typer.echo("Error: team run not found", err=True)
+        raise typer.Exit(1)
+    typer.echo(json.dumps(run))
+
+
+@team_run_cli_app.command("messages")
+def team_run_messages(
+    team_run_id: str = typer.Argument(...),
+    since_seq: int = typer.Option(0, "--since-seq", help="Only messages after this seq"),
+) -> None:
+    """Print a team_run's group-chat log as a JSON array."""
+    from atlas_runtime import team_run_service
+
+    conn = _get_connection()
+    typer.echo(json.dumps(team_run_service.list_messages(conn, team_run_id, since_seq=since_seq)))
+
+
+@team_run_cli_app.command("cancel")
+def team_run_cancel(team_run_id: str = typer.Argument(...)) -> None:
+    """Idempotently cancel a queued/running team run."""
+    from atlas_runtime import team_run_service
+
+    conn, lock = _get_connection(), _get_lock()
+    ok = team_run_service.cancel_team_run(conn, lock, team_run_id)
+    typer.echo("cancelled" if ok else "already terminal or not found")
 
 
 # ---------------------------------------------------------------------------
