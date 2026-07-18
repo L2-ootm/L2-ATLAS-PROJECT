@@ -2993,3 +2993,176 @@ async fn host_reveal_rejects_nonexistent_directory() {
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
+
+// --- /v1/agent-presets, /v1/teams, /v1/teams/{id}/run ----------------------
+
+#[tokio::test]
+async fn presets_list_returns_wrapped_array() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"[{"id": "preset-1", "name": "researcher"}]"#,
+        &stub_dir,
+    );
+    let (status, body) = get_json(&router, "/v1/agent-presets").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["presets"][0]["id"], "preset-1");
+}
+
+#[tokio::test]
+async fn preset_create_dispatches_and_returns_preset() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"id": "preset-1", "name": "researcher", "role_label": "researcher"}"#,
+        &stub_dir,
+    );
+    let (status, body) = post_json(
+        &router,
+        "/v1/agent-presets",
+        json!({"name": "researcher", "role_label": "researcher", "goal_template": "Research {topic}."}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["id"], "preset-1");
+}
+
+#[tokio::test]
+async fn preset_create_rejects_missing_fields() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(seeded_db(&dir), "{}", &stub_dir);
+    let (status, _) = post_json(
+        &router,
+        "/v1/agent-presets",
+        json!({"name": "", "role_label": "researcher", "goal_template": "x"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn preset_delete_dispatches() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(seeded_db(&dir), "deleted", &stub_dir);
+    let resp = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/v1/agent-presets/preset-1")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn teams_list_returns_wrapped_array() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"[{"id": "team-1", "name": "content-team", "members": []}]"#,
+        &stub_dir,
+    );
+    let (status, body) = get_json(&router, "/v1/teams").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["teams"][0]["id"], "team-1");
+}
+
+#[tokio::test]
+async fn team_create_rejects_empty_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(seeded_db(&dir), "{}", &stub_dir);
+    let (status, _) = post_json(&router, "/v1/teams", json!({"name": "  "})).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn team_set_members_dispatches_and_returns_team() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"id": "team-1", "name": "content-team", "members": [{"id": "preset-1"}]}"#,
+        &stub_dir,
+    );
+    let (status, body) = put_json(
+        &router,
+        "/v1/teams/team-1/members",
+        json!({"preset_ids": ["preset-1"]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["members"][0]["id"], "preset-1");
+}
+
+#[tokio::test]
+async fn team_set_members_rejects_empty_roster() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(seeded_db(&dir), "{}", &stub_dir);
+    let (status, _) =
+        put_json(&router, "/v1/teams/team-1/members", json!({"preset_ids": []})).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn team_run_start_dispatches_and_returns_run() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"id": "team-run-1", "team_id": "team-1", "status": "queued"}"#,
+        &stub_dir,
+    );
+    let (status, body) = post_json(
+        &router,
+        "/v1/teams/team-1/run",
+        json!({"message": "Investigate the outage."}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["id"], "team-run-1");
+}
+
+#[tokio::test]
+async fn team_run_start_rejects_empty_message() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(seeded_db(&dir), "{}", &stub_dir);
+    let (status, _) =
+        post_json(&router, "/v1/teams/team-1/run", json!({"message": ""})).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn team_run_messages_returns_wrapped_array() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"[{"seq": 1, "content": "kickoff"}]"#,
+        &stub_dir,
+    );
+    let (status, body) = get_json(&router, "/v1/team-runs/team-run-1/messages").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["messages"][0]["content"], "kickoff");
+}
+
+#[tokio::test]
+async fn team_run_cancel_dispatches() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(seeded_db(&dir), "cancelled", &stub_dir);
+    let (status, body) = post_json(&router, "/v1/team-runs/team-run-1/cancel", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["ok"], true);
+}

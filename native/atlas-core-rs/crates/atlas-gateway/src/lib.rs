@@ -1273,6 +1273,263 @@ async fn skills_set_tier(
     Ok(Json(json!({ "ok": true })))
 }
 
+// ---------------------------------------------------------------------------
+// Agent presets, teams, and round-robin group-chat team runs
+// ---------------------------------------------------------------------------
+
+/// GET /v1/agent-presets — all reusable single-agent presets.
+async fn presets_list(State(state): State<AppState>) -> ApiResult {
+    let out = dispatch_atlas(&state.atlas_cmd, &["team", "preset", "list"]).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("preset list parse failed: {e}")))?;
+    Ok(Json(json!({ "presets": value })))
+}
+
+#[derive(Deserialize)]
+struct CreatePresetBody {
+    name: String,
+    role_label: String,
+    goal_template: String,
+    description: Option<String>,
+    model: Option<String>,
+    provider: Option<String>,
+    mode: Option<String>,
+}
+
+async fn preset_create(
+    State(state): State<AppState>,
+    Json(body): Json<CreatePresetBody>,
+) -> ApiResult {
+    require_arg(&body.name, "preset name must be non-empty")?;
+    require_arg(&body.role_label, "preset role_label must be non-empty")?;
+    require_arg(&body.goal_template, "preset goal_template must be non-empty")?;
+    let description = body.description.unwrap_or_default();
+    let model = body.model.unwrap_or_default();
+    let provider = body.provider.unwrap_or_default();
+    let mode = body.mode.unwrap_or_else(|| "joined".to_string());
+    let out = dispatch_atlas(
+        &state.atlas_cmd,
+        &[
+            "team", "preset", "create",
+            "--name", &body.name,
+            "--role", &body.role_label,
+            "--goal", &body.goal_template,
+            "--description", &description,
+            "--model", &model,
+            "--provider", &provider,
+            "--mode", &mode,
+        ],
+    )
+    .await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("preset create parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+#[derive(Deserialize)]
+struct UpdatePresetBody {
+    name: Option<String>,
+    role_label: Option<String>,
+    goal_template: Option<String>,
+    description: Option<String>,
+    model: Option<String>,
+    provider: Option<String>,
+    mode: Option<String>,
+}
+
+async fn preset_update(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    Json(body): Json<UpdatePresetBody>,
+) -> ApiResult {
+    require_arg(&id, "preset id must be non-empty")?;
+    let name = body.name.unwrap_or_default();
+    let role_label = body.role_label.unwrap_or_default();
+    let goal_template = body.goal_template.unwrap_or_default();
+    let description = body.description.unwrap_or_default();
+    let model = body.model.unwrap_or_default();
+    let provider = body.provider.unwrap_or_default();
+    let mode = body.mode.unwrap_or_default();
+    let mut args: Vec<&str> = vec!["team", "preset", "update"];
+    if !name.is_empty() { args.extend_from_slice(&["--name", &name]); }
+    if !role_label.is_empty() { args.extend_from_slice(&["--role", &role_label]); }
+    if !goal_template.is_empty() { args.extend_from_slice(&["--goal", &goal_template]); }
+    if !description.is_empty() { args.extend_from_slice(&["--description", &description]); }
+    if !model.is_empty() { args.extend_from_slice(&["--model", &model]); }
+    if !provider.is_empty() { args.extend_from_slice(&["--provider", &provider]); }
+    if !mode.is_empty() { args.extend_from_slice(&["--mode", &mode]); }
+    args.extend_from_slice(&["--", &id]);
+    let out = dispatch_atlas(&state.atlas_cmd, &args).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("preset update parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+async fn preset_delete(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
+    require_arg(&id, "preset id must be non-empty")?;
+    dispatch_atlas(&state.atlas_cmd, &["team", "preset", "delete", "--", &id]).await?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+/// GET /v1/teams — all teams with their resolved (ordered) member presets.
+async fn teams_list(State(state): State<AppState>) -> ApiResult {
+    let out = dispatch_atlas(&state.atlas_cmd, &["team", "list"]).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("team list parse failed: {e}")))?;
+    Ok(Json(json!({ "teams": value })))
+}
+
+#[derive(Deserialize)]
+struct CreateTeamBody {
+    name: String,
+    description: Option<String>,
+}
+
+async fn team_create(State(state): State<AppState>, Json(body): Json<CreateTeamBody>) -> ApiResult {
+    require_arg(&body.name, "team name must be non-empty")?;
+    let description = body.description.unwrap_or_default();
+    let out = dispatch_atlas(
+        &state.atlas_cmd,
+        &["team", "create", "--name", &body.name, "--description", &description],
+    )
+    .await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("team create parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+async fn team_detail(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
+    require_arg(&id, "team id must be non-empty")?;
+    let out = dispatch_atlas(&state.atlas_cmd, &["team", "get", "--", &id]).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("team get parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+#[derive(Deserialize)]
+struct UpdateTeamBody {
+    name: Option<String>,
+    description: Option<String>,
+}
+
+async fn team_update(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    Json(body): Json<UpdateTeamBody>,
+) -> ApiResult {
+    require_arg(&id, "team id must be non-empty")?;
+    let name = body.name.unwrap_or_default();
+    let description = body.description.unwrap_or_default();
+    let mut args: Vec<&str> = vec!["team", "update"];
+    if !name.is_empty() { args.extend_from_slice(&["--name", &name]); }
+    if !description.is_empty() { args.extend_from_slice(&["--description", &description]); }
+    args.extend_from_slice(&["--", &id]);
+    let out = dispatch_atlas(&state.atlas_cmd, &args).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("team update parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+async fn team_delete(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
+    require_arg(&id, "team id must be non-empty")?;
+    dispatch_atlas(&state.atlas_cmd, &["team", "delete", "--", &id]).await?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+#[derive(Deserialize)]
+struct SetTeamMembersBody {
+    preset_ids: Vec<String>,
+}
+
+async fn team_set_members(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    Json(body): Json<SetTeamMembersBody>,
+) -> ApiResult {
+    require_arg(&id, "team id must be non-empty")?;
+    if body.preset_ids.is_empty() {
+        return Err(ApiError::BadRequest("preset_ids must be non-empty"));
+    }
+    let joined = body.preset_ids.join(",");
+    let out = dispatch_atlas(
+        &state.atlas_cmd,
+        &["team", "set-members", "--presets", &joined, "--", &id],
+    )
+    .await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("team set-members parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+#[derive(Deserialize)]
+struct StartTeamRunBody {
+    message: String,
+    mission_id: Option<String>,
+    max_rounds: Option<i64>,
+}
+
+/// POST /v1/teams/{id}/run — start a round-robin group-chat run for a team.
+async fn team_run_start(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    Json(body): Json<StartTeamRunBody>,
+) -> ApiResult {
+    require_arg(&id, "team id must be non-empty")?;
+    require_arg(&body.message, "message must be non-empty")?;
+    let mission_id = body.mission_id.unwrap_or_default();
+    let max_rounds = body.max_rounds.unwrap_or(6).clamp(1, 20);
+    let max_rounds_arg = max_rounds.to_string();
+    let mut args: Vec<&str> = vec![
+        "team", "run", "start",
+        "--team", &id,
+        "--message", &body.message,
+        "--max-rounds", &max_rounds_arg,
+    ];
+    if !mission_id.is_empty() {
+        args.extend_from_slice(&["--mission", &mission_id]);
+    }
+    let out = dispatch_atlas(&state.atlas_cmd, &args).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("team run start parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+async fn team_run_detail(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
+    require_arg(&id, "team_run id must be non-empty")?;
+    let out = dispatch_atlas(&state.atlas_cmd, &["team", "run", "status", "--", &id]).await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("team run status parse failed: {e}")))?;
+    Ok(Json(value))
+}
+
+#[derive(Deserialize)]
+struct TeamRunMessagesParams {
+    since_seq: Option<i64>,
+}
+
+async fn team_run_messages(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    Query(params): Query<TeamRunMessagesParams>,
+) -> ApiResult {
+    require_arg(&id, "team_run id must be non-empty")?;
+    let since_seq = params.since_seq.unwrap_or(0).max(0).to_string();
+    let out = dispatch_atlas(
+        &state.atlas_cmd,
+        &["team", "run", "messages", "--since-seq", &since_seq, "--", &id],
+    )
+    .await?;
+    let value: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("team run messages parse failed: {e}")))?;
+    Ok(Json(json!({ "messages": value })))
+}
+
+async fn team_run_cancel(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
+    require_arg(&id, "team_run id must be non-empty")?;
+    dispatch_atlas(&state.atlas_cmd, &["team", "run", "cancel", "--", &id]).await?;
+    Ok(Json(json!({ "ok": true })))
+}
+
 /// GET /v1/tools/manifests — the tool manifest list (name/risk_level/permissions/…).
 async fn tool_manifests(State(state): State<AppState>) -> ApiResult {
     let out = dispatch_atlas(&state.atlas_cmd, &["tools", "manifests", "--json"]).await?;
@@ -3174,6 +3431,24 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/tools/calls", post(tool_call))
         .route("/api/skills", get(skills_list))
         .route("/api/skills/tier", put(skills_set_tier))
+        .route(
+            "/v1/agent-presets",
+            get(presets_list).post(preset_create),
+        )
+        .route(
+            "/v1/agent-presets/{id}",
+            patch(preset_update).delete(preset_delete),
+        )
+        .route("/v1/teams", get(teams_list).post(team_create))
+        .route(
+            "/v1/teams/{id}",
+            get(team_detail).patch(team_update).delete(team_delete),
+        )
+        .route("/v1/teams/{id}/members", put(team_set_members))
+        .route("/v1/teams/{id}/run", post(team_run_start))
+        .route("/v1/team-runs/{id}", get(team_run_detail))
+        .route("/v1/team-runs/{id}/messages", get(team_run_messages))
+        .route("/v1/team-runs/{id}/cancel", post(team_run_cancel))
         .route("/v1/tools/approvals", get(tool_approval_outcomes))
         .route(
             "/v1/surface-sessions",
