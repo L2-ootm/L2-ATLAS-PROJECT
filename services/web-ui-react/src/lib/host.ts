@@ -45,3 +45,13 @@ export async function selectFolder(title: string): Promise<string | null> {
 	const data = (await response.json()) as { path?: string | null };
 	return data.path ?? null;
 }
+
+/** Open a folder in the local OS file manager (Explorer/Finder/xdg-open). */
+export async function revealFolder(path: string): Promise<void> {
+	const response = await fetch(`${GATEWAY}/v1/host/reveal`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ path })
+	});
+	if (!response.ok) throw new Error(`reveal failed: ${response.status}`);
+}

@@ -51,8 +51,11 @@ EXCLUDE_DIRS: set[str] = {
     ".cargo", ".rustup", "site-packages", ".idea", ".vscode",
 }
 
-DEFAULT_OBSIDIAN = r"<USER_HOME>\Desktop\Obsidian"
-DEFAULT_PROJECTS = r"<USER_HOME>\Desktop\Projects"
+# Resolved at runtime from the real home dir (keeps no hardcoded username in
+# source while still pointing at a real folder — a literal "<USER_HOME>"
+# placeholder here rendered the projects/obsidian tabs blank).
+DEFAULT_OBSIDIAN = str(Path.home() / "Desktop" / "Obsidian")
+DEFAULT_PROJECTS = str(Path.home() / "Desktop" / "Projects")
 
 # Per-scope node budgets — keep the browser graph readable + fast.
 SCOPE_CAP: dict[str, int] = {"atlas": 400, "global": 460, "projects": 520, "obsidian": 600}
@@ -284,13 +287,20 @@ def _build_projects(projects_dir: Path, cap: int) -> dict[str, Any]:
     return {"nodes": nodes, "links": links, "counts": {"nodes": len(nodes), "links": len(links)}}
 
 
-def build_graph(root: str | None = None, scope: str = "atlas") -> dict[str, Any]:
+def build_graph(
+    root: str | None = None,
+    scope: str = "atlas",
+    override_root: str | None = None,
+) -> dict[str, Any]:
     """Build the knowledge graph for ``scope``.
 
     Returns ``{"nodes": [...], "links": [...], "root": str, "scope": str,
     "counts": {...}}``. Each node: ``{id, label, kind, group, size}``; hub nodes
     use ``kind:"group"``. Each link: ``{source, target, kind}`` where kind is one
     of ``contains | link | wikilink | phase | decision``.
+
+    ``override_root`` repoints the folder-backed built-ins (projects/obsidian)
+    to an operator-chosen path, taking precedence over the env var and default.
     """
     scope = (scope or "atlas").lower()
     base = Path(root or ".").resolve()
@@ -315,7 +325,7 @@ def build_graph(root: str | None = None, scope: str = "atlas") -> dict[str, Any]
         return out
 
     if scope == "obsidian":
-        vault = Path(os.environ.get("ATLAS_OBSIDIAN_DIR", DEFAULT_OBSIDIAN))
+        vault = Path(override_root or os.environ.get("ATLAS_OBSIDIAN_DIR", DEFAULT_OBSIDIAN))
         if not vault.is_dir():
             return {**empty, "root": str(vault), "error": "vault not found"}
         files = _collect_md(vault, cap)
@@ -325,7 +335,7 @@ def build_graph(root: str | None = None, scope: str = "atlas") -> dict[str, Any]
         return out
 
     if scope == "projects":
-        projects_dir = Path(os.environ.get("ATLAS_PROJECTS_DIR", DEFAULT_PROJECTS))
+        projects_dir = Path(override_root or os.environ.get("ATLAS_PROJECTS_DIR", DEFAULT_PROJECTS))
         if not projects_dir.is_dir():
             return {**empty, "root": str(projects_dir), "error": "projects dir not found"}
         out = _build_projects(projects_dir, cap)

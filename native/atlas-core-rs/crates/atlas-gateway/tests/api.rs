@@ -2955,3 +2955,41 @@ async fn graph_view_rejects_invalid_scope_slug() {
     let (status, _) = get_json(&router, "/v1/graph?scope=..%2Fetc").await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn graph_scope_set_root_patch_dispatches_and_returns_scope() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"id": "projects", "label": "Projects", "root_path": "D:/work", "kind": "projects"}"#,
+        &stub_dir,
+    );
+    let (status, body) =
+        patch_json(&router, "/v1/graph/scopes/projects", json!({ "path": "D:/work" })).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["scope"]["id"], "projects");
+    assert_eq!(body["scope"]["root_path"], "D:/work");
+}
+
+#[tokio::test]
+async fn graph_scope_set_root_rejects_empty_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(seeded_db(&dir), "{}", &stub_dir);
+    let (status, _) = patch_json(&router, "/v1/graph/scopes/projects", json!({ "path": "" })).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn host_reveal_rejects_nonexistent_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_app(seeded_db(&dir));
+    let (status, _) = post_json(
+        &router,
+        "/v1/host/reveal",
+        json!({ "path": "C:/this/path/does/not/exist/xyz" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}

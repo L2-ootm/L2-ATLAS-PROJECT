@@ -613,6 +613,18 @@ export async function deleteGraphScope(id: string): Promise<{ deleted: boolean; 
 	return apiFetch(`/v1/graph/scopes/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
+/** Repoint a graph tab's folder — custom scopes and the folder built-ins
+ * (projects/obsidian). atlas/global are repo-derived and reject. */
+export async function setGraphScopeRoot(
+	id: string,
+	path: string
+): Promise<{ scope: CustomGraphScope }> {
+	return apiFetch(`/v1/graph/scopes/${encodeURIComponent(id)}`, {
+		method: 'PATCH',
+		body: JSON.stringify({ path })
+	});
+}
+
 export interface GraphData {
 	nodes: GraphNode[];
 	links: GraphLink[];

@@ -22,6 +22,12 @@ from pathlib import Path
 from typing import Optional
 
 BUILTIN_SCOPES = ("atlas", "global", "projects", "obsidian")
+# Built-ins whose folder the operator may repoint (atlas/global are derived from
+# the ATLAS repo the gateway runs in and are not folder-backed). An override is
+# stored as a row in graph_scopes keyed by the built-in slug; build_graph
+# consults it before the env/default fallback.
+FOLDER_BUILTINS = ("projects", "obsidian")
+_BUILTIN_KIND = {"projects": "projects", "obsidian": "markdown"}
 VALID_KINDS = ("markdown", "projects")
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 
@@ -42,7 +48,12 @@ def slugify(label: str) -> str:
 
 
 def list_scopes(conn: sqlite3.Connection) -> list[dict]:
-    """Custom scopes ordered by creation; empty on a pre-0025 DB."""
+    """Custom scopes ordered by creation; empty on a pre-0025 DB.
+
+    Rows for FOLDER_BUILTINS are folder overrides for the code-defined tabs,
+    not new tabs, so they are excluded here — otherwise a repointed built-in
+    would render a duplicate tab.
+    """
     try:
         cursor = conn.execute(
             "SELECT id, label, root_path, kind, created_at, updated_at "
@@ -51,7 +62,80 @@ def list_scopes(conn: sqlite3.Connection) -> list[dict]:
     except sqlite3.OperationalError:
         return []
     cols = [d[0] for d in cursor.description]
-    return [dict(zip(cols, row)) for row in cursor]
+    return [
+        dict(zip(cols, row))
+        for row in cursor
+        if row[0] not in BUILTIN_SCOPES
+    ]
+
+
+def resolve_builtin_override(conn: sqlite3.Connection, scope_id: str) -> Optional[str]:
+    """Return the operator's folder override for a built-in scope, or None.
+
+    Only FOLDER_BUILTINS can be overridden; the stored path is validated at
+    write time but re-checked here so a folder deleted after the fact falls
+    back to the env/default instead of building an empty graph.
+    """
+    if scope_id not in FOLDER_BUILTINS:
+        return None
+    row = get_scope(conn, scope_id)
+    if row is None:
+        return None
+    path = row["root_path"]
+    return path if Path(path).is_dir() else None
+
+
+def set_scope_root(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    *,
+    scope_id: str,
+    root_path: str,
+) -> dict:
+    """Repoint a scope's folder. Works for custom scopes (UPDATE) and for the
+    folder built-ins projects/obsidian (UPSERT an override row). atlas/global
+    are repo-derived and cannot be repointed."""
+    resolved = Path(root_path).expanduser()
+    if not resolved.is_dir():
+        raise GraphScopeError(f"folder not found: {root_path}")
+    resolved_str = str(resolved.resolve())
+    now = _now()
+
+    if scope_id in FOLDER_BUILTINS:
+        label = scope_id.capitalize()
+        kind = _BUILTIN_KIND[scope_id]
+        with lock:
+            with conn:
+                if get_scope(conn, scope_id) is None:
+                    conn.execute(
+                        "INSERT INTO graph_scopes"
+                        "(id, label, root_path, kind, created_at, updated_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?)",
+                        (scope_id, label, resolved_str, kind, now, now),
+                    )
+                else:
+                    conn.execute(
+                        "UPDATE graph_scopes SET root_path=?, updated_at=? WHERE id=?",
+                        (resolved_str, now, scope_id),
+                    )
+        updated = get_scope(conn, scope_id)
+        assert updated is not None
+        return updated
+
+    if scope_id in BUILTIN_SCOPES:
+        raise GraphScopeError(f"{scope_id!r} is repo-derived and has no folder to change")
+
+    with lock:
+        with conn:
+            cursor = conn.execute(
+                "UPDATE graph_scopes SET root_path=?, updated_at=? WHERE id=?",
+                (resolved_str, now, scope_id),
+            )
+            if cursor.rowcount == 0:
+                raise GraphScopeError(f"scope {scope_id!r} not found")
+    updated = get_scope(conn, scope_id)
+    assert updated is not None
+    return updated
 
 
 def get_scope(conn: sqlite3.Connection, scope_id: str) -> Optional[dict]:

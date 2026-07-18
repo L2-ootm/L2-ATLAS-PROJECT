@@ -4,7 +4,7 @@ import ForceGraph3D from '3d-force-graph';
 import * as THREE from 'three';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import SpriteText from 'three-spritetext';
-import { Boxes, Crosshair, Lock, Maximize2, Minus, Plus, RefreshCw, Search, X } from 'lucide-react';
+import { Boxes, Crosshair, FolderCog, FolderOpen, Lock, Maximize2, Minus, Plus, RefreshCw, Search, X } from 'lucide-react';
 import { Page } from '../components/Page';
 import { GlassPanel } from '../components/GlassFx';
 import { attachLightning } from '../graph/GraphLightning';
@@ -14,12 +14,13 @@ import {
 	getGraph,
 	getGraphFetchedAt,
 	listGraphScopes,
+	setGraphScopeRoot,
 	type CustomGraphScope,
 	type GraphData,
 	type GraphNode,
 	type GraphScope
 } from '../lib/api';
-import { selectFolder } from '../lib/host';
+import { revealFolder, selectFolder } from '../lib/host';
 import {
 	BLOOM,
 	colorFor,
@@ -190,6 +191,40 @@ export default function Graph() {
 	}, []);
 
 	const data = load.s === 'ready' ? load.data : null;
+
+	// Folder actions for the active tab. Built-in projects/obsidian + any custom
+	// scope are folder-backed (repointable); atlas/global are repo-derived. The
+	// backend scope id is the tab's `scope` (projects/obsidian/<custom slug>).
+	const activeTab = tabs.find((t) => t.id === tab);
+	const folderBacked =
+		activeTab?.scope === 'projects' || activeTab?.scope === 'obsidian' || !!activeTab?.custom;
+	const activeRoot = data?.root ?? null;
+	const [folderErr, setFolderErr] = useState<string | null>(null);
+
+	const changeFolder = useCallback(async () => {
+		if (!activeTab || !folderBacked) return;
+		setFolderErr(null);
+		try {
+			const picked = await selectFolder(`Choose a folder for the ${activeTab.label} graph`);
+			if (!picked) return;
+			await setGraphScopeRoot(activeTab.scope, picked);
+			await refreshScopes();
+			forceNext.current = true;
+			setReload((r) => r + 1);
+		} catch (e) {
+			setFolderErr(e instanceof Error ? e.message : String(e));
+		}
+	}, [activeTab, folderBacked, refreshScopes]);
+
+	const openInExplorer = useCallback(async () => {
+		if (!activeRoot) return;
+		setFolderErr(null);
+		try {
+			await revealFolder(activeRoot);
+		} catch (e) {
+			setFolderErr(e instanceof Error ? e.message : String(e));
+		}
+	}, [activeRoot]);
 
 	// Adjacency + node index, captured from the raw (string-id) links.
 	const { nodeById, neighbors } = useMemo(() => {
@@ -592,12 +627,59 @@ export default function Graph() {
 								{stats.n} NODES <span style={{ opacity: 0.4 }}>·</span> {stats.e} EDGES
 							</span>
 						)}
+						<div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+							{folderBacked && (
+								<button
+									type="button"
+									onClick={() => void changeFolder()}
+									style={folderButtonStyle}
+									title={`Change the ${activeTab?.label ?? ''} folder`}
+									aria-label="Change graph folder"
+								>
+									<FolderCog size={13} strokeWidth={1.8} />
+									<span>FOLDER</span>
+								</button>
+							)}
+							{activeRoot && (
+								<button
+									type="button"
+									onClick={() => void openInExplorer()}
+									style={folderButtonStyle}
+									title={`Open ${activeRoot} in the file manager`}
+									aria-label="Open folder in file manager"
+								>
+									<FolderOpen size={13} strokeWidth={1.8} />
+									<span>EXPLORER</span>
+								</button>
+							)}
+						</div>
 						<button type="button" onClick={rebuild} style={rebuildButtonStyle} title="Rebuild graph">
 							<RefreshCw size={13} strokeWidth={1.8} />
 							<span>REBUILD</span>
 						</button>
 					</div>
 				</div>
+				{folderErr && (
+					<div
+						role="alert"
+						style={{
+							position: 'absolute',
+							top: 52,
+							right: 16,
+							zIndex: 6,
+							maxWidth: 320,
+							padding: '6px 10px',
+							borderRadius: 2,
+							border: '1px solid rgba(255,0,85,0.4)',
+							background: 'rgba(20,6,10,0.9)',
+							color: 'var(--l2-error)',
+							fontFamily: 'var(--l2-font-mono)',
+							fontSize: 11
+						}}
+					>
+						{folderErr}
+					</div>
+				)}
 
 				{addingPath && (
 					<NewScopeDialog
@@ -1105,6 +1187,21 @@ const rebuildButtonStyle: React.CSSProperties = {
 	border: '1px solid rgba(74,93,191,0.4)',
 	background: 'rgba(74,93,191,0.12)',
 	color: 'var(--atlas-celestial)',
+	fontFamily: 'var(--l2-font-mono)',
+	fontSize: 10,
+	letterSpacing: '0.14em',
+	cursor: 'pointer'
+};
+
+const folderButtonStyle: React.CSSProperties = {
+	display: 'inline-flex',
+	alignItems: 'center',
+	gap: 6,
+	padding: '6px 10px',
+	borderRadius: 2,
+	border: '1px solid var(--l2-hairline)',
+	background: 'transparent',
+	color: 'var(--l2-fg-2)',
 	fontFamily: 'var(--l2-font-mono)',
 	fontSize: 10,
 	letterSpacing: '0.14em',

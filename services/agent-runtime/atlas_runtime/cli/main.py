@@ -398,7 +398,8 @@ def graph_build(
 
     try:
         if scope in graph_scope_service.BUILTIN_SCOPES:
-            result = graph_service.build_graph(root=root, scope=scope)
+            override = graph_scope_service.resolve_builtin_override(_get_connection(), scope)
+            result = graph_service.build_graph(root=root, scope=scope, override_root=override)
         else:
             custom = graph_scope_service.get_scope(_get_connection(), scope)
             if custom is None:
@@ -466,6 +467,25 @@ def graph_remove_scope(
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1)
     typer.echo("removed")
+
+
+@graph_app.command("set-scope-root")
+def graph_set_scope_root(
+    scope_id: str = typer.Argument(..., help="Scope id (custom, or projects/obsidian)"),
+    path: str = typer.Option(..., "--path", help="New folder for the graph tab"),
+) -> None:
+    """Repoint a graph tab's folder. Works for custom scopes and for the folder
+    built-ins projects/obsidian; prints the resulting scope row as JSON."""
+    from atlas_runtime import graph_scope_service
+
+    conn = _get_connection()
+    lock = _get_lock()
+    try:
+        scope = graph_scope_service.set_scope_root(conn, lock, scope_id=scope_id, root_path=path)
+    except graph_scope_service.GraphScopeError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(json.dumps(scope))
 
 
 # ---------------------------------------------------------------------------

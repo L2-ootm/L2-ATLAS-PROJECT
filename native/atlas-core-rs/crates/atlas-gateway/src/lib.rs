@@ -1763,6 +1763,60 @@ async fn graph_scope_delete(
 }
 
 #[derive(Deserialize)]
+struct SetScopeRootBody {
+    path: String,
+}
+
+/// PATCH /v1/graph/scopes/{id} — repoint a graph tab's folder. Valid for custom
+/// scopes and the folder built-ins (projects/obsidian); atlas/global reject.
+async fn graph_scope_set_root(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    Json(body): Json<SetScopeRootBody>,
+) -> ApiResult {
+    require_arg(&id, "scope id must be non-empty")?;
+    require_arg(&body.path, "path must be non-empty")?;
+    let out = dispatch_atlas(
+        &state.atlas_cmd,
+        &["graph", "set-scope-root", &id, "--path", &body.path],
+    )
+    .await?;
+    let scope: Value = serde_json::from_str(&out)
+        .map_err(|e| ApiError::Internal(format!("graph set-scope-root parse: {e}")))?;
+    Ok(Json(json!({ "scope": scope })))
+}
+
+#[derive(Deserialize)]
+struct RevealBody {
+    path: String,
+}
+
+/// POST /v1/host/reveal — open a folder in the local OS file manager. Host-side
+/// convenience mirroring the folder picker (a local-only, single-operator tool);
+/// the path must be an existing directory.
+async fn host_reveal(Json(body): Json<RevealBody>) -> ApiResult {
+    let path = body.path.trim().to_string();
+    require_arg(&path, "path must be non-empty")?;
+    let dir = std::path::PathBuf::from(&path);
+    if !dir.is_dir() {
+        return Err(ApiError::BadRequest("path is not an existing directory"));
+    }
+    let spawned = if cfg!(target_os = "windows") {
+        std::process::Command::new("explorer").arg(&dir).spawn()
+    } else if cfg!(target_os = "macos") {
+        std::process::Command::new("open").arg(&dir).spawn()
+    } else {
+        std::process::Command::new("xdg-open").arg(&dir).spawn()
+    };
+    // explorer.exe returns a non-zero exit code even on success, so we only
+    // guard the spawn itself, not the child's status.
+    match spawned {
+        Ok(_) => Ok(Json(json!({ "revealed": true, "path": path }))),
+        Err(e) => Err(ApiError::Internal(format!("failed to open file manager: {e}"))),
+    }
+}
+
+#[derive(Deserialize)]
 struct CreateMissionBody {
     title: String,
     intent: Option<String>,
@@ -3065,8 +3119,12 @@ pub fn app(state: AppState) -> Router {
             "/v1/graph/scopes",
             get(graph_scopes_list).post(graph_scope_create),
         )
-        .route("/v1/graph/scopes/{id}", axum::routing::delete(graph_scope_delete))
+        .route(
+            "/v1/graph/scopes/{id}",
+            axum::routing::delete(graph_scope_delete).patch(graph_scope_set_root),
+        )
         .route("/v1/host/select-folder", post(select_folder))
+        .route("/v1/host/reveal", post(host_reveal))
         .route("/v1/vcs", get(vcs_context))
         .route("/v1/projects", get(projects_list).post(projects_create))
         .route("/v1/projects/register", post(projects_register))
