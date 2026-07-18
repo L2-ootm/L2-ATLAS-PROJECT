@@ -104,3 +104,17 @@ export function subagentsFromConsoleEvents(events: ConsoleChatEvent[]): Subagent
 	}
 	return [...latest.values()];
 }
+
+/** One per-step row in a subagent's live telemetry stream (Chat only —
+ * Console's ConsoleChatEvent carries no seq/timestamp for a step replay). */
+export interface SubagentStreamItem {
+	seq: number;
+	occurredAt: string;
+	phase: string;
+	detail: string;
+	kind: string;
+}
+
+export function shortActorId(id: string): string {
+	return id.replace(/^actor-/, '').slice(0, 8).toUpperCase();
+}

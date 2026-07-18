@@ -1,47 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-	Activity,
-	AlertTriangle,
-	Bot,
-	Clock3,
-	PanelRightOpen,
-	Radio,
-	Waypoints,
-	X
-} from 'lucide-react';
+import { AlertTriangle, PanelRightOpen, Radio, Waypoints, X } from 'lucide-react';
 import { surfaceConsoleEvent } from '../../lib/consoleEvents';
 import type { SurfaceEvent } from '../../lib/surfaceContracts';
 import {
+	shortActorId,
 	subagentLifecycleFromSurfaceEvents,
 	subagentsFromSurfaceEvents,
-	type SubagentActivity
+	type SubagentActivity,
+	type SubagentStreamItem
 } from '../../lib/subagents';
 import { ChatModelRouter } from './ChatModelRouter';
+import { SubagentDetailModal } from '../agent/SubagentDetailModal';
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'orphaned']);
 
-function shortId(id: string): string {
-	return id.replace(/^actor-/, '').slice(0, 8).toUpperCase();
-}
-
-function eventTime(value: string): string {
-	const date = new Date(value);
-	return Number.isNaN(date.valueOf())
-		? value
-		: new Intl.DateTimeFormat(undefined, {
-				hour: '2-digit',
-				minute: '2-digit',
-				second: '2-digit'
-			}).format(date);
-}
-
-interface ActorStreamItem {
-	seq: number;
-	occurredAt: string;
-	phase: string;
-	detail: string;
-	kind: string;
-}
+type ActorStreamItem = SubagentStreamItem;
 
 interface DispatchRecord {
 	callId: string;
@@ -301,50 +274,7 @@ export function ChatActorWorkspace({
 			</aside>
 
 			{selected && (
-				<div className="chat-actor-detail-layer" role="presentation">
-					<button
-						type="button"
-						className="chat-actor-detail-backdrop"
-						onClick={() => setSelectedId(null)}
-						aria-label="Close actor details"
-					/>
-					<section className="chat-actor-detail" role="dialog" aria-modal="true" aria-labelledby="actor-detail-title">
-						<header className="chat-actor-detail__header">
-							<div>
-								<span>ACTOR {shortId(selected.id)}</span>
-								<h2 id="actor-detail-title">Live activity stream</h2>
-							</div>
-							<button type="button" onClick={() => setSelectedId(null)} aria-label="Close actor details" autoFocus>
-								<X size={15} />
-							</button>
-						</header>
-						<div className="chat-actor-detail__goal">{selected.goal || 'Delegated task'}</div>
-						<div className="chat-actor-detail__facts">
-							<span><Bot size={12} /> {selected.model || 'inherited model'}</span>
-							<span><Waypoints size={12} /> depth {selected.depth} · {selected.background ? 'detached' : 'joined'}</span>
-							<span><Activity size={12} /> {selected.toolCount} tool calls</span>
-							{selected.durationSeconds != null && <span><Clock3 size={12} /> {selected.durationSeconds.toFixed(1)}s</span>}
-						</div>
-						<div className="chat-actor-detail__signal" data-phase={selected.phase}>
-							<span className="chat-actor-detail__signal-core"><Radio size={16} /></span>
-							<div><small>LIVE SIGNAL</small><strong>{selected.tool || (TERMINAL.has(selected.phase) ? 'Actor settled' : 'Awaiting first heartbeat')}</strong></div>
-							<em>{selected.phase}</em>
-						</div>
-						<div className="chat-actor-stream" aria-live="polite">
-							{stream.length === 0 && <div className="chat-actor-stream__empty">Waiting for the first actor telemetry pulse…</div>}
-							{stream.map((step) => (
-								<div key={step.seq} className="chat-actor-stream__step" data-phase={step.phase} data-kind={step.kind}>
-									<span className="chat-actor-stream__signal"><Radio size={12} /></span>
-									<div>
-										<strong>{step.phase}</strong>
-										<span>{step.detail}</span>
-									</div>
-									<time>{eventTime(step.occurredAt)}</time>
-								</div>
-							))}
-						</div>
-					</section>
-				</div>
+				<SubagentDetailModal actor={selected} stream={stream} onClose={() => setSelectedId(null)} />
 			)}
 		</>
 	);
@@ -417,7 +347,7 @@ function ActorGroup({
 				>
 					<span className="chat-actor-row__signal"><Radio size={13} /><i /></span>
 					<span className="chat-actor-row__copy">
-						<strong>{actor.goal || `Actor ${shortId(actor.id)}`}</strong>
+						<strong>{actor.goal || `Actor ${shortActorId(actor.id)}`}</strong>
 						<small>{signal?.phase || actor.tool || actor.model || 'Allocating context'} · {actor.toolCount} calls</small>
 					</span>
 					<span className="chat-actor-row__phase">{actor.phase}</span>

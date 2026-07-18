@@ -42,7 +42,7 @@ describe('chat actor workspace', () => {
 			/>
 		);
 		fireEvent.click(screen.getByText('Inspect the runtime'));
-		expect(screen.getByRole('heading', { name: 'Live activity stream' })).toBeInTheDocument();
+		expect(screen.getByRole('heading', { name: 'Live activity' })).toBeInTheDocument();
 		expect(screen.getByText('read_file')).toBeInTheDocument();
 		expect(screen.getByText(/actor_worker\.py/)).toBeInTheDocument();
 	});
