@@ -23,7 +23,8 @@
 		"atlas": "bin/atlas.js"
 	},
 	"scripts": {
-		"test": "node --test test/commands.test.js test/lifecycle.test.js test/tarball.test.js"
+		"test": "node --test test/commands.test.js test/lifecycle.test.js test/tarball.test.js",
+		"publish:dry-run": "node ../../scripts/release/publish-dry-run.js"
 	},
 	"files": [
 		"bin",
