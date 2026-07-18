@@ -656,68 +656,76 @@ function GoalNodeView({
 					<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 8.5, letterSpacing: '0.16em', color: GOAL_STATUS_COLOR[node.status] ?? 'var(--l2-fg-3)', textTransform: 'uppercase' }}>
 						{node.status}
 					</span>
-					{operations.length > 0 && (
-						<div style={{ position: 'relative', flex: 'none' }}>
+					<div className="goal-row-actions">
+						<button type="button" title="Add sub-goal" aria-label="Add sub-goal" onClick={() => setMode(mode === 'subgoal' ? null : 'subgoal')} style={miniIconStyle}>
+							<CornerDownRight size={12} strokeWidth={1.8} />
+						</button>
+						<button type="button" title="Add task" aria-label="Add task" onClick={() => setMode(mode === 'task' ? null : 'task')} style={miniIconStyle}>
+							<Plus size={13} strokeWidth={2} />
+						</button>
+						{operations.length > 0 && (
+							<div style={{ position: 'relative', flex: 'none' }}>
+								<button
+									type="button"
+									title="Run an operation on this goal"
+									aria-label="Run an operation on this goal"
+									onClick={() => setOpsOpen((v) => !v)}
+									style={{ ...miniIconStyle, color: opsOpen ? 'var(--atlas-celestial)' : 'var(--l2-fg-3)' }}
+								>
+									<Zap size={12} strokeWidth={1.9} />
+								</button>
+								{opsOpen && (
+									<OperationsMenu
+										operations={operations}
+										onPick={(opId) => {
+											setOpsOpen(false);
+											onRunOperation(opId, node.id);
+										}}
+										onClose={() => setOpsOpen(false)}
+									/>
+								)}
+							</div>
+						)}
+						<span className="goal-row-actions__divider" aria-hidden="true" />
+						{node.status !== 'done' && (
 							<button
 								type="button"
-								title="Run an operation on this goal"
-								onClick={() => setOpsOpen((v) => !v)}
-								style={{ ...miniIconStyle, color: opsOpen ? 'var(--atlas-celestial)' : 'var(--l2-fg-3)' }}
+								title={node.status === 'paused' ? 'Resume goal' : 'Pause goal'}
+								aria-label={node.status === 'paused' ? 'Resume goal' : 'Pause goal'}
+								disabled={busy}
+								onClick={() => void togglePause()}
+								style={{ ...miniIconStyle, color: node.status === 'paused' ? 'var(--atlas-bronze)' : 'var(--l2-fg-3)' }}
 							>
-								<Zap size={12} strokeWidth={1.9} />
+								{node.status === 'paused' ? <Play size={12} strokeWidth={1.9} /> : <Pause size={12} strokeWidth={1.9} />}
 							</button>
-							{opsOpen && (
-								<OperationsMenu
-									operations={operations}
-									onPick={(opId) => {
-										setOpsOpen(false);
-										onRunOperation(opId, node.id);
-									}}
-									onClose={() => setOpsOpen(false)}
-								/>
-							)}
-						</div>
-					)}
-					<button type="button" title="Add sub-goal" onClick={() => setMode(mode === 'subgoal' ? null : 'subgoal')} style={miniIconStyle}>
-						<CornerDownRight size={12} strokeWidth={1.8} />
-					</button>
-					<button type="button" title="Add task" onClick={() => setMode(mode === 'task' ? null : 'task')} style={miniIconStyle}>
-						<Plus size={13} strokeWidth={2} />
-					</button>
-					{node.status !== 'done' && (
+						)}
+						{node.status !== 'done' && (
+							<button
+								type="button"
+								title="Mark concluded (with optional observation)"
+								aria-label="Mark concluded"
+								onClick={() => setMode(mode === 'conclude' ? null : 'conclude')}
+								style={{ ...miniIconStyle, color: mode === 'conclude' ? 'var(--atlas-emerald)' : 'var(--l2-fg-3)' }}
+							>
+								<CheckCircle2 size={12} strokeWidth={1.9} />
+							</button>
+						)}
+						<button type="button" title="Archive goal" aria-label="Archive goal" onClick={() => { void archiveGoal(node.id).then(onChanged); }} style={miniIconStyle}>
+							<Archive size={12} strokeWidth={1.8} />
+						</button>
 						<button
 							type="button"
-							title={node.status === 'paused' ? 'Resume goal' : 'Pause goal'}
+							title={confirmDelete ? 'Click again to permanently delete' : 'Delete goal (and sub-goals)'}
+							aria-label={confirmDelete ? 'Click again to permanently delete' : 'Delete goal'}
 							disabled={busy}
-							onClick={() => void togglePause()}
-							style={{ ...miniIconStyle, color: node.status === 'paused' ? 'var(--atlas-bronze)' : 'var(--l2-fg-3)' }}
+							onClick={() => (confirmDelete ? void removeGoal() : setConfirmDelete(true))}
+							onBlur={() => setConfirmDelete(false)}
+							className="goal-row-actions__danger"
+							style={{ ...miniIconStyle, color: confirmDelete ? 'var(--l2-error)' : 'var(--l2-fg-3)' }}
 						>
-							{node.status === 'paused' ? <Play size={12} strokeWidth={1.9} /> : <Pause size={12} strokeWidth={1.9} />}
+							<Trash2 size={12} strokeWidth={1.8} />
 						</button>
-					)}
-					{node.status !== 'done' && (
-						<button
-							type="button"
-							title="Mark concluded (with optional observation)"
-							onClick={() => setMode(mode === 'conclude' ? null : 'conclude')}
-							style={{ ...miniIconStyle, color: mode === 'conclude' ? 'var(--atlas-emerald)' : 'var(--l2-fg-3)' }}
-						>
-							<CheckCircle2 size={12} strokeWidth={1.9} />
-						</button>
-					)}
-					<button type="button" title="Archive goal" onClick={() => { void archiveGoal(node.id).then(onChanged); }} style={miniIconStyle}>
-						<Archive size={12} strokeWidth={1.8} />
-					</button>
-					<button
-						type="button"
-						title={confirmDelete ? 'Click again to permanently delete' : 'Delete goal (and sub-goals)'}
-						disabled={busy}
-						onClick={() => (confirmDelete ? void removeGoal() : setConfirmDelete(true))}
-						onBlur={() => setConfirmDelete(false)}
-						style={{ ...miniIconStyle, color: confirmDelete ? 'var(--l2-error)' : 'var(--l2-fg-3)' }}
-					>
-						<Trash2 size={12} strokeWidth={1.8} />
-					</button>
+					</div>
 				</div>
 				{node.description && (
 					<div style={{ color: 'var(--l2-fg-3)', fontSize: 12, marginTop: 4, marginLeft: 14, lineHeight: 1.45 }}>{node.description}</div>
@@ -1010,7 +1018,7 @@ function ActivityFeed({
 }) {
 	const liveCount = runs.filter((r) => isActive(r.status)).length;
 	return (
-		<GlassPanel style={{ padding: 0, overflow: 'hidden', position: 'sticky', top: 8 }}>
+		<GlassPanel className="atlas-command-feed" style={{ padding: 0, overflow: 'hidden', position: 'sticky', top: 8 }}>
 			<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '13px 18px', borderBottom: '1px solid var(--l2-hairline)' }}>
 				<HudLabel>LIVE ACTIVITY</HudLabel>
 				<LiveBadge connected={liveCount > 0} />

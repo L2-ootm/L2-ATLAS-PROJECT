@@ -1840,3 +1840,14 @@ body,
 	padding: 4px 0;
 }
 .katex-display > .katex { font-size: 1.1em; }
+
+/* ==========================================================================
+   Command Center — responsive grid + goal-row action grouping
+   ========================================================================== */
+@media (max-width: 1180px) {
+	.atlas-command-grid { grid-template-columns: minmax(0, 1fr) !important; }
+	.atlas-command-feed { position: static !important; }
+}
+.goal-row-actions { display: flex; align-items: center; gap: 2px; flex: none; }
+.goal-row-actions__divider { width: 1px; height: 16px; margin: 0 4px; background: var(--l2-hairline); flex: none; }
+.goal-row-actions__danger:hover { color: var(--l2-error) !important; }
