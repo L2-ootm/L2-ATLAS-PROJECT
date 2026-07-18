@@ -51,6 +51,39 @@ def _running_run(db: sqlite3.Connection, mission_id: str) -> str:
     return rid
 
 
+# --- max_iterations resolution (config-driven, no more hardcoded 40) -------
+
+
+def test_resolve_max_iterations_honors_explicit_constructor_override() -> None:
+    agent = NativeAtlasAgent(max_iterations=7)
+    assert agent._resolve_max_iterations() == 7
+
+
+def test_resolve_max_iterations_reads_runtime_iteration_budget_config(monkeypatch) -> None:
+    class _FakeRuntime:
+        iteration_budget = 250
+
+    class _FakeConfig:
+        runtime = _FakeRuntime()
+
+    monkeypatch.setattr(
+        "atlas_runtime.config_service.load_config", lambda: _FakeConfig()
+    )
+    agent = NativeAtlasAgent()
+    assert agent._resolve_max_iterations() == 250
+
+
+def test_resolve_max_iterations_fails_open_on_config_error(monkeypatch) -> None:
+    def _boom():
+        raise RuntimeError("config unavailable")
+
+    monkeypatch.setattr("atlas_runtime.config_service.load_config", _boom)
+    agent = NativeAtlasAgent()
+    from atlas_runtime.agents.native import _DEFAULT_MAX_ITERATIONS
+
+    assert agent._resolve_max_iterations() == _DEFAULT_MAX_ITERATIONS
+
+
 # --- fake SDK message shapes (class names match the real SDK) --------------
 
 

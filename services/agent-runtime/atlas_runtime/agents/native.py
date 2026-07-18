@@ -312,17 +312,33 @@ class NativeAtlasAgent(AgentRuntime):
         agent_factory: Optional[HarnessFactory] = None,
         *,
         max_runtime_s: float = _DEFAULT_MAX_RUNTIME_S,
-        max_iterations: int = _DEFAULT_MAX_ITERATIONS,
+        max_iterations: Optional[int] = None,
         model: str = "",
         provider: Optional[str] = None,
     ) -> None:
         self._agent_factory = agent_factory
         self._max_runtime_s = max_runtime_s
-        self._max_iterations = max_iterations
+        # None (the production default) resolves against the operator's
+        # `runtime.iteration_budget` config at execute() time instead of the
+        # hardcoded 40 that previously capped every long-running mission.
         # Explicit overrides take precedence over ATLAS-config resolution; left
         # empty, execute() resolves them from config + the active Focus (A4).
+        self._max_iterations = max_iterations
         self._model = model
         self._provider = provider
+
+    def _resolve_max_iterations(self) -> int:
+        """Fail-open to `_DEFAULT_MAX_ITERATIONS` so a config hiccup never
+        blocks a run; otherwise honor an explicit constructor override or the
+        operator's `runtime.iteration_budget` setting."""
+        if self._max_iterations is not None:
+            return self._max_iterations
+        try:
+            from atlas_runtime import config_service  # noqa: PLC0415
+
+            return config_service.load_config().runtime.iteration_budget
+        except Exception:  # noqa: BLE001 — never block a run on config
+            return _DEFAULT_MAX_ITERATIONS
 
     def _resolve_provider(
         self, conn: sqlite3.Connection, run_id: str | None = None
@@ -624,7 +640,7 @@ class NativeAtlasAgent(AgentRuntime):
 
                 factory = lambda session_id: _default_factory(  # noqa: E731
                     session_id,
-                    self._max_iterations,
+                    self._resolve_max_iterations(),
                     model=model,
                     provider=provider,
                     base_url=base_url,
