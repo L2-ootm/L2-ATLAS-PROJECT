@@ -362,14 +362,15 @@ export default function Console() {
 	// operator rebinds, the held session would keep scoping runs to the OLD
 	// workspace. Release it (idle turns only — dispatch is blocked mid-turn
 	// anyway) so the next prompt re-surfaces against the new binding.
+	// Skip release on initial mount — only release when bindingKey actually changes.
 	const bindingKey = `${projectId ?? ''}|${boundCwd ?? ''}`;
+	const prevBindingKeyRef = useRef(bindingKey);
 	useEffect(() => {
+		if (prevBindingKeyRef.current === bindingKey) return;
+		prevBindingKeyRef.current = bindingKey;
 		if (activeTurn) return;
 		void agentSurface.releaseSession();
-		// Keyed on the binding identity only — releasing on every render or
-		// turn change would churn sessions for no reason.
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [bindingKey]);
+	}, [bindingKey, activeTurn, agentSurface.releaseSession]);
 
 	// Single debounced writer for the whole console snapshot. `auditEvents` and
 	// `activeTurn` are intentionally excluded — see consolePersistence.ts.

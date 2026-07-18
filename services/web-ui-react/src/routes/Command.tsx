@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -83,6 +83,7 @@ export default function Command() {
 	const [focusLoad, setFocusLoad] = useState<FocusLoad>({ s: 'loading' });
 	const [allFocus, setAllFocus] = useState<Focus[]>([]);
 	const [tree, setTree] = useState<GoalNode[]>([]);
+	const [treeErr, setTreeErr] = useState<string | null>(null);
 	const [operations, setOperations] = useState<Operation[]>([]);
 	const [runs, setRuns] = useState<RunWithMission[]>([]);
 	const [feedReady, setFeedReady] = useState(false);
@@ -96,13 +97,16 @@ export default function Command() {
 	const refreshTree = useCallback(async (focusId: string | null) => {
 		if (!focusId) {
 			setTree([]);
+			setTreeErr(null);
 			return;
 		}
 		try {
 			const { tree } = await getFocusTree(focusId);
 			setTree(tree);
-		} catch {
+			setTreeErr(null);
+		} catch (e) {
 			setTree([]);
+			setTreeErr(e instanceof Error ? e.message : 'Could not load goals');
 		}
 	}, []);
 
@@ -227,6 +231,7 @@ export default function Command() {
 						<GoalsPanel
 							focus={focus}
 							tree={tree}
+							treeErr={treeErr}
 							operations={operations}
 							onRunOperation={onRunOperation}
 							onChanged={() => void refreshTree(focus.id)}
@@ -495,18 +500,25 @@ function FocusSkeleton() {
 function GoalsPanel({
 	focus,
 	tree,
+	treeErr,
 	operations,
 	onRunOperation,
 	onChanged
 }: {
 	focus: Focus;
 	tree: GoalNode[];
+	treeErr: string | null;
 	operations: Operation[];
 	onRunOperation: (opId: string, goalId: string) => void;
 	onChanged: () => void;
 }) {
 	const [adding, setAdding] = useState(false);
 	const [busy, setBusy] = useState(false);
+	const [showDone, setShowDone] = useState(false);
+
+	const activeTree = tree.filter((n) => n.status !== 'done');
+	const doneTree = tree.filter((n) => n.status === 'done');
+	const visibleTree = showDone ? doneTree : activeTree;
 
 	async function addRoot(title: string) {
 		setBusy(true);
@@ -526,23 +538,66 @@ function GoalsPanel({
 					<ListTree size={14} strokeWidth={1.8} color="var(--atlas-bronze)" />
 					<HudLabel style={{ color: 'var(--atlas-bronze)' }}>GOALS</HudLabel>
 				</span>
-				<button
-					type="button"
-					onClick={() => setAdding((v) => !v)}
-					title="Add goal"
-					style={ghostIconStyle}
-				>
-					<Plus size={14} strokeWidth={2} />
-				</button>
+				<div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+					<button
+						type="button"
+						onClick={() => setShowDone(false)}
+						style={{
+							padding: '3px 8px', borderRadius: 2,
+							border: `1px solid ${!showDone ? 'rgba(79,139,255,0.4)' : 'var(--l2-hairline)'}`,
+							background: !showDone ? 'rgba(79,139,255,0.1)' : 'transparent',
+							color: !showDone ? 'var(--atlas-celestial)' : 'var(--l2-fg-3)',
+							fontFamily: 'var(--l2-font-mono)', fontSize: 9, letterSpacing: '0.14em',
+							cursor: 'pointer'
+						}}
+					>
+						ACTIVE{activeTree.length > 0 ? ` (${activeTree.length})` : ''}
+					</button>
+					<button
+						type="button"
+						onClick={() => setShowDone(true)}
+						style={{
+							padding: '3px 8px', borderRadius: 2,
+							border: `1px solid ${showDone ? 'rgba(70,240,160,0.4)' : 'var(--l2-hairline)'}`,
+							background: showDone ? 'rgba(70,240,160,0.1)' : 'transparent',
+							color: showDone ? 'var(--atlas-emerald)' : 'var(--l2-fg-3)',
+							fontFamily: 'var(--l2-font-mono)', fontSize: 9, letterSpacing: '0.14em',
+							cursor: 'pointer'
+						}}
+					>
+						CONCLUDED{doneTree.length > 0 ? ` (${doneTree.length})` : ''}
+					</button>
+					<button
+						type="button"
+						onClick={() => setAdding((v) => !v)}
+						title="Add goal"
+						style={ghostIconStyle}
+					>
+						<Plus size={14} strokeWidth={2} />
+					</button>
+				</div>
 			</div>
-			<div style={{ padding: tree.length === 0 && !adding ? '20px 18px' : '12px 10px 14px' }}>
+			<div style={{ padding: visibleTree.length === 0 && !adding ? '20px 18px' : '12px 10px 14px' }}>
 				{adding && <InlineAdd placeholder="New goal…" busy={busy} onSubmit={addRoot} onCancel={() => setAdding(false)} />}
-				{tree.length === 0 && !adding && (
-					<div style={{ color: 'var(--l2-fg-3)', fontSize: 13, lineHeight: 1.5 }}>
-						No goals yet. Add goals, sub-goals, and tasks — the loop synthesizes run instructions from this tree.
+				{visibleTree.length === 0 && !adding && treeErr && (
+					<div style={{ padding: '12px 18px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+						<span style={{ width: 6, height: 6, marginTop: 4, borderRadius: '50%', background: 'var(--l2-error)', boxShadow: '0 0 6px rgba(255,0,85,0.4)', flex: 'none' }} />
+						<div>
+							<div style={{ color: 'var(--l2-fg-1)', fontSize: 13, marginBottom: 2 }}>{treeErr}</div>
+							<div style={{ color: 'var(--l2-fg-3)', fontSize: 11, fontFamily: 'var(--l2-font-mono)', letterSpacing: '0.04em' }}>
+								START THE GATEWAY TO MANAGE GOALS
+							</div>
+						</div>
 					</div>
 				)}
-				{tree.map((node) => (
+				{visibleTree.length === 0 && !adding && !treeErr && (
+					<div style={{ color: 'var(--l2-fg-3)', fontSize: 13, lineHeight: 1.5 }}>
+						{showDone
+							? 'No concluded goals yet.'
+							: 'No goals yet. Add goals, sub-goals, and tasks — the loop synthesizes run instructions from this tree.'}
+					</div>
+				)}
+				{visibleTree.map((node) => (
 					<GoalNodeView
 						key={node.id}
 						node={node}
@@ -584,12 +639,23 @@ function GoalNodeView({
 	const [opsOpen, setOpsOpen] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const [confirmDelete, setConfirmDelete] = useState(false);
+	const [goalErr, setGoalErr] = useState<string | null>(null);
+	const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	useEffect(() => {
+		return () => {
+			if (confirmTimer.current) clearTimeout(confirmTimer.current);
+		};
+	}, []);
 
 	async function addTask(title: string) {
 		setBusy(true);
+		setGoalErr(null);
 		try {
 			await createTask(node.id, title);
 			onChanged();
+		} catch (e) {
+			setGoalErr(e instanceof Error ? e.message : 'Add task failed');
 		} finally {
 			setBusy(false);
 			setMode(null);
@@ -597,9 +663,12 @@ function GoalNodeView({
 	}
 	async function addSub(title: string) {
 		setBusy(true);
+		setGoalErr(null);
 		try {
 			await createGoal({ title, focus: focusId, parent: node.id });
 			onChanged();
+		} catch (e) {
+			setGoalErr(e instanceof Error ? e.message : 'Add sub-goal failed');
 		} finally {
 			setBusy(false);
 			setMode(null);
@@ -612,15 +681,19 @@ function GoalNodeView({
 	}
 	async function togglePause() {
 		setBusy(true);
+		setGoalErr(null);
 		try {
 			await updateGoal(node.id, { status: node.status === 'paused' ? 'active' : 'paused' });
 			onChanged();
+		} catch (e) {
+			setGoalErr(e instanceof Error ? e.message : 'Toggle failed');
 		} finally {
 			setBusy(false);
 		}
 	}
 	async function conclude(note: string) {
 		setBusy(true);
+		setGoalErr(null);
 		try {
 			// Status first so a lost observation write cannot leave a "concluded"
 			// note on a goal that is still open; the note retry is cheap.
@@ -629,6 +702,8 @@ function GoalNodeView({
 				await createObservation({ body: note.trim(), goal: node.id, source: 'operator' });
 			}
 			onChanged();
+		} catch (e) {
+			setGoalErr(e instanceof Error ? e.message : 'Conclude failed');
 		} finally {
 			setBusy(false);
 			setMode(null);
@@ -636,12 +711,24 @@ function GoalNodeView({
 	}
 	async function removeGoal() {
 		setBusy(true);
+		setGoalErr(null);
 		try {
 			await deleteGoal(node.id);
 			onChanged();
+		} catch (e) {
+			setGoalErr(e instanceof Error ? e.message : 'Delete failed');
 		} finally {
 			setBusy(false);
 			setConfirmDelete(false);
+		}
+	}
+	async function archive() {
+		setGoalErr(null);
+		try {
+			await archiveGoal(node.id);
+			onChanged();
+		} catch (e) {
+			setGoalErr(e instanceof Error ? e.message : 'Archive failed');
 		}
 	}
 
@@ -657,23 +744,21 @@ function GoalNodeView({
 						{node.status}
 					</span>
 					<div className="goal-row-actions">
-						<button type="button" title="Add sub-goal" aria-label="Add sub-goal" onClick={() => setMode(mode === 'subgoal' ? null : 'subgoal')} style={miniIconStyle}>
+						<GoalIconButton title="Add sub-goal" onClick={() => setMode(mode === 'subgoal' ? null : 'subgoal')} active={mode === 'subgoal'}>
 							<CornerDownRight size={12} strokeWidth={1.8} />
-						</button>
-						<button type="button" title="Add task" aria-label="Add task" onClick={() => setMode(mode === 'task' ? null : 'task')} style={miniIconStyle}>
+						</GoalIconButton>
+						<GoalIconButton title="Add task" onClick={() => setMode(mode === 'task' ? null : 'task')} active={mode === 'task'}>
 							<Plus size={13} strokeWidth={2} />
-						</button>
+						</GoalIconButton>
 						{operations.length > 0 && (
 							<div style={{ position: 'relative', flex: 'none' }}>
-								<button
-									type="button"
+								<GoalIconButton
 									title="Run an operation on this goal"
-									aria-label="Run an operation on this goal"
 									onClick={() => setOpsOpen((v) => !v)}
-									style={{ ...miniIconStyle, color: opsOpen ? 'var(--atlas-celestial)' : 'var(--l2-fg-3)' }}
+									active={opsOpen}
 								>
 									<Zap size={12} strokeWidth={1.9} />
-								</button>
+								</GoalIconButton>
 								{opsOpen && (
 									<OperationsMenu
 										operations={operations}
@@ -688,43 +773,43 @@ function GoalNodeView({
 						)}
 						<span className="goal-row-actions__divider" aria-hidden="true" />
 						{node.status !== 'done' && (
-							<button
-								type="button"
+							<GoalIconButton
 								title={node.status === 'paused' ? 'Resume goal' : 'Pause goal'}
-								aria-label={node.status === 'paused' ? 'Resume goal' : 'Pause goal'}
-								disabled={busy}
 								onClick={() => void togglePause()}
-								style={{ ...miniIconStyle, color: node.status === 'paused' ? 'var(--atlas-bronze)' : 'var(--l2-fg-3)' }}
+								disabled={busy}
+								active={node.status === 'paused'}
 							>
 								{node.status === 'paused' ? <Play size={12} strokeWidth={1.9} /> : <Pause size={12} strokeWidth={1.9} />}
-							</button>
+							</GoalIconButton>
 						)}
 						{node.status !== 'done' && (
-							<button
-								type="button"
+							<GoalIconButton
 								title="Mark concluded (with optional observation)"
-								aria-label="Mark concluded"
 								onClick={() => setMode(mode === 'conclude' ? null : 'conclude')}
-								style={{ ...miniIconStyle, color: mode === 'conclude' ? 'var(--atlas-emerald)' : 'var(--l2-fg-3)' }}
+								active={mode === 'conclude'}
 							>
 								<CheckCircle2 size={12} strokeWidth={1.9} />
-							</button>
+							</GoalIconButton>
 						)}
-						<button type="button" title="Archive goal" aria-label="Archive goal" onClick={() => { void archiveGoal(node.id).then(onChanged); }} style={miniIconStyle}>
+						<GoalIconButton title="Archive goal" onClick={() => void archive()}>
 							<Archive size={12} strokeWidth={1.8} />
-						</button>
-						<button
-							type="button"
+						</GoalIconButton>
+						<GoalIconButton
 							title={confirmDelete ? 'Click again to permanently delete' : 'Delete goal (and sub-goals)'}
-							aria-label={confirmDelete ? 'Click again to permanently delete' : 'Delete goal'}
+							onClick={() => {
+								if (confirmDelete) {
+									void removeGoal();
+								} else {
+									setConfirmDelete(true);
+									if (confirmTimer.current) clearTimeout(confirmTimer.current);
+									confirmTimer.current = setTimeout(() => setConfirmDelete(false), 3000);
+								}
+							}}
 							disabled={busy}
-							onClick={() => (confirmDelete ? void removeGoal() : setConfirmDelete(true))}
-							onBlur={() => setConfirmDelete(false)}
-							className="goal-row-actions__danger"
-							style={{ ...miniIconStyle, color: confirmDelete ? 'var(--l2-error)' : 'var(--l2-fg-3)' }}
+							danger={confirmDelete}
 						>
 							<Trash2 size={12} strokeWidth={1.8} />
-						</button>
+						</GoalIconButton>
 					</div>
 				</div>
 				{node.description && (
@@ -763,6 +848,23 @@ function GoalNodeView({
 								<span style={{ color: 'var(--atlas-bronze)' }}>· {o.source}:</span> {o.body}
 							</div>
 						))}
+					</div>
+				)}
+				{goalErr && (
+					<div style={{
+						marginLeft: 14, marginTop: 4, padding: '4px 8px', borderRadius: 2,
+						background: 'rgba(255,82,82,0.1)', border: '1px solid rgba(255,82,82,0.3)',
+						color: 'var(--l2-error)', fontSize: 11, fontFamily: 'var(--l2-font-mono)',
+						display: 'flex', alignItems: 'center', gap: 6
+					}}>
+						<span>{goalErr}</span>
+						<button
+							type="button"
+							onClick={() => setGoalErr(null)}
+							style={{ background: 'none', border: 'none', color: 'var(--l2-error)', cursor: 'pointer', padding: 0, marginLeft: 'auto' }}
+						>
+							<X size={10} strokeWidth={2} />
+						</button>
 					</div>
 				)}
 				{mode === 'conclude' && (
@@ -913,6 +1015,55 @@ const ghostIconStyle: React.CSSProperties = {
 	color: 'var(--l2-fg-3)',
 	cursor: 'pointer'
 };
+
+/// Smaller icon button for goal action rows — matches IconButton design language.
+function GoalIconButton({
+	children, title, onClick, active, danger, disabled
+}: {
+	children: React.ReactNode;
+	title: string;
+	onClick: () => void;
+	active?: boolean;
+	danger?: boolean;
+	disabled?: boolean;
+}) {
+	const baseColor = danger ? 'var(--l2-error)' : active ? 'var(--atlas-celestial)' : 'var(--l2-fg-3)';
+	const borderColor = danger ? 'rgba(255,82,82,0.3)' : 'var(--l2-hairline)';
+	return (
+		<button
+			type="button"
+			title={title}
+			disabled={disabled}
+			onClick={onClick}
+			style={{
+				display: 'inline-flex',
+				alignItems: 'center',
+				justifyContent: 'center',
+				width: 26,
+				height: 26,
+				borderRadius: 2,
+				border: `1px solid ${borderColor}`,
+				background: active ? 'rgba(79,139,255,0.1)' : 'transparent',
+				color: baseColor,
+				cursor: disabled ? 'default' : 'pointer',
+				opacity: disabled ? 0.5 : 1,
+				transition: 'border-color var(--l2-duration-xs) var(--l2-ease), color var(--l2-duration-xs) var(--l2-ease)',
+				flex: 'none'
+			}}
+			onMouseEnter={(e) => {
+				if (disabled) return;
+				e.currentTarget.style.borderColor = danger ? 'rgba(255,82,82,0.5)' : 'rgba(70,240,160,0.4)';
+				e.currentTarget.style.color = danger ? 'var(--l2-error)' : 'var(--l2-fg-1)';
+			}}
+			onMouseLeave={(e) => {
+				e.currentTarget.style.borderColor = borderColor;
+				e.currentTarget.style.color = baseColor;
+			}}
+		>
+			{children}
+		</button>
+	);
+}
 
 const miniIconStyle: React.CSSProperties = {
 	display: 'inline-flex',
