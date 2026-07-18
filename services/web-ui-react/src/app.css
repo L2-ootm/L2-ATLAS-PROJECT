@@ -1859,3 +1859,21 @@ body,
 	.chat-slash-suggestions { animation: none; }
 	.chat-actor-row, .chat-actor-workspace, .chat-composer-shell, .chat-actor-detail, .chat-model-router, .chat-actor-signal-node > span::before, .chat-actor-signal-node > span::after, .chat-actor-row__signal i, .chat-actor-detail__signal-core::before, .chat-actor-detail__signal-core::after, .chat-orchestration-card::before { transition: none; animation: none; }
 }
+
+/* ==========================================================================
+   KaTeX dark-theme overrides for math rendering
+   ========================================================================== */
+.katex { color: var(--l2-fg-1); }
+.katex .mord { color: var(--l2-fg-1); }
+.katex .mbin { color: var(--l2-fg-2); }
+.katex .mrel { color: var(--l2-fg-2); }
+.katex .mop { color: var(--atlas-celestial); }
+.katex .mopen,
+.katex .mclose { color: var(--l2-fg-3); }
+.katex-display {
+	margin: 12px 0;
+	overflow-x: auto;
+	overflow-y: hidden;
+	padding: 4px 0;
+}
+.katex-display > .katex { font-size: 1.1em; }

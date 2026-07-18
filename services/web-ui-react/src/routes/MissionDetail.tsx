@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Archive, Play, Ban, X, RotateCcw } from 'lucide-react';
+import { Archive, Play, Ban, X, RotateCcw, Pencil, Eye } from 'lucide-react';
 import { Page } from '../components/Page';
 import { AgentBadge, GlassPanel, HudLabel, StatusBadge } from '../components/hud';
 import RunTimeline from '../components/RunTimeline';
 import LiveBadge from '../components/LiveBadge';
 import BorderGlow from '../components/BorderGlow';
 import GlassTopo from '../components/GlassTopo';
-import { archiveMission, getMission, startRun, retryMission, cancelRun, type AgentRuntime, type Mission, type Run } from '../lib/api';
+import { archiveMission, getMission, startRun, retryMission, cancelRun, updateMission, getMissionContext, type AgentRuntime, type Mission, type Run } from '../lib/api';
 import sealMark from '../brand/assets/seal.webp';
 
 type Load =
@@ -44,6 +44,14 @@ export default function MissionDetail() {
 	const [archiveDays, setArchiveDays] = useState(30);
 	const [archiveError, setArchiveError] = useState<string | null>(null);
 	const [archiving, setArchiving] = useState(false);
+	const [editing, setEditing] = useState(false);
+	const [editTitle, setEditTitle] = useState('');
+	const [editIntent, setEditIntent] = useState('');
+	const [saving, setSaving] = useState(false);
+	const [saveError, setSaveError] = useState<string | null>(null);
+	const [contextOpen, setContextOpen] = useState(false);
+	const [contextData, setContextData] = useState<string | null>(null);
+	const [contextLoading, setContextLoading] = useState(false);
 
 	const refresh = useCallback(async () => {
 		try {
@@ -118,7 +126,57 @@ export default function MissionDetail() {
 	const canLaunch = missionStatus === 'PENDING';
 	const canRetry = missionStatus === 'FAILED' || missionStatus === 'CANCELLED';
 	const canArchive = missionStatus === 'SUCCEEDED' || missionStatus === 'COMPLETED';
+	const canEdit = missionStatus === 'PENDING' || missionStatus === 'FAILED' || missionStatus === 'CANCELLED';
 	const archived = missionStatus === 'ARCHIVED';
+
+	function startEdit() {
+		if (!mission) return;
+		setEditTitle(mission.title);
+		setEditIntent(mission.intent || '');
+		setEditing(true);
+		setSaveError(null);
+	}
+
+	function cancelEdit() {
+		setEditing(false);
+		setSaveError(null);
+	}
+
+	async function doSave() {
+		if (saving || load.s !== 'ready') return;
+		setSaving(true);
+		setSaveError(null);
+		try {
+			await updateMission(load.mission.id, {
+				title: editTitle.trim() || undefined,
+				intent: editIntent.trim() || undefined,
+			});
+			setEditing(false);
+			await refresh();
+		} catch (e) {
+			setSaveError(`SAVE FAILED — ${e instanceof Error ? e.message : String(e)}`);
+		} finally {
+			setSaving(false);
+		}
+	}
+
+	async function toggleContext() {
+		if (contextOpen) {
+			setContextOpen(false);
+			return;
+		}
+		if (!mission) return;
+		setContextOpen(true);
+		setContextLoading(true);
+		try {
+			const { context_markdown } = await getMissionContext(mission.id);
+			setContextData(context_markdown);
+		} catch {
+			setContextData('Failed to load context.');
+		} finally {
+			setContextLoading(false);
+		}
+	}
 
 	return (
 		<Page
@@ -128,6 +186,16 @@ export default function MissionDetail() {
 				load.s === 'ready' ? (
 					<>
 						{(canLaunch || canRetry) && <AgentSelect value={agent} onChange={setAgent} disabled={launching || retrying} />}
+						{canEdit && !editing && (
+							<GhostButton icon={<Pencil size={15} strokeWidth={1.5} />} onClick={startEdit}>
+								Edit
+							</GhostButton>
+						)}
+						{hasActive && (
+							<GhostButton icon={<Eye size={15} strokeWidth={1.5} />} onClick={toggleContext}>
+								Context
+							</GhostButton>
+						)}
 						{canArchive && (
 							<GhostButton icon={<Archive size={15} strokeWidth={1.5} />} onClick={() => setArchiveOpen(true)}>
 								Archive
@@ -186,10 +254,57 @@ export default function MissionDetail() {
 							<div style={{ marginBottom: 18 }}>
 								<RunTimeline status={mission.status} />
 							</div>
-							{mission.intent && (
-								<p style={{ margin: '0 0 18px', color: 'var(--l2-fg-2)', fontSize: 15, lineHeight: 1.6 }}>
-									{mission.intent}
-								</p>
+							{editing ? (
+								<div style={{ marginBottom: 18 }}>
+									<input
+										value={editTitle}
+										onChange={(e) => setEditTitle(e.target.value)}
+										placeholder="Mission title"
+										style={{
+											width: '100%',
+											padding: '8px 12px',
+											borderRadius: 2,
+											border: '1px solid var(--l2-hairline)',
+											background: 'rgba(9,11,16,0.72)',
+											color: 'var(--l2-fg-1)',
+											fontSize: 15,
+											marginBottom: 10
+										}}
+									/>
+									<textarea
+										value={editIntent}
+										onChange={(e) => setEditIntent(e.target.value)}
+										placeholder="Mission intent (optional)"
+										rows={4}
+										style={{
+											width: '100%',
+											padding: '8px 12px',
+											borderRadius: 2,
+											border: '1px solid var(--l2-hairline)',
+											background: 'rgba(9,11,16,0.72)',
+											color: 'var(--l2-fg-1)',
+											fontSize: 14,
+											resize: 'vertical'
+										}}
+									/>
+									{saveError && (
+										<div style={{ marginTop: 8, fontFamily: 'var(--l2-font-mono)', fontSize: 12, color: 'var(--l2-error)' }}>
+											{saveError}
+										</div>
+									)}
+									<div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+										<PrimaryButton onClick={doSave} disabled={saving}>
+											{saving ? 'Saving…' : 'Save'}
+										</PrimaryButton>
+										<GhostButton onClick={cancelEdit}>Cancel</GhostButton>
+									</div>
+								</div>
+							) : (
+								mission.intent && (
+									<p style={{ margin: '0 0 18px', color: 'var(--l2-fg-2)', fontSize: 15, lineHeight: 1.6 }}>
+										{mission.intent}
+									</p>
+								)
 							)}
 							<div style={{ display: 'flex', gap: 28, flexWrap: 'wrap' }}>
 								<Meta label="CREATED" value={fmt(mission.created_at)} />
@@ -213,6 +328,36 @@ export default function MissionDetail() {
 							}}
 							onConfirm={doArchive}
 						/>
+					)}
+
+					{contextOpen && (
+						<GlassPanel style={{ padding: 16, marginBottom: 12 }}>
+							<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+								<HudLabel>CONTEXT BRIEF</HudLabel>
+								<GhostButton onClick={() => setContextOpen(false)}>
+									<X size={14} strokeWidth={2} />
+								</GhostButton>
+							</div>
+							{contextLoading ? (
+								<div style={{ color: 'var(--l2-fg-3)', fontSize: 13 }}>Loading context…</div>
+							) : (
+								<pre style={{
+									margin: 0,
+									padding: 12,
+									borderRadius: 2,
+									background: 'rgba(5,6,10,0.65)',
+									fontFamily: 'var(--l2-font-mono)',
+									fontSize: 12,
+									lineHeight: 1.55,
+									maxHeight: 400,
+									overflow: 'auto',
+									whiteSpace: 'pre-wrap',
+									color: 'var(--l2-fg-2)'
+								}}>
+									{contextData || 'No context available.'}
+								</pre>
+							)}
+						</GlassPanel>
 					)}
 
 					{/* runs */}

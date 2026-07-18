@@ -1,10 +1,12 @@
 import {
 	ArrowUpToLine,
 	ListPlus,
+	Paperclip,
 	Pencil,
 	SendHorizontal,
 	Square,
-	Trash2
+	Trash2,
+	X
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AgentRuntime } from '../../lib/api';
@@ -12,6 +14,16 @@ import { agentRuntimeLabel } from '../../lib/api';
 import { ATLAS_COMMANDS, expandCommandTemplate, matchAtlasCommands, type AtlasCommand } from '../../lib/atlasCommands';
 import { loadAtlasCommandCatalog } from '../../lib/commandCatalog';
 import type { QueuedChatPrompt } from '../../lib/chatPersistence';
+
+interface ChatAttachment {
+	id: string;
+	name: string;
+	type: 'image' | 'file';
+	mimeType: string;
+	size: number;
+	data?: string; // base64 for images
+	previewUrl?: string;
+}
 
 export function QueuedChatComposer({
 	draft,
@@ -43,6 +55,8 @@ export function QueuedChatComposer({
 	onRemove: (id: string) => void;
 }) {
 	const [localDraft, setLocalDraft] = useState(draft);
+	const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
+	const fileInputRef = useRef<HTMLInputElement>(null);
 	const [catalog, setCatalog] = useState<AtlasCommand[]>(ATLAS_COMMANDS);
 	const [slashSelected, setSlashSelected] = useState(0);
 	const scanRef = useRef<HTMLSpanElement>(null);
@@ -94,7 +108,75 @@ export function QueuedChatComposer({
 			persistTimer.current = null;
 		}
 		setLocalDraft('');
+		setAttachments([]);
 		onDraftPersist('');
+	}
+
+	const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+	const MAX_FILES = 5;
+	const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml'];
+	const ALLOWED_TYPES = [...IMAGE_TYPES, 'application/pdf', 'text/plain', 'text/markdown', 'text/csv', 'application/json'];
+
+	function handleFiles(files: FileList | File[]) {
+		const fileArray = Array.from(files);
+		if (attachments.length + fileArray.length > MAX_FILES) {
+			return; // Silently ignore excess files
+		}
+
+		for (const file of fileArray) {
+			if (file.size > MAX_FILE_SIZE) continue;
+			if (!ALLOWED_TYPES.includes(file.type) && !file.name.match(/\.(txt|md|csv|json|py|js|ts|jsx|tsx|html|css|yaml|yml|toml)$/i)) {
+				continue;
+			}
+
+			const reader = new FileReader();
+			const isImage = IMAGE_TYPES.includes(file.type);
+
+			reader.onload = (e) => {
+				const result = e.target?.result as string;
+				const attachment: ChatAttachment = {
+					id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+					name: file.name,
+					type: isImage ? 'image' : 'file',
+					mimeType: file.type,
+					size: file.size,
+					data: isImage ? result : undefined,
+					previewUrl: isImage ? URL.createObjectURL(file) : undefined
+				};
+				setAttachments((prev) => [...prev, attachment]);
+			};
+
+			if (isImage) {
+				reader.readAsDataURL(file);
+			} else {
+				reader.readAsText(file);
+			}
+		}
+	}
+
+	function removeAttachment(id: string) {
+		setAttachments((prev) => {
+			const att = prev.find((a) => a.id === id);
+			if (att?.previewUrl) URL.revokeObjectURL(att.previewUrl);
+			return prev.filter((a) => a.id !== id);
+		});
+	}
+
+	function handlePaste(event: React.ClipboardEvent) {
+		const items = event.clipboardData?.items;
+		if (!items) return;
+
+		const files: File[] = [];
+		for (const item of Array.from(items)) {
+			if (item.kind === 'file') {
+				const file = item.getAsFile();
+				if (file) files.push(file);
+			}
+		}
+		if (files.length > 0) {
+			event.preventDefault();
+			handleFiles(files);
+		}
 	}
 
 	function submit() {
@@ -118,6 +200,42 @@ export function QueuedChatComposer({
 
 	return (
 		<div className="chat-composer-region">
+			{attachments.length > 0 && (
+				<div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: '6px 10px', borderBottom: '1px solid rgba(237,234,224,0.06)' }}>
+					{attachments.map((att) => (
+						<div
+							key={att.id}
+							style={{
+								display: 'flex',
+								alignItems: 'center',
+								gap: 6,
+								padding: '4px 8px',
+								borderRadius: 2,
+								border: '1px solid rgba(237,234,224,0.10)',
+								background: 'rgba(13,16,24,0.45)',
+								fontFamily: 'var(--l2-font-mono)',
+								fontSize: 11,
+								color: 'var(--l2-fg-2)'
+							}}
+						>
+							{att.type === 'image' && att.previewUrl && (
+								<img src={att.previewUrl} alt="" style={{ width: 20, height: 20, objectFit: 'cover', borderRadius: 1 }} />
+							)}
+							<span>{att.name}</span>
+							<span style={{ color: 'var(--l2-fg-3)', fontSize: 10 }}>
+								{(att.size / 1024).toFixed(0)}KB
+							</span>
+							<button
+								type="button"
+								onClick={() => removeAttachment(att.id)}
+								style={{ background: 'none', border: 'none', color: 'var(--l2-fg-3)', cursor: 'pointer', padding: 0, display: 'flex' }}
+							>
+								<X size={12} />
+							</button>
+						</div>
+					))}
+				</div>
+			)}
 			{queue.length > 0 && (
 				<div className="chat-prompt-queue" aria-label={`${queue.length} queued prompts`}>
 					{queue.map((item, index) => (
@@ -165,10 +283,29 @@ export function QueuedChatComposer({
 			)}
 			<div className="chat-composer-shell" data-busy={busy ? 'true' : 'false'}>
 				<span ref={scanRef} className="chat-composer-typing-scan" aria-hidden="true" />
+				<input
+					ref={fileInputRef}
+					type="file"
+					multiple
+					accept={ALLOWED_TYPES.join(',')}
+					style={{ display: 'none' }}
+					onChange={(e) => {
+						if (e.target.files) handleFiles(e.target.files);
+						e.target.value = '';
+					}}
+				/>
 				<textarea
 					className="chat-composer-input"
 					value={localDraft}
 					onChange={(event) => changeDraft(event.target.value)}
+					onPaste={handlePaste}
+					onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = 'rgba(79,139,255,0.5)'; }}
+					onDragLeave={(e) => { e.currentTarget.style.borderColor = ''; }}
+					onDrop={(e) => {
+						e.preventDefault();
+						e.currentTarget.style.borderColor = '';
+						if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
+					}}
 					onKeyDown={(event) => {
 						if (slashMatches.length && event.key === 'ArrowDown') {
 							event.preventDefault();
@@ -204,6 +341,26 @@ export function QueuedChatComposer({
 						<span>{busy ? `${queue.length}/4 queued · Enter adds next` : 'Enter to send · Shift+Enter for a line break'}</span>
 					</div>
 					<div className="chat-composer-toolbar__actions">
+						<button
+							type="button"
+							onClick={() => fileInputRef.current?.click()}
+							title="Attach files"
+							aria-label="Attach files"
+							style={{
+								display: 'inline-flex',
+								alignItems: 'center',
+								justifyContent: 'center',
+								width: 28,
+								height: 28,
+								borderRadius: 2,
+								border: '1px solid rgba(237,234,224,0.10)',
+								background: 'transparent',
+								color: 'var(--l2-fg-3)',
+								cursor: 'pointer'
+							}}
+						>
+							<Paperclip size={14} />
+						</button>
 						{busy && (
 							<button type="button" className="chat-composer-cancel" onClick={onCancel} title="Cancel the running turn" aria-label="Cancel the running turn">
 								<Square size={13} fill="currentColor" />
@@ -213,7 +370,7 @@ export function QueuedChatComposer({
 							type="button"
 							className="chat-composer-submit"
 							onClick={submit}
-							disabled={!localDraft.trim()}
+							disabled={!localDraft.trim() && attachments.length === 0}
 							title={busy ? 'Queue this prompt' : 'Send prompt'}
 							aria-label={busy ? 'Queue this prompt' : 'Send prompt'}
 						>

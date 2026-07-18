@@ -173,6 +173,22 @@ export async function getMission(id: string): Promise<{ mission: Mission; runs: 
 	return apiFetch(`/v1/missions/${encodeURIComponent(id)}`);
 }
 
+export async function updateMission(
+	id: string,
+	patch: { title?: string; intent?: string; project?: string }
+): Promise<{ mission: Mission; runs: Run[] }> {
+	return apiFetch(`/v1/missions/${encodeURIComponent(id)}`, {
+		method: 'PATCH',
+		body: JSON.stringify(patch)
+	});
+}
+
+export async function getMissionContext(
+	id: string
+): Promise<{ mission_id: string; context_markdown: string }> {
+	return apiFetch(`/v1/missions/${encodeURIComponent(id)}/context`);
+}
+
 export async function createMission(
 	title: string,
 	intent: string,

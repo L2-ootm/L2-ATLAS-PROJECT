@@ -15,6 +15,7 @@ import Ledger from './routes/Ledger';
 import Codex from './routes/Codex';
 import Models from './routes/Models';
 import Integrations from './routes/Integrations';
+import SkillsPage from './routes/SkillsPage';
 import Migrating from './routes/Migrating';
 import { RouteLoadError } from './components/RouteLoadError';
 import { recoveringLazy } from './lib/recoveringLazy';
@@ -49,6 +50,7 @@ const router = createBrowserRouter([
 			{ path: 'audit', element: <Ledger /> },
 			{ path: 'wiki', element: <Codex /> },
 			{ path: 'models', element: <Models /> },
+			{ path: 'skills', element: <SkillsPage /> },
 			{ path: 'integrations', element: <Integrations /> },
 			{ path: 'discord', element: <Discord /> },
 			{ path: 'control', element: <Control /> },

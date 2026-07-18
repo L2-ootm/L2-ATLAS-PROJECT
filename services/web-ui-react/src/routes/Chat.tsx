@@ -311,13 +311,16 @@ export default function Chat() {
 	);
 
 	// Rebinding releases the held surface session (it is workspace-bound).
+	// Skip release on initial mount — only release when bindingKey actually changes.
 	const bindingKey = `${bindingMode}|${projectId}|${boundCwd ?? ''}`;
 	const releaseSession = agentSurface.releaseSession;
+	const prevBindingKeyRef = useRef(bindingKey);
 	useEffect(() => {
+		if (prevBindingKeyRef.current === bindingKey) return;
+		prevBindingKeyRef.current = bindingKey;
 		if (activeTurn) return;
 		void releaseSession();
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [bindingKey]);
+	}, [bindingKey, activeTurn, releaseSession]);
 
 	// ── dispatch ─────────────────────────────────────────────────────────────
 	async function dispatchPrompt(prompt: string, displayPrompt = prompt) {
