@@ -143,6 +143,37 @@ test('doctor reports healthy after install and unhealthy on checksum drift', () 
 	assert.match(checksumCheck.detail, /atlas-gateway/);
 });
 
+test('doctor flags a launcher/runtime version mismatch only for npm-platform-package installs', () => {
+	const home = tempDir('home');
+	const bundle = tempDir('bundle');
+	stageBundle(bundle, { 'bin/runtime.js': 'process.exit(0);\n' });
+	const launcherVersion = require('../package.json').version;
+
+	cmds.installBundledPlatform(home, { from: bundle, version: launcherVersion, entrypoint: 'bin/runtime.js' });
+	let report = cmds.doctor(home);
+	let versionCheck = report.checks.find((c) => c.name === 'version-consistency');
+	assert.ok(versionCheck);
+	assert.equal(versionCheck.ok, true);
+
+	cmds.uninstall(home, {});
+	cmds.installBundledPlatform(home, { from: bundle, version: '0.0.1-mismatch', entrypoint: 'bin/runtime.js' });
+	report = cmds.doctor(home);
+	versionCheck = report.checks.find((c) => c.name === 'version-consistency');
+	assert.equal(versionCheck.ok, false);
+	assert.equal(report.ok, false);
+});
+
+test('doctor skips the version-consistency check for local-staged installs (arbitrary dev versions)', () => {
+	const home = tempDir('home');
+	const bundle = tempDir('bundle');
+	stageBundle(bundle, { 'bin/atlas-gateway': 'binary-stub' });
+	cmds.install(home, { from: bundle, version: '9.9.9' });
+
+	const report = cmds.doctor(home);
+	assert.equal(report.checks.some((c) => c.name === 'version-consistency'), false);
+	assert.equal(report.ok, true);
+});
+
 test('update retains the previous version and rollback flips current back', () => {
 	const home = tempDir('home');
 	const bundleV1 = tempDir('bundle-v1');
@@ -171,6 +202,149 @@ test('rollback with no prior version on record requires an explicit --to', () =>
 	cmds.install(home, { from: bundle, version: '0.1.0' });
 
 	assert.throws(() => cmds.rollback(home, {}), cmds.CliError);
+});
+
+test('rollback rejects when already at the target version', () => {
+	const home = tempDir('home');
+	const bundle = tempDir('bundle');
+	stageBundle(bundle, { 'bin/atlas-gateway': 'v1' });
+	cmds.install(home, { from: bundle, version: '0.1.0' });
+
+	assert.throws(() => cmds.rollback(home, { to: '0.1.0' }), cmds.CliError);
+});
+
+test('rollback history chain supports multi-level yo-yo undo', () => {
+	const home = tempDir('home');
+	const v1 = tempDir('v1');
+	const v2 = tempDir('v2');
+	const v3 = tempDir('v3');
+	stageBundle(v1, { 'bin/atlas-gateway': 'v1' });
+	stageBundle(v2, { 'bin/atlas-gateway': 'v2' });
+	stageBundle(v3, { 'bin/atlas-gateway': 'v3' });
+
+	cmds.install(home, { from: v1, version: '0.1.0' });
+	cmds.update(home, { from: v2, version: '0.2.0' });
+	cmds.update(home, { from: v3, version: '0.3.0' });
+
+	const r1 = cmds.rollback(home, {});
+	assert.equal(r1.version, '0.2.0');
+	assert.equal(r1.rolledBackFrom, '0.3.0');
+
+	// history chain: rolling back again from 0.2.0 undoes the first rollback (yo-yo back to 0.3.0)
+	const r2 = cmds.rollback(home, {});
+	assert.equal(r2.version, '0.3.0');
+	assert.equal(r2.rolledBackFrom, '0.2.0');
+
+	const hist = cmds.rollbackHistory(home);
+	assert.equal(hist.current, '0.3.0');
+	assert.equal(hist.history.length, 2);
+	assert.equal(hist.history[0].from, '0.2.0');
+	assert.equal(hist.history[0].to, '0.3.0');
+	assert.equal(hist.history[1].from, '0.3.0');
+	assert.equal(hist.history[1].to, '0.2.0');
+});
+
+test('rollback --dry-run reports the plan without modifying any state', () => {
+	const home = tempDir('home');
+	const v1 = tempDir('v1');
+	const v2 = tempDir('v2');
+	stageBundle(v1, { 'bin/atlas-gateway': 'v1' });
+	stageBundle(v2, { 'bin/atlas-gateway': 'v2' });
+
+	cmds.install(home, { from: v1, version: '0.1.0' });
+	cmds.update(home, { from: v2, version: '0.2.0' });
+
+	const result = cmds.rollback(home, { dryRun: true });
+	assert.equal(result.dryRun, true);
+	assert.equal(result.version, '0.1.0');
+	assert.equal(result.rolledBackFrom, '0.2.0');
+	assert.equal(result.manifestVerified, true);
+
+	assert.equal(cmds.readCurrent(home), '0.2.0');
+	assert.deepEqual(cmds.rollbackHistory(home).history, []);
+});
+
+test('rollback --no-verify skips pre-verification and is reflected in the result', () => {
+	const home = tempDir('home');
+	const v1 = tempDir('v1');
+	const v2 = tempDir('v2');
+	stageBundle(v1, { 'bin/atlas-gateway': 'v1' });
+	stageBundle(v2, { 'bin/atlas-gateway': 'v2' });
+
+	cmds.install(home, { from: v1, version: '0.1.0' });
+	cmds.update(home, { from: v2, version: '0.2.0' });
+
+	const result = cmds.rollback(home, { noVerify: true });
+	assert.equal(result.version, '0.1.0');
+	assert.equal(result.manifestVerified, false);
+	assert.equal(cmds.readCurrent(home), '0.1.0');
+});
+
+test('rollback fails pre-verification when the target manifest was tampered with', () => {
+	const home = tempDir('home');
+	const v1 = tempDir('v1');
+	const v2 = tempDir('v2');
+	stageBundle(v1, { 'bin/atlas-gateway': 'v1' });
+	stageBundle(v2, { 'bin/atlas-gateway': 'v2' });
+
+	const { path: v1Path } = cmds.install(home, { from: v1, version: '0.1.0' });
+	cmds.update(home, { from: v2, version: '0.2.0' });
+
+	fs.writeFileSync(path.join(v1Path, 'bin', 'atlas-gateway'), 'tampered', 'utf8');
+	assert.throws(() => cmds.rollback(home, {}), /pre-verification/);
+	// nothing was flipped
+	assert.equal(cmds.readCurrent(home), '0.2.0');
+});
+
+test('rollback reports a healthy post-rollback doctor check', () => {
+	const home = tempDir('home');
+	const v1 = tempDir('v1');
+	const v2 = tempDir('v2');
+	stageBundle(v1, { 'bin/atlas-gateway': 'v1' });
+	stageBundle(v2, { 'bin/atlas-gateway': 'v2' });
+
+	cmds.install(home, { from: v1, version: '0.1.0' });
+	cmds.update(home, { from: v2, version: '0.2.0' });
+
+	const result = cmds.rollback(home, {});
+	assert.equal(result.postHealthCheck, true);
+	assert.ok(result.doctorReport);
+	assert.equal(result.doctorReport.ok, true);
+});
+
+test('explicit --to overrides the rollback history chain', () => {
+	const home = tempDir('home');
+	const v1 = tempDir('v1');
+	const v2 = tempDir('v2');
+	const v3 = tempDir('v3');
+	stageBundle(v1, { 'bin/atlas-gateway': 'v1' });
+	stageBundle(v2, { 'bin/atlas-gateway': 'v2' });
+	stageBundle(v3, { 'bin/atlas-gateway': 'v3' });
+
+	cmds.install(home, { from: v1, version: '0.1.0' });
+	cmds.update(home, { from: v2, version: '0.2.0' });
+	cmds.update(home, { from: v3, version: '0.3.0' });
+
+	const result = cmds.rollback(home, { to: '0.1.0' });
+	assert.equal(result.version, '0.1.0');
+	assert.equal(result.rolledBackFrom, '0.3.0');
+});
+
+test('rollback history is capped at 20 entries', () => {
+	const home = tempDir('home');
+	const bundle = tempDir('bundle');
+	stageBundle(bundle, { 'bin/atlas-gateway': 'v1' });
+	cmds.install(home, { from: bundle, version: '0.1.0' });
+
+	for (let i = 2; i <= 23; i += 1) {
+		const vDir = tempDir(`v${i}`);
+		stageBundle(vDir, { 'bin/atlas-gateway': `v${i}` });
+		cmds.update(home, { from: vDir, version: `0.${i}.0` });
+		cmds.rollback(home, {});
+	}
+
+	const hist = cmds.rollbackHistory(home);
+	assert.ok(hist.history.length <= 20);
 });
 
 test('uninstall removes versions/current/install.json and doctor then reports no version', () => {
@@ -429,4 +603,90 @@ test('clean install verifier runs install, update, rollback, uninstall against r
 	]);
 	assert.equal(cmds.readCurrent(home), null);
 	assert.deepEqual(cmds.listVersions(home), []);
+});
+
+/** A `.js` runtime-entrypoint stub, in the style of lifecycle.test.js's
+ * `bin/runtime.js` fixture, that answers `db init` the way the real
+ * atlas_runtime CLI does (see cli/main.py db_init: "applied X" per line or
+ * "already up to date"). Returns the relative entrypoint path to pass as
+ * `opts.entrypoint`. */
+function writeMigrationStub(bundleDir, behavior) {
+	const relPath = 'bin/runtime.js';
+	const scriptPath = path.join(bundleDir, relPath);
+	fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
+	const body = {
+		'apply-one': "if (args[0] === 'db' && args[1] === 'init') { console.log('applied 0099_test.sql'); process.exit(0); }",
+		'up-to-date': "if (args[0] === 'db' && args[1] === 'init') { console.log('already up to date'); process.exit(0); }",
+		fail: "if (args[0] === 'db' && args[1] === 'init') { process.stderr.write('duplicate column: foo\\n'); process.exit(1); }"
+	}[behavior];
+	fs.writeFileSync(scriptPath, `'use strict';\nconst args = process.argv.slice(2);\n${body}\nprocess.exit(0);\n`, 'utf8');
+	return relPath;
+}
+
+test('install runs migrations via the resolved runtime entrypoint and reports applied versions', () => {
+	const home = tempDir('home');
+	const bundle = tempDir('bundle');
+	const entrypoint = writeMigrationStub(bundle, 'apply-one');
+
+	const result = cmds.install(home, { from: bundle, version: '0.1.0', entrypoint });
+
+	assert.ok(result.migrations);
+	assert.equal(result.migrations.ok, true);
+	assert.deepEqual(result.migrations.applied, ['0099_test.sql']);
+});
+
+test('install reports "already up to date" when no migrations are pending', () => {
+	const home = tempDir('home');
+	const bundle = tempDir('bundle');
+	const entrypoint = writeMigrationStub(bundle, 'up-to-date');
+
+	const result = cmds.install(home, { from: bundle, version: '0.1.0', entrypoint });
+
+	assert.equal(result.migrations.ok, true);
+	assert.deepEqual(result.migrations.applied, []);
+	assert.equal(result.migrations.note, 'already up to date');
+});
+
+test('migration failure is reported but does not block install', () => {
+	const home = tempDir('home');
+	const bundle = tempDir('bundle');
+	const entrypoint = writeMigrationStub(bundle, 'fail');
+
+	const result = cmds.install(home, { from: bundle, version: '0.1.0', entrypoint });
+
+	assert.equal(result.migrations.ok, false);
+	assert.match(result.migrations.error, /duplicate column/);
+	// the install itself still succeeded — migration failure only warns
+	assert.equal(result.version, '0.1.0');
+	assert.equal(cmds.readCurrent(home), '0.1.0');
+});
+
+test('install skips migrations when no runtime entrypoint is bundled', () => {
+	const home = tempDir('home');
+	const bundle = tempDir('bundle');
+	stageBundle(bundle, { 'README.txt': 'no runtime here' });
+
+	const result = cmds.install(home, { from: bundle, version: '0.1.0' });
+
+	assert.equal(result.migrations.ok, true);
+	assert.deepEqual(result.migrations.applied, []);
+	assert.match(result.migrations.note, /not found/);
+});
+
+test('update and rollback both run migrations against their respective target versions', () => {
+	const home = tempDir('home');
+	const bundleV1 = tempDir('bundle-v1');
+	const bundleV2 = tempDir('bundle-v2');
+	const entrypointV1 = writeMigrationStub(bundleV1, 'up-to-date');
+	const entrypointV2 = writeMigrationStub(bundleV2, 'apply-one');
+
+	cmds.install(home, { from: bundleV1, version: '0.1.0', entrypoint: entrypointV1 });
+	const updated = cmds.update(home, { from: bundleV2, version: '0.2.0', entrypoint: entrypointV2 });
+	assert.equal(updated.migrations.ok, true);
+	assert.deepEqual(updated.migrations.applied, ['0099_test.sql']);
+
+	const rolled = cmds.rollback(home, {});
+	assert.equal(rolled.version, '0.1.0');
+	assert.ok(rolled.migrations);
+	assert.equal(rolled.migrations.ok, true);
 });

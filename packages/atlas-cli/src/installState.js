@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const { installStateFile } = require('./paths');
+const { atomicWriteFileSync } = require('./atomicWrite');
 
 function readInstallState(home) {
 	const file = installStateFile(home);
@@ -10,7 +11,7 @@ function readInstallState(home) {
 }
 
 function writeInstallState(home, state) {
-	fs.writeFileSync(installStateFile(home), JSON.stringify(state, null, 2) + '\n', 'utf8');
+	atomicWriteFileSync(installStateFile(home), JSON.stringify(state, null, 2) + '\n', 'utf8');
 }
 
 module.exports = { readInstallState, writeInstallState };

@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
+const { spawnSync } = require('node:child_process');
 
 const { atlasInstallRoot, atlasStateHome, versionsDir, versionDir, currentPointerFile, manifestFile } = require('./paths');
 const { buildManifest, readManifest, verifyManifest } = require('./manifest');
@@ -13,6 +14,8 @@ const {
 	downloadVerifiedArtifact,
 	extractArchive
 } = require('./release');
+const { appendRollbackHistory, resolveRollbackTarget } = require('./rollbackHistory');
+const { atomicWriteFileSync } = require('./atomicWrite');
 
 class CliError extends Error {}
 
@@ -29,7 +32,7 @@ function readCurrent(home) {
 }
 
 function writeCurrent(home, version) {
-	fs.writeFileSync(currentPointerFile(home), `${version}\n`, 'utf8');
+	atomicWriteFileSync(currentPointerFile(home), `${version}\n`, 'utf8');
 }
 
 function listVersions(home) {
@@ -40,6 +43,78 @@ function listVersions(home) {
 		.filter((e) => e.isDirectory())
 		.map((e) => e.name)
 		.sort();
+}
+
+/** Same default entrypoint names `launcher.js` looks for (mirrored here, not
+ * imported, to avoid a require cycle: launcher.js requires commands.js for
+ * readCurrent). */
+function _candidateRuntimeEntrypoints(platform = process.platform) {
+	return platform === 'win32' ? ['bin/atlas.exe', 'atlas.exe'] : ['bin/atlas', 'atlas'];
+}
+
+/** Resolve the runtime entrypoint inside a specific installed version dir
+ * (as opposed to launcher.js's resolveRuntimeEntrypoint, which always
+ * resolves the *current* version — migrations must run against the version
+ * just installed/updated/rolled back to, which may not be current yet). */
+function _resolveRuntimeEntrypointFor(home, version) {
+	if (!version) return null;
+	const root = path.resolve(versionDir(home, version));
+	const state = readInstallState(home);
+	const candidates = state?.runtimeEntrypoint ? [state.runtimeEntrypoint] : _candidateRuntimeEntrypoints();
+	for (const relative of candidates) {
+		const absolute = path.resolve(root, relative);
+		if (!absolute.startsWith(`${root}${path.sep}`)) continue;
+		if (fs.existsSync(absolute) && fs.statSync(absolute).isFile()) return absolute;
+	}
+	return null;
+}
+
+/** Spawn the resolved runtime entrypoint the same way launcher.js does: a
+ * `.js` entrypoint runs under this process's Node, anything else runs
+ * directly (the packaged atlas binary embeds its own Python runtime). */
+function _spawnRuntime(entrypoint, args, home) {
+	const isNodeScript = path.extname(entrypoint).toLowerCase() === '.js';
+	const command = isNodeScript ? process.execPath : entrypoint;
+	const commandArgs = isNodeScript ? [entrypoint, ...args] : args;
+	return spawnSync(command, commandArgs, {
+		encoding: 'utf8',
+		timeout: 30_000,
+		env: { ...process.env, ATLAS_INSTALL_ROOT: home },
+		shell: false
+	});
+}
+
+/**
+ * Apply pending DB migrations by shelling out to the installed runtime's
+ * `db init` (services/agent-runtime/atlas_runtime/db.py owns the migration
+ * table and is the single source of truth — this never reimplements it).
+ * Never blocks the caller: a missing runtime entrypoint or a failed
+ * migration is reported in the result, not thrown, because the version
+ * files are already on disk and the user can retry with `atlas db init`.
+ * Returns `{ ok, applied: string[], error?, note? }`.
+ */
+function runMigrations(home, version) {
+	const entrypoint = _resolveRuntimeEntrypointFor(home, version);
+	if (!entrypoint) {
+		return { ok: true, applied: [], note: 'runtime entrypoint not found, skipping migrations' };
+	}
+
+	const result = _spawnRuntime(entrypoint, ['db', 'init'], home);
+	if (result.error) {
+		return { ok: false, applied: [], error: result.error.message };
+	}
+	if (result.status !== 0) {
+		const stderr = (result.stderr || '').trim();
+		return { ok: false, applied: [], error: stderr || `exit code ${result.status}` };
+	}
+
+	const output = (result.stdout || '').trim();
+	const applied = output
+		.split('\n')
+		.filter((line) => line.startsWith('applied '))
+		.map((line) => line.replace('applied ', '').trim());
+
+	return { ok: true, applied, note: output || undefined };
 }
 
 /**
@@ -79,7 +154,8 @@ function install(home, opts) {
 		runtimeEntrypoint: opts.entrypoint || undefined
 	});
 
-	return { version, path: dest };
+	const migrations = runMigrations(home, version);
+	return { version, path: dest, migrations };
 }
 
 /**
@@ -116,7 +192,8 @@ function update(home, opts) {
 		runtimeEntrypoint: opts.entrypoint || undefined
 	});
 
-	return { version: opts.version, previous, path: dest };
+	const migrations = runMigrations(home, opts.version);
+	return { version: opts.version, previous, path: dest, migrations };
 }
 
 /** Activate the complete runtime carried by the npm platform package. */
@@ -148,7 +225,8 @@ function installBundledPlatform(home, opts) {
 		runtimeEntrypoint: opts.entrypoint,
 		previousVersion: previous && previous !== opts.version ? previous : undefined
 	});
-	return { version: opts.version, previous, path: dest, reused };
+	const migrations = runMigrations(home, opts.version);
+	return { version: opts.version, previous, path: dest, reused, migrations };
 }
 
 async function stageRelease(home, opts, mode) {
@@ -184,7 +262,8 @@ async function stageRelease(home, opts, mode) {
 			runtimeEntrypoint: selected.artifact.entrypoint || undefined,
 			previousVersion: mode === 'update' && previous !== selected.version ? previous || undefined : undefined
 		});
-		return { version: selected.version, previous, path: dest, platform: selected.platform, reused: true };
+		const migrations = runMigrations(home, selected.version);
+		return { version: selected.version, previous, path: dest, platform: selected.platform, reused: true, migrations };
 	}
 
 	const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-cli-release-'));
@@ -218,7 +297,8 @@ async function stageRelease(home, opts, mode) {
 		previousVersion: mode === 'update' ? previous || undefined : undefined
 	});
 
-	return { version: selected.version, previous, path: dest, platform: selected.platform };
+	const migrations = runMigrations(home, selected.version);
+	return { version: selected.version, previous, path: dest, platform: selected.platform, migrations };
 }
 
 async function installFromRelease(home, opts) {
@@ -230,21 +310,67 @@ async function updateFromRelease(home, opts) {
 }
 
 /**
- * `atlas-cli rollback [--to X]` — flip `current` back to a prior retained
- * version. Defaults to the version update() recorded as `previousVersion`.
+ * Verify a version directory has a valid manifest and all checksums match.
+ * Returns { ok, reason } where reason is a human-readable failure description.
+ */
+function verifyVersionIntegrity(home, version) {
+	const dest = versionDir(home, version);
+	if (!fs.existsSync(dest)) {
+		return { ok: false, reason: `version directory missing: ${dest}` };
+	}
+	const manifestPath = manifestFile(dest);
+	if (!fs.existsSync(manifestPath)) {
+		return { ok: false, reason: `manifest missing for ${version}` };
+	}
+	const manifest = readManifest(manifestPath);
+	const result = verifyManifest(dest, manifest);
+	if (!result.ok) {
+		const details = [
+			result.mismatches.length ? `mismatched: ${result.mismatches.join(', ')}` : '',
+			result.missing.length ? `missing: ${result.missing.join(', ')}` : ''
+		].filter(Boolean).join('; ');
+		return { ok: false, reason: `checksum verification failed — ${details}` };
+	}
+	return { ok: true, reason: null };
+}
+
+/**
+ * `atlas-cli rollback [--to X] [--dry-run] [--no-verify]` — flip `current`
+ * back to a prior retained version.
+ *
+ * Target resolution: explicit --to > the rollbackHistory chain (so a second
+ * rollback undoes the first, yo-yo style) > the legacy single-slot
+ * `previousVersion` (state written before rollbackHistory existed).
+ *
+ * Pre-verification (skippable with --no-verify) checks the target's manifest
+ * before flipping anything. --dry-run reports the plan without writing state.
+ * After a real rollback, migrations run against the target version and
+ * doctor() runs as a post-health-check so a broken rollback is visible
+ * immediately instead of at the next command.
  */
 function rollback(home, opts) {
 	const state = readInstallState(home);
-	const target = opts.to || state?.previousVersion;
+	const target = resolveRollbackTarget(state, opts.to);
 	if (!target) throw new CliError('no prior version on record; pass --to <version> explicitly');
 	const dest = versionDir(home, target);
 	if (!fs.existsSync(dest)) throw new CliError(`version ${target} is not installed at ${dest}`);
 
 	const current = readCurrent(home);
+	if (current === target) throw new CliError(`already at version ${target}; nothing to roll back`);
+
+	if (!opts.noVerify) {
+		const check = verifyVersionIntegrity(home, target);
+		if (!check.ok) throw new CliError(`target version ${target} failed pre-verification: ${check.reason}`);
+	}
+
+	if (opts.dryRun) {
+		return { dryRun: true, version: target, rolledBackFrom: current, manifestVerified: !opts.noVerify };
+	}
+
 	const targetManifestPath = manifestFile(dest);
 	const targetManifest = fs.existsSync(targetManifestPath) ? readManifest(targetManifestPath) : null;
-	writeCurrent(home, target);
-	writeInstallState(home, {
+
+	let newState = {
 		installedVersion: target,
 		installMethod: state?.installMethod || 'local-staged',
 		lastUpdateCheck: new Date().toISOString(),
@@ -252,10 +378,50 @@ function rollback(home, opts) {
 		channel: state?.channel,
 		platform: state?.platform,
 		releaseManifest: state?.releaseManifest,
-		runtimeEntrypoint: targetManifest?.entrypoint || state?.runtimeEntrypoint
-	});
+		runtimeEntrypoint: targetManifest?.entrypoint || state?.runtimeEntrypoint,
+		// carry the existing chain forward — appendRollbackHistory reads it off
+		// this object, not off the old `state`, so it must be seeded here first.
+		rollbackHistory: state?.rollbackHistory
+	};
+	newState = appendRollbackHistory(newState, current, target, 'explicit');
 
-	return { version: target, rolledBackFrom: current };
+	writeCurrent(home, target);
+	writeInstallState(home, newState);
+
+	const migrations = runMigrations(home, target);
+
+	let postCheck;
+	try {
+		postCheck = doctor(home);
+	} catch {
+		// doctor() should never throw, but guard against unexpected failures
+		// rather than let a post-rollback health probe crash the rollback itself.
+		postCheck = { ok: false, checks: [{ name: 'post-rollback-check', ok: false, detail: 'doctor threw unexpectedly' }] };
+	}
+
+	return {
+		version: target,
+		rolledBackFrom: current,
+		manifestVerified: !opts.noVerify,
+		migrations,
+		postHealthCheck: postCheck.ok,
+		doctorReport: postCheck
+	};
+}
+
+/** `atlas-cli rollback-history` — display the rollback history chain. */
+function rollbackHistory(home) {
+	const state = readInstallState(home);
+	const history = Array.isArray(state?.rollbackHistory) ? state.rollbackHistory : [];
+	return {
+		current: readCurrent(home),
+		history: history.map((entry) => ({
+			from: entry.from,
+			to: entry.to,
+			timestamp: entry.timestamp,
+			reason: entry.reason || 'explicit'
+		}))
+	};
 }
 
 /**
@@ -342,6 +508,23 @@ function doctor(home) {
 		});
 	}
 
+	// Version consistency — only meaningful for the npm-platform-package
+	// distribution path, where the release process pins the launcher's own
+	// package.json version to the materialized runtime version 1:1 (see
+	// scripts/release/npm-release.ps1 Assert-VersionContract). Local-staged
+	// and release-manifest installs intentionally allow arbitrary versions
+	// (manual/dev staging), so the check doesn't apply to them.
+	if (state?.installMethod === 'npm-platform-package') {
+		const launcherVersion = require('../package.json').version;
+		checks.push({
+			name: 'version-consistency',
+			ok: launcherVersion === current,
+			detail: launcherVersion === current
+				? `launcher ${launcherVersion} == runtime ${current}`
+				: `MISMATCH: launcher ${launcherVersion} != runtime ${current}`
+		});
+	}
+
 	return { ok: checks.every((c) => c.ok), checks };
 }
 
@@ -364,9 +547,11 @@ module.exports = {
 	update,
 	updateFromRelease,
 	rollback,
+	rollbackHistory,
 	uninstall,
 	doctor,
 	versions,
 	readCurrent,
-	listVersions
+	listVersions,
+	runMigrations
 };

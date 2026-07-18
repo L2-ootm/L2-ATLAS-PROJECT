@@ -23,6 +23,8 @@ function parseArgs(argv) {
 		else if (arg === '--json') opts.json = true;
 		else if (arg === '--install-only') opts.installOnly = true;
 		else if (arg === '--no-launcher-update') opts.noLauncherUpdate = true;
+		else if (arg === '--dry-run') opts.dryRun = true;
+		else if (arg === '--no-verify') opts.noVerify = true;
 		i += 1;
 	}
 	return opts;
@@ -30,6 +32,19 @@ function parseArgs(argv) {
 
 function printJson(value) {
 	console.log(JSON.stringify(value, null, 2));
+}
+
+function printMigrations(migrations) {
+	if (!migrations) return;
+	if (migrations.applied && migrations.applied.length > 0) {
+		console.log(`  migrations applied: ${migrations.applied.join(', ')}`);
+	} else if (migrations.note) {
+		console.log(`  migrations: ${migrations.note}`);
+	}
+	if (!migrations.ok) {
+		console.error(`  migration warning: ${migrations.error}`);
+		console.log('  DB schema may need manual attention: atlas db init');
+	}
 }
 
 function printChecks(result) {
@@ -59,9 +74,26 @@ async function main() {
 					break;
 				}
 				console.log(`installed ${r.version} -> ${r.path}`);
+				printMigrations(r.migrations);
 				break;
 			}
-			case 'update': {
+			case 'check': {
+				const { check } = require('../src/check');
+				const result = await check({ fetcher: opts.fetch });
+				if (opts.json) {
+					printJson(result);
+					break;
+				}
+				if (result.updateAvailable) {
+					console.log(`update available: ${result.current} -> ${result.latest}`);
+					console.log('run `atlas update` to install it');
+				} else {
+					console.log(`already on latest (${result.current})`);
+				}
+				break;
+			}
+			case 'update':
+			case 'upgrade': {
 				let launcher = { updated: false };
 				if (!opts.noLauncherUpdate && !opts.from && !opts.manifest) launcher = await updateLauncher();
 				if (launcher.updated) {
@@ -84,6 +116,7 @@ async function main() {
 					break;
 				}
 				console.log(`updated ${r.previous ?? '(none)'} -> ${r.version}`);
+				printMigrations(r.migrations);
 				break;
 			}
 			case 'rollback': {
@@ -92,7 +125,36 @@ async function main() {
 					printJson(r);
 					break;
 				}
+				if (r.dryRun) {
+					console.log(`dry run: would roll back ${r.rolledBackFrom ?? '(unknown)'} -> ${r.version}`);
+					console.log(`manifest verified: ${r.manifestVerified}`);
+					break;
+				}
 				console.log(`rolled back ${r.rolledBackFrom ?? '(unknown)'} -> ${r.version}`);
+				printMigrations(r.migrations);
+				const health = r.postHealthCheck ? 'healthy' : 'UNHEALTHY — review doctor report';
+				console.log(`post-rollback health: ${health}`);
+				if (!r.postHealthCheck) {
+					console.log('\ndoctor report:');
+					printChecks(r.doctorReport);
+				}
+				break;
+			}
+			case 'rollback-history': {
+				const r = cmds.rollbackHistory(home);
+				if (opts.json) {
+					printJson(r);
+					break;
+				}
+				if (r.history.length === 0) {
+					console.log('no rollback history');
+					break;
+				}
+				console.log(`current: ${r.current}`);
+				console.log('rollback history (newest first):');
+				for (const entry of r.history) {
+					console.log(`  ${entry.timestamp}  ${entry.from} -> ${entry.to}  (${entry.reason})`);
+				}
 				break;
 			}
 			case 'uninstall': {
@@ -135,7 +197,7 @@ async function main() {
 					process.exitCode = launchRuntime(home, command ? [command, ...rest] : []);
 					break;
 				}
-				console.log('usage: atlas <install|update|rollback|uninstall|doctor|versions|runtime-command> [--manifest url] [--channel stable] [--version x]');
+				console.log('usage: atlas <install|update|check|upgrade|rollback|rollback-history|uninstall|doctor|versions|runtime-command> [--manifest url] [--channel stable] [--version x] [--dry-run] [--no-verify]');
 				console.log('No ATLAS runtime is installed. Run `atlas install`.');
 				if (command) process.exitCode = 1;
 				break;

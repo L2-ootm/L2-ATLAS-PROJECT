@@ -42,7 +42,14 @@ function launchRuntime(installRoot, args, options = {}) {
 	const runner = options.spawn || spawnSync;
 	const result = runner(command, commandArgs, {
 		stdio: 'inherit',
-		env: { ...process.env, ATLAS_INSTALL_ROOT: installRoot },
+		env: {
+			...process.env,
+			ATLAS_INSTALL_ROOT: installRoot,
+			// The runtime has no release-version identity of its own (the
+			// Python package version isn't bumped per release) — tell it
+			// which materialized version it's running as, for `atlas doctor`.
+			ATLAS_RUNTIME_VERSION: readCurrent(installRoot) || ''
+		},
 		shell: false
 	});
 	if (result.error) throw result.error;

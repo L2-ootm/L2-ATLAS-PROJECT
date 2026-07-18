@@ -10,6 +10,7 @@ const cmds = require('../src/commands');
 const { atlasInstallRoot, atlasStateHome } = require('../src/paths');
 const { resolveRuntimeEntrypoint, launchRuntime } = require('../src/launcher');
 const { compareVersions, updateLauncher, handoffUpdatedLauncher } = require('../src/selfUpdate');
+const { check } = require('../src/check');
 const { safeRelativeEntrypoint } = require('../src/release');
 const { buildPlatformPackage } = require('../src/buildPlatformPackage');
 const { materializePlatformPackage, platformPackageName } = require('../src/platformPackage');
@@ -61,6 +62,25 @@ test('launcher semver comparison and npm self-update are deterministic', async (
 		command: 'npm',
 		args: ['install', '--global', '@systemsl2/atlas@0.2.0']
 	});
+});
+
+test('check reports an available update without installing anything', async () => {
+	const result = await check({
+		currentVersion: '0.1.0',
+		fetcher: async () => ({ ok: true, json: async () => ({ version: '0.2.0' }) })
+	});
+	assert.equal(result.updateAvailable, true);
+	assert.equal(result.current, '0.1.0');
+	assert.equal(result.latest, '0.2.0');
+});
+
+test('check reports no update when already on the latest version', async () => {
+	const result = await check({
+		currentVersion: '0.2.0',
+		fetcher: async () => ({ ok: true, json: async () => ({ version: '0.2.0' }) })
+	});
+	assert.equal(result.updateAvailable, false);
+	assert.equal(result.latest, '0.2.0');
 });
 
 test('updated launcher hands runtime materialization to the newly installed code', () => {
