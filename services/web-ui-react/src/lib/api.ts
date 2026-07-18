@@ -293,6 +293,148 @@ export async function getVcsContext(path?: string): Promise<VcsContext> {
 	return apiFetch<VcsContext>(`/v1/vcs${qs}`);
 }
 
+// ── Agent presets / teams / group-chat team runs ───────────────────────────────
+
+export interface AgentPreset {
+	id: string;
+	name: string;
+	role_label: string;
+	description: string;
+	goal_template: string;
+	model: string | null;
+	provider: string | null;
+	mode: 'joined' | 'detached';
+	created_at: string;
+	updated_at: string;
+}
+
+export interface Team {
+	id: string;
+	name: string;
+	description: string;
+	members: AgentPreset[];
+	created_at: string;
+	updated_at: string;
+}
+
+export interface TeamRun {
+	id: string;
+	team_id: string;
+	parent_run_id: string | null;
+	mission_id: string | null;
+	status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+	max_rounds: number;
+	current_round: number;
+	created_at: string;
+	started_at: string | null;
+	finished_at: string | null;
+}
+
+export interface TeamChatMessage {
+	id: string;
+	team_run_id: string;
+	seq: number;
+	round: number;
+	sender_actor_id: string | null;
+	sender_role: string;
+	target: string;
+	content: string;
+	created_at: string;
+}
+
+export async function listPresets(): Promise<{ presets: AgentPreset[] }> {
+	return apiFetch('/v1/agent-presets');
+}
+
+export async function createPreset(input: {
+	name: string;
+	role_label: string;
+	goal_template: string;
+	description?: string;
+	model?: string;
+	provider?: string;
+	mode?: 'joined' | 'detached';
+}): Promise<AgentPreset> {
+	return apiFetch('/v1/agent-presets', { method: 'POST', body: JSON.stringify(input) });
+}
+
+export async function updatePreset(
+	id: string,
+	patch: Partial<Omit<AgentPreset, 'id' | 'created_at' | 'updated_at'>>
+): Promise<AgentPreset> {
+	return apiFetch(`/v1/agent-presets/${encodeURIComponent(id)}`, {
+		method: 'PATCH',
+		body: JSON.stringify(patch)
+	});
+}
+
+export async function deletePreset(id: string): Promise<{ ok: boolean }> {
+	return apiFetch(`/v1/agent-presets/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export async function listTeams(): Promise<{ teams: Team[] }> {
+	return apiFetch('/v1/teams');
+}
+
+export async function createTeam(name: string, description = ''): Promise<Team> {
+	return apiFetch('/v1/teams', { method: 'POST', body: JSON.stringify({ name, description }) });
+}
+
+export async function getTeam(id: string): Promise<Team> {
+	return apiFetch(`/v1/teams/${encodeURIComponent(id)}`);
+}
+
+export async function updateTeam(
+	id: string,
+	patch: { name?: string; description?: string }
+): Promise<Team> {
+	return apiFetch(`/v1/teams/${encodeURIComponent(id)}`, {
+		method: 'PATCH',
+		body: JSON.stringify(patch)
+	});
+}
+
+export async function deleteTeam(id: string): Promise<{ ok: boolean }> {
+	return apiFetch(`/v1/teams/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export async function setTeamMembers(id: string, presetIds: string[]): Promise<Team> {
+	return apiFetch(`/v1/teams/${encodeURIComponent(id)}/members`, {
+		method: 'PUT',
+		body: JSON.stringify({ preset_ids: presetIds })
+	});
+}
+
+export async function startTeamRun(
+	teamId: string,
+	message: string,
+	options?: { missionId?: string; maxRounds?: number }
+): Promise<TeamRun> {
+	return apiFetch(`/v1/teams/${encodeURIComponent(teamId)}/run`, {
+		method: 'POST',
+		body: JSON.stringify({
+			message,
+			mission_id: options?.missionId,
+			max_rounds: options?.maxRounds
+		})
+	});
+}
+
+export async function getTeamRun(id: string): Promise<TeamRun> {
+	return apiFetch(`/v1/team-runs/${encodeURIComponent(id)}`);
+}
+
+export async function listTeamRunMessages(
+	id: string,
+	sinceSeq = 0
+): Promise<{ messages: TeamChatMessage[] }> {
+	return apiFetch(`/v1/team-runs/${encodeURIComponent(id)}/messages?since_seq=${sinceSeq}`);
+}
+
+export async function cancelTeamRun(id: string): Promise<{ ok: boolean }> {
+	return apiFetch(`/v1/team-runs/${encodeURIComponent(id)}/cancel`, { method: 'POST' });
+}
+
 // ── Focus endpoints (WP-2 — Command Center Current Focus) ─────────────────────
 
 /** Focus rows (goal sets). `all` includes archived sets so the Command Center

@@ -14,7 +14,8 @@ import {
 	Share2,
 	SlidersHorizontal,
 	Hash,
-	Package
+	Package,
+	Users
 } from 'lucide-react';
 
 export type ModuleStatus = 'active' | 'beta' | 'planned';
@@ -52,7 +53,8 @@ export const navSections: NavSection[] = [
 			{ id: 'missions', label: 'MISSIONS', route: '/missions', icon: Map, status: 'active', ariaLabel: 'Missions' },
 			{ id: 'runs', label: 'RUNS', route: '/runs', icon: Activity, status: 'active', ariaLabel: 'Runs' },
 			{ id: 'chat', label: 'CHAT', route: '/chat', icon: MessagesSquare, status: 'active', ariaLabel: 'Chat' },
-			{ id: 'console', label: 'CONSOLE', route: '/console', icon: MessageSquare, status: 'active', ariaLabel: 'Console' }
+			{ id: 'console', label: 'CONSOLE', route: '/console', icon: MessageSquare, status: 'active', ariaLabel: 'Console' },
+			{ id: 'teams', label: 'TEAMS', route: '/teams', icon: Users, status: 'beta', ariaLabel: 'Agent Teams' }
 		]
 	},
 	{

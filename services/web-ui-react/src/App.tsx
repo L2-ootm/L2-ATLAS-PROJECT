@@ -16,6 +16,7 @@ import Codex from './routes/Codex';
 import Models from './routes/Models';
 import Integrations from './routes/Integrations';
 import SkillsPage from './routes/SkillsPage';
+import TeamsPage from './routes/TeamsPage';
 import Migrating from './routes/Migrating';
 import { RouteLoadError } from './components/RouteLoadError';
 import { recoveringLazy } from './lib/recoveringLazy';
@@ -51,6 +52,7 @@ const router = createBrowserRouter([
 			{ path: 'wiki', element: <Codex /> },
 			{ path: 'models', element: <Models /> },
 			{ path: 'skills', element: <SkillsPage /> },
+			{ path: 'teams', element: <TeamsPage /> },
 			{ path: 'integrations', element: <Integrations /> },
 			{ path: 'discord', element: <Discord /> },
 			{ path: 'control', element: <Control /> },
