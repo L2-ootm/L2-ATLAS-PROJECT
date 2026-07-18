@@ -187,7 +187,7 @@ code attribution are documented in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSE
 and [ATTRIBUTION.md](ATTRIBUTION.md).
 
 <p align="center">
-  <img src="docs/media/atlas-seal-bronze.png" width="90" alt="ATLAS governance seal">
+  <img src="docs/media/atlas-seal-bronze.png" width="360" alt="ATLAS governance seal">
   <br>
   <sub><strong>FOR THOSE WHO BUILD WHAT ENDURES.</strong></sub>
 </p>
