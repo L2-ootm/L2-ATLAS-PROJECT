@@ -152,10 +152,16 @@ def test_scaffold_creates_valid_module(db, lock, tmp_path) -> None:
         module_service.create_module_scaffold("Bad Id!", target_root=tmp_path)
 
 
-def test_empty_bundled_modules_directory_syncs_cleanly(db, lock) -> None:
-    """The base install stays lean until the operator creates a module."""
+def test_bundled_modules_are_exactly_the_first_party_set(db, lock) -> None:
+    """The base install ships only first-party modules (GSD/L2), no toys.
+
+    The bundled example module was removed deliberately; the GSD/L2 framework
+    module is a real product surface and is the one sanctioned bundled entry.
+    Anything else appearing here is scope creep — extend this list only with
+    an explicit product decision.
+    """
     summary = module_service.sync_modules(
         db, lock, roots=[module_service.bundled_modules_dir()]
     )
-    assert summary["discovered"] == []
+    assert summary["discovered"] == ["gsd"]
     assert summary["problems"] == []
