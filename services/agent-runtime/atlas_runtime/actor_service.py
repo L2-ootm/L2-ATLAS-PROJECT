@@ -410,7 +410,12 @@ def wait_for_actor(
     """
     deadline = time.monotonic() + max(0.0, timeout_seconds)
     while True:
-        actor = _fetch_actor(conn, actor_id)
+        # Serialize the poll read on the shared write lock: the actor may be
+        # completed concurrently on the same sqlite3 connection from a worker
+        # thread, and two interleaved conn.execute calls on one connection
+        # raise `InterfaceError: bad parameter or other API misuse`.
+        with lock:
+            actor = _fetch_actor(conn, actor_id)
         if actor is None:
             return None
         if actor["status"] in TERMINAL_STATUSES:
