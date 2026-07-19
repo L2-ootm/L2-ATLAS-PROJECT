@@ -11,26 +11,10 @@ import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
-import rehypeHighlight, { type Options as RehypeHighlightOptions } from 'rehype-highlight';
+import rehypeHighlight from 'rehype-highlight';
 import 'katex/dist/katex.min.css';
 import { ArtifactOverlay, parseArtifacts, type Artifact } from './ArtifactOverlay';
-import bash from 'highlight.js/lib/languages/bash';
-import c from 'highlight.js/lib/languages/c';
-import cpp from 'highlight.js/lib/languages/cpp';
-import csharp from 'highlight.js/lib/languages/csharp';
-import css from 'highlight.js/lib/languages/css';
-import diff from 'highlight.js/lib/languages/diff';
-import go from 'highlight.js/lib/languages/go';
-import java from 'highlight.js/lib/languages/java';
-import javascript from 'highlight.js/lib/languages/javascript';
-import json from 'highlight.js/lib/languages/json';
-import markdown from 'highlight.js/lib/languages/markdown';
-import python from 'highlight.js/lib/languages/python';
-import rust from 'highlight.js/lib/languages/rust';
-import sql from 'highlight.js/lib/languages/sql';
-import typescript from 'highlight.js/lib/languages/typescript';
-import xml from 'highlight.js/lib/languages/xml';
-import yaml from 'highlight.js/lib/languages/yaml';
+import { highlightLanguages, highlightAliases } from '../lib/highlightLanguages';
 import { Check, Copy } from 'lucide-react';
 
 // ChatMarkdown — renders agent/operator prose (chat text, turn text events,
@@ -41,34 +25,8 @@ import { Check, Copy } from 'lucide-react';
 // Language set is a deliberately small, curated subset — not rehype-highlight's
 // default `common` grammar bundle (37 languages via lowlight) — to keep the
 // vendor-markdown chunk under the project's bundle budget (see
-// scripts/check-bundle-budget.mjs).
-const highlightLanguages: RehypeHighlightOptions['languages'] = {
-	bash,
-	c,
-	cpp,
-	csharp,
-	css,
-	diff,
-	go,
-	java,
-	javascript,
-	json,
-	markdown,
-	python,
-	rust,
-	sql,
-	typescript,
-	xml,
-	yaml
-};
-
-const highlightAliases: RehypeHighlightOptions['aliases'] = {
-	javascript: ['js', 'jsx'],
-	typescript: ['ts', 'tsx'],
-	bash: ['sh', 'shell', 'zsh'],
-	yaml: ['yml'],
-	xml: ['html']
-};
+// scripts/check-bundle-budget.mjs). Registry lives in ../lib/highlightLanguages
+// so InlineFileViewer.tsx can reuse the same grammar set standalone.
 
 const proseStyle: CSSProperties = {
 	color: 'var(--l2-fg-1)',

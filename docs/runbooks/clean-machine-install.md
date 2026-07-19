@@ -32,6 +32,43 @@ final gate. Archive extraction is implemented in the dependency-free npm launche
 }
 ```
 
+### Schema v1 (additive)
+
+Since the shape above, the index gained optional fields for multi-platform
+distribution. Existing consumers ignore unrecognized keys, so this is
+backward compatible:
+
+```json
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-18T00:00:00.000Z",
+  "channels": { "stable": "0.2.0" },
+  "releases": {
+    "0.2.0": {
+      "publishedAt": "2026-07-18T00:00:00.000Z",
+      "requiresLauncher": ">=0.1.0 <0.4.0",
+      "platforms": {
+        "win32-x64": {
+          "url": "https://.../atlas-0.2.0-win32-x64.tar.gz",
+          "sha256": "<archive sha256>",
+          "entrypoint": "bin/atlas.exe",
+          "size": 123456789
+        }
+      }
+    }
+  },
+  "compatibility": {
+    "launcher": { "node": ">=20" },
+    "platforms": { "win32-x64": { "minOs": "10.0.17763" } }
+  }
+}
+```
+
+`size` is set automatically by `buildReleaseIndex`. `requiresLauncher` and
+`compatibility` are opt-in build inputs. Per-platform `index.json` files
+(one per `atlas-cli --platform` build) can be combined with
+`scripts/ci/merge-release-indexes.js --dir <dir> --out index.json`.
+
 ## Local Dry Run
 
 Use local `file://` release indexes while CI publishing is not live yet.

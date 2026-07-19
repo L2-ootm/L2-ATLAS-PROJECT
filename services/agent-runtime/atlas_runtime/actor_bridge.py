@@ -35,6 +35,48 @@ _registered = False
 _PENDING_CLAIMS: dict[str, str] = {}
 _CLAIMS_LOCK = threading.Lock()
 
+# Surface (caller-facing) session id, keyed by ATLAS run id.
+#
+# native.py always constructs the Hermes harness with `session_id=run_id`
+# (see agents/native.py's `factory(session_id=run_id)`), so `parent_agent
+# .session_id` is the internal run id, never the real surface session the
+# caller started the mission from. run_service.start_run() knows the real
+# surface session id (its `session_id` kwarg) at run-creation time and
+# records it here via record_surface_session(), before the harness — and
+# therefore before ensure_actor_bridge()/atlas_actor_tool — ever runs for
+# that run. atlas_actor_tool prefers this map over parent_agent.session_id
+# when spawning actors, so actors are stamped with the caller's real
+# session id instead of the run id, fixing UI cross-contamination between
+# actors spawned from different browser sessions.
+_SURFACE_SESSION_BY_RUN: dict[str, str] = {}
+_SURFACE_SESSION_LOCK = threading.Lock()
+
+
+def record_surface_session(
+    *, session_id: Optional[str] = None, run_id: Optional[str] = None
+) -> None:
+    """Record the real surface session id for a run.
+
+    Called from run_service.start_run() alongside atlas_audit.on_session_start,
+    with the same two ids. A no-op when either id is missing or when they're
+    equal (nothing to disambiguate — parent_agent.session_id already matches).
+    Fail-open: never raises, since run creation must not depend on this.
+    """
+    try:
+        if not session_id or not run_id or session_id == run_id:
+            return
+        with _SURFACE_SESSION_LOCK:
+            _SURFACE_SESSION_BY_RUN[run_id] = session_id
+    except Exception as exc:  # noqa: BLE001 — never block run creation
+        logger.debug("actor bridge: could not record surface session: %s", exc)
+
+
+def _surface_session_for_run(run_id: Optional[str]) -> Optional[str]:
+    if not run_id:
+        return None
+    with _SURFACE_SESSION_LOCK:
+        return _SURFACE_SESSION_BY_RUN.get(run_id)
+
 TOOL_SCHEMA = {
     "name": "atlas_actor",
     "description": (
@@ -164,13 +206,24 @@ def atlas_actor_tool(
             if not goal or not goal.strip():
                 return _tool_error(f"op={op} requires a goal")
             mode = "joined" if op == "run" else "detached"
+            # Prefer the caller's real surface session id (recorded by
+            # run_service.start_run()) over parent_agent.session_id, which is
+            # actually the internal run id (see native.py's harness
+            # construction) and would otherwise get stamped onto the actor,
+            # making actors from different browser sessions look
+            # cross-contaminated in the UI. Falls back to the old behavior
+            # when the map has no entry yet (e.g. run created outside
+            # start_run(), or before that fix shipped) so nothing regresses.
+            actor_session_id = _surface_session_for_run(run_id) or getattr(
+                parent_agent, "session_id", None
+            )
             actor, created = actor_service.spawn_actor(
                 conn, lock,
                 parent_run_id=run_id,
                 goal=goal,
                 mode=mode,
                 model=model,
-                session_id=getattr(parent_agent, "session_id", None),
+                session_id=actor_session_id,
                 idempotency_key=idempotency_key,
             )
             if created:

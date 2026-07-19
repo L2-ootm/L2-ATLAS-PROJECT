@@ -17,13 +17,14 @@ function parseArgs(argv) {
 		else if (arg === '--index-name') opts.indexName = argv[++i];
 		else if (arg === '--commit') opts.commit = argv[++i];
 		else if (arg === '--entrypoint') opts.entrypoint = argv[++i];
+		else if (arg === '--requires-launcher') opts.requiresLauncher = argv[++i];
 		i += 1;
 	}
 	return opts;
 }
 
 function usage() {
-	console.error('usage: build-release-index --bundle dir --out-dir dir --version x --platform os-arch [--entrypoint bin/atlas.exe] [--channel stable] [--base-url url]');
+	console.error('usage: build-release-index --bundle dir --out-dir dir --version x --platform os-arch [--entrypoint bin/atlas.exe] [--channel stable] [--base-url url] [--requires-launcher ">=0.1.0 <0.4.0"]');
 }
 
 try {

@@ -85,6 +85,20 @@ def start_run(
     except ImportError:
         pass
 
+    # Actor bridge surface-session map: the Hermes harness session key is
+    # always run.id (native.py constructs it with session_id=run_id), so the
+    # atlas_actor tool can't recover the real surface session id from
+    # parent_agent.session_id alone. Record it here — the earliest point the
+    # real id is known, and always before ensure_actor_bridge()/the harness
+    # run for this run_id — so actor spawns get stamped with the caller's
+    # session instead of the internal run id. Best-effort/fail-open: this
+    # must never block run creation.
+    try:
+        from atlas_runtime import actor_bridge  # noqa: PLC0415
+        actor_bridge.record_surface_session(session_id=session_id, run_id=run.id)
+    except ImportError:
+        pass
+
     # Emit transition audit event
     emit(
         conn,

@@ -6,6 +6,7 @@ const path = require('node:path');
 
 const { hashFile } = require('./manifest');
 const { extractTarGz } = require('./tarball');
+const { compareVersions } = require('./selfUpdate');
 
 function platformKey(runtime = process) {
 	return `${runtime.platform}-${runtime.arch}`;
@@ -56,12 +57,47 @@ async function readReleaseIndex(location) {
 	return JSON.parse(await readText(location));
 }
 
+/**
+ * Minimal space-separated AND range check (e.g. ">=0.1.0 <0.4.0") against a
+ * launcher version, reusing selfUpdate's X.Y.Z(-pre) comparator so this
+ * package doesn't need a semver dependency (it is intentionally
+ * dependency-free, see tarball.js).
+ */
+function satisfiesLauncherRequirement(range, launcherVersion) {
+	if (!range) return true;
+	const clauses = String(range).trim().split(/\s+/).filter(Boolean);
+	for (const clause of clauses) {
+		const match = /^(>=|<=|>|<|=)?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/.exec(clause);
+		if (!match) throw new Error(`unsupported requiresLauncher clause: ${clause}`);
+		const [, op = '=', target] = match;
+		const cmp = compareVersions(launcherVersion, target);
+		const ok =
+			op === '>=' ? cmp >= 0 :
+			op === '<=' ? cmp <= 0 :
+			op === '>' ? cmp > 0 :
+			op === '<' ? cmp < 0 :
+			cmp === 0;
+		if (!ok) return false;
+	}
+	return true;
+}
+
 function selectArtifact(index, opts) {
 	const channel = opts.channel || 'stable';
 	const version = opts.version || index.channels?.[channel];
 	if (!version) throw new Error(`release channel not found: ${channel}`);
 	const release = index.releases?.[version];
 	if (!release) throw new Error(`release not found: ${version}`);
+	// Optional, additive: only enforced when the release declares
+	// `requiresLauncher` AND the caller tells us its own launcher version.
+	// Callers that don't pass `launcherVersion` see no behavior change.
+	if (release.requiresLauncher && opts.launcherVersion) {
+		if (!satisfiesLauncherRequirement(release.requiresLauncher, opts.launcherVersion)) {
+			throw new Error(
+				`release ${version} requires launcher ${release.requiresLauncher}, running ${opts.launcherVersion}`
+			);
+		}
+	}
 	const key = opts.platform || platformKey();
 	const artifact = release.platforms?.[key];
 	if (!artifact) throw new Error(`release ${version} has no artifact for ${key}`);
@@ -95,6 +131,7 @@ module.exports = {
 	platformKey,
 	readReleaseIndex,
 	selectArtifact,
+	satisfiesLauncherRequirement,
 	downloadVerifiedArtifact,
 	extractArchive,
 	safeRelativeEntrypoint,

@@ -38,6 +38,7 @@ import { GlassPanel } from '../components/GlassFx';
 import CommandPalette from '../components/CommandPalette';
 import { TopoScroll } from '../components/TopoScroll';
 import { ChatMarkdown } from '../components/ChatMarkdown';
+import { InlineFileViewer } from '../components/InlineFileViewer';
 import { StreamReveal } from '../components/chat/StreamReveal';
 import { AgentConstellation, SubagentRail } from '../components/agent/SubagentActivity';
 import { SessionNavigator } from '../components/sessions/SessionNavigator';
@@ -1855,7 +1856,13 @@ export function ToolCallCard({ event, result }: { event: ConsoleChatEvent; resul
 			: typeof editInput.content === 'string'
 				? editInput.content
 				: '';
-	const resultText = result ? clip(result.error ?? resultToText(result.content)) : '';
+	const isRead = (event.tool_name ?? '').toLowerCase() === 'read';
+	// `read`-tool output skips clip()'s hard 4000-char cut on the success path
+	// — InlineFileViewer gets the full content so its own collapse/expand can
+	// handle length instead of a mid-file truncation. Failed reads (done is
+	// false when failed) still take the clipped <pre> path below, unchanged.
+	const rawResultText = result ? (result.error ?? resultToText(result.content)) : '';
+	const resultText = result ? (isRead && done ? rawResultText : clip(rawResultText)) : '';
 	const Chevron = open ? ChevronDown : ChevronRight;
 	return (
 		<div style={toolCardStyle} data-topo={failed ? 'bad' : 'ai'}>
@@ -1886,7 +1893,9 @@ export function ToolCallCard({ event, result }: { event: ConsoleChatEvent; resul
 					{resultText && (
 						<>
 							<div style={toolFieldLabelStyle}>OUTPUT</div>
-							{!isEdit && looksLikeProse(resultText) ? (
+							{isRead && done ? (
+								<InlineFileViewer filePath={summary || 'file'} content={resultText} />
+							) : !isEdit && looksLikeProse(resultText) ? (
 								<div style={toolOutputProseStyle}>
 									<ChatMarkdown text={resultText} style={{ fontSize: 12 }} />
 								</div>

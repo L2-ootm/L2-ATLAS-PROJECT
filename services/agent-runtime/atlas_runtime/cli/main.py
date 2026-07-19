@@ -142,6 +142,9 @@ app.add_typer(tools_app, name="tools")
 from atlas_runtime.cli.surface import surface_app
 app.add_typer(surface_app, name="surface")
 
+from atlas_runtime.cli.skills import skills_app
+app.add_typer(skills_app, name="skills")
+
 terminal_app = typer.Typer(name="terminal", help="atlas-terminal (donor-based TUI surface) build/reachability status.")
 app.add_typer(terminal_app, name="terminal")
 

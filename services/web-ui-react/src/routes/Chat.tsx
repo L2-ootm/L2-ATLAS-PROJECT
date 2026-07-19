@@ -4,7 +4,9 @@ import type * as React from 'react';
 import {
 	AlertTriangle,
 	Bot,
+	Check,
 	ChevronDown,
+	Copy,
 	Folder,
 	FolderSearch,
 	MessagesSquare,
@@ -771,7 +773,7 @@ function ChatAgentTurn({ message, hideStatus }: { message: ConsoleMessage; hideS
 	return (
 		<div
 			style={turnStyle}
-			className={pending ? 'atlas-inference-wake' : undefined}
+			className={['atlas-copy-hover-scope', pending ? 'atlas-inference-wake' : ''].filter(Boolean).join(' ')}
 			data-topo={message.status === 'failed' ? 'bad' : 'good'}
 		>
 			<div style={turnHeaderStyle}>
@@ -779,6 +781,7 @@ function ChatAgentTurn({ message, hideStatus }: { message: ConsoleMessage; hideS
 				<span style={monoLabelStyle}>{message.label}</span>
 				<span style={{ ...timeTextStyle }}>{message.time}</span>
 				{pending && <span style={liveBadgeStyle}>LIVE</span>}
+				<CopyMessageButton text={message.body} />
 			</div>
 			{events.length === 0 && pending && <div style={{ color: 'var(--l2-fg-3)', fontSize: 13 }}>Working…</div>}
 			<SubagentRail events={events} />
@@ -855,6 +858,7 @@ function ChatBubble({ message }: { message: ConsoleMessage }) {
 		<div style={{ display: 'flex', justifyContent: operator ? 'flex-end' : 'flex-start' }}>
 			<div
 				data-topo={failed ? 'bad' : operator ? 'info' : 'good'}
+				className={message.role === 'agent' ? 'atlas-copy-hover-scope' : undefined}
 				style={{
 					maxWidth: 'min(720px, 88%)',
 					borderRadius: 2,
@@ -871,6 +875,7 @@ function ChatBubble({ message }: { message: ConsoleMessage }) {
 				<div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
 					<span style={monoLabelStyle}>{message.label}</span>
 					<span style={timeTextStyle}>{message.time}</span>
+					{message.role === 'agent' && <CopyMessageButton text={message.body} />}
 				</div>
 				{message.role === 'agent' ? (
 					<ChatMarkdown text={message.body} />
@@ -890,6 +895,38 @@ function IconAction({ title, onClick, children }: { title: string; onClick: () =
 	return (
 		<button type="button" title={title} onClick={onClick} style={iconActionStyle}>
 			{children}
+		</button>
+	);
+}
+
+/** Whole-message copy, hover-revealed via `.atlas-copy-hover-scope` on the
+ * turn/bubble container. Always copies the full `message.body` — never a
+ * text selection — matching Claude/ChatGPT convention. Hidden entirely when
+ * there is nothing to copy (empty body, e.g. a turn still warming up). */
+function CopyMessageButton({ text }: { text: string }) {
+	const [copied, setCopied] = useState(false);
+	if (!text) return null;
+
+	const handleCopy = () => {
+		void navigator.clipboard
+			?.writeText(text)
+			.then(() => {
+				setCopied(true);
+				window.setTimeout(() => setCopied(false), 1400);
+			})
+			.catch(() => {});
+	};
+
+	return (
+		<button
+			type="button"
+			onClick={handleCopy}
+			className="atlas-copy-turn-btn"
+			style={copyMessageButtonStyle}
+			title={copied ? 'Copied' : 'Copy message'}
+			aria-label={copied ? 'Copied' : 'Copy message'}
+		>
+			{copied ? <Check size={12} strokeWidth={1.8} /> : <Copy size={12} strokeWidth={1.8} />}
 		</button>
 	);
 }
@@ -999,6 +1036,21 @@ const iconActionStyle: React.CSSProperties = {
 	display: 'inline-flex',
 	alignItems: 'center',
 	justifyContent: 'center',
+	cursor: 'pointer'
+};
+
+const copyMessageButtonStyle: React.CSSProperties = {
+	marginLeft: 'auto',
+	flex: '0 0 auto',
+	width: 22,
+	height: 22,
+	display: 'inline-flex',
+	alignItems: 'center',
+	justifyContent: 'center',
+	borderRadius: 2,
+	border: '1px solid rgba(237,234,224,0.14)',
+	background: 'rgba(13,16,24,0.55)',
+	color: 'var(--l2-fg-3)',
 	cursor: 'pointer'
 };
 

@@ -202,3 +202,73 @@ def test_inbox_noop_without_completions(bound) -> None:
 
 def test_inbox_unknown_session_noop() -> None:
     assert actor_bridge.on_pre_llm_call(session_id="unknown") is None
+
+
+# ---------------------------------------------------------------------------
+# Surface-session resolution (regression: actors got run_id, not the real
+# surface session id, causing cross-session contamination in the UI)
+# ---------------------------------------------------------------------------
+
+
+def test_spawn_uses_surface_session_when_mapped(db, lock, run_id, monkeypatch) -> None:
+    """run_service.start_run() maps the harness session key (always run_id —
+    native.py constructs the harness with factory(session_id=run_id)) plus
+    the real surface session id via two atlas_audit.on_session_start() calls,
+    then calls record_surface_session() with the same two ids. parent_agent
+    .session_id here mirrors the real production shape: it equals run_id,
+    not the surface session. The spawned actor must be stamped with the real
+    surface session id, not the run id, or actors from different browser
+    sessions look cross-contaminated in the UI.
+    """
+    atlas_audit.set_connection(db)
+    surface_session_id = "surface-sess-42"
+    # Mirrors run_service.start_run(): harness key -> run_id, then the
+    # distinct caller-supplied surface session_id -> run_id.
+    atlas_audit.on_session_start(session_id=run_id, run_id=run_id)
+    atlas_audit.on_session_start(session_id=surface_session_id, run_id=run_id)
+    actor_bridge.record_surface_session(session_id=surface_session_id, run_id=run_id)
+    try:
+        agent = _Agent(run_id)  # parent_agent.session_id == run_id, like native.py
+        launched = _launched(monkeypatch)
+        out = json.loads(
+            actor_bridge.atlas_actor_tool(op="spawn", goal="scoped job", parent_agent=agent)
+        )
+        assert out["ok"] is True
+        assert launched == [out["actor_id"]]
+
+        stored = actor_service.get_actor(db, out["actor_id"])
+        assert stored["session_id"] == surface_session_id
+        assert stored["session_id"] != run_id
+    finally:
+        actor_bridge._SURFACE_SESSION_BY_RUN.pop(run_id, None)
+        atlas_audit.set_connection(None)
+
+
+def test_spawn_falls_back_to_parent_agent_session_without_mapping(
+    bound, monkeypatch
+) -> None:
+    """No record_surface_session() entry for this run_id (e.g. a run created
+    outside start_run(), or before the fix populated the map): the old
+    behavior — pass parent_agent.session_id through unchanged — must still
+    work, so nothing regresses.
+    """
+    agent, run_id = bound
+    assert run_id not in actor_bridge._SURFACE_SESSION_BY_RUN
+    launched = _launched(monkeypatch)
+    out = json.loads(
+        actor_bridge.atlas_actor_tool(op="spawn", goal="unscoped job", parent_agent=agent)
+    )
+    assert out["ok"] is True
+    assert launched == [out["actor_id"]]
+
+    conn = atlas_audit.get_connection()
+    stored = actor_service.get_actor(conn, out["actor_id"])
+    assert stored["session_id"] == agent.session_id
+
+
+def test_record_surface_session_ignores_equal_or_missing_ids() -> None:
+    actor_bridge._SURFACE_SESSION_BY_RUN.clear()
+    actor_bridge.record_surface_session(session_id="run-x", run_id="run-x")
+    actor_bridge.record_surface_session(session_id=None, run_id="run-y")
+    actor_bridge.record_surface_session(session_id="sess-z", run_id=None)
+    assert actor_bridge._SURFACE_SESSION_BY_RUN == {}

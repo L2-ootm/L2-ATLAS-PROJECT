@@ -117,6 +117,22 @@ body,
 	animation: atlas-inference-wake 2.6s var(--l2-ease) infinite;
 }
 
+/* Whole-message copy — hidden until the turn/bubble is hovered or the
+   button itself gains keyboard focus, so the transcript stays quiet at rest. */
+.atlas-copy-turn-btn {
+	opacity: 0;
+	transition: opacity 160ms var(--l2-ease), border-color 160ms var(--l2-ease), color 160ms var(--l2-ease);
+}
+.atlas-copy-hover-scope:hover .atlas-copy-turn-btn,
+.atlas-copy-turn-btn:focus-visible {
+	opacity: 0.7;
+}
+.atlas-copy-turn-btn:hover {
+	opacity: 0.95;
+	color: var(--l2-fg-1);
+	border-color: rgba(70, 240, 160, 0.4);
+}
+
 /* Console send — the operator transmits into the system: brightens on
    approach, presses with weight, and reads inert while a turn is in flight. */
 .atlas-console-send {

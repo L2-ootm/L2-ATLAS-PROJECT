@@ -948,8 +948,10 @@ DEFAULT_CONFIG = {
 
     # Anthropic prompt caching (Claude via OpenRouter or native Anthropic API).
     # cache_ttl must be "5m" or "1h" (Anthropic-supported tiers); other values are ignored.
+    # 1h costs 2x on write vs 1.25x for 5m, but amortizes across long ATLAS operator
+    # sessions with >5-minute pauses between turns (#14971).
     "prompt_caching": {
-        "cache_ttl": "5m",
+        "cache_ttl": "1h",
     },
 
     # OpenRouter-specific settings.

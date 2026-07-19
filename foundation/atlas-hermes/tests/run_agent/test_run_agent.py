@@ -819,7 +819,7 @@ class TestInit:
             assert a._use_prompt_caching is True
 
     def test_prompt_caching_cache_ttl_defaults_without_config(self):
-        """cache_ttl stays 5m when prompt_caching is absent from config."""
+        """cache_ttl stays 1h when prompt_caching is absent from config."""
         with (
             patch("run_agent.get_tool_definitions", return_value=[]),
             patch("run_agent.check_toolset_requirements", return_value={}),
@@ -834,7 +834,7 @@ class TestInit:
                 skip_context_files=True,
                 skip_memory=True,
             )
-            assert a._cache_ttl == "5m"
+            assert a._cache_ttl == "1h"
 
     def test_prompt_caching_cache_ttl_custom_1h(self):
         """prompt_caching.cache_ttl 1h is applied when present in config."""
@@ -908,7 +908,7 @@ class TestInit:
         assert a.max_tokens == 8192
 
     def test_prompt_caching_cache_ttl_invalid_falls_back(self):
-        """Non-Anthropic TTL values keep default 5m without raising."""
+        """Non-Anthropic TTL values keep default 1h without raising."""
         with (
             patch("run_agent.get_tool_definitions", return_value=[]),
             patch("run_agent.check_toolset_requirements", return_value={}),
@@ -926,7 +926,7 @@ class TestInit:
                 skip_context_files=True,
                 skip_memory=True,
             )
-            assert a._cache_ttl == "5m"
+            assert a._cache_ttl == "1h"
 
     def test_valid_tool_names_populated(self):
         """valid_tool_names should contain names from loaded tools."""

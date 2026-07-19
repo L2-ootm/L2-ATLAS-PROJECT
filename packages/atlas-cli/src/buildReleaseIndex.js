@@ -45,21 +45,28 @@ function buildReleaseIndex(opts) {
 	const archivePath = path.join(outDir, archiveName);
 	createArchive(bundleDir, archivePath);
 
-	const index = {
-		channels: { [channel]: version },
-		releases: {
-			[version]: {
-				platforms: {
-					[platform]: {
-						url: artifactUrl(opts.baseUrl, archiveName, archivePath),
-						sha256: hashFile(archivePath),
-						entrypoint,
-					},
-				},
+	const generatedAt = new Date().toISOString();
+	const release = {
+		publishedAt: generatedAt,
+		platforms: {
+			[platform]: {
+				url: artifactUrl(opts.baseUrl, archiveName, archivePath),
+				sha256: hashFile(archivePath),
+				entrypoint,
+				size: fs.statSync(archivePath).size,
 			},
 		},
 	};
+	if (opts.requiresLauncher) release.requiresLauncher = opts.requiresLauncher;
+
+	const index = {
+		schemaVersion: 1,
+		generatedAt,
+		channels: { [channel]: version },
+		releases: { [version]: release },
+	};
 	if (opts.commit) index.commit = opts.commit;
+	if (opts.compatibility) index.compatibility = opts.compatibility;
 
 	const indexPath = path.join(outDir, opts.indexName || 'index.json');
 	fs.writeFileSync(indexPath, JSON.stringify(index, null, 2) + '\n', 'utf8');
