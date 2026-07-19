@@ -300,3 +300,121 @@ def test_default_router_brain_toggle():
     assert any(isinstance(r, mr.BrainRetriever) for r in mr.default_router().retrievers)
     off = mr.default_router(enable_brain=False)
     assert not any(isinstance(r, mr.BrainRetriever) for r in off.retrievers)
+
+
+# ---------------------------------------------------------------------------
+# Structured vs. legacy runs.summary (Phase 3 Track A, F8)
+#
+# complete_run() now writes a structured RunSummary JSON payload (see
+# test_run_service.py / test_run_summary_service.py for that path); these
+# tests write runs.summary directly so each retriever's JSON-vs-legacy-text
+# branch is exercised in isolation from summary generation itself.
+# ---------------------------------------------------------------------------
+
+from atlas_core.schemas.run_summary import RunSummary  # noqa: E402
+
+
+def _run_with_summary(conn, lock, *, mission_id, summary: str, status: str = "succeeded") -> str:
+    rid = uuid.uuid4().hex
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    with lock:
+        with conn:
+            conn.execute(
+                "INSERT INTO runs(id,mission_id,session_id,status,started_at,finished_at,summary) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (rid, mission_id, None, status, now, now, summary),
+            )
+    return rid
+
+
+def _failure_audit_event(conn, lock, *, run_id: str, message: str) -> None:
+    import json as _json
+
+    aid = uuid.uuid4().hex
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    with lock:
+        with conn:
+            conn.execute(
+                "INSERT INTO audit_events(id,run_id,event_type,timestamp,data) "
+                "VALUES (?,?,?,?,?)",
+                (aid, run_id, "failure", now, _json.dumps({"error": message})),
+            )
+
+
+def test_recent_runs_renders_structured_summary_as_goal_outcome(db, lock):
+    mid = _mission_row(db, lock)
+    summary = RunSummary(goal="ship F8", outcome="succeeded")
+    _run_with_summary(db, lock, mission_id=mid, summary=summary.to_json())
+
+    snippets = mr.RecentRunsRetriever().retrieve(db, mr.RouterQuery(mission_id=mid))
+    assert len(snippets) == 1
+    assert "ship F8" in snippets[0].text
+    assert "succeeded" in snippets[0].text
+    assert "{" not in snippets[0].text  # no raw JSON leaked into the brief
+
+
+def test_recent_runs_falls_back_to_legacy_free_text(db, lock):
+    mid = _mission_row(db, lock)
+    _run_with_summary(db, lock, mission_id=mid, summary="agent finished the task successfully")
+
+    snippets = mr.RecentRunsRetriever().retrieve(db, mr.RouterQuery(mission_id=mid))
+    assert len(snippets) == 1
+    assert "agent finished the task successfully" in snippets[0].text
+
+
+def test_recent_runs_empty_summary_renders_no_suffix(db, lock):
+    mid = _mission_row(db, lock)
+    _run_with_summary(db, lock, mission_id=mid, summary="")
+
+    snippets = mr.RecentRunsRetriever().retrieve(db, mr.RouterQuery(mission_id=mid))
+    assert len(snippets) == 1
+    # No summary suffix (rendered as ": <text>") appended after the
+    # "- **status** timestamp" prefix. The ISO timestamp itself has colons
+    # but never "colon-space", so this is a safe discriminator.
+    assert ": " not in snippets[0].text
+
+
+def test_failure_pattern_reads_blockers_from_structured_summary(db, lock):
+    mid = _mission_row(db, lock)
+    summary = RunSummary(outcome="failed", blockers=["ImportError: no module named foo"])
+    run_id = _run_with_summary(db, lock, mission_id=mid, summary=summary.to_json(), status="failed")
+    # A DIFFERENT failure message recorded in audit_events for the SAME run —
+    # must NOT surface: a structured summary is present for this run, so the
+    # retriever should not fall back to audit_events mining for it.
+    _failure_audit_event(db, lock, run_id=run_id, message="this should be ignored")
+
+    snippets = mr.FailurePatternRetriever().retrieve(db, mr.RouterQuery(mission_id=mid))
+    texts = [s.text for s in snippets]
+    assert any("ImportError: no module named foo" in t for t in texts)
+    assert not any("this should be ignored" in t for t in texts)
+
+
+def test_failure_pattern_falls_back_to_audit_events_for_legacy_runs(db, lock):
+    mid = _mission_row(db, lock)
+    run_id = _run_with_summary(db, lock, mission_id=mid, summary="legacy failure text", status="failed")
+    _failure_audit_event(db, lock, run_id=run_id, message="mined from audit_events")
+
+    snippets = mr.FailurePatternRetriever().retrieve(db, mr.RouterQuery(mission_id=mid))
+    texts = [s.text for s in snippets]
+    assert any("legacy failure text" in t for t in texts)
+    assert any("mined from audit_events" in t for t in texts)
+
+
+def test_failure_pattern_no_summary_still_mines_audit_events(db, lock):
+    mid = _mission_row(db, lock)
+    run_id = _run_with_summary(db, lock, mission_id=mid, summary="", status="failed")
+    _failure_audit_event(db, lock, run_id=run_id, message="only source of truth")
+
+    snippets = mr.FailurePatternRetriever().retrieve(db, mr.RouterQuery(mission_id=mid))
+    texts = [s.text for s in snippets]
+    assert any("only source of truth" in t for t in texts)
+
+
+def test_failure_pattern_structured_summary_with_no_blockers_uses_outcome(db, lock):
+    mid = _mission_row(db, lock)
+    summary = RunSummary(outcome="failed: harness unavailable", blockers=[])
+    _run_with_summary(db, lock, mission_id=mid, summary=summary.to_json(), status="failed")
+
+    snippets = mr.FailurePatternRetriever().retrieve(db, mr.RouterQuery(mission_id=mid))
+    texts = [s.text for s in snippets]
+    assert any("harness unavailable" in t for t in texts)

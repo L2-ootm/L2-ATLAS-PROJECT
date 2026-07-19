@@ -1,6 +1,7 @@
 // ATLAS Cockpit — API client targeting Phase 7 gateway
 // Base: http://127.0.0.1:8484
 import type {
+	SessionDashboardPage,
 	SurfaceEventReplay,
 	SurfaceSession,
 	SurfaceToolApproval
@@ -715,6 +716,22 @@ export async function getSurfaceEvents(
 		`/v1/surface-sessions/${encodeURIComponent(session.id)}/events?after_seq=${afterSeq}`,
 		{ headers: surfaceOwnerHeaders(session.owner_token) }
 	);
+}
+
+/** F11 sessions dashboard: paginated, actor/mission-enriched session list.
+ * No owner-token header — this is a redacted (owner_token stripped), read-only
+ * cross-session projection, unlike the single-session owner-scoped endpoints. */
+export async function listSurfaceSessionsDashboard(options?: {
+	activeOnly?: boolean;
+	limit?: number;
+	offset?: number;
+}): Promise<SessionDashboardPage> {
+	const params = new URLSearchParams();
+	if (options?.activeOnly) params.set('active_only', 'true');
+	if (options?.limit !== undefined) params.set('limit', String(options.limit));
+	if (options?.offset !== undefined) params.set('offset', String(options.offset));
+	const qs = params.toString();
+	return apiFetch(`/v1/surface-sessions${qs ? `?${qs}` : ''}`);
 }
 
 // ── Knowledge graph (Graphify view) ─────────────────────────────────────────

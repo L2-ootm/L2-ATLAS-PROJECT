@@ -236,15 +236,31 @@ def get(
 
 @surface_app.command("list")
 def list_sessions(
+    active_only: bool = typer.Option(False, "--active-only"),
+    limit: int = typer.Option(50, "--limit", min=1, max=200),
+    offset: int = typer.Option(0, "--offset", min=0),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
-    """List all surface sessions as 'id<TAB>state<TAB>kind'."""
-    sessions = surface_session_service.list_sessions(_get_connection())
+    """List surface sessions, paginated and enriched with actor/mission summaries.
+
+    The Rust gateway's GET /v1/surface-sessions dispatches straight to this
+    command (F11 sessions dashboard). JSON payload: {sessions, total, limit,
+    offset} where each session carries mission_title/mission_intent,
+    actor_count/active_actor_count, its top-level actors, and a server-computed
+    heartbeat health (healthy/stale/orphaned/unknown) — see
+    surface_session_service.list_sessions_dashboard for the exact contract.
+    """
+    page = surface_session_service.list_sessions_dashboard(
+        _get_connection(),
+        active_only=active_only,
+        limit=limit,
+        offset=offset,
+    )
     if json_out:
-        _echo({"sessions": [item.model_dump(mode="json") for item in sessions]})
+        _echo(page)
         return
-    for session in sessions:
-        typer.echo(f"{session.id}\t{session.state}\t{session.surface.kind}")
+    for entry in page["sessions"]:
+        typer.echo(f"{entry['id']}\t{entry['state']}\t{entry['surface']['kind']}")
 
 
 @surface_app.command("events")

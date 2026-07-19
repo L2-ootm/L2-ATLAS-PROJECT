@@ -31,8 +31,14 @@ from typing import Any, Callable, Optional
 
 from atlas_core.schemas.core import SECRET_PATTERNS
 
+from atlas_runtime import rtk
 from atlas_runtime.agents.base import AgentRuntime, RunOutcome
 from atlas_runtime.audit_service import emit
+from atlas_runtime.memory_router import (
+    ConversationHistoryRetriever,
+    RouterQuery,
+    history_snippets_to_messages,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -571,14 +577,27 @@ class NativeAtlasAgent(AgentRuntime):
                     )
 
                 def _emit_tool_complete(call_id: Any, name: Any, args: Any, result: Any) -> None:
+                    # RTK (F6): compress terminal/read_file output before it
+                    # enters ATLAS's audit trail — raw test-suite/build output
+                    # and file bodies are the biggest per-run storage/context
+                    # cost and are usually reconstructable (exit code + tail;
+                    # re-read the still-on-disk file). Never touches the live
+                    # in-run Hermes message list (D-001; see rtk.py docstring),
+                    # only what ATLAS itself persists. Falls back to the raw
+                    # result unchanged for any tool without a registered
+                    # adapter or a non-string result.
+                    tool_name = str(name)
+                    text_source: Any = result
+                    if isinstance(result, str) and isinstance(args, dict):
+                        text_source = rtk.compress_tool_output(tool_name, args, result)
                     self._safe_emit(
                         conn, lock, run_id, event_type="tool_completed",
-                        tool_name=str(name),
+                        tool_name=tool_name,
                         data={
                             "runtime": "native",
-                            "tool": str(name),
+                            "tool": tool_name,
                             "call_id": str(call_id),
-                            "text": _json_safe_preview(result, 4000),
+                            "text": _json_safe_preview(text_source, 4000),
                         },
                     )
 
@@ -671,45 +690,24 @@ class NativeAtlasAgent(AgentRuntime):
 
         system_message = _contract_system_message(contract_snapshot)
 
-        # Load conversation history from previous runs in the same session
-        # so the agent has context from earlier turns (session continuity).
+        # Load conversation history from previous runs in the same session so
+        # the agent has context from earlier turns (session continuity).
+        # Ported off a raw audit_events replay (every llm_call/model_call_end
+        # event from every prior run in the session — unbounded, ~200K
+        # tokens/100 turns, and incompatible with retention_service purging
+        # audit_events after 14 days) onto the budget-aware
+        # ConversationHistoryRetriever: runs.summary per prior run, falling
+        # back to a tool_calls fingerprint, capped at ~2000 tokens for this
+        # section regardless of how many prior runs exist (memory_router.py).
         conversation_history: list[dict[str, Any]] = []
         try:
             session_row = conn.execute(
                 "SELECT session_id FROM runs WHERE id=?", (run_id,)
             ).fetchone()
             if session_row and session_row[0]:
-                session_id = session_row[0]
-                # Get all completed runs in this session, ordered by start time
-                prev_runs = conn.execute(
-                    "SELECT id, summary FROM runs "
-                    "WHERE session_id=? AND id<>? AND status IN ('succeeded','completed') "
-                    "ORDER BY started_at ASC",
-                    (session_id, run_id),
-                ).fetchall()
-                for prev_run_id, prev_summary in prev_runs:
-                    # Load LLM call events to reconstruct the conversation
-                    events = conn.execute(
-                        "SELECT event_type, data FROM audit_events "
-                        "WHERE run_id=? AND event_type IN ('llm_call','model_call_end') "
-                        "ORDER BY timestamp ASC",
-                        (prev_run_id,),
-                    ).fetchall()
-                    for event_type, data_str in events:
-                        try:
-                            data = json.loads(data_str) if data_str else {}
-                        except (json.JSONDecodeError, TypeError):
-                            data = {}
-                        if event_type == "llm_call" and data.get("prompt"):
-                            conversation_history.append({"role": "user", "content": data["prompt"]})
-                        elif event_type == "model_call_end" and data.get("response"):
-                            conversation_history.append({"role": "assistant", "content": data["response"]})
-                    # Also add the summary as assistant response if available
-                    if prev_summary and not any(
-                        m.get("role") == "assistant" and m.get("content") == prev_summary
-                        for m in conversation_history[-2:]
-                    ):
-                        conversation_history.append({"role": "assistant", "content": prev_summary})
+                history_query = RouterQuery(session_id=session_row[0], max_runs=5)
+                snippets = ConversationHistoryRetriever().retrieve(conn, history_query)
+                conversation_history = history_snippets_to_messages(snippets)
         except Exception as exc:
             logger.debug("Failed to load conversation history for session continuity: %s", exc)
             # Non-fatal: proceed without history

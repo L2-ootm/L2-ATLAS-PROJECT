@@ -255,6 +255,201 @@ def list_sessions(conn: sqlite3.Connection) -> List[SurfaceSession]:
     return [_row_to_session(r) for r in rows]
 
 
+# ---------------------------------------------------------------------------
+# Dashboard listing (F11 — sessions/subagent dashboard UI, Phase 3 Track B).
+#
+# `list_sessions` above stays a plain unfiltered read (existing callers/tests
+# depend on that shape); this is a separate, additive read path for the
+# cockpit's multi-session dashboard: pagination + actor/mission enrichment +
+# server-computed heartbeat health, none of which the plain list needs.
+# ---------------------------------------------------------------------------
+
+_LIVE_STATES: tuple = ("starting", "active", "suspended", "resuming", "cancelling")
+_MISSION_INTENT_BRIEF_CHARS = 120
+
+# Default heartbeat TTL for BOTH sessions and actors — mirrors the single
+# `_HEARTBEAT_TTL_SECONDS = 90.0` constant `cli/main.py` already uses for both
+# `surface_session_service.reconcile_orphans` and
+# `actor_service.reconcile_orphan_actors`. F11's research doc speculated
+# session TTL might be "per-platform"; the actual codebase uses one shared
+# constant for both, so this mirrors reality rather than the speculation.
+_DEFAULT_HEARTBEAT_TTL_SECONDS = 90.0
+
+
+def _health_from_age(age_seconds: Optional[float], ttl_seconds: float) -> str:
+    """healthy (age < ttl) / stale (age >= ttl) / unknown (no heartbeat data)."""
+    if age_seconds is None:
+        return "unknown"
+    return "healthy" if age_seconds < ttl_seconds else "stale"
+
+
+def _session_health(
+    session: SurfaceSession, now: datetime.datetime, ttl_seconds: float
+) -> tuple:
+    """Server-computed (heartbeat_age_seconds, health) for one session.
+
+    `reclaimed` IS the orphan outcome (the reconciliation sweep already fired
+    for this row), so it maps straight to 'orphaned' regardless of heartbeat
+    math. `completed`/`failed` ended on purpose — heartbeat liveness no longer
+    applies, so health is 'unknown'. Every other (live) state compares
+    heartbeat_at (NOT NULL on this table) against `now`: 'stale' is the
+    pre-reconciliation window where a sweep would reclaim the session but
+    hasn't run yet.
+    """
+    if session.state == "reclaimed":
+        return None, "orphaned"
+    if session.state in ("completed", "failed"):
+        return None, "unknown"
+    age = (now - session.heartbeat_at).total_seconds()
+    return age, _health_from_age(age, ttl_seconds)
+
+
+def _actor_health(actor: dict, now: datetime.datetime, ttl_seconds: float) -> tuple:
+    """Mirrors `_session_health` for one actor row (dict from actor_service)."""
+    status = actor.get("status")
+    if status == "orphaned":
+        return None, "orphaned"
+    if status in ("completed", "failed", "cancelled"):
+        return None, "unknown"
+    # reconcile_orphan_actors treats a null heartbeat as "still on created_at's
+    # clock" (COALESCE(heartbeat_at, created_at)) — mirror that here so a
+    # freshly queued actor isn't reported 'unknown' the instant it's listed.
+    heartbeat_raw = actor.get("heartbeat_at") or actor.get("created_at")
+    if not heartbeat_raw:
+        return None, "unknown"
+    age = (now - datetime.datetime.fromisoformat(heartbeat_raw)).total_seconds()
+    return age, _health_from_age(age, ttl_seconds)
+
+
+def _actor_brief(actor: dict, now: datetime.datetime, ttl_seconds: float) -> dict:
+    age, health = _actor_health(actor, now, ttl_seconds)
+    return {
+        "id": actor["id"],
+        "parent_id": actor.get("parent_actor_id"),
+        "goal": actor.get("goal") or "",
+        "status": actor.get("status"),
+        "model": actor.get("model"),
+        "mode": actor.get("mode"),
+        "depth": actor.get("depth"),
+        "heartbeat_age_seconds": age,
+        "health": health,
+        "created_at": actor.get("created_at"),
+    }
+
+
+def list_sessions_dashboard(
+    conn: sqlite3.Connection,
+    *,
+    active_only: bool = False,
+    limit: int = 50,
+    offset: int = 0,
+    session_ttl_seconds: float = _DEFAULT_HEARTBEAT_TTL_SECONDS,
+    actor_ttl_seconds: float = _DEFAULT_HEARTBEAT_TTL_SECONDS,
+) -> dict:
+    """Paginated, actor-enriched session list for the sessions dashboard (F11).
+
+    Sort: live (non-terminal) sessions first, then heartbeat_at DESC (most
+    recently active first) within each bucket — matches F11 section 2's
+    "active sessions first, then by last_active" recommendation.
+
+    `active_only=True` restricts to the live/non-terminal states, not the
+    literal `state == 'active'` value — a `starting` or `suspended` session is
+    still "live" for dashboard purposes.
+
+    Batches actor aggregation into two page-wide queries (a GROUP BY count and
+    an IN(...) top-level-actor fetch, both keyed off `idx_actors_session`)
+    instead of calling `actor_service.list_actors` once per session, so a
+    50-session page costs a constant handful of queries instead of 50+.
+    Heartbeat staleness is computed here against server time so the client
+    never needs clock-skew-sensitive logic.
+    """
+    limit = max(1, min(int(limit), 200))
+    offset = max(0, int(offset))
+
+    where = ""
+    params: list = []
+    if active_only:
+        placeholders = ",".join("?" for _ in _LIVE_STATES)
+        where = f"WHERE state IN ({placeholders})"
+        params = list(_LIVE_STATES)
+
+    total = conn.execute(
+        f"SELECT COUNT(*) FROM surface_sessions {where}",  # noqa: S608
+        params,
+    ).fetchone()[0]
+
+    live_placeholders = ",".join("?" for _ in _LIVE_STATES)
+    order_case = f"CASE WHEN state IN ({live_placeholders}) THEN 0 ELSE 1 END"
+    rows = conn.execute(
+        f"SELECT {_SELECT_COLUMNS} FROM surface_sessions {where} "
+        f"ORDER BY {order_case} ASC, heartbeat_at DESC LIMIT ? OFFSET ?",  # noqa: S608
+        (*params, *_LIVE_STATES, limit, offset),
+    ).fetchall()
+    sessions = [_row_to_session(r) for r in rows]
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    session_ids = [s.id for s in sessions]
+    mission_ids = sorted({s.mission_id for s in sessions if s.mission_id})
+
+    missions: dict = {}
+    if mission_ids:
+        mplaceholders = ",".join("?" for _ in mission_ids)
+        for mid, title, intent in conn.execute(
+            f"SELECT id, title, intent FROM missions WHERE id IN ({mplaceholders})",  # noqa: S608
+            mission_ids,
+        ):
+            missions[mid] = {"title": title, "intent": intent}
+
+    actor_counts: dict = {}
+    top_level_actors: dict = {}
+    if session_ids:
+        from atlas_runtime import actor_service  # local import: no top-level cycle risk
+
+        splaceholders = ",".join("?" for _ in session_ids)
+        for sid, status, count in conn.execute(
+            "SELECT session_id, status, COUNT(*) FROM actors "
+            f"WHERE session_id IN ({splaceholders}) GROUP BY session_id, status",  # noqa: S608
+            session_ids,
+        ):
+            bucket = actor_counts.setdefault(sid, {"total": 0, "active": 0})
+            bucket["total"] += count
+            if status in actor_service.ACTIVE_STATUSES:
+                bucket["active"] += count
+
+        cur = conn.execute(
+            "SELECT * FROM actors "
+            f"WHERE session_id IN ({splaceholders}) AND parent_actor_id IS NULL "  # noqa: S608
+            "ORDER BY created_at ASC",
+            session_ids,
+        )
+        cols = [d[0] for d in cur.description]
+        for raw in cur.fetchall():
+            actor = dict(zip(cols, raw))
+            top_level_actors.setdefault(actor["session_id"], []).append(actor)
+
+    entries: list = []
+    for session in sessions:
+        age, health = _session_health(session, now, session_ttl_seconds)
+        mission = missions.get(session.mission_id) if session.mission_id else None
+        counts = actor_counts.get(session.id, {"total": 0, "active": 0})
+        entry = session.model_dump(mode="json")
+        entry["mission_title"] = mission["title"] if mission else None
+        entry["mission_intent"] = (
+            (mission["intent"] or "")[:_MISSION_INTENT_BRIEF_CHARS] if mission else None
+        )
+        entry["heartbeat_age_seconds"] = age
+        entry["health"] = health
+        entry["actor_count"] = counts["total"]
+        entry["active_actor_count"] = counts["active"]
+        entry["actors"] = [
+            _actor_brief(a, now, actor_ttl_seconds)
+            for a in top_level_actors.get(session.id, [])
+        ]
+        entries.append(entry)
+
+    return {"sessions": entries, "total": total, "limit": limit, "offset": offset}
+
+
 def transition_session(
     conn: sqlite3.Connection,
     lock: threading.Lock,
@@ -429,6 +624,7 @@ __all__ = [
     "get_session",
     "heartbeat",
     "list_sessions",
+    "list_sessions_dashboard",
     "reconcile_orphans",
     "resume_session",
     "transition_session",

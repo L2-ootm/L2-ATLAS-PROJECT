@@ -6,6 +6,7 @@ import Missions from './routes/Missions';
 import MissionDetail from './routes/MissionDetail';
 import Runs from './routes/Runs';
 import RunDetail from './routes/RunDetail';
+import SessionsPage from './routes/SessionsPage';
 import Command from './routes/Command';
 import Projects from './routes/Projects';
 import Control from './routes/Control';
@@ -42,6 +43,7 @@ const router = createBrowserRouter([
 			{ path: 'missions/:id', element: <MissionDetail /> },
 			{ path: 'runs', element: <Runs /> },
 			{ path: 'runs/:id', element: <RunDetail /> },
+			{ path: 'sessions', element: <SessionsPage /> },
 			{ path: 'console', element: <Suspense fallback={null}><Console /></Suspense> },
 			{ path: 'chat', element: <Suspense fallback={null}><Chat /></Suspense> },
 			{ path: 'm/:moduleId', element: <Suspense fallback={null}><ModuleHost /></Suspense> },

@@ -19,13 +19,18 @@ Emit-after-lock pattern prevents deadlock (emit() re-acquires lock internally).
 """
 from __future__ import annotations
 
+import dataclasses
 import datetime
+import logging
 import sqlite3
 import threading
 from typing import Literal, Optional
 
 from atlas_core.schemas.core import Run
-from atlas_runtime.audit_service import emit
+from atlas_runtime.audit_service import emit, get_events_for_run
+from atlas_runtime.run_summary_service import generate_run_summary
+
+logger = logging.getLogger(__name__)
 
 
 def start_run(
@@ -120,15 +125,43 @@ def complete_run(
     mission_id: str,
     status: Literal["succeeded", "failed"],
     summary: str = "",
+    generate_summary: bool = True,
 ) -> None:
     """Transition run to terminal state (succeeded or failed) and emit AuditEvent.
 
     Updates both runs.status and missions.status atomically.
 
+    `summary` is now a fallback/seed, not the stored value verbatim (F8,
+    Phase 3 Track A): when the run has audit_events, `runs.summary` becomes a
+    structured `RunSummary` JSON payload (see `run_summary_service`), and the
+    caller-supplied `summary` text is only used to fill the structured
+    `outcome` field when nothing else determined one. A run with no events
+    (or a generation failure) stores the plain `summary` text unchanged —
+    the exact legacy behavior — so this never regresses a caller that has no
+    audit trail to summarize. `generate_summary=False` skips structured
+    generation entirely (tests / callers that want the old passthrough).
+
     Raises:
         ValueError: If the run does not exist or is not in running state.
     """
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    stored_summary = summary
+    if generate_summary:
+        try:
+            events = get_events_for_run(conn, run_id)
+        except Exception as exc:  # noqa: BLE001 — never block completion on a read error
+            logger.debug("complete_run: could not load audit_events for %s: %s", run_id, exc)
+            events = []
+        if events:
+            try:
+                run_summary = generate_run_summary(events)
+                if not run_summary.outcome and summary:
+                    run_summary = dataclasses.replace(run_summary, outcome=summary[:2000])
+                stored_summary = run_summary.to_json()
+            except Exception as exc:  # noqa: BLE001 — fall back to plain text, never block
+                logger.warning("complete_run: structured summary generation failed for %s: %s", run_id, exc)
+                stored_summary = summary
 
     # Atomic dual-table update with pre-condition check inside lock (prevents TOCTOU)
     with lock:
@@ -144,7 +177,7 @@ def complete_run(
                 )
             conn.execute(
                 "UPDATE runs SET status=?, finished_at=?, summary=? WHERE id=?",
-                (status, now, summary, run_id),
+                (status, now, stored_summary, run_id),
             )
             conn.execute(
                 "UPDATE missions SET status=?, updated_at=? WHERE id=?",
@@ -157,7 +190,7 @@ def complete_run(
         lock,
         run_id=run_id,
         event_type="tool_call",
-        data={"transition": status, "summary": summary},
+        data={"transition": status, "summary": stored_summary},
     )
 
 

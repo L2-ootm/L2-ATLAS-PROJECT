@@ -151,6 +151,59 @@ def test_fail_run_sets_failed(db, lock, mission_id):
     assert mission_status == "failed"
 
 
+def test_complete_run_stores_structured_summary(db, lock, mission_id):
+    """complete_run() writes a RunSummary JSON payload, not the raw `summary`
+    text verbatim, when the run has audit_events (start_run always emits
+    one) — Phase 3 Track A, F8."""
+    from atlas_core.schemas.run_summary import RunSummary
+
+    run = run_service.start_run(db, lock, mission_id=mission_id)
+    run_service.complete_run(
+        db, lock, run_id=run.id, mission_id=mission_id, status="succeeded",
+        summary="the agent finished",
+    )
+    stored = db.execute("SELECT summary FROM runs WHERE id=?", (run.id,)).fetchone()[0]
+    parsed = RunSummary.from_json(stored)
+    assert parsed is not None
+    # The caller-supplied summary seeds `outcome` when nothing else determined one.
+    assert parsed.outcome == "the agent finished"
+
+
+def test_complete_run_generate_summary_false_stores_plain_text(db, lock, mission_id):
+    """generate_summary=False is an escape hatch back to the legacy passthrough."""
+    run = run_service.start_run(db, lock, mission_id=mission_id)
+    run_service.complete_run(
+        db, lock, run_id=run.id, mission_id=mission_id, status="succeeded",
+        summary="plain text, unchanged", generate_summary=False,
+    )
+    stored = db.execute("SELECT summary FROM runs WHERE id=?", (run.id,)).fetchone()[0]
+    assert stored == "plain text, unchanged"
+
+
+def test_complete_run_summary_survives_synthesis_failure(db, lock, mission_id, monkeypatch):
+    """A broken/unreachable auxiliary-model synthesizer must not block
+    complete_run() — deterministic extraction + the caller's summary text
+    still land in runs.summary."""
+    from atlas_runtime import run_summary_service
+
+    def _broken(*_a, **_kw):
+        raise RuntimeError("provider unreachable")
+
+    monkeypatch.setattr(run_summary_service, "_foundation_synthesize", _broken)
+
+    run = run_service.start_run(db, lock, mission_id=mission_id)
+    run_service.complete_run(
+        db, lock, run_id=run.id, mission_id=mission_id, status="failed",
+        summary="honest failure text",
+    )
+    from atlas_core.schemas.run_summary import RunSummary
+
+    stored = db.execute("SELECT summary FROM runs WHERE id=?", (run.id,)).fetchone()[0]
+    parsed = RunSummary.from_json(stored)
+    assert parsed is not None
+    assert parsed.outcome == "honest failure text"
+
+
 def test_dispatch_subagent_emits_subagent_run(db, lock, mission_id):
     """dispatch_subagent() emits a subagent_run AuditEvent (RUNTIME-06)."""
     from atlas_runtime import subagent_service

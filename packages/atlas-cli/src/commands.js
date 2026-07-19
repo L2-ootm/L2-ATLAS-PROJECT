@@ -24,15 +24,129 @@ function copyDir(src, dest) {
 	fs.cpSync(src, dest, { recursive: true });
 }
 
+/**
+ * F18 Option C: staging-dir suffix for atomic version writes. Deliberately
+ * not a plausible semver string (semver never ends in a bare word like this
+ * with no dot-separated numeric fields after it), so a staging dir can never
+ * be mistaken for — or collide with — a real version directory name.
+ */
+const STAGING_SUFFIX = '.atlas-staging';
+
+function isStagingDirName(name) {
+	return name.endsWith(STAGING_SUFFIX);
+}
+
+function stagingDirFor(home, version) {
+	return path.join(versionsDir(home), `${version}${STAGING_SUFFIX}`);
+}
+
+/**
+ * F18 Option C (atomic version staging): every call site that used to
+ * `copyDir`/extract directly into the final `versions/<version>/` path now
+ * builds the version inside `versions/<version>.atlas-staging/` and only
+ * `fs.renameSync`s it to the real path once `populate()` (copy + manifest
+ * build) fully succeeds. Rename is atomic same-volume on both POSIX and
+ * Windows, so a crash mid-copy/extract — whether a thrown JS error or the
+ * whole process being killed — can now only ever leave a `.atlas-staging`
+ * directory behind. It can NEVER leave a partially-written directory
+ * visible at the real version path, which is the actual gap Option C closes
+ * over the existing Gap 4 orphan-cleanup (that cleanup already handles a
+ * *complete* directory sitting unreferenced at the real path; it never
+ * protected against a directory that only *looks* complete because it's
+ * sitting at the real path while still mid-write).
+ *
+ * A leftover staging dir from an earlier crashed attempt is always safe to
+ * delete unconditionally before starting a new attempt: install.json's
+ * `installedVersion`/`previousVersion`/`rollbackHistory` never record a
+ * `.atlas-staging`-suffixed path (only the plain version string, written
+ * after the rename), so nothing durable ever attests to a staging dir's
+ * contents — unlike a real version dir, which needs the
+ * referenced-by-install.json check in isOrphanedVersionDir() before it's
+ * safe to remove. This is that same "never treat incomplete state as a
+ * completed install" principle, extended to the pre-commit staging path
+ * rather than a parallel cleanup mechanism.
+ */
+function stageVersionAtomically(home, version, populate) {
+	const staging = stagingDirFor(home, version);
+	const dest = versionDir(home, version);
+	fs.rmSync(staging, { recursive: true, force: true });
+	try {
+		populate(staging);
+		fs.renameSync(staging, dest);
+	} catch (err) {
+		fs.rmSync(staging, { recursive: true, force: true });
+		throw err;
+	}
+	return dest;
+}
+
+/**
+ * install.json's `installedVersion` field is the single source of truth for
+ * "what version is current" (see commitVersionState below) — every call site
+ * that flips the pointer already sets installedVersion to the exact same
+ * version string. The legacy `current` text file is read only as a fallback,
+ * for install.json missing/corrupt but the pointer file having survived.
+ */
 function readCurrent(home) {
+	const state = readInstallState(home);
+	if (state && typeof state.installedVersion === 'string' && state.installedVersion) {
+		return state.installedVersion;
+	}
 	const file = currentPointerFile(home);
 	if (!fs.existsSync(file)) return null;
 	const version = fs.readFileSync(file, 'utf8').trim();
 	return version || null;
 }
 
+/** Best-effort mirror of the legacy `current` pointer file — not authoritative. */
 function writeCurrent(home, version) {
 	atomicWriteFileSync(currentPointerFile(home), `${version}\n`, 'utf8');
+}
+
+/**
+ * Gap 1 fix: fold the current-version pointer into install.json itself so a
+ * pointer flip + state/history update is ONE atomic write, not two. Before
+ * this, `writeCurrent(...)` + `writeInstallState(...)` were separate atomic
+ * writes; a crash between them could desync the `current` pointer file from
+ * install.json's metadata/rollback history. Now install.json's
+ * `installedVersion` is the sole source of truth (read by readCurrent above),
+ * committed in a single atomicWriteFileSync call. The legacy `current` file
+ * is refreshed immediately after, as a best-effort mirror for anything
+ * external that still reads it directly — if that second write never
+ * happens (crash, disk full), the mirror is merely stale until the next
+ * successful pointer flip; atlas-cli's own view is never ambiguous because
+ * it never reads that file when install.json is present.
+ */
+function commitVersionState(home, version, state) {
+	const newState = { ...state, installedVersion: version };
+	writeInstallState(home, newState);
+	try {
+		writeCurrent(home, version);
+	} catch {
+		// Best-effort legacy mirror only — install.json above is already the
+		// durable, authoritative record of the pointer flip.
+	}
+	return newState;
+}
+
+/**
+ * Gap 4 fix: a crash after copyDir() but before the version's install.json
+ * commit leaves an orphaned `versions/<version>/` directory that blocks
+ * retrying install/update to that same version (the directory already
+ * exists, so the "already installed" guard fires). A version directory
+ * counts as referenced — i.e. NOT orphaned — if install.json's current
+ * state, previous-version slot, or rollback-history chain ever names it;
+ * otherwise nothing durable ever attested to that directory being a
+ * completed install, so it's safe to remove and let the caller retry.
+ */
+function isOrphanedVersionDir(home, version) {
+	const state = readInstallState(home);
+	if (!state) return true; // no install.json at all — nothing could reference it
+	if (state.installedVersion === version) return false;
+	if (state.previousVersion === version) return false;
+	const history = Array.isArray(state.rollbackHistory) ? state.rollbackHistory : [];
+	if (history.some((entry) => entry.from === version || entry.to === version)) return false;
+	return true;
 }
 
 function listVersions(home) {
@@ -40,7 +154,10 @@ function listVersions(home) {
 	if (!fs.existsSync(dir)) return [];
 	return fs
 		.readdirSync(dir, { withFileTypes: true })
-		.filter((e) => e.isDirectory())
+		// Staging dirs (F18 Option C) are pre-commit scratch space, never a
+		// completed install — they must never surface in listVersions/doctor/
+		// pruneVersions, exactly as if they didn't exist on disk at all.
+		.filter((e) => e.isDirectory() && !isStagingDirName(e.name))
 		.map((e) => e.name)
 		.sort();
 }
@@ -135,20 +252,23 @@ function install(home, opts) {
 	const version = opts.version || path.basename(source);
 	const dest = versionDir(home, version);
 	if (fs.existsSync(dest)) {
-		throw new CliError(`version ${version} is already installed at ${dest} (use update, or uninstall first)`);
+		if (!isOrphanedVersionDir(home, version)) {
+			throw new CliError(`version ${version} is already installed at ${dest} (use update, or uninstall first)`);
+		}
+		// Orphaned from a crash between a prior copyDir() and its commit — clean up and retry.
+		fs.rmSync(dest, { recursive: true, force: true });
 	}
 
-	copyDir(source, dest);
+	stageVersionAtomically(home, version, (staging) => {
+		copyDir(source, staging);
+		const manifestPath = manifestFile(staging);
+		if (!fs.existsSync(manifestPath)) {
+			const manifest = buildManifest(staging, version);
+			fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
+		}
+	});
 
-	const manifestPath = manifestFile(dest);
-	if (!fs.existsSync(manifestPath)) {
-		const manifest = buildManifest(dest, version);
-		fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
-	}
-
-	writeCurrent(home, version);
-	writeInstallState(home, {
-		installedVersion: version,
+	commitVersionState(home, version, {
 		installMethod: 'local-staged',
 		lastUpdateCheck: new Date().toISOString(),
 		runtimeEntrypoint: opts.entrypoint || undefined
@@ -173,19 +293,23 @@ function update(home, opts) {
 	const previous = readCurrent(home);
 	const dest = versionDir(home, opts.version);
 	if (fs.existsSync(dest)) {
-		throw new CliError(`version ${opts.version} already exists at ${dest}`);
+		if (!isOrphanedVersionDir(home, opts.version)) {
+			throw new CliError(`version ${opts.version} already exists at ${dest}`);
+		}
+		// Orphaned from a crash between a prior copyDir() and its commit — clean up and retry.
+		fs.rmSync(dest, { recursive: true, force: true });
 	}
 
-	copyDir(source, dest);
-	const manifestPath = manifestFile(dest);
-	if (!fs.existsSync(manifestPath)) {
-		const manifest = buildManifest(dest, opts.version);
-		fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
-	}
+	stageVersionAtomically(home, opts.version, (staging) => {
+		copyDir(source, staging);
+		const manifestPath = manifestFile(staging);
+		if (!fs.existsSync(manifestPath)) {
+			const manifest = buildManifest(staging, opts.version);
+			fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
+		}
+	});
 
-	writeCurrent(home, opts.version);
-	writeInstallState(home, {
-		installedVersion: opts.version,
+	commitVersionState(home, opts.version, {
 		installMethod: 'local-staged',
 		lastUpdateCheck: new Date().toISOString(),
 		previousVersion: previous || undefined,
@@ -207,18 +331,24 @@ function installBundledPlatform(home, opts) {
 	let reused = false;
 	if (fs.existsSync(dest)) {
 		const existingManifest = manifestFile(dest);
-		if (!fs.existsSync(existingManifest) || !verifyManifest(dest, readManifest(existingManifest)).ok) {
+		const verified = fs.existsSync(existingManifest) && verifyManifest(dest, readManifest(existingManifest)).ok;
+		if (verified) {
+			reused = true;
+		} else if (isOrphanedVersionDir(home, opts.version)) {
+			// Orphaned from a crash between a prior copyDir() and its commit — clean up and retry.
+			fs.rmSync(dest, { recursive: true, force: true });
+		} else {
 			throw new CliError(`version ${opts.version} exists but failed verification at ${dest}`);
 		}
-		reused = true;
-	} else {
-		copyDir(source, dest);
-		const manifest = buildManifest(dest, opts.version, { entrypoint: opts.entrypoint });
-		fs.writeFileSync(manifestFile(dest), JSON.stringify(manifest, null, 2) + '\n', 'utf8');
 	}
-	writeCurrent(home, opts.version);
-	writeInstallState(home, {
-		installedVersion: opts.version,
+	if (!reused) {
+		stageVersionAtomically(home, opts.version, (staging) => {
+			copyDir(source, staging);
+			const manifest = buildManifest(staging, opts.version, { entrypoint: opts.entrypoint });
+			fs.writeFileSync(manifestFile(staging), JSON.stringify(manifest, null, 2) + '\n', 'utf8');
+		});
+	}
+	commitVersionState(home, opts.version, {
 		installMethod: 'npm-platform-package',
 		packageName: opts.packageName,
 		lastUpdateCheck: new Date().toISOString(),
@@ -248,46 +378,54 @@ async function stageRelease(home, opts, mode) {
 	const dest = versionDir(home, selected.version);
 	if (fs.existsSync(dest)) {
 		const existingManifest = manifestFile(dest);
-		if (!fs.existsSync(existingManifest) || !verifyManifest(dest, readManifest(existingManifest)).ok) {
+		const verified = fs.existsSync(existingManifest) && verifyManifest(dest, readManifest(existingManifest)).ok;
+		if (verified) {
+			commitVersionState(home, selected.version, {
+				installMethod: 'release-manifest',
+				lastUpdateCheck: new Date().toISOString(),
+				channel: opts.channel || 'stable',
+				platform: selected.platform,
+				releaseManifest: opts.manifest,
+				runtimeEntrypoint: selected.artifact.entrypoint || undefined,
+				previousVersion: mode === 'update' && previous !== selected.version ? previous || undefined : undefined
+			});
+			const migrations = runMigrations(home, selected.version);
+			return { version: selected.version, previous, path: dest, platform: selected.platform, reused: true, migrations };
+		}
+		if (!isOrphanedVersionDir(home, selected.version)) {
 			throw new CliError(`version ${selected.version} exists but failed verification at ${dest}`);
 		}
-		writeCurrent(home, selected.version);
-		writeInstallState(home, {
-			installedVersion: selected.version,
-			installMethod: 'release-manifest',
-			lastUpdateCheck: new Date().toISOString(),
-			channel: opts.channel || 'stable',
-			platform: selected.platform,
-			releaseManifest: opts.manifest,
-			runtimeEntrypoint: selected.artifact.entrypoint || undefined,
-			previousVersion: mode === 'update' && previous !== selected.version ? previous || undefined : undefined
-		});
-		const migrations = runMigrations(home, selected.version);
-		return { version: selected.version, previous, path: dest, platform: selected.platform, reused: true, migrations };
+		// Orphaned from a crash between a prior extract and its commit — clean up and re-stage below.
+		fs.rmSync(dest, { recursive: true, force: true });
 	}
 
 	const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-cli-release-'));
 	try {
 		const archive = await downloadVerifiedArtifact(selected.artifact, workDir);
-		extractArchive(archive, dest);
-		const manifestPath = manifestFile(dest);
-		if (!fs.existsSync(manifestPath)) {
-			const manifest = buildManifest(dest, selected.version, {
-				commit: selected.artifact.commit || index.commit || null,
-				entrypoint: selected.artifact.entrypoint || null
-			});
-			fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
-		}
+		stageVersionAtomically(home, selected.version, (staging) => {
+			extractArchive(archive, staging);
+			const manifestPath = manifestFile(staging);
+			if (!fs.existsSync(manifestPath)) {
+				const manifest = buildManifest(staging, selected.version, {
+					commit: selected.artifact.commit || index.commit || null,
+					entrypoint: selected.artifact.entrypoint || null
+				});
+				fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
+			}
+		});
 	} catch (err) {
+		// stageVersionAtomically already cleaned up the staging dir on
+		// failure; dest itself is only ever populated by fs.renameSync at the
+		// very end of a successful stage, so it can't exist here — this stays
+		// as a defensive no-op guard (force:true) rather than a load-bearing
+		// cleanup step.
 		fs.rmSync(dest, { recursive: true, force: true });
 		throw new CliError(err.message);
 	} finally {
 		fs.rmSync(workDir, { recursive: true, force: true });
 	}
 
-	writeCurrent(home, selected.version);
-	writeInstallState(home, {
-		installedVersion: selected.version,
+	commitVersionState(home, selected.version, {
 		installMethod: 'release-manifest',
 		lastUpdateCheck: new Date().toISOString(),
 		channel: opts.channel || 'stable',
@@ -385,8 +523,7 @@ function rollback(home, opts) {
 	};
 	newState = appendRollbackHistory(newState, current, target, 'explicit');
 
-	writeCurrent(home, target);
-	writeInstallState(home, newState);
+	commitVersionState(home, target, newState);
 
 	const migrations = runMigrations(home, target);
 
@@ -534,6 +671,113 @@ function versions(home) {
 	return listVersions(home).map((v) => ({ version: v, current: v === current }));
 }
 
+const DEFAULT_PRUNE_KEEP = 2;
+
+/** Ordering key for "most recent" — manifest.buildDate when available (set
+ * once at build time and never touched again), falling back to the version
+ * directory's own mtime for a version that predates manifests. */
+function versionBuildTime(home, version) {
+	const dest = versionDir(home, version);
+	const manifestPath = manifestFile(dest);
+	if (fs.existsSync(manifestPath)) {
+		try {
+			const manifest = readManifest(manifestPath);
+			const parsed = Date.parse(manifest.buildDate);
+			if (!Number.isNaN(parsed)) return parsed;
+		} catch {
+			// fall through to mtime
+		}
+	}
+	try {
+		return fs.statSync(dest).mtimeMs;
+	} catch {
+		return 0;
+	}
+}
+
+/**
+ * `atlas-cli versions prune [--keep N] [--dry-run]` (Gap 2) — remove old
+ * version directories from `versions/`, keeping the N most recently built
+ * PLUS whichever version is current, even if current falls outside the
+ * keep-N window (e.g. after `atlas use` jumps back to an older version —
+ * the active version is never pruned out from under itself).
+ */
+function pruneVersions(home, opts = {}) {
+	const keep = Number.isInteger(opts.keep) && opts.keep > 0 ? opts.keep : DEFAULT_PRUNE_KEEP;
+	const current = readCurrent(home);
+	const all = listVersions(home);
+
+	const rankedNewestFirst = [...all].sort((a, b) => versionBuildTime(home, b) - versionBuildTime(home, a));
+	const keepSet = new Set(rankedNewestFirst.slice(0, keep));
+	if (current) keepSet.add(current);
+
+	const removed = all.filter((v) => !keepSet.has(v)).sort();
+	const kept = all.filter((v) => keepSet.has(v)).sort();
+
+	if (!opts.dryRun) {
+		for (const v of removed) {
+			fs.rmSync(versionDir(home, v), { recursive: true, force: true });
+		}
+	}
+
+	return { dryRun: !!opts.dryRun, keep, current, kept, removed };
+}
+
+/**
+ * `atlas-cli use <version> [--dry-run] [--no-verify]` (Gap 3) — directly
+ * activate an already-installed version without going through rollback
+ * semantics. Verifies the target is present in `versions/` and its manifest
+ * checksums are valid (same verifyVersionIntegrity check rollback uses)
+ * before flipping the pointer.
+ *
+ * Deliberately does NOT append a rollbackHistory entry: rollback's history
+ * chain is "yo-yo" by design (rolling back again undoes the rollback), and
+ * `use` is meant to be a direct/neutral jump to a specific version, not a
+ * step in that undo chain — recording it would let a later plain `rollback`
+ * silently land on wherever `use` last pointed, which would be surprising
+ * for an operation whose whole point is being an explicit override. The
+ * legacy single-slot `previousVersion` IS still updated (same as install/
+ * update/rollback), so `rollback` with no history and no explicit --to can
+ * still fall back to "the version `use` was run from".
+ */
+function use(home, version, opts = {}) {
+	if (!version) throw new CliError('use requires a version argument, e.g. `atlas use 0.1.0`');
+	const dest = versionDir(home, version);
+	if (!fs.existsSync(dest)) throw new CliError(`version ${version} is not installed at ${dest}`);
+
+	const current = readCurrent(home);
+	if (current === version) throw new CliError(`already at version ${version}; nothing to do`);
+
+	if (!opts.noVerify) {
+		const check = verifyVersionIntegrity(home, version);
+		if (!check.ok) throw new CliError(`version ${version} failed verification: ${check.reason}`);
+	}
+
+	if (opts.dryRun) {
+		return { dryRun: true, version, activatedFrom: current, manifestVerified: !opts.noVerify };
+	}
+
+	const state = readInstallState(home);
+	const targetManifestPath = manifestFile(dest);
+	const targetManifest = fs.existsSync(targetManifestPath) ? readManifest(targetManifestPath) : null;
+
+	commitVersionState(home, version, {
+		installMethod: state?.installMethod || 'local-staged',
+		lastUpdateCheck: new Date().toISOString(),
+		previousVersion: current || undefined,
+		channel: state?.channel,
+		platform: state?.platform,
+		releaseManifest: state?.releaseManifest,
+		runtimeEntrypoint: targetManifest?.entrypoint || state?.runtimeEntrypoint,
+		packageName: state?.packageName,
+		// rollbackHistory intentionally carried forward untouched, not appended to.
+		rollbackHistory: state?.rollbackHistory
+	});
+
+	const migrations = runMigrations(home, version);
+	return { version, activatedFrom: current, manifestVerified: !opts.noVerify, migrations };
+}
+
 module.exports = {
 	CliError,
 	atlasInstallRoot,
@@ -551,7 +795,15 @@ module.exports = {
 	uninstall,
 	doctor,
 	versions,
+	pruneVersions,
+	use,
 	readCurrent,
 	listVersions,
-	runMigrations
+	runMigrations,
+	verifyVersionIntegrity,
+	isOrphanedVersionDir,
+	// F18 Option C internals — exported so tests can compute/inspect the
+	// exact staging path without duplicating the suffix as a magic string.
+	STAGING_SUFFIX,
+	stagingDirFor
 };

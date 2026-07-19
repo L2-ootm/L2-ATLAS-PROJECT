@@ -136,3 +136,56 @@ export function parsePolicyReceipt(raw: string | null): PermissionPolicyReceipt 
 	const parsed = JSON.parse(raw) as unknown;
 	return record(parsed, 'policy receipt') as PermissionPolicyReceipt;
 }
+
+// ── Sessions dashboard (F11 — Phase 3 Track B) ──────────────────────────────
+// Mirrors surface_session_service.list_sessions_dashboard's JSON contract
+// (services/agent-runtime/atlas_runtime/surface_session_service.py). Health is
+// computed server-side against server time so the client never compares
+// clocks itself.
+
+export type HealthStatus = 'healthy' | 'stale' | 'orphaned' | 'unknown';
+export type ActorStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'orphaned';
+
+/** One top-level (parent_actor_id === null) actor for a session's tree row. */
+export interface ActorBrief {
+	id: string;
+	parent_id: string | null;
+	goal: string;
+	status: ActorStatus;
+	model: string | null;
+	mode: 'joined' | 'detached';
+	depth: number;
+	heartbeat_age_seconds: number | null;
+	health: HealthStatus;
+	created_at: string;
+}
+
+export interface SessionDashboardEntry {
+	id: string;
+	surface: { kind: string; session_id: string };
+	workspace: { kind: 'global' | 'project' | 'directory'; root: string; project_id: string | null };
+	agent: string;
+	model: { provider: string; model_id: string };
+	permission_mode: 'allow' | 'ask' | 'deny';
+	state: SurfaceSessionState;
+	mission_id: string | null;
+	mission_title: string | null;
+	/** first 120 chars of the mission's intent, or null if no mission/mission not found */
+	mission_intent: string | null;
+	run_id: string | null;
+	heartbeat_at: string;
+	heartbeat_age_seconds: number | null;
+	health: HealthStatus;
+	actor_count: number;
+	active_actor_count: number;
+	actors: ActorBrief[];
+	created_at: string;
+	updated_at: string;
+}
+
+export interface SessionDashboardPage {
+	sessions: SessionDashboardEntry[];
+	total: number;
+	limit: number;
+	offset: number;
+}

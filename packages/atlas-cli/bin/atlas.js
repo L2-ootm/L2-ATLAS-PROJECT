@@ -9,7 +9,7 @@ const { updateLauncher, handoffUpdatedLauncher } = require('../src/selfUpdate');
 const { materializePlatformPackage } = require('../src/platformPackage');
 
 function parseArgs(argv) {
-	const opts = {};
+	const opts = { _: [] };
 	let i = 0;
 	while (i < argv.length) {
 		const arg = argv[i];
@@ -19,12 +19,14 @@ function parseArgs(argv) {
 		else if (arg === '--platform') opts.platform = argv[++i];
 		else if (arg === '--version') opts.version = argv[++i];
 		else if (arg === '--to') opts.to = argv[++i];
+		else if (arg === '--keep') opts.keep = Number(argv[++i]);
 		else if (arg === '--purge') opts.purge = true;
 		else if (arg === '--json') opts.json = true;
 		else if (arg === '--install-only') opts.installOnly = true;
 		else if (arg === '--no-launcher-update') opts.noLauncherUpdate = true;
 		else if (arg === '--dry-run') opts.dryRun = true;
 		else if (arg === '--no-verify') opts.noVerify = true;
+		else opts._.push(arg);
 		i += 1;
 	}
 	return opts;
@@ -68,6 +70,12 @@ async function main() {
 				if (opts.from) r = cmds.install(home, opts);
 				else if (opts.manifest) r = await cmds.installFromRelease(home, opts);
 				else r = materialize();
+				if (!r && !opts.from) {
+					// No npm platform package for this OS/arch (only win32-x64 is published
+					// today) — fall back to the release index the same way `update` does.
+					opts.manifest = opts.manifest || releaseManifest();
+					if (opts.manifest) r = await cmds.installFromRelease(home, opts);
+				}
 				if (!r) throw new cmds.CliError('platform runtime package is missing; reinstall @systemsl2/atlas');
 				if (opts.json) {
 					printJson(r);
@@ -179,6 +187,17 @@ async function main() {
 			}
 			case 'versions': {
 				if (!cmds.readCurrent(home)) materialize();
+				if (opts._[0] === 'prune') {
+					const r = cmds.pruneVersions(home, opts);
+					if (opts.json) {
+						printJson(r);
+						break;
+					}
+					const verb = r.dryRun ? 'would remove' : 'removed';
+					console.log(`keeping (${r.keep} most recent + current): ${r.kept.join(', ') || '(none)'}`);
+					console.log(r.removed.length ? `${verb}: ${r.removed.join(', ')}` : `${verb}: (nothing to prune)`);
+					break;
+				}
 				const list = cmds.versions(home);
 				if (opts.json) {
 					printJson(list);
@@ -191,13 +210,28 @@ async function main() {
 				for (const v of list) console.log(`${v.current ? '* ' : '  '}${v.version}`);
 				break;
 			}
+			case 'use': {
+				const r = cmds.use(home, opts._[0], opts);
+				if (opts.json) {
+					printJson(r);
+					break;
+				}
+				if (r.dryRun) {
+					console.log(`dry run: would activate ${r.activatedFrom ?? '(unknown)'} -> ${r.version}`);
+					console.log(`manifest verified: ${r.manifestVerified}`);
+					break;
+				}
+				console.log(`activated ${r.activatedFrom ?? '(unknown)'} -> ${r.version}`);
+				printMigrations(r.migrations);
+				break;
+			}
 			default: {
 				if (!cmds.readCurrent(home)) materialize();
 				if (cmds.readCurrent(home)) {
 					process.exitCode = launchRuntime(home, command ? [command, ...rest] : []);
 					break;
 				}
-				console.log('usage: atlas <install|update|check|upgrade|rollback|rollback-history|uninstall|doctor|versions|runtime-command> [--manifest url] [--channel stable] [--version x] [--dry-run] [--no-verify]');
+				console.log('usage: atlas <install|update|check|upgrade|rollback|rollback-history|use|uninstall|doctor|versions|versions prune|runtime-command> [--manifest url] [--channel stable] [--version x] [--keep n] [--dry-run] [--no-verify]');
 				console.log('No ATLAS runtime is installed. Run `atlas install`.');
 				if (command) process.exitCode = 1;
 				break;

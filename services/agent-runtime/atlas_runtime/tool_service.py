@@ -32,7 +32,7 @@ from typing import Optional
 from atlas_core.schemas.control_plane import PermissionConfig
 from atlas_core.schemas.tool import ToolApproval, ToolResult
 
-from atlas_runtime import mission_service, policy
+from atlas_runtime import mission_service, policy, rtk
 from atlas_runtime.audit_service import _redact, emit
 from atlas_runtime.tools import registry
 
@@ -514,6 +514,14 @@ def _run_and_emit(
         return ToolResult(tool_name=tool_name, ok=False, error=str(exc))
 
     event_type = "tool_completed" if result.ok else "tool_failed"
+    # RTK (F6): compress what gets stored in tool_calls.result — the caller
+    # above still gets `result` (full fidelity) back synchronously; only the
+    # persisted/context-facing copy shrinks. A no-op for every tool without a
+    # registered adapter (github, web_fetch, webhook_notify,
+    # golden_review_write); applies to `workspace` op=read/read_file.
+    stored_result = rtk.compress_tool_output(
+        tool_name, args, result.output or result.error or ""
+    )
     emit(
         conn,
         lock,
@@ -525,7 +533,7 @@ def _run_and_emit(
         tool_call_kwargs={
             "tool_name": tool_name,
             "args": args_json,
-            "result": result.output or result.error or "",
+            "result": stored_result,
             "policy_allowed": True,
             "requires_approval": False,
             "exit_code": result.exit_code,
@@ -610,10 +618,19 @@ def approve(
         return _load(conn, approval_id)
 
     status = "executed" if result.ok else "failed"
+    # tool_approvals.result stays full fidelity — it is the operator's own
+    # approval record for a write/shell action they explicitly authorized,
+    # not a context-assembly input, so RTK does not touch it.
     result_json = _redact(
         json.dumps({"ok": result.ok, "output": result.output, "error": result.error})
     )
     _set_terminal(conn, lock, approval_id, status, result_json, now)
+    # RTK (F6): the tool_calls.result / audit copy is what future context
+    # assembly re-reads, so it is compressed the same way as the read-class
+    # path in _run_and_emit above.
+    stored_result = rtk.compress_tool_output(
+        approval.tool_name, args, result.output or result.error or ""
+    )
     emit(
         conn,
         lock,
@@ -629,7 +646,7 @@ def approve(
         tool_call_kwargs={
             "tool_name": approval.tool_name,
             "args": approval.args,
-            "result": result.output or result.error or "",
+            "result": stored_result,
             "policy_allowed": True,
             "requires_approval": True,
             "exit_code": result.exit_code,

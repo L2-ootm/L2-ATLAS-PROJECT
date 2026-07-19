@@ -4,6 +4,7 @@ import {
 	Crosshair,
 	Map,
 	Activity,
+	MonitorDot,
 	MessageSquare,
 	MessagesSquare,
 	ScrollText,
@@ -52,6 +53,7 @@ export const navSections: NavSection[] = [
 			{ id: 'command', label: 'COMMAND', route: '/command', icon: Crosshair, status: 'active', ariaLabel: 'Command Center' },
 			{ id: 'missions', label: 'MISSIONS', route: '/missions', icon: Map, status: 'active', ariaLabel: 'Missions' },
 			{ id: 'runs', label: 'RUNS', route: '/runs', icon: Activity, status: 'active', ariaLabel: 'Runs' },
+			{ id: 'sessions', label: 'SESSIONS', route: '/sessions', icon: MonitorDot, status: 'active', ariaLabel: 'Sessions Dashboard' },
 			{ id: 'chat', label: 'CHAT', route: '/chat', icon: MessagesSquare, status: 'active', ariaLabel: 'Chat' },
 			{ id: 'console', label: 'CONSOLE', route: '/console', icon: MessageSquare, status: 'active', ariaLabel: 'Console' },
 			{ id: 'teams', label: 'TEAMS', route: '/teams', icon: Users, status: 'beta', ariaLabel: 'Agent Teams' }

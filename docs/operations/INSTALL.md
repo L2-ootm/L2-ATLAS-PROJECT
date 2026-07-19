@@ -61,15 +61,40 @@ twice the unpacked platform payload. Operator state grows independently under
 Maintainers can test a local artifact with `atlas install --manifest <file-or-url>`
 or `atlas install --from <bundleDir> --version <version>`.
 
-## POSIX (macOS / Linux)
+## macOS / Linux — one line
+
+```
+curl -fsSL https://raw.githubusercontent.com/L2-ootm/L2-ATLAS-PROJECT/main/install/install.sh | bash
+```
+
+What it does (mirrors `install.ps1`'s RELEASE mode):
+
+1. Checks Node.js ≥ 20 and auto-installs a pinned LTS build from nodejs.org
+   under `~/.atlas/node` when missing (no sudo, no system package manager).
+2. Installs `@systemsl2/atlas@latest` and materializes the exact runtime for
+   the detected platform: `linux-x64`, `darwin-x64`, or `darwin-arm64`.
+   Linux `arm64` is not yet built (v2).
+3. Verifies the installation with `atlas doctor --install-only` and prints
+   next steps (`atlas up`, `atlas doctor`, `atlas`).
+
+Pass `--force` to reinstall even when already on the latest version, or
+`--node-version N` to pin a different Node.js major version for the
+auto-install fallback (default 22).
+
+Status: the Linux/macOS runtime bundles and this installer are new
+(Phase 2 Track B1) and have not yet had a clean-machine UAT pass — see
+`docs/runbooks/clean-machine-install.md`. Treat as research-preview quality
+until that gate runs, same as the existing Windows x64 path.
+
+### Building from source instead
 
 ```
 git clone https://github.com/L2-ootm/L2-ATLAS-PROJECT.git ~/atlas
 cd ~/atlas && ./scripts/setup.sh
 ```
 
-A curl-able `install.sh` mirroring `install.ps1` is planned alongside the
-first public release.
+This clones the full repo and requires the developer toolchain (Python,
+Node, Rust, Go). Most users want the one-line installer above instead.
 
 ## After install
 
@@ -102,8 +127,16 @@ matching runtime, and keeps the previous runtime available for rollback.
 
 ## Deferred (documented, not built)
 
-- Desktop app + signed `.exe` setup — after full stability; will wrap the
-  same versioned bundles.
-- Automated multi-platform release CI beyond the current Windows x64 builder.
-- Independent clean-Windows cross-version update/rollback UAT.
+- Desktop app + signed `.exe`/`.dmg` setup — after full stability; will wrap
+  the same versioned bundles.
+- macOS code-signing/notarization — unsigned binaries only for now.
+- Publishing the multi-platform release matrix (`.github/workflows/
+  release-runtime-matrix.yml`) to an actual GitHub Release — the build+merge
+  steps and the publish step (GITHUB_TOKEN, same `v*` tag as `publish-npm.yml`,
+  asset published as `atlas-release-index.json` for `/releases/latest/download/`
+  resolution — see the workflow's `merge-index` job comment) are now wired
+  up, but have not yet run on real CI. Needs a `v*` tag push or
+  `workflow_dispatch` to confirm end-to-end before this is a trusted channel.
+- Independent clean-machine cross-version update/rollback UAT for Linux and
+  macOS (Windows x64 has passed this gate; the new platforms have not).
 - Auditable self-upgrade overlays for changes beyond user modules.

@@ -28,9 +28,10 @@ import pathlib
 import re
 import sqlite3
 from dataclasses import dataclass, field
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from atlas_core.schemas.core import SECRET_PATTERNS
+from atlas_core.schemas.run_summary import RunSummary
 
 from atlas_runtime import brain_service, goal_service
 
@@ -102,6 +103,10 @@ class RouterQuery:
     mission_id: str | None = None
     project_id: str | None = None
     max_runs: int = 5
+    # Cross-run session identity for ConversationHistoryRetriever. Distinct from
+    # mission_id: a session spans the runs of one conversational thread, which a
+    # mission need not (see native.py's session-continuity call site).
+    session_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -144,7 +149,14 @@ class Retriever(Protocol):
 
 
 class RecentRunsRetriever:
-    """Newest-first terminal/active runs for the mission."""
+    """Newest-first terminal/active runs for the mission.
+
+    `runs.summary` is either a structured `RunSummary` JSON payload (Phase 3
+    Track A, F8 — every run completed after that change) or legacy free text
+    (every run completed before it). `RunSummary.from_json` distinguishes the
+    two cleanly: render `goal — outcome` for structured rows, the raw text
+    otherwise — no schema-version column needed, see run_summary.py.
+    """
 
     def section_lines(self, query: RouterQuery) -> list[str]:
         return [f"## Recent Runs (mission {query.mission_id})"]
@@ -159,7 +171,12 @@ class RecentRunsRetriever:
         ).fetchall()
         out: list[MemorySnippet] = []
         for i, (run_id, status, started_at, summary) in enumerate(rows):
-            summary_txt = f": {summary}" if summary else ""
+            run_summary = RunSummary.from_json(summary)
+            if run_summary is not None:
+                narrative = " — ".join(p for p in (run_summary.goal, run_summary.outcome) if p)
+                summary_txt = f": {narrative}" if narrative else ""
+            else:
+                summary_txt = f": {summary}" if summary else ""
             text = f"- **{status}** {started_at}{summary_txt}"
             out.append(
                 MemorySnippet(
@@ -170,6 +187,130 @@ class RecentRunsRetriever:
                 )
             )
         return out
+
+
+# ---------------------------------------------------------------------------
+# Conversation history retriever (Phase 2 Track A) — compressed cross-run
+# session continuity, replacing native.py's raw audit_events replay.
+# ---------------------------------------------------------------------------
+
+# Dedicated budget for this section: enforced inside retrieve() itself (not by
+# MemoryRouter's shared token_budget) so session history cannot crowd out the
+# wiki/brain/skills sections when the router is shared — the highest-priority
+# section per the operational-importance research finding, but still bounded.
+_CONVERSATION_TOKEN_BUDGET = 2000
+# Tool-fingerprint fallback (used when a prior run has no runs.summary): top-N
+# tool_calls rows, each truncated to a compact "name(args)->exit_code" entry.
+_TOOL_FINGERPRINT_MAX = 10
+_TOOL_FINGERPRINT_ARGS_CHARS = 100
+
+
+def _tool_call_fingerprint(conn: sqlite3.Connection, run_id: str) -> str:
+    """Compact fingerprint of a run's tool calls, used as the runs.summary
+    fallback. Sourced from the `tool_calls` table (not `audit_events`, which
+    retention_service.compress_mission_data purges well before runs.summary
+    would go stale) — safe even after a mission has been retention-compressed,
+    though compression also clears tool_calls, so very old runs may yield no
+    fingerprint either (see retention_service.py; graceful no-op, not an error).
+    """
+    if not _table_exists(conn, "tool_calls"):
+        return ""
+    try:
+        rows = conn.execute(
+            "SELECT tool_name, args, exit_code FROM tool_calls WHERE run_id=? "
+            "ORDER BY timestamp ASC LIMIT ?",
+            (run_id, _TOOL_FINGERPRINT_MAX),
+        ).fetchall()
+    except sqlite3.Error:
+        return ""
+    parts: list[str] = []
+    for tool_name, args, exit_code in rows:
+        args_preview = (args or "")[:_TOOL_FINGERPRINT_ARGS_CHARS]
+        suffix = f" -> exit {exit_code}" if exit_code is not None else ""
+        parts.append(f"{tool_name}({args_preview}){suffix}")
+    return "; ".join(parts)
+
+
+class ConversationHistoryRetriever:
+    """Compressed cross-run session history: one line per prior run in the same
+    session, oldest first — `runs.summary` when non-empty, else a tool_calls
+    fingerprint (see `_tool_call_fingerprint`). A run with neither is skipped.
+
+    Replaces the previous raw approach (native.py replaying every
+    llm_call/model_call_end audit event from every prior run in the session:
+    unbounded, ~200K tokens/100 turns, and broken by retention's audit_events
+    purge). This retriever enforces its own ~2000 token budget rather than
+    competing for the shared MemoryRouter budget, per the research finding that
+    session continuity is the most operationally important section.
+    """
+
+    def section_lines(self, query: RouterQuery) -> list[str]:
+        return [f"## Session History (session {query.session_id})"]
+
+    def retrieve(self, conn: sqlite3.Connection, query: RouterQuery) -> list[MemorySnippet]:
+        if not query.session_id:
+            return []
+        rows = conn.execute(
+            "SELECT id, summary FROM runs WHERE session_id=? "
+            "AND status IN ('succeeded','completed') "
+            "ORDER BY started_at ASC LIMIT ?",
+            (query.session_id, query.max_runs),
+        ).fetchall()
+        out: list[MemorySnippet] = []
+        used_tokens = 0
+        for i, (run_id, summary) in enumerate(rows):
+            summary = (summary or "").strip()
+            if summary:
+                text = f"- **run {run_id[:8]} summary:** {summary}"
+                source = f"run_summary:{run_id}"
+            else:
+                fingerprint = _tool_call_fingerprint(conn, run_id)
+                if not fingerprint:
+                    continue
+                text = f"- **run {run_id[:8]} tools:** {fingerprint}"
+                source = f"run_tools:{run_id}"
+            tokens = estimate_tokens(text)
+            # Dedicated per-section budget: keep at least one entry, then cap
+            # (mirrors WikiFtsRetriever's char-budget pattern).
+            if out and used_tokens + tokens > _CONVERSATION_TOKEN_BUDGET:
+                break
+            used_tokens += tokens
+            out.append(
+                MemorySnippet(text=text, score=float(-i), source=source, approx_tokens=tokens)
+            )
+        return out
+
+
+def history_snippets_to_messages(snippets: list[MemorySnippet]) -> list[dict[str, Any]]:
+    """Convert `ConversationHistoryRetriever` snippets into OpenAI-format
+    `conversation_history` messages for Hermes's `run_conversation()`.
+
+    This is the redaction boundary for conversation history: native.py calls
+    the retriever directly (conversation_history is a message list, not a
+    markdown brief, so it bypasses `MemoryRouter.assemble()`/`assemble_envelope()`,
+    which redact at their own boundary), so redaction happens here instead.
+
+    Run-summary snippets (`run_summary:<id>`) become assistant turns. Tool-
+    fingerprint snippets (`run_tools:<id>`) become `tool` messages with a
+    synthesized `tool_call_id` — there is no original tool_call_id to reuse
+    since the raw audit_events/tool_calls rows behind a fingerprint are not
+    guaranteed to survive retention indefinitely.
+    """
+    messages: list[dict[str, Any]] = []
+    for i, snip in enumerate(snippets):
+        source_type, _, source_id = snip.source.partition(":")
+        text = redact(snip.text)
+        if source_type == "run_tools":
+            messages.append(
+                {
+                    "role": "tool",
+                    "content": text,
+                    "tool_call_id": f"history-{source_id}-{i}",
+                }
+            )
+        else:
+            messages.append({"role": "assistant", "content": text})
+    return messages
 
 
 class ObservationRetriever:
@@ -219,6 +360,13 @@ class FailurePatternRetriever:
     Mines two mission-scoped signals: failed runs' `summary`, and `failure`
     audit events' `data`. Dedupes by normalized message, scoring recurring
     failures highest, then most recent.
+
+    Phase 3 Track A (F8): a failed run with a structured `RunSummary` (see
+    run_summary.py) contributes its `blockers[]` directly — no audit_events
+    join needed, since generate_run_summary() already extracted them at run
+    completion. A run without a structured summary (legacy free-text, or one
+    with no summary at all) falls back to mining `audit_events` the way this
+    retriever always has.
     """
 
     def section_lines(self, query: RouterQuery) -> list[str]:
@@ -228,12 +376,22 @@ class FailurePatternRetriever:
         if query.mission_id is None:
             return []
         candidates: list[tuple[str, str]] = []  # (message, run_id) newest-first
+        structured_run_ids: set[str] = set()
         for run_id, summary in conn.execute(
             "SELECT id, summary FROM runs WHERE mission_id=? AND status='failed' "
             "AND summary != '' ORDER BY finished_at DESC",
             (query.mission_id,),
         ).fetchall():
-            candidates.append((summary, run_id))
+            run_summary = RunSummary.from_json(summary)
+            if run_summary is not None:
+                structured_run_ids.add(run_id)
+                blockers = run_summary.blockers or (
+                    [run_summary.outcome] if run_summary.outcome else []
+                )
+                for blocker in blockers:
+                    candidates.append((blocker, run_id))
+            else:
+                candidates.append((summary, run_id))
         try:
             rows = conn.execute(
                 "SELECT ae.run_id, ae.data FROM audit_events ae "
@@ -245,6 +403,8 @@ class FailurePatternRetriever:
         except sqlite3.Error:
             rows = []
         for run_id, data_str in rows:
+            if run_id in structured_run_ids:
+                continue  # already covered by blockers[] above
             msg = _failure_message(data_str)
             if msg:
                 candidates.append((msg, run_id))
@@ -648,14 +808,18 @@ def default_router(
     enable_skills: bool = True,
     enable_brain: bool = True,
 ) -> MemoryRouter:
-    """The default retriever set, in brief order: runs → prior failures →
-    observations → wiki knowledge → brain graph → relevant skills.
+    """The default retriever set, in brief order: session history → runs →
+    prior failures → observations → wiki knowledge → brain graph → relevant
+    skills.
 
     `enable_semantic` toggles the semantic blend (pure FTS5 when off);
     `enable_skills` toggles the skill-matching section; `enable_brain` toggles
-    the Brain evidence-graph section."""
+    the Brain evidence-graph section. `ConversationHistoryRetriever` is first —
+    it no-ops without a `RouterQuery.session_id` and enforces its own token
+    budget, so it never displaces the other sections when unused."""
     knowledge: Retriever = HybridKnowledgeRetriever() if enable_semantic else WikiFtsRetriever()
     retrievers: list[Retriever] = [
+        ConversationHistoryRetriever(),
         RecentRunsRetriever(),
         FailurePatternRetriever(),
         ObservationRetriever(),

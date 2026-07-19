@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const zlib = require('node:zlib');
 const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 
@@ -12,6 +13,7 @@ const { hashFile } = require('../src/manifest');
 const { buildReleaseIndex } = require('../src/buildReleaseIndex');
 const { createTarGz } = require('../src/tarball');
 const { verifyCleanInstall } = require('../src/verifyCleanInstall');
+const { resolveRollbackTarget } = require('../src/rollbackHistory');
 
 const packageJson = require('../package.json');
 
@@ -689,4 +691,609 @@ test('update and rollback both run migrations against their respective target ve
 	assert.equal(rolled.version, '0.1.0');
 	assert.ok(rolled.migrations);
 	assert.equal(rolled.migrations.ok, true);
+});
+
+// ---------------------------------------------------------------------------
+// Phase 2 Track B2 — F17 §6 gap fixes
+// ---------------------------------------------------------------------------
+
+// Gap 1: install.json (`installedVersion`) is now the single source of truth
+// for the current version, committed in one atomic write. The legacy
+// `current` text file is only a best-effort mirror.
+
+test('Gap1: readCurrent trusts install.json even when the legacy current file is stale or missing', () => {
+	const home = tempDir('home');
+	const bundle = tempDir('bundle');
+	stageBundle(bundle, { 'bin/atlas-gateway': 'v1' });
+	cmds.install(home, { from: bundle, version: '0.1.0' });
+
+	// Simulate the legacy mirror write never having happened (crash between the
+	// install.json commit and the best-effort `current` file refresh) — the
+	// authoritative install.json commit already completed, so readCurrent must
+	// still resolve correctly with no desync.
+	fs.rmSync(path.join(home, 'current'), { force: true });
+	assert.equal(cmds.readCurrent(home), '0.1.0');
+	assert.equal(cmds.doctor(home).ok, true);
+	assert.deepEqual(cmds.versions(home), [{ version: '0.1.0', current: true }]);
+
+	// Simulate the mirror surviving with stale content from a previous version —
+	// install.json must still win, proving there is no window where the two
+	// disagree from atlas-cli's own point of view.
+	fs.writeFileSync(path.join(home, 'current'), 'bogus-stale-version\n', 'utf8');
+	assert.equal(cmds.readCurrent(home), '0.1.0');
+});
+
+test('Gap1: rollback commits the pointer flip and history chain in one transaction, with no partial-write window', () => {
+	const home = tempDir('home');
+	const v1 = tempDir('v1');
+	const v2 = tempDir('v2');
+	stageBundle(v1, { 'bin/atlas-gateway': 'v1' });
+	stageBundle(v2, { 'bin/atlas-gateway': 'v2' });
+	cmds.install(home, { from: v1, version: '0.1.0' });
+	cmds.update(home, { from: v2, version: '0.2.0' });
+
+	cmds.rollback(home, {});
+
+	// Delete the legacy mirror entirely (as if the crash happened right after
+	// install.json committed but before the mirror write ran) and confirm the
+	// rollback's target version + history are still fully intact via install.json alone.
+	fs.rmSync(path.join(home, 'current'), { force: true });
+	assert.equal(cmds.readCurrent(home), '0.1.0');
+	const hist = cmds.rollbackHistory(home);
+	assert.equal(hist.current, '0.1.0');
+	assert.equal(hist.history.length, 1);
+	assert.equal(hist.history[0].from, '0.2.0');
+	assert.equal(hist.history[0].to, '0.1.0');
+});
+
+// Gap 2: `atlas versions prune --keep N`
+
+test('Gap2: pruneVersions keeps the N most recent, dry-run reports without deleting', () => {
+	const home = tempDir('home');
+	const b1 = tempDir('b1'); stageBundle(b1, { 'bin/atlas-gateway': 'v1' });
+	const b2 = tempDir('b2'); stageBundle(b2, { 'bin/atlas-gateway': 'v2' });
+	const b3 = tempDir('b3'); stageBundle(b3, { 'bin/atlas-gateway': 'v3' });
+	const b4 = tempDir('b4'); stageBundle(b4, { 'bin/atlas-gateway': 'v4' });
+
+	cmds.install(home, { from: b1, version: '0.1.0' });
+	cmds.update(home, { from: b2, version: '0.2.0' });
+	cmds.update(home, { from: b3, version: '0.3.0' });
+	cmds.update(home, { from: b4, version: '0.4.0' });
+
+	const dry = cmds.pruneVersions(home, { keep: 2, dryRun: true });
+	assert.equal(dry.dryRun, true);
+	assert.deepEqual(dry.kept.sort(), ['0.3.0', '0.4.0']);
+	assert.deepEqual(dry.removed.sort(), ['0.1.0', '0.2.0']);
+	// nothing actually removed on disk
+	assert.deepEqual(cmds.listVersions(home).sort(), ['0.1.0', '0.2.0', '0.3.0', '0.4.0']);
+
+	const real = cmds.pruneVersions(home, { keep: 2 });
+	assert.equal(real.dryRun, false);
+	assert.deepEqual(real.removed.sort(), ['0.1.0', '0.2.0']);
+	assert.deepEqual(cmds.listVersions(home).sort(), ['0.3.0', '0.4.0']);
+});
+
+test('Gap2: pruneVersions never removes the current version even if it falls outside the keep-N window', () => {
+	const home = tempDir('home');
+	const b1 = tempDir('b1'); stageBundle(b1, { 'bin/atlas-gateway': 'v1' });
+	const b2 = tempDir('b2'); stageBundle(b2, { 'bin/atlas-gateway': 'v2' });
+	const b3 = tempDir('b3'); stageBundle(b3, { 'bin/atlas-gateway': 'v3' });
+	const b4 = tempDir('b4'); stageBundle(b4, { 'bin/atlas-gateway': 'v4' });
+
+	cmds.install(home, { from: b1, version: '0.1.0' });
+	cmds.update(home, { from: b2, version: '0.2.0' });
+	cmds.update(home, { from: b3, version: '0.3.0' });
+	cmds.update(home, { from: b4, version: '0.4.0' });
+
+	// Jump back to the oldest version directly — it now sits outside a keep-2 window.
+	cmds.use(home, '0.1.0');
+
+	const result = cmds.pruneVersions(home, { keep: 2 });
+	assert.equal(result.current, '0.1.0');
+	assert.ok(result.kept.includes('0.1.0'), 'current version must always be kept');
+	assert.deepEqual(result.kept.sort(), ['0.1.0', '0.3.0', '0.4.0']);
+	assert.deepEqual(cmds.listVersions(home).sort(), ['0.1.0', '0.3.0', '0.4.0']);
+});
+
+test('Gap2: pruneVersions defaults keep to a sensible value when not specified', () => {
+	const home = tempDir('home');
+	const b1 = tempDir('b1'); stageBundle(b1, { 'bin/atlas-gateway': 'v1' });
+	cmds.install(home, { from: b1, version: '0.1.0' });
+
+	const result = cmds.pruneVersions(home, {});
+	assert.ok(result.keep >= 1);
+	assert.deepEqual(result.removed, []);
+});
+
+// Gap 3: `atlas use <version>`
+
+test('Gap3: use directly activates an installed version without recording rollback history', () => {
+	const home = tempDir('home');
+	const v1 = tempDir('v1'); stageBundle(v1, { 'bin/atlas-gateway': 'v1' });
+	const v2 = tempDir('v2'); stageBundle(v2, { 'bin/atlas-gateway': 'v2' });
+	cmds.install(home, { from: v1, version: '0.1.0' });
+	cmds.update(home, { from: v2, version: '0.2.0' });
+
+	const result = cmds.use(home, '0.1.0', {});
+	assert.equal(result.version, '0.1.0');
+	assert.equal(result.activatedFrom, '0.2.0');
+	assert.equal(cmds.readCurrent(home), '0.1.0');
+
+	// `use` is a direct/neutral jump — it must not extend the rollback yo-yo chain.
+	assert.deepEqual(cmds.rollbackHistory(home).history, []);
+});
+
+test('Gap3: use rejects a version that is not installed', () => {
+	const home = tempDir('home');
+	const bundle = tempDir('bundle'); stageBundle(bundle, { 'bin/atlas-gateway': 'v1' });
+	cmds.install(home, { from: bundle, version: '0.1.0' });
+
+	assert.throws(() => cmds.use(home, '9.9.9', {}), cmds.CliError);
+	assert.throws(() => cmds.use(home, undefined, {}), cmds.CliError);
+});
+
+test('Gap3: use rejects a version whose manifest checksum has been tampered with', () => {
+	const home = tempDir('home');
+	const v1 = tempDir('v1'); stageBundle(v1, { 'bin/atlas-gateway': 'v1' });
+	const v2 = tempDir('v2'); stageBundle(v2, { 'bin/atlas-gateway': 'v2' });
+	const { path: v1Path } = cmds.install(home, { from: v1, version: '0.1.0' });
+	cmds.update(home, { from: v2, version: '0.2.0' });
+
+	fs.writeFileSync(path.join(v1Path, 'bin', 'atlas-gateway'), 'tampered', 'utf8');
+	assert.throws(() => cmds.use(home, '0.1.0', {}), /failed verification/);
+	assert.equal(cmds.readCurrent(home), '0.2.0', 'nothing should be flipped on a failed check');
+});
+
+test('Gap3: use rejects re-activating the version that is already current', () => {
+	const home = tempDir('home');
+	const bundle = tempDir('bundle'); stageBundle(bundle, { 'bin/atlas-gateway': 'v1' });
+	cmds.install(home, { from: bundle, version: '0.1.0' });
+
+	assert.throws(() => cmds.use(home, '0.1.0', {}), cmds.CliError);
+});
+
+test('Gap3: use --dry-run reports the plan without flipping the pointer', () => {
+	const home = tempDir('home');
+	const v1 = tempDir('v1'); stageBundle(v1, { 'bin/atlas-gateway': 'v1' });
+	const v2 = tempDir('v2'); stageBundle(v2, { 'bin/atlas-gateway': 'v2' });
+	cmds.install(home, { from: v1, version: '0.1.0' });
+	cmds.update(home, { from: v2, version: '0.2.0' });
+
+	const result = cmds.use(home, '0.1.0', { dryRun: true });
+	assert.equal(result.dryRun, true);
+	assert.equal(result.version, '0.1.0');
+	assert.equal(result.activatedFrom, '0.2.0');
+	assert.equal(cmds.readCurrent(home), '0.2.0', 'dry-run must not modify state');
+});
+
+// Gap 4: orphaned version directory cleanup
+
+test('Gap4: install auto-cleans an orphaned version directory left by a crash between copyDir and commit', () => {
+	const home = tempDir('home');
+	const bundle = tempDir('bundle'); stageBundle(bundle, { 'bin/atlas-gateway': 'v1' });
+
+	// Simulate the crash scenario directly: the version directory exists (a
+	// prior copyDir succeeded) but install.json was never written, so nothing
+	// ever attested to this being a completed install.
+	const dest = path.join(home, 'versions', '0.1.0');
+	fs.mkdirSync(dest, { recursive: true });
+	fs.writeFileSync(path.join(dest, 'stale-partial-file.txt'), 'leftover from crashed copyDir', 'utf8');
+	assert.equal(fs.existsSync(path.join(home, 'install.json')), false);
+
+	const result = cmds.install(home, { from: bundle, version: '0.1.0' });
+	assert.equal(result.version, '0.1.0');
+	assert.equal(cmds.readCurrent(home), '0.1.0');
+	// the orphaned leftover file is gone — a full clean re-copy happened
+	assert.equal(fs.existsSync(path.join(dest, 'stale-partial-file.txt')), false);
+	assert.equal(fs.readFileSync(path.join(dest, 'bin', 'atlas-gateway'), 'utf8'), 'v1');
+});
+
+test('Gap4: update auto-cleans an orphaned version directory from a crashed prior update attempt', () => {
+	const home = tempDir('home');
+	const v1 = tempDir('v1'); stageBundle(v1, { 'bin/atlas-gateway': 'v1' });
+	cmds.install(home, { from: v1, version: '0.1.0' });
+
+	const v2 = tempDir('v2'); stageBundle(v2, { 'bin/atlas-gateway': 'v2' });
+	// Simulate a crashed update: the 0.2.0 dir was copied but install.json
+	// still only knows about 0.1.0 — 0.2.0 was never committed.
+	const dest = path.join(home, 'versions', '0.2.0');
+	fs.mkdirSync(dest, { recursive: true });
+	fs.writeFileSync(path.join(dest, 'stale.txt'), 'orphaned', 'utf8');
+
+	const result = cmds.update(home, { from: v2, version: '0.2.0' });
+	assert.equal(result.version, '0.2.0');
+	assert.equal(cmds.readCurrent(home), '0.2.0');
+	assert.equal(fs.existsSync(path.join(dest, 'stale.txt')), false);
+});
+
+test('Gap4: install still refuses a version directory that IS referenced by install.json (no silent clobber of a real install)', () => {
+	const home = tempDir('home');
+	const v1 = tempDir('v1'); stageBundle(v1, { 'bin/atlas-gateway': 'v1' });
+	cmds.install(home, { from: v1, version: '0.1.0' });
+
+	assert.throws(() => cmds.install(home, { from: v1, version: '0.1.0' }), cmds.CliError);
+	// the real, committed install must remain untouched
+	assert.equal(fs.readFileSync(path.join(home, 'versions', '0.1.0', 'bin', 'atlas-gateway'), 'utf8'), 'v1');
+});
+
+test('Gap4: a version still referenced only via previousVersion/rollbackHistory is not treated as orphaned', () => {
+	const home = tempDir('home');
+	const v1 = tempDir('v1'); stageBundle(v1, { 'bin/atlas-gateway': 'v1' });
+	const v2 = tempDir('v2'); stageBundle(v2, { 'bin/atlas-gateway': 'v2' });
+	cmds.install(home, { from: v1, version: '0.1.0' });
+	cmds.update(home, { from: v2, version: '0.2.0' });
+
+	// 0.1.0 is retained on disk and referenced as previousVersion — attempting
+	// to re-install over it must still refuse, not silently wipe it.
+	assert.throws(() => cmds.install(home, { from: v1, version: '0.1.0' }), cmds.CliError);
+	assert.equal(fs.readFileSync(path.join(home, 'versions', '0.1.0', 'bin', 'atlas-gateway'), 'utf8'), 'v1');
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3 Track D — F18 Option C: atomic version staging
+// ---------------------------------------------------------------------------
+//
+// Before this, install()/update()/installBundledPlatform()/stageRelease() all
+// copied (or extracted) directly into the final `versions/<version>/` path.
+// A crash mid-copy left a partially-written directory sitting AT the real
+// version path — indistinguishable, at a glance, from a real completed
+// install. Gap 4's orphan cleanup could eventually delete it on the *next*
+// attempt, but only after it had already been visible at the real path in
+// the meantime. Now every write lands in `versions/<version>.atlas-staging/`
+// first and only `fs.renameSync`'s to the real path once fully built — the
+// partial-directory-at-the-real-path window is closed entirely, not just
+// cleaned up after the fact. These tests assert that property directly
+// (nothing ever appears at `dest` on failure), not just that cleanup
+// eventually happens.
+
+test('F18: a crash mid-copy during install leaves only a .atlas-staging dir, never a partial directory at the real version path', () => {
+	const home = tempDir('home');
+	const bundle = tempDir('bundle');
+	stageBundle(bundle, { 'bin/atlas-gateway': 'v1', 'nested/file.txt': 'data' });
+
+	const originalCpSync = fs.cpSync;
+	let cpCalls = 0;
+	fs.cpSync = () => {
+		cpCalls += 1;
+		throw new Error('simulated crash mid-copy');
+	};
+	try {
+		assert.throws(() => cmds.install(home, { from: bundle, version: '0.1.0' }), /simulated crash mid-copy/);
+	} finally {
+		fs.cpSync = originalCpSync;
+	}
+	assert.ok(cpCalls >= 1, 'the mocked copy must actually have been invoked');
+
+	const dest = path.join(home, 'versions', '0.1.0');
+	const staging = cmds.stagingDirFor(home, '0.1.0');
+	assert.equal(fs.existsSync(dest), false, 'no partial directory must ever appear at the real version path');
+	assert.equal(fs.existsSync(staging), false, 'the staging dir is cleaned up when the failure is caught synchronously');
+	assert.deepEqual(cmds.listVersions(home), []);
+	assert.equal(fs.existsSync(path.join(home, 'install.json')), false, 'nothing was ever committed');
+});
+
+test('F18: a crash mid-copy during update leaves the previous version untouched and no partial dir at the new version path', () => {
+	const home = tempDir('home');
+	const v1 = tempDir('v1'); stageBundle(v1, { 'bin/atlas-gateway': 'v1' });
+	cmds.install(home, { from: v1, version: '0.1.0' });
+
+	const v2 = tempDir('v2'); stageBundle(v2, { 'bin/atlas-gateway': 'v2' });
+	const originalCpSync = fs.cpSync;
+	fs.cpSync = () => { throw new Error('simulated crash mid-copy'); };
+	try {
+		assert.throws(() => cmds.update(home, { from: v2, version: '0.2.0' }), /simulated crash mid-copy/);
+	} finally {
+		fs.cpSync = originalCpSync;
+	}
+
+	const dest = path.join(home, 'versions', '0.2.0');
+	const staging = cmds.stagingDirFor(home, '0.2.0');
+	assert.equal(fs.existsSync(dest), false, 'no partial directory must ever appear at the real version path');
+	assert.equal(fs.existsSync(staging), false);
+	assert.deepEqual(cmds.listVersions(home), ['0.1.0'], 'the already-installed version is untouched by the failed update');
+	assert.equal(cmds.readCurrent(home), '0.1.0');
+});
+
+test('F18: installBundledPlatform also stages atomically — a crash mid-copy never leaves a partial dir at the real version path', () => {
+	const home = tempDir('home');
+	const bundle = tempDir('bundle');
+	stageBundle(bundle, { 'bin/runtime.js': 'process.exit(0);\n' });
+
+	const originalCpSync = fs.cpSync;
+	fs.cpSync = () => { throw new Error('simulated crash mid-copy'); };
+	try {
+		assert.throws(
+			() => cmds.installBundledPlatform(home, { from: bundle, version: '1.2.3', entrypoint: 'bin/runtime.js' }),
+			/simulated crash mid-copy/
+		);
+	} finally {
+		fs.cpSync = originalCpSync;
+	}
+
+	assert.equal(fs.existsSync(path.join(home, 'versions', '1.2.3')), false);
+	assert.equal(fs.existsSync(cmds.stagingDirFor(home, '1.2.3')), false);
+	assert.equal(cmds.readCurrent(home), null);
+});
+
+test('F18: successful install and update end with the version at the real path and no leftover staging dir', () => {
+	const home = tempDir('home');
+	const v1 = tempDir('v1'); stageBundle(v1, { 'bin/atlas-gateway': 'v1' });
+	const v2 = tempDir('v2'); stageBundle(v2, { 'bin/atlas-gateway': 'v2' });
+
+	const installed = cmds.install(home, { from: v1, version: '0.1.0' });
+	assert.equal(installed.path, path.join(home, 'versions', '0.1.0'));
+	assert.equal(fs.existsSync(installed.path), true);
+	assert.equal(fs.existsSync(cmds.stagingDirFor(home, '0.1.0')), false);
+
+	const updated = cmds.update(home, { from: v2, version: '0.2.0' });
+	assert.equal(fs.existsSync(updated.path), true);
+	assert.equal(fs.existsSync(cmds.stagingDirFor(home, '0.2.0')), false);
+	assert.equal(cmds.readCurrent(home), '0.2.0');
+});
+
+test('F18: retry after a simulated crash cleans up the stale staging dir and succeeds', () => {
+	const home = tempDir('home');
+	const bundle = tempDir('bundle');
+	stageBundle(bundle, { 'bin/atlas-gateway': 'v1' });
+
+	// Simulate a real process crash: a prior attempt wrote into
+	// <version>.atlas-staging/ but the process died before fs.renameSync ever
+	// ran, so the real `versions/0.1.0/` path was never touched — only the
+	// staging dir exists, with partial leftover content.
+	const staging = cmds.stagingDirFor(home, '0.1.0');
+	fs.mkdirSync(staging, { recursive: true });
+	fs.writeFileSync(path.join(staging, 'partial-leftover.txt'), 'from the crashed attempt', 'utf8');
+	assert.equal(fs.existsSync(path.join(home, 'versions', '0.1.0')), false);
+
+	const result = cmds.install(home, { from: bundle, version: '0.1.0' });
+
+	assert.equal(result.version, '0.1.0');
+	assert.equal(cmds.readCurrent(home), '0.1.0');
+	assert.equal(fs.existsSync(staging), false, 'stale staging dir from the crashed attempt is cleaned up');
+	assert.equal(fs.existsSync(path.join(result.path, 'partial-leftover.txt')), false, 'the clean re-stage does not carry over crash leftovers');
+	assert.equal(fs.readFileSync(path.join(result.path, 'bin', 'atlas-gateway'), 'utf8'), 'v1');
+});
+
+test('F18: a leftover staging dir never surfaces in listVersions or doctor, even without a retry', () => {
+	const home = tempDir('home');
+	const bundle = tempDir('bundle');
+	stageBundle(bundle, { 'bin/atlas-gateway': 'v1' });
+	cmds.install(home, { from: bundle, version: '0.1.0' });
+
+	// Drop an unrelated stale staging dir for a version that is never retried.
+	const staleStaging = cmds.stagingDirFor(home, '9.9.9');
+	fs.mkdirSync(staleStaging, { recursive: true });
+	fs.writeFileSync(path.join(staleStaging, 'stub.txt'), 'never committed', 'utf8');
+
+	assert.deepEqual(cmds.listVersions(home), ['0.1.0']);
+	const report = cmds.doctor(home);
+	const retained = report.checks.find((c) => c.name === 'retained-versions');
+	assert.equal(retained.detail, '0.1.0');
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3 Track D — F19 P0 test gaps
+// ---------------------------------------------------------------------------
+
+test('F19 P0: installFromRelease cleans up and throws a clear CliError when the network fetch fails', async () => {
+	const home = tempDir('home');
+	const releases = tempDir('releases');
+	const releaseIndex = path.join(releases, 'index.json');
+	fs.writeFileSync(
+		releaseIndex,
+		JSON.stringify({
+			channels: { stable: '0.1.0' },
+			releases: {
+				'0.1.0': {
+					platforms: {
+						'win32-x64': {
+							url: 'https://release-host.invalid/atlas-0.1.0-win32-x64.tar.gz',
+							sha256: '0'.repeat(64)
+						}
+					}
+				}
+			}
+		}),
+		'utf8'
+	);
+
+	const originalFetch = global.fetch;
+	global.fetch = async () => { throw new Error('simulated network failure: ECONNRESET'); };
+	try {
+		await assert.rejects(
+			() => cmds.installFromRelease(home, {
+				manifest: fileUrl(releaseIndex),
+				channel: 'stable',
+				platform: 'win32-x64'
+			}),
+			cmds.CliError
+		);
+	} finally {
+		global.fetch = originalFetch;
+	}
+
+	assert.deepEqual(cmds.listVersions(home), []);
+	assert.equal(fs.existsSync(cmds.stagingDirFor(home, '0.1.0')), false, 'no staging dir left behind either');
+	assert.equal(cmds.readCurrent(home), null);
+});
+
+test('F19 P0: updateFromRelease cleans up and throws a clear CliError when the network fetch fails, leaving the current version untouched', async () => {
+	const home = tempDir('home');
+	const v1 = tempDir('v1'); stageBundle(v1, { 'bin/atlas-gateway': 'v1' });
+	cmds.install(home, { from: v1, version: '0.1.0' });
+
+	const releases = tempDir('releases');
+	const releaseIndex = path.join(releases, 'index.json');
+	fs.writeFileSync(
+		releaseIndex,
+		JSON.stringify({
+			channels: { stable: '0.2.0' },
+			releases: {
+				'0.2.0': {
+					platforms: {
+						'win32-x64': {
+							url: 'https://release-host.invalid/atlas-0.2.0-win32-x64.tar.gz',
+							sha256: '1'.repeat(64)
+						}
+					}
+				}
+			}
+		}),
+		'utf8'
+	);
+
+	const originalFetch = global.fetch;
+	global.fetch = async () => { throw new Error('simulated network failure: ETIMEDOUT'); };
+	try {
+		await assert.rejects(
+			() => cmds.updateFromRelease(home, {
+				manifest: fileUrl(releaseIndex),
+				channel: 'stable',
+				platform: 'win32-x64'
+			}),
+			cmds.CliError
+		);
+	} finally {
+		global.fetch = originalFetch;
+	}
+
+	assert.deepEqual(cmds.listVersions(home), ['0.1.0']);
+	assert.equal(cmds.readCurrent(home), '0.1.0');
+});
+
+test('F19 P0: updateFromRelease cleans up on a corrupted/invalid tarball, leaving the previous version installed and listVersions clean', async () => {
+	const home = tempDir('home');
+	const v1 = tempDir('v1'); stageBundle(v1, { 'bin/atlas-gateway': 'v1' });
+	cmds.install(home, { from: v1, version: '0.1.0' });
+
+	const releases = tempDir('releases');
+	// Checksum matches (so the download-verification step passes), but the
+	// bytes are not a gzip stream at all — extraction must fail.
+	const archive = path.join(releases, 'atlas-0.2.0-win32-x64.tar.gz');
+	fs.writeFileSync(archive, Buffer.from('this is not a valid gzip stream'));
+	const releaseIndex = path.join(releases, 'index.json');
+	fs.writeFileSync(
+		releaseIndex,
+		JSON.stringify({
+			channels: { stable: '0.2.0' },
+			releases: {
+				'0.2.0': {
+					platforms: {
+						'win32-x64': { url: fileUrl(archive), sha256: hashFile(archive) }
+					}
+				}
+			}
+		}),
+		'utf8'
+	);
+
+	await assert.rejects(
+		() => cmds.updateFromRelease(home, {
+			manifest: fileUrl(releaseIndex),
+			channel: 'stable',
+			platform: 'win32-x64'
+		}),
+		cmds.CliError
+	);
+
+	assert.deepEqual(cmds.listVersions(home), ['0.1.0'], 'the failed update leaves no trace of 0.2.0');
+	assert.equal(fs.existsSync(path.join(home, 'versions', '0.2.0')), false);
+	assert.equal(fs.existsSync(cmds.stagingDirFor(home, '0.2.0')), false, 'staging dir is cleaned up too');
+	assert.equal(cmds.readCurrent(home), '0.1.0', 'the previously installed version stays current');
+});
+
+test('F19 P0: rollback history persists across process restarts — re-reading install.json from disk still resolves the correct target', () => {
+	const home = tempDir('home');
+	const v1 = tempDir('v1'); stageBundle(v1, { 'bin/atlas-gateway': 'v1' });
+	const v2 = tempDir('v2'); stageBundle(v2, { 'bin/atlas-gateway': 'v2' });
+	const v3 = tempDir('v3'); stageBundle(v3, { 'bin/atlas-gateway': 'v3' });
+
+	cmds.install(home, { from: v1, version: '0.1.0' });
+	cmds.update(home, { from: v2, version: '0.2.0' });
+	cmds.update(home, { from: v3, version: '0.3.0' });
+	cmds.rollback(home, {}); // 0.3.0 -> 0.2.0, history: [{from: 0.3.0, to: 0.2.0}]
+
+	// Simulate a brand-new process: read install.json straight off disk
+	// instead of relying on anything held over from the calls above.
+	const persisted = JSON.parse(fs.readFileSync(path.join(home, 'install.json'), 'utf8'));
+
+	assert.equal(persisted.installedVersion, '0.2.0');
+	assert.ok(Array.isArray(persisted.rollbackHistory));
+	assert.equal(persisted.rollbackHistory.length, 1);
+	assert.equal(persisted.rollbackHistory[0].from, '0.3.0');
+	assert.equal(persisted.rollbackHistory[0].to, '0.2.0');
+
+	// resolveRollbackTarget against the freshly-parsed state must still
+	// resolve the yo-yo target, proving the chain round-trips through disk.
+	assert.equal(resolveRollbackTarget(persisted, undefined), '0.3.0');
+
+	// And a real rollback call against this same on-disk state confirms it end-to-end.
+	const rolled = cmds.rollback(home, {});
+	assert.equal(rolled.version, '0.3.0');
+	assert.equal(rolled.rolledBackFrom, '0.2.0');
+});
+
+test('F19 P0: rollback history persistence also honors the legacy previousVersion fallback when read fresh from disk', () => {
+	const home = tempDir('home');
+	const v1 = tempDir('v1'); stageBundle(v1, { 'bin/atlas-gateway': 'v1' });
+	cmds.install(home, { from: v1, version: '0.1.0' });
+
+	// Simulate state written before rollbackHistory existed: no history
+	// array, only the legacy single-slot previousVersion.
+	const installFile = path.join(home, 'install.json');
+	const state = JSON.parse(fs.readFileSync(installFile, 'utf8'));
+	delete state.rollbackHistory;
+	state.previousVersion = '0.0.9-legacy';
+	fs.writeFileSync(installFile, JSON.stringify(state, null, 2) + '\n', 'utf8');
+
+	const persisted = JSON.parse(fs.readFileSync(installFile, 'utf8'));
+	assert.equal(resolveRollbackTarget(persisted, undefined), '0.0.9-legacy');
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3 Track D — F19 P1 (picked up as time allowed)
+// ---------------------------------------------------------------------------
+
+test('F19 P1: install surfaces the underlying error and cleans up when the install root cannot be written to (permission denied)', () => {
+	const home = tempDir('home');
+	const bundle = tempDir('bundle');
+	stageBundle(bundle, { 'bin/atlas-gateway': 'v1' });
+
+	const originalMkdirSync = fs.mkdirSync;
+	fs.mkdirSync = (target, ...rest) => {
+		if (String(target).includes('versions')) {
+			const err = new Error(`EACCES: permission denied, mkdir '${target}'`);
+			err.code = 'EACCES';
+			throw err;
+		}
+		return originalMkdirSync(target, ...rest);
+	};
+	try {
+		assert.throws(() => cmds.install(home, { from: bundle, version: '0.1.0' }), /EACCES/);
+	} finally {
+		fs.mkdirSync = originalMkdirSync;
+	}
+	assert.deepEqual(cmds.listVersions(home), []);
+	assert.equal(fs.existsSync(cmds.stagingDirFor(home, '0.1.0')), false);
+});
+
+test('F19 P1: install cleans up on a simulated disk-full (ENOSPC) failure mid-copy', () => {
+	const home = tempDir('home');
+	const bundle = tempDir('bundle');
+	stageBundle(bundle, { 'bin/atlas-gateway': 'v1' });
+
+	const originalCpSync = fs.cpSync;
+	fs.cpSync = () => {
+		const err = new Error('ENOSPC: no space left on device, write');
+		err.code = 'ENOSPC';
+		throw err;
+	};
+	try {
+		assert.throws(() => cmds.install(home, { from: bundle, version: '0.1.0' }), /ENOSPC/);
+	} finally {
+		fs.cpSync = originalCpSync;
+	}
+	assert.equal(fs.existsSync(path.join(home, 'versions', '0.1.0')), false);
+	assert.equal(fs.existsSync(cmds.stagingDirFor(home, '0.1.0')), false);
+	assert.deepEqual(cmds.listVersions(home), []);
 });

@@ -244,6 +244,56 @@ async fn surface_list_never_exposes_owner_tokens() {
     assert!(body[0].get("owner_token").is_none());
 }
 
+/// F11 sessions dashboard: GET /v1/surface-sessions?active_only=true&limit=&offset=
+/// must forward as `surface list --json --active-only --limit N --offset N`, and
+/// with no query params at all must forward as plain `surface list --json` (no
+/// stray flags).
+#[tokio::test]
+async fn surface_list_forwards_query_params_as_cli_flags() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let argv_path = stub_dir.path().join("argv.txt");
+    let router = test_app_with_arg_capture(
+        seeded_db(&dir),
+        r#"{"sessions":[],"total":0,"limit":10,"offset":5}"#,
+        &argv_path,
+        &stub_dir,
+    );
+
+    let (status, body) =
+        get_json(&router, "/v1/surface-sessions?active_only=true&limit=10&offset=5").await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["total"], 0);
+    let argv = std::fs::read_to_string(&argv_path).unwrap();
+    assert_eq!(
+        argv.lines().collect::<Vec<_>>(),
+        vec!["surface", "list", "--json", "--active-only", "--limit", "10", "--offset", "5"],
+    );
+}
+
+#[tokio::test]
+async fn surface_list_with_no_query_params_omits_optional_flags() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let argv_path = stub_dir.path().join("argv.txt");
+    let router = test_app_with_arg_capture(
+        seeded_db(&dir),
+        r#"{"sessions":[],"total":0,"limit":50,"offset":0}"#,
+        &argv_path,
+        &stub_dir,
+    );
+
+    let (status, _body) = get_json(&router, "/v1/surface-sessions").await;
+
+    assert_eq!(status, StatusCode::OK);
+    let argv = std::fs::read_to_string(&argv_path).unwrap();
+    assert_eq!(
+        argv.lines().collect::<Vec<_>>(),
+        vec!["surface", "list", "--json"],
+    );
+}
+
 #[tokio::test]
 async fn surface_owner_action_returns_terminal_contract() {
     let dir = tempfile::tempdir().unwrap();

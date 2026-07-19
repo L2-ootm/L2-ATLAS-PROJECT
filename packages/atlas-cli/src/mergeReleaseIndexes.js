@@ -3,14 +3,24 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-/** Find every file named `pattern` (default `index.json`) anywhere under `dir`. */
+/**
+ * Find index fragment files anywhere under `dir`. `pattern` is an exact
+ * filename (default `index.json`) unless it starts with `*`, in which case
+ * it's treated as a suffix match (e.g. `*.json` matches any per-platform
+ * fragment named `release-index.<platform>.json`) — needed because CI
+ * downloads multiple platforms' artifacts into one flattened directory and
+ * same-named fragments would collide/overwrite each other on download.
+ */
 function findIndexFiles(dir, pattern = 'index.json') {
+	const matches = pattern.startsWith('*')
+		? (name) => name.endsWith(pattern.slice(1))
+		: (name) => name === pattern;
 	const out = [];
 	const walk = (current) => {
 		for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
 			const abs = path.join(current, entry.name);
 			if (entry.isDirectory()) walk(abs);
-			else if (entry.isFile() && entry.name === pattern) out.push(abs);
+			else if (entry.isFile() && matches(entry.name)) out.push(abs);
 		}
 	};
 	walk(dir);

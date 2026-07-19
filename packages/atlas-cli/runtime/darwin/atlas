@@ -1,0 +1,41 @@
+#!/bin/sh
+# ATLAS macOS (x64/arm64) runtime entrypoint.
+#
+# Deliberately POSIX shell, not Node: the npm launcher (packages/atlas-cli)
+# needs Node to run `atlas install`/`atlas update`, but the materialized
+# runtime itself should not require Node just to launch. Mirrors
+# packages/atlas-cli/runtime/win32/atlas.js's env/arg contract exactly —
+# see resolveRuntimeEntrypoint()/launchRuntime() in
+# packages/atlas-cli/src/launcher.js, which spawns this file directly
+# (not through a shell) once it is marked executable.
+#
+# Identical to ../linux/atlas — kept as a separate file (rather than a
+# shared script both platforms symlink to) because release bundles are
+# flat per-platform tarballs; a symlink would need special-casing in the
+# dependency-free tar writer (packages/atlas-cli/src/tarball.js), which
+# currently only handles plain files and directories by design.
+set -eu
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PYTHON="$ROOT/python/bin/python3"
+GATEWAY="$ROOT/native/atlas-core-rs/target/release/atlas-gateway"
+TUI="$ROOT/services/atlas-tui/atlas-tui"
+
+for label_file in "embedded Python:$PYTHON" "Rust gateway:$GATEWAY" "terminal UI:$TUI"; do
+    label="${label_file%%:*}"
+    file="${label_file#*:}"
+    if [ ! -f "$file" ]; then
+        echo "ATLAS runtime is incomplete: $label is missing ($file)" >&2
+        exit 1
+    fi
+done
+
+export ATLAS_GATEWAY_BIN="${ATLAS_GATEWAY_BIN:-$GATEWAY}"
+export ATLAS_RELEASE_ROOT="$ROOT"
+export ATLAS_TUI_BIN="${ATLAS_TUI_BIN:-$TUI}"
+export PYTHONDONTWRITEBYTECODE=1
+export PYTHONNOUSERSITE=1
+export PYTHONUTF8=1
+
+exec "$PYTHON" -s -m atlas_runtime.cli.main "$@"

@@ -1766,13 +1766,41 @@ async fn surface_create(
     Ok(Json(value))
 }
 
-async fn surface_list(State(state): State<AppState>) -> ApiResult {
-    let mut value = dispatch_json_cli(
-        &state.atlas_cmd,
-        &["surface", "list", "--json"],
-        "surface list",
-    )
-    .await?;
+/// Query params for GET /v1/surface-sessions (F11 sessions dashboard). `active_only`
+/// is a plain string compared case-insensitively against "true"/"1" rather than
+/// `Option<bool>` — axum's `Query` extractor has no established bool precedent
+/// elsewhere in this file (existing `Option<bool>` fields all live in JSON
+/// bodies), so this avoids relying on serde_urlencoded's string->bool coercion.
+#[derive(Deserialize)]
+struct SurfaceListQuery {
+    active_only: Option<String>,
+    limit: Option<i64>,
+    offset: Option<i64>,
+}
+
+async fn surface_list(
+    State(state): State<AppState>,
+    Query(q): Query<SurfaceListQuery>,
+) -> ApiResult {
+    let mut args: Vec<String> = vec!["surface".into(), "list".into(), "--json".into()];
+    let active_only = q
+        .active_only
+        .as_deref()
+        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+        .unwrap_or(false);
+    if active_only {
+        args.push("--active-only".into());
+    }
+    if let Some(limit) = q.limit {
+        args.push("--limit".into());
+        args.push(limit.to_string());
+    }
+    if let Some(offset) = q.offset {
+        args.push("--offset".into());
+        args.push(offset.to_string());
+    }
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let mut value = dispatch_json_cli(&state.atlas_cmd, &refs, "surface list").await?;
     redact_owner_tokens(&mut value);
     Ok(Json(value))
 }

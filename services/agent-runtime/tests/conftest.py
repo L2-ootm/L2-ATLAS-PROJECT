@@ -341,3 +341,24 @@ def _offline_native_harness(monkeypatch) -> None:
         "apply_autoconfig",
         lambda *_a, **_kw: {"applied": False, "tasks": {}, "reason": "test-offline"},
     )
+
+
+@pytest.fixture(autouse=True)
+def _offline_run_summary_synthesis(monkeypatch) -> None:
+    """Autouse: never let structured run-summary generation reach a real
+    auxiliary-model provider during tests (Phase 3 Track A, F8).
+
+    `run_service.complete_run()` calls `generate_run_summary()` on every
+    terminal transition, whose default `synthesize` implementation
+    (`_foundation_synthesize`) resolves the operator's real configured
+    provider from disk (ATLAS_HOME) — outside this fixture's control, unlike
+    the in-memory `db` fixture. Deterministic extraction (tools_used,
+    files_touched, blockers, completed_actions, duration_ms) still runs
+    unpatched; only the narrative-synthesis network call is stubbed, mirroring
+    `_offline_native_harness` above for the same "no network in tests" rule.
+    """
+    from atlas_runtime import run_summary_service
+
+    monkeypatch.setattr(
+        run_summary_service, "_foundation_synthesize", lambda *_a, **_kw: {}
+    )
