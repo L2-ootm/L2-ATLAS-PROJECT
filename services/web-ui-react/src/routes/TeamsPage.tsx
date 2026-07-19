@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Plus, Trash2, Users, UserSquare2, ArrowUp, ArrowDown, Play, X } from 'lucide-react';
 import { Page } from '../components/Page';
 import { GlassPanel, HudLabel } from '../components/hud';
@@ -40,6 +41,8 @@ const fieldStyle: React.CSSProperties = {
 };
 
 export default function TeamsPage() {
+	const location = useLocation();
+	const openTeamName = (location.state as { openTeamName?: string } | null)?.openTeamName ?? null;
 	const [tab, setTab] = useState<Tab>('teams');
 	const [presets, setPresets] = useState<AgentPreset[]>([]);
 	const [teams, setTeams] = useState<Team[]>([]);
@@ -76,7 +79,7 @@ export default function TeamsPage() {
 			) : tab === 'presets' ? (
 				<PresetsTab presets={presets} onChange={refresh} />
 			) : (
-				<TeamsTab teams={teams} presets={presets} onChange={refresh} />
+				<TeamsTab teams={teams} presets={presets} onChange={refresh} autoOpenName={openTeamName} />
 			)}
 		</Page>
 	);
@@ -231,11 +234,13 @@ function PresetsTab({ presets, onChange }: { presets: AgentPreset[]; onChange: (
 function TeamsTab({
 	teams,
 	presets,
-	onChange
+	onChange,
+	autoOpenName
 }: {
 	teams: Team[];
 	presets: AgentPreset[];
 	onChange: () => void;
+	autoOpenName?: string | null;
 }) {
 	const [showForm, setShowForm] = useState(false);
 	const [name, setName] = useState('');
@@ -281,7 +286,13 @@ function TeamsTab({
 			) : (
 				<div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 					{teams.map((team) => (
-						<TeamCard key={team.id} team={team} presets={presets} onChange={onChange} />
+						<TeamCard
+							key={team.id}
+							team={team}
+							presets={presets}
+							onChange={onChange}
+							autoOpenRun={!!autoOpenName && team.name.toLowerCase() === autoOpenName.toLowerCase()}
+						/>
 					))}
 				</div>
 			)}
@@ -292,17 +303,26 @@ function TeamsTab({
 function TeamCard({
 	team,
 	presets,
-	onChange
+	onChange,
+	autoOpenRun = false
 }: {
 	team: Team;
 	presets: AgentPreset[];
 	onChange: () => void;
+	autoOpenRun?: boolean;
 }) {
 	const [editing, setEditing] = useState(false);
 	const [roster, setRoster] = useState<string[]>(team.members.map((m) => m.id));
 	const [running, setRunning] = useState<string | null>(null);
 	const [kickoff, setKickoff] = useState('');
-	const [showRun, setShowRun] = useState(false);
+	const [showRun, setShowRun] = useState(autoOpenRun);
+	const cardRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		if (autoOpenRun) cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+		// Only ever fires once per mount for the deep-linked team — team identity doesn't change.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
 
 	function moveMember(index: number, direction: -1 | 1) {
 		const next = [...roster];
@@ -334,7 +354,8 @@ function TeamCard({
 	}
 
 	return (
-		<GlassPanel style={{ padding: 14 }}>
+		<div ref={cardRef}>
+		<GlassPanel style={{ padding: 14, ...(autoOpenRun ? { border: '1px solid rgba(79,139,255,0.4)' } : {}) }}>
 			<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
 				<div>
 					<div style={{ fontSize: 14, fontWeight: 600, color: 'var(--l2-fg-1)' }}>{team.name}</div>
@@ -446,6 +467,7 @@ function TeamCard({
 
 			{running && <TeamRunTranscript teamRunId={running} onClose={() => setRunning(null)} />}
 		</GlassPanel>
+		</div>
 	);
 }
 

@@ -403,6 +403,27 @@ export default function Chat() {
 	}
 
 	// ── WebUI-local action commands (/help, /new, /agent, /bind, /go …) ─────
+	function exportTranscript(msgs: ConsoleMessage[]): string {
+		const heading = (m: ConsoleMessage) =>
+			m.role === 'operator' ? 'User' : m.role === 'agent' ? `Agent — ${m.label}` : m.label;
+		let out = `# ATLAS Chat Transcript\n\n**Exported:** ${new Date().toLocaleString()}\n\n---\n\n`;
+		for (const m of msgs) {
+			if (!m.body) continue;
+			out += `## ${heading(m)}\n\n${m.body}\n\n---\n\n`;
+		}
+		return out;
+	}
+
+	function downloadTextFile(filename: string, content: string) {
+		const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+		const url = URL.createObjectURL(blob);
+		const anchor = document.createElement('a');
+		anchor.href = url;
+		anchor.download = filename;
+		anchor.click();
+		URL.revokeObjectURL(url);
+	}
+
 	function appendLocalNote(body: string, role: 'system' | 'agent' = 'system', label = 'ATLAS') {
 		const note: ConsoleMessage = {
 			id: `${Date.now()}-local-note`,
@@ -456,6 +477,21 @@ export default function Chat() {
 					return false;
 				}
 				navigate(target);
+				return true;
+			}
+			case 'team': {
+				const teamName = args.trim();
+				navigate('/teams', teamName ? { state: { openTeamName: teamName } } : undefined);
+				return true;
+			}
+			case 'export': {
+				if (messages.length === 0) {
+					setQueueError('Nothing to export yet — this session has no messages.');
+					return false;
+				}
+				const filename = `session-${catalogSessionId.slice(0, 8)}.md`;
+				downloadTextFile(filename, exportTranscript(messages));
+				appendLocalNote(`Exported transcript as \`${filename}\`.`);
 				return true;
 			}
 			default:

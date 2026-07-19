@@ -1033,6 +1033,7 @@ function GoalIconButton({
 		<button
 			type="button"
 			title={title}
+			aria-label={title}
 			disabled={disabled}
 			onClick={onClick}
 			style={{
@@ -1064,20 +1065,6 @@ function GoalIconButton({
 		</button>
 	);
 }
-
-const miniIconStyle: React.CSSProperties = {
-	display: 'inline-flex',
-	alignItems: 'center',
-	justifyContent: 'center',
-	width: 22,
-	height: 22,
-	borderRadius: 2,
-	border: 'none',
-	background: 'transparent',
-	color: 'var(--l2-fg-3)',
-	cursor: 'pointer',
-	flex: 'none'
-};
 
 // ── Launch panel (closes the loop) ────────────────────────────────────────────
 function LaunchPanel({

@@ -16,7 +16,7 @@ describe('action command catalog', () => {
 
 	it('ships the WebUI-local action set', () => {
 		const actions = ATLAS_COMMANDS.filter((c) => c.kind === 'action').map((c) => c.name);
-		expect(actions).toEqual(['help', 'new', 'clear', 'agent', 'bind', 'unbind', 'go']);
+		expect(actions).toEqual(['help', 'new', 'clear', 'agent', 'bind', 'unbind', 'go', 'team', 'export']);
 	});
 
 	it('matches action commands through the shared matcher', () => {

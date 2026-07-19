@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Search, Package, Layers, Download, ChevronDown } from 'lucide-react';
+import { Search, ChevronDown } from 'lucide-react';
 import { Page } from '../components/Page';
 import { GlassPanel, HudLabel } from '../components/hud';
 
@@ -29,14 +29,6 @@ interface SkillInfo {
 	path: string;
 }
 
-type Tab = 'installed' | 'store' | 'bundles';
-
-const TABS: { key: Tab; label: string; icon: typeof Package }[] = [
-	{ key: 'installed', label: 'INSTALLED', icon: Package },
-	{ key: 'store', label: 'STORE', icon: Download },
-	{ key: 'bundles', label: 'BUNDLES', icon: Layers }
-];
-
 const TIER_LABELS: Record<string, { label: string; color: string }> = {
 	full: { label: 'FULL', color: 'var(--atlas-emerald)' },
 	'name-only': { label: 'NAME ONLY', color: 'var(--atlas-celestial)' },
@@ -50,7 +42,6 @@ const PROVENANCE_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 export default function SkillsPage() {
-	const [tab, setTab] = useState<Tab>('installed');
 	const [skills, setSkills] = useState<SkillInfo[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [search, setSearch] = useState('');
@@ -147,34 +138,9 @@ export default function SkillsPage() {
 
 				{/* Main content */}
 				<div style={{ flex: 1, minWidth: 0 }}>
-					{/* Tabs + Search */}
+					{/* Search */}
 					<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
-						<div style={{ display: 'flex', gap: 4 }}>
-							{TABS.map((t) => (
-								<button
-									key={t.key}
-									type="button"
-									onClick={() => setTab(t.key)}
-									style={{
-										display: 'flex',
-										alignItems: 'center',
-										gap: 6,
-										padding: '7px 14px',
-										borderRadius: 2,
-										border: `1px solid ${tab === t.key ? 'rgba(79,139,255,0.4)' : 'var(--l2-hairline)'}`,
-										background: tab === t.key ? 'rgba(79,139,255,0.1)' : 'transparent',
-										color: tab === t.key ? 'var(--atlas-celestial)' : 'var(--l2-fg-3)',
-										fontFamily: 'var(--l2-font-mono)',
-										fontSize: 10,
-										letterSpacing: '0.14em',
-										cursor: 'pointer'
-									}}
-								>
-									<t.icon size={13} />
-									{t.label}
-								</button>
-							))}
-						</div>
+						<HudLabel>INSTALLED</HudLabel>
 						<div style={{ position: 'relative' }}>
 							<Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--l2-fg-3)' }} />
 							<input

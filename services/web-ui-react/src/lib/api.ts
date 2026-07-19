@@ -1181,6 +1181,8 @@ export function openRunStream(id: string, after = 0): EventSource {
 /** A run joined to its mission title — what the cross-mission Runs feed renders. */
 export interface RunWithMission extends Run {
 	mission_title: string;
+	/** Empty string on pre-0024 gateways/DBs (legacy/unknown), same convention as Mission.origin. */
+	mission_origin?: MissionOrigin | '';
 }
 
 /**

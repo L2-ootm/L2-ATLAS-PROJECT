@@ -739,22 +739,44 @@ pub fn get_module(path: &Path, id: &str) -> Result<Option<Value>, DbError> {
 
 /// Cross-mission run feed: runs joined to their mission title, newest first.
 /// One query — replaces the cockpit's listMissions -> getMission N+1 fan-out.
+/// `mission_origin` (0024) lets callers regroup chat-origin runs by session
+/// client-side; pre-0024 DBs fall back to the un-joined origin column and the
+/// row mapper degrades it to "" (legacy/unknown), same convention as
+/// `mission_row_with_archive`.
 pub fn list_runs(path: &Path, limit: i64) -> Result<Vec<Value>, DbError> {
     let conn = open_ro(path)?;
-    let sql = format!(
-        "SELECT {RUN_COLS_QUALIFIED}, m.title \
-         FROM runs r JOIN missions m ON m.id = r.mission_id \
-         ORDER BY r.started_at DESC LIMIT ?1"
-    );
-    let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt
-        .query_map([limit], |row| {
-            let mut run = run_row(row)?;
-            run["mission_title"] = Value::String(row.get::<_, String>(8)?);
-            Ok(run)
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    Ok(rows)
+    let candidates = [
+        format!(
+            "SELECT {RUN_COLS_QUALIFIED}, m.title, m.origin \
+             FROM runs r JOIN missions m ON m.id = r.mission_id \
+             ORDER BY r.started_at DESC LIMIT ?1"
+        ),
+        format!(
+            "SELECT {RUN_COLS_QUALIFIED}, m.title \
+             FROM runs r JOIN missions m ON m.id = r.mission_id \
+             ORDER BY r.started_at DESC LIMIT ?1"
+        ),
+    ];
+    let mut last_err: Option<rusqlite::Error> = None;
+    for sql in candidates {
+        match conn.prepare(&sql) {
+            Ok(mut stmt) => {
+                let rows = stmt
+                    .query_map([limit], |row| {
+                        let mut run = run_row(row)?;
+                        run["mission_title"] = Value::String(row.get::<_, String>(8)?);
+                        run["mission_origin"] =
+                            Value::String(row.get::<_, String>(9).unwrap_or_default());
+                        Ok(run)
+                    })?
+                    .collect::<rusqlite::Result<Vec<_>>>()?;
+                return Ok(rows);
+            }
+            Err(e) if is_schema_drift(&e) => last_err = Some(e),
+            Err(e) => return Err(e.into()),
+        }
+    }
+    Err(last_err.expect("candidates is non-empty").into())
 }
 
 pub fn get_run(path: &Path, id: &str) -> Result<Option<Value>, DbError> {

@@ -15,7 +15,9 @@ export type AtlasCommandAction =
 	| 'agent'
 	| 'bind'
 	| 'unbind'
-	| 'go';
+	| 'go'
+	| 'team'
+	| 'export';
 
 export interface AtlasCommand {
 	name: string;
@@ -135,6 +137,21 @@ export const ATLAS_COMMANDS: AtlasCommand[] = [
 		template: '',
 		kind: 'action',
 		action: 'go'
+	},
+	{
+		name: 'team',
+		description: "open the team launcher — /team <name> jumps straight to that team's run panel",
+		argumentHint: '[name]',
+		template: '',
+		kind: 'action',
+		action: 'team'
+	},
+	{
+		name: 'export',
+		description: 'download this session\'s transcript as a Markdown file',
+		template: '',
+		kind: 'action',
+		action: 'export'
 	}
 ];
 
@@ -159,6 +176,7 @@ export const GO_PAGES: Record<string, string> = {
 	console: '/console',
 	command: '/command',
 	missions: '/missions',
+	teams: '/teams',
 	runs: '/runs',
 	ledger: '/ledger',
 	graph: '/graph',

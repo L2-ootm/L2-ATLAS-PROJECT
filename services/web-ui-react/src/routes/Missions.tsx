@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Plus, X } from 'lucide-react';
+import { Search, Plus, X, ChevronDown, ChevronRight, MessagesSquare } from 'lucide-react';
 import { Page } from '../components/Page';
 import { StatusBadge } from '../components/hud';
 import TopoInput from '../components/TopoInput';
@@ -9,16 +9,27 @@ import BorderGlow from '../components/BorderGlow';
 import { GlassPanel } from '../components/GlassFx';
 import {
 	listMissions,
+	listRuns,
 	createMission,
 	listProjects,
 	type Mission,
 	type MissionOrigin,
-	type Project
+	type Project,
+	type RunWithMission
 } from '../lib/api';
 import { useGatewayHealth } from '../lib/useGatewayHealth';
+import { groupRunsBySession, type RunSessionGroup } from '../lib/runSessions';
 import sealMark from '../brand/assets/seal.webp';
 
-type Load = { s: 'loading' } | { s: 'ready'; missions: Mission[]; count: number } | { s: 'error' };
+// PROMPTS view (origin='chat') renders session-grouped runs, not one row per
+// prompt — every chat message creates its own mission+run (AgentSurfaceProvider),
+// so without grouping this view floods with one row per message sent. Reuses
+// the exact grouping Runs.tsx already ships (runSessions.ts), no new model.
+type Load =
+	| { s: 'loading' }
+	| { s: 'ready'; kind: 'missions'; missions: Mission[]; count: number }
+	| { s: 'ready'; kind: 'sessions'; sessions: RunSessionGroup[]; count: number }
+	| { s: 'error' };
 
 const STATUSES = ['ALL', 'PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED', 'ARCHIVED'];
 // View selector over missions.origin (0024): deliberate missions by default,
@@ -51,34 +62,62 @@ export default function Missions() {
 	const [status, setStatus] = useState('ALL');
 	const [view, setView] = useState<(typeof VIEWS)[number]>(VIEWS[0]);
 	const [creating, setCreating] = useState(false);
+	const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
 	const nav = useNavigate();
 	const { epoch } = useGatewayHealth();
 
-	async function refresh(origin = view.origin) {
+	async function refresh(v: (typeof VIEWS)[number]) {
 		try {
-			const { missions, count } = await listMissions(50, origin);
-			setLoad({ s: 'ready', missions, count });
+			if (v.key === 'prompts') {
+				// Every chat prompt creates its own mission+run — group by
+				// session_id (same pattern as Runs.tsx) instead of listing one
+				// row per prompt.
+				const { runs } = await listRuns(200);
+				const chatRuns = runs.filter((r) => r.mission_origin === 'chat');
+				setLoad({ s: 'ready', kind: 'sessions', sessions: groupRunsBySession(chatRuns), count: chatRuns.length });
+			} else {
+				const { missions, count } = await listMissions(50, v.origin);
+				setLoad({ s: 'ready', kind: 'missions', missions, count });
+			}
 		} catch {
 			setLoad({ s: 'error' });
 		}
 	}
 	useEffect(() => {
-		void refresh();
+		void refresh(view);
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [epoch, view]);
 	useEffect(() => {
-		const id = setInterval(() => void refresh(), MISSIONS_POLL_MS);
+		const id = setInterval(() => void refresh(view), MISSIONS_POLL_MS);
 		return () => clearInterval(id);
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [view]);
+	function toggleSession(id: string) {
+		setExpanded((current) => {
+			const next = new Set(current);
+			if (next.has(id)) next.delete(id);
+			else next.add(id);
+			return next;
+		});
+	}
 
-	const filtered = useMemo(() => {
-		if (load.s !== 'ready') return [];
+	const filteredMissions = useMemo(() => {
+		if (load.s !== 'ready' || load.kind !== 'missions') return [];
 		const q = query.trim().toLowerCase();
 		return load.missions.filter(
 			(m) =>
 				(status === 'ALL' || m.status?.toUpperCase() === status) &&
 				(q === '' || m.title.toLowerCase().includes(q) || m.intent?.toLowerCase().includes(q))
+		);
+	}, [load, query, status]);
+
+	const filteredSessions = useMemo(() => {
+		if (load.s !== 'ready' || load.kind !== 'sessions') return [];
+		const q = query.trim().toLowerCase();
+		return load.sessions.filter(
+			(sess) =>
+				(status === 'ALL' || sess.status.toUpperCase() === status) &&
+				(q === '' || sess.latest.mission_title.toLowerCase().includes(q))
 		);
 	}, [load, query, status]);
 
@@ -132,17 +171,32 @@ export default function Missions() {
 				<Header />
 				{load.s === 'loading' && <SkeletonRows />}
 				{load.s === 'error' && <Offline />}
-				{load.s === 'ready' &&
-					(filtered.length === 0 ? (
+				{load.s === 'ready' && load.kind === 'missions' &&
+					(filteredMissions.length === 0 ? (
 						<Empty hasAny={load.missions.length > 0} onCreate={() => setCreating(true)} />
 					) : (
-						filtered.map((m, i) => (
+						filteredMissions.map((m, i) => (
 							<Row
 								key={m.id}
 								m={m}
 								i={i}
 								showOrigin={view.key === 'all'}
 								onClick={() => nav(`/missions/${m.id}`)}
+							/>
+						))
+					))}
+				{load.s === 'ready' && load.kind === 'sessions' &&
+					(filteredSessions.length === 0 ? (
+						<Empty hasAny={load.sessions.length > 0} onCreate={() => setCreating(true)} />
+					) : (
+						filteredSessions.map((sess, i) => (
+							<PromptSessionRow
+								key={sess.id}
+								session={sess}
+								i={i}
+								expanded={expanded.has(sess.id)}
+								onToggle={() => toggleSession(sess.id)}
+								onOpenMission={(id) => nav(`/missions/${id}`)}
 							/>
 						))
 					))}
@@ -153,7 +207,7 @@ export default function Missions() {
 					onClose={() => setCreating(false)}
 					onCreated={(id) => {
 						setCreating(false);
-						void refresh();
+						void refresh(view);
 						nav(`/missions/${id}`);
 					}}
 				/>
@@ -248,6 +302,102 @@ function Row({ m, i, showOrigin, onClick }: { m: Mission; i: number; showOrigin?
 			<span><StatusBadge status={m.status} /></span>
 			<span style={{ textAlign: 'right', fontFamily: 'var(--l2-font-mono)', fontSize: 11, color: 'var(--l2-fg-3)' }}>
 				{rel(m.updated_at)}
+			</span>
+		</div>
+	);
+}
+
+// PROMPTS view row — one per chat session, expandable to the individual
+// prompt/mission turns underneath (mirrors Runs.tsx's SessionRow/TurnRow).
+function PromptSessionRow({
+	session,
+	i,
+	expanded,
+	onToggle,
+	onOpenMission
+}: {
+	session: RunSessionGroup;
+	i: number;
+	expanded: boolean;
+	onToggle: () => void;
+	onOpenMission: (missionId: string) => void;
+}) {
+	return (
+		<div>
+			<div
+				role="button"
+				tabIndex={0}
+				aria-expanded={expanded}
+				data-topo="info"
+				onClick={onToggle}
+				onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onToggle()}
+				style={{
+					display: 'grid',
+					gridTemplateColumns: GRID,
+					gap: 14,
+					alignItems: 'center',
+					padding: '14px 18px',
+					borderTop: i === 0 ? 'none' : '1px solid var(--l2-hairline)',
+					cursor: 'pointer',
+					background: expanded ? 'rgba(79,139,255,0.055)' : 'transparent',
+					transition: 'background var(--l2-duration-xs) var(--l2-ease)'
+				}}
+			>
+				<span style={{ display: 'flex', alignItems: 'center', fontFamily: 'var(--l2-font-mono)', fontSize: 11, color: 'var(--l2-fg-3)' }}>
+					{expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+				</span>
+				<span style={{ minWidth: 0 }}>
+					<div style={{ color: 'var(--l2-fg-1)', fontSize: 14, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+						{session.latest.mission_title}
+					</div>
+					<div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--l2-fg-3)', fontSize: 11, fontFamily: 'var(--l2-font-mono)', letterSpacing: '0.06em' }}>
+						<MessagesSquare size={11} strokeWidth={1.5} /> {session.runs.length} PROMPT{session.runs.length === 1 ? '' : 'S'}
+					</div>
+				</span>
+				<span><StatusBadge status={session.status} /></span>
+				<span style={{ textAlign: 'right', fontFamily: 'var(--l2-font-mono)', fontSize: 11, color: 'var(--l2-fg-3)' }}>
+					{rel(session.latest.started_at)}
+				</span>
+			</div>
+			{expanded && (
+				<div style={{ background: 'rgba(4,7,12,0.52)', borderTop: '1px solid rgba(79,139,255,0.14)' }}>
+					{session.runs.map((r, j) => (
+						<PromptTurnRow key={r.id} r={r} first={j === 0} onClick={() => onOpenMission(r.mission_id)} />
+					))}
+				</div>
+			)}
+		</div>
+	);
+}
+
+function PromptTurnRow({ r, first, onClick }: { r: RunWithMission; first: boolean; onClick: () => void }) {
+	return (
+		<div
+			role="button"
+			tabIndex={0}
+			data-topo="atlas"
+			onClick={onClick}
+			onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onClick()}
+			style={{
+				display: 'grid',
+				gridTemplateColumns: GRID,
+				gap: 14,
+				alignItems: 'center',
+				padding: '11px 18px 11px 42px',
+				borderTop: first ? 'none' : '1px solid rgba(237,234,224,0.035)',
+				cursor: 'pointer',
+				transition: 'background var(--l2-duration-xs) var(--l2-ease)'
+			}}
+			onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(79,139,255,0.05)')}
+			onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+		>
+			<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 11, color: 'var(--l2-fg-3)' }} />
+			<span style={{ color: 'var(--l2-fg-1)', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+				{r.mission_title}
+			</span>
+			<span><StatusBadge status={r.status} /></span>
+			<span style={{ textAlign: 'right', fontFamily: 'var(--l2-font-mono)', fontSize: 11, color: 'var(--l2-fg-3)' }}>
+				{rel(r.started_at)}
 			</span>
 		</div>
 	);
