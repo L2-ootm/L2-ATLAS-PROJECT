@@ -32,7 +32,7 @@ from typing import Optional
 from atlas_core.schemas.control_plane import PermissionConfig
 from atlas_core.schemas.tool import ToolApproval, ToolResult
 
-from atlas_runtime import mission_service, policy, rtk
+from atlas_runtime import mission_service, policy, storage_compressor
 from atlas_runtime.audit_service import _redact, emit
 from atlas_runtime.tools import registry
 
@@ -519,7 +519,7 @@ def _run_and_emit(
     # persisted/context-facing copy shrinks. A no-op for every tool without a
     # registered adapter (github, web_fetch, webhook_notify,
     # golden_review_write); applies to `workspace` op=read/read_file.
-    stored_result = rtk.compress_tool_output(
+    stored_result = storage_compressor.compress_tool_output(
         tool_name, args, result.output or result.error or ""
     )
     emit(
@@ -628,7 +628,7 @@ def approve(
     # RTK (F6): the tool_calls.result / audit copy is what future context
     # assembly re-reads, so it is compressed the same way as the read-class
     # path in _run_and_emit above.
-    stored_result = rtk.compress_tool_output(
+    stored_result = storage_compressor.compress_tool_output(
         approval.tool_name, args, result.output or result.error or ""
     )
     emit(

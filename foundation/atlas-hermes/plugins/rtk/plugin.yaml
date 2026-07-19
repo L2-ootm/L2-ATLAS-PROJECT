@@ -1,0 +1,4 @@
+name: rtk
+description: RTK (Rust Token Killer) output compression — reduces terminal output tokens by 60-90%
+version: 1.0.0
+author: L2 ATLAS

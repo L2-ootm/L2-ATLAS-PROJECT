@@ -31,7 +31,7 @@ from typing import Any, Callable, Optional
 
 from atlas_core.schemas.core import SECRET_PATTERNS
 
-from atlas_runtime import rtk
+from atlas_runtime import storage_compressor
 from atlas_runtime.agents.base import AgentRuntime, RunOutcome
 from atlas_runtime.audit_service import emit
 from atlas_runtime.memory_router import (
@@ -582,14 +582,14 @@ class NativeAtlasAgent(AgentRuntime):
                     # and file bodies are the biggest per-run storage/context
                     # cost and are usually reconstructable (exit code + tail;
                     # re-read the still-on-disk file). Never touches the live
-                    # in-run Hermes message list (D-001; see rtk.py docstring),
+                    # in-run Hermes message list (D-001; see storage_compressor.py docstring),
                     # only what ATLAS itself persists. Falls back to the raw
                     # result unchanged for any tool without a registered
                     # adapter or a non-string result.
                     tool_name = str(name)
                     text_source: Any = result
                     if isinstance(result, str) and isinstance(args, dict):
-                        text_source = rtk.compress_tool_output(tool_name, args, result)
+                        text_source = storage_compressor.compress_tool_output(tool_name, args, result)
                     self._safe_emit(
                         conn, lock, run_id, event_type="tool_completed",
                         tool_name=tool_name,
