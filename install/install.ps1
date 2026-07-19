@@ -41,6 +41,8 @@ $ConfigDir = Join-Path $AtlasHome 'config'
 $DataDir = Join-Path $AtlasHome 'data'
 $SkillsDir = Join-Path $AtlasHome 'skills'
 $InstallFile = Join-Path $AtlasHome 'install.json'
+$RtkVersion = '0.43.0'
+$RtkBinDir = Join-Path $AtlasHome 'rtk'
 
 function Write-Step([string]$msg) {
     Write-Host "==> $msg" -ForegroundColor Cyan
@@ -188,6 +190,50 @@ function Run-DbMigrations {
     }
 }
 
+# ── RTK (Rust Token Killer) — optional but recommended ─────────────────────────
+function Ensure-Rtk {
+    if (Test-Command 'rtk') {
+        Write-Ok "RTK $((& rtk --version 2>$null | Select-Object -First 1)) found"
+        return
+    }
+
+    $rtkExe = Join-Path $RtkBinDir 'rtk.exe'
+    if (Test-Path -LiteralPath $rtkExe -PathType Leaf) {
+        $env:Path = "$RtkBinDir;$env:Path"
+        Write-Ok "RTK found at $RtkBinDir"
+        return
+    }
+
+    Write-Step "Installing RTK v$RtkVersion (60-90% token savings on shell commands)"
+
+    $rtkTarget = 'x86_64-pc-windows-msvc'
+    $rtkUrl = "https://github.com/rtk-ai/rtk/releases/download/v$RtkVersion/rtk-$rtkTarget.zip"
+    $tmpDir = Join-Path $env:TEMP "atlas-rtk-$(Get-Random)"
+
+    try {
+        New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
+        Write-Step "Downloading RTK from $rtkUrl"
+        Invoke-WebRequest -Uri $rtkUrl -OutFile "$tmpDir\rtk.zip" -UseBasicParsing -ErrorAction Stop
+
+        Write-Step "Extracting RTK"
+        Expand-Archive -Path "$tmpDir\rtk.zip" -DestinationPath $tmpDir -Force
+
+        New-Item -ItemType Directory -Path $RtkBinDir -Force | Out-Null
+        $rtkExtracted = Get-ChildItem -Path $tmpDir -Filter 'rtk.exe' -Recurse | Select-Object -First 1
+        if ($rtkExtracted) {
+            Copy-Item -LiteralPath $rtkExtracted.FullName -Destination $rtkExe -Force
+            $env:Path = "$RtkBinDir;$env:Path"
+            Write-Ok "RTK installed to $rtkBinDir"
+        } else {
+            Write-Warn "RTK binary not found in archive — RTK will not be installed (optional)"
+        }
+    } catch {
+        Write-Warn "RTK installation failed (non-fatal): $_"
+    } finally {
+        if (Test-Path $tmpDir) { Remove-Item -Path $tmpDir -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+}
+
 # ── Get current version ────────────────────────────────────────────────────────
 function Get-CurrentVersion {
     if (-not (Test-Path $InstallFile)) { return $null }
@@ -277,6 +323,9 @@ if (-not $Source) {
         $compat = "@echo off`r`ncall `"$launcher`" %*`r`nexit /b %errorlevel%`r`n"
         Set-Content -LiteralPath $legacyShim -Value $compat -Encoding ascii -NoNewline
     }
+
+    Write-Step 'Installing RTK (optional, 60-90% token savings)'
+    Ensure-Rtk
 
     & $launcher doctor --install-only
     if ($LASTEXITCODE -ne 0) { throw 'ATLAS package integrity verification failed' }

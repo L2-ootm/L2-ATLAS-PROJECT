@@ -276,6 +276,88 @@ def _version_cmd(
         typer.echo(f"atlas {ver}")
 
 
+@app.command("rtk", help="RTK (Rust Token Killer) status and control — 60-90% token savings on shell commands.")
+def _rtk_cmd(
+    action: str = typer.Argument("status", help="Action: status, enable, disable"),
+    json_output: bool = typer.Option(False, "--json", help="Emit as JSON."),
+) -> None:
+    import shutil
+
+    env_var = "ATLAS_RTK_DISABLED"
+    current_disabled = os.environ.get(env_var, "").strip().lower() in {"1", "true", "yes"}
+    rtk_found = shutil.which("rtk") is not None
+
+    if action == "status":
+        if json_output:
+            typer.echo(json.dumps({
+                "available": rtk_found,
+                "disabled": current_disabled,
+                "env_var": env_var,
+            }))
+        else:
+            if current_disabled:
+                typer.echo("rtk: disabled (ATLAS_RTK_DISABLED=1)")
+            elif rtk_found:
+                try:
+                    probe = subprocess.run(["rtk", "--version"], capture_output=True, text=True, timeout=5)
+                    version_str = probe.stdout.strip().split("\n")[0] if probe.returncode == 0 else "found"
+                    typer.echo(f"rtk: {version_str} — 60-90% token savings")
+                except Exception:
+                    typer.echo("rtk: available (version unknown) — 60-90% token savings")
+            else:
+                typer.echo("rtk: not installed — install for 60-90% token savings")
+                typer.echo("  https://github.com/rtk-ai/rtk")
+
+    elif action == "enable":
+        # Remove the disable env var from the process environment
+        if env_var in os.environ:
+            del os.environ[env_var]
+        # Write to ATLAS config if available
+        try:
+            config_path = os.environ.get("ATLAS_CONFIG_PATH", "")
+            if not config_path:
+                atlas_home = os.environ.get("ATLAS_HOME", os.path.expanduser("~/.atlas"))
+                config_path = os.path.join(atlas_home, "config.yaml")
+            if os.path.exists(config_path):
+                import yaml
+                with open(config_path) as f:
+                    cfg = yaml.safe_load(f) or {}
+                rtk_cfg = cfg.setdefault("rtk", {})
+                rtk_cfg["enabled"] = True
+                with open(config_path, "w") as f:
+                    yaml.dump(cfg, f, default_flow_style=False)
+                typer.echo("rtk: enabled (config updated)")
+            else:
+                typer.echo("rtk: enabled (set ATLAS_RTK_DISABLED=0 for this session)")
+        except Exception as exc:
+            typer.echo(f"rtk: enabled (config update failed: {exc})")
+
+    elif action == "disable":
+        os.environ[env_var] = "1"
+        try:
+            config_path = os.environ.get("ATLAS_CONFIG_PATH", "")
+            if not config_path:
+                atlas_home = os.environ.get("ATLAS_HOME", os.path.expanduser("~/.atlas"))
+                config_path = os.path.join(atlas_home, "config.yaml")
+            if os.path.exists(config_path):
+                import yaml
+                with open(config_path) as f:
+                    cfg = yaml.safe_load(f) or {}
+                rtk_cfg = cfg.setdefault("rtk", {})
+                rtk_cfg["enabled"] = False
+                with open(config_path, "w") as f:
+                    yaml.dump(cfg, f, default_flow_style=False)
+                typer.echo("rtk: disabled (config updated)")
+            else:
+                typer.echo("rtk: disabled (set ATLAS_RTK_DISABLED=1 for this session)")
+        except Exception as exc:
+            typer.echo(f"rtk: disabled (config update failed: {exc})")
+
+    else:
+        typer.echo(f"Unknown action: {action}. Use: status, enable, disable", err=True)
+        raise typer.Exit(1)
+
+
 @app.command("logs", help="Tail the ATLAS rotating log file (<ATLAS home>/logs/atlas.log).")
 def _logs_cmd(
     tail: int = typer.Option(50, "--tail", "-n", help="Number of most recent lines to print (0 for the whole file)."),

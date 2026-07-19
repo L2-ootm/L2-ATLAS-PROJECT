@@ -73,6 +73,8 @@ done
 NPM_PACKAGE="@systemsl2/atlas"
 NODE_INSTALL_DIR="$HOME/.atlas/node"
 LOCAL_BIN="$HOME/.local/bin"
+RTK_VERSION="0.43.0"
+RTK_BIN_DIR="$HOME/.atlas/rtk"
 
 # ---------------------------------------------------------------------------
 # Platform detection
@@ -180,6 +182,71 @@ ensure_node() {
 }
 
 # ---------------------------------------------------------------------------
+# RTK (Rust Token Killer) — optional but recommended for 60-90% token savings
+# ---------------------------------------------------------------------------
+ensure_rtk() {
+    if command -v rtk >/dev/null 2>&1; then
+        log_ok "RTK $(rtk --version 2>/dev/null | head -1) found"
+        return 0
+    fi
+
+    if [ -x "$RTK_BIN_DIR/rtk" ]; then
+        export PATH="$RTK_BIN_DIR:$PATH"
+        log_ok "RTK found at $RTK_BIN_DIR"
+        return 0
+    fi
+
+    log_step "Installing RTK v${RTK_VERSION} (60-90% token savings on shell commands)"
+
+    # Map platform to RTK release asset name
+    rtk_os="$OS"
+    rtk_arch="$ARCH"
+    if [ "$rtk_arch" = "x64" ]; then rtk_arch="x86_64"; fi
+    if [ "$rtk_os" = "linux" ]; then
+        rtk_target="${rtk_arch}-unknown-linux-musl"
+        rtk_ext="tar.gz"
+    elif [ "$rtk_os" = "macos" ]; then
+        rtk_target="${rtk_arch}-apple-darwin"
+        rtk_ext="tar.gz"
+    fi
+
+    rtk_url="https://github.com/rtk-ai/rtk/releases/download/v${RTK_VERSION}/rtk-${rtk_target}.tar.gz"
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' EXIT
+
+    log_step "Downloading RTK from $rtk_url"
+    if ! curl -fsSL "$rtk_url" -o "$tmp_dir/rtk.tar.gz" 2>/dev/null; then
+        log_warn "RTK download failed — RTK will not be installed (optional)"
+        log_warn "Install manually: https://github.com/rtk-ai/rtk"
+        return 0
+    fi
+
+    log_step "Extracting RTK"
+    tar -xzf "$tmp_dir/rtk.tar.gz" -C "$tmp_dir" 2>/dev/null || {
+        log_warn "RTK extraction failed — RTK will not be installed (optional)"
+        return 0
+    }
+
+    mkdir -p "$RTK_BIN_DIR"
+    # Find the rtk binary in the extracted directory
+    rtk_extracted="$(find "$tmp_dir" -name "rtk" -type f -executable 2>/dev/null | head -1)"
+    if [ -z "$rtk_extracted" ]; then
+        rtk_extracted="$(find "$tmp_dir" -name "rtk" -type f 2>/dev/null | head -1)"
+    fi
+
+    if [ -n "$rtk_extracted" ]; then
+        cp "$rtk_extracted" "$RTK_BIN_DIR/rtk"
+        chmod +x "$RTK_BIN_DIR/rtk"
+        export PATH="$RTK_BIN_DIR:$PATH"
+        log_ok "RTK installed to $RTK_BIN_DIR/rtk"
+        log_warn "Add $RTK_BIN_DIR to your PATH permanently (e.g. in ~/.profile or ~/.zshrc):"
+        log_warn "  export PATH=\"$RTK_BIN_DIR:\$PATH\""
+    else
+        log_warn "RTK binary not found in archive — RTK will not be installed (optional)"
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # Existing installation check (mirrors install.ps1's Get-CurrentVersion:
 # read the materialized runtime's install.json directly — this is the
 # runtime version atlas-cli manages via installState.js's readInstallState,
@@ -241,6 +308,9 @@ fi
 
 log_step "Materializing the verified, self-contained ATLAS runtime"
 atlas install
+
+log_step "Installing RTK (optional, 60-90% token savings)"
+ensure_rtk
 
 log_step "Verifying the installation"
 atlas doctor --install-only

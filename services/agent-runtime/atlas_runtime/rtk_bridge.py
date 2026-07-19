@@ -4,7 +4,7 @@ Provides `rewrite_command()` and `compress_output()` for direct use by
 tool_service.py and terminal_tool.py. Fail-safe: returns original
 values on any error.
 
-Disable: set ATLAS_RTK_DISABLED=1
+Disable: set ATLAS_RTK_DISABLED=1 or config rtk.enabled=false
 """
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ import subprocess
 logger = logging.getLogger(__name__)
 
 _RTK_TIMEOUT = 5  # seconds
+_config_cache: bool | None = None
 
 
 def available() -> bool:
@@ -24,7 +25,32 @@ def available() -> bool:
 
 
 def _disabled() -> bool:
-    return os.getenv("ATLAS_RTK_DISABLED", "").strip().lower() in {"1", "true", "yes"}
+    # 1. Env var takes precedence (immediate override)
+    if os.getenv("ATLAS_RTK_DISABLED", "").strip().lower() in {"1", "true", "yes"}:
+        return True
+
+    # 2. Check config file (cached after first read)
+    global _config_cache
+    if _config_cache is not None:
+        return not _config_cache
+
+    try:
+        import yaml
+        config_path = os.environ.get("ATLAS_CONFIG_PATH", "")
+        if not config_path:
+            atlas_home = os.environ.get("ATLAS_HOME", os.path.expanduser("~/.atlas"))
+            config_path = os.path.join(atlas_home, "config.yaml")
+        if os.path.exists(config_path):
+            with open(config_path) as f:
+                cfg = yaml.safe_load(f) or {}
+            rtk_cfg = cfg.get("rtk", {})
+            _config_cache = rtk_cfg.get("enabled", True)  # default: enabled
+        else:
+            _config_cache = True  # no config = enabled
+    except Exception:
+        _config_cache = True  # error = enabled (fail-open)
+
+    return not _config_cache
 
 
 def rewrite_command(command: str) -> str:

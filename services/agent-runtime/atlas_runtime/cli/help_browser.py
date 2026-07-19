@@ -34,7 +34,7 @@ _CATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Services & Sidecars", ("gateway", "cashflow", "freellmapi", "discord", "module", "terminal")),
     ("Providers & Models", ("provider", "models", "auth", "config", "components")),
     ("Data & Knowledge", ("db", "project", "graph", "wiki", "retention")),
-    ("Integrations", ("channels", "tools", "surface", "skills")),
+    ("Integrations", ("channels", "tools", "surface", "skills", "rtk")),
     ("Dev / Internal", ("foundation",)),
 )
 # Never shown as a browsable entry (this command IS the browser).

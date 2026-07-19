@@ -297,7 +297,25 @@ def _doctor_cmd(json_output: bool = typer.Option(False, "--json", help="Emit the
     except Exception as exc:  # noqa: BLE001
         echo("toolchain", f"error - {exc}", ok=False)
 
-    # 13. Version — the runtime version the npm launcher materialized and
+    # 13. RTK — optional but recommended for 60-90% token savings on shell commands.
+    try:
+        rtk_disabled = os.environ.get("ATLAS_RTK_DISABLED", "").strip().lower() in {"1", "true", "yes"}
+        rtk_found = shutil.which("rtk") is not None
+        if rtk_disabled:
+            echo("rtk", "disabled (ATLAS_RTK_DISABLED=1)", ok=True)
+        elif rtk_found:
+            try:
+                probe = subprocess.run(["rtk", "--version"], capture_output=True, text=True, timeout=5)
+                version_str = probe.stdout.strip().split("\n")[0] if probe.returncode == 0 else "found"
+                echo("rtk", f"{version_str} (60-90% token savings)", ok=True)
+            except Exception:  # noqa: BLE001
+                echo("rtk", "found (version unknown)", ok=True)
+        else:
+            echo("rtk", "not found (optional — install for 60-90% token savings)", ok=True)
+    except Exception as exc:  # noqa: BLE001
+        echo("rtk", f"error - {exc}", ok=True)
+
+    # 14. Version — the runtime version the npm launcher materialized and
     # handed off to us (ATLAS_RUNTIME_VERSION, set by launcher.js). Purely
     # informational context; unset means doctor was invoked directly (dev).
     runtime_version = os.environ.get("ATLAS_RUNTIME_VERSION", "").strip()

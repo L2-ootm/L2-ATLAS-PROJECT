@@ -3,7 +3,7 @@
 Pipes terminal output through `rtk pipe` to reduce token consumption by 60-90%.
 Fail-safe: returns original output on any error.
 
-Disable per-env: set ATLAS_RTK_DISABLED=1
+Disable: set ATLAS_RTK_DISABLED=1 or config rtk.enabled=false
 """
 from __future__ import annotations
 
@@ -15,17 +15,44 @@ import subprocess
 logger = logging.getLogger(__name__)
 
 _RTK_TIMEOUT = 5  # seconds
+_config_cache: bool | None = None
 
 
 def _rtk_available() -> bool:
     return shutil.which("rtk") is not None
 
 
+def _disabled() -> bool:
+    global _config_cache
+    # 1. Env var takes precedence
+    if os.getenv("ATLAS_RTK_DISABLED", "").strip().lower() in {"1", "true", "yes"}:
+        return True
+    # 2. Check config (cached)
+    if _config_cache is not None:
+        return not _config_cache
+    try:
+        import yaml
+        config_path = os.environ.get("ATLAS_CONFIG_PATH", "")
+        if not config_path:
+            atlas_home = os.environ.get("ATLAS_HOME", os.path.expanduser("~/.hermes"))
+            config_path = os.path.join(atlas_home, "config.yaml")
+        if os.path.exists(config_path):
+            with open(config_path) as f:
+                cfg = yaml.safe_load(f) or {}
+            rtk_cfg = cfg.get("rtk", {})
+            _config_cache = rtk_cfg.get("enabled", True)
+        else:
+            _config_cache = True
+    except Exception:
+        _config_cache = True
+    return not _config_cache
+
+
 def _compress_output(output: str, command: str) -> str | None:
     """Pipe output through rtk pipe. Returns compressed output or None on failure."""
     if not output or not output.strip():
         return None
-    if os.getenv("ATLAS_RTK_DISABLED", "").strip().lower() in {"1", "true", "yes"}:
+    if _disabled():
         return None
     if not _rtk_available():
         return None
