@@ -314,14 +314,28 @@ download_runtime_from_github() {
     releases_json="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases?per_page=10")"
 
     # Find the first release containing the platform asset
+    # New-style: atlas-{version}-{os}-{arch}.tar.gz  (release-runtime-matrix)
+    # Legacy:    systemsl2-atlas-{os}-{arch}-{version}.tgz  (npm pack)
+    platform_tag="${OS}-${ARCH}"
     asset_name=""; download_url=""; version=""; tag_name=""
-    for name in $(echo "$releases_json" | grep -oE "\"name\":\"${PLATFORM_PKG}-[0-9][^\"]*\.tgz\"" | sed 's/"name":"//;s/"//'); do
+    # Try new-style first
+    for name in $(echo "$releases_json" | grep -oE "\"name\":\"atlas-[0-9][^\"]*-${platform_tag}\.tar\.gz\"" | sed 's/"name":"//;s/"//'); do
         asset_name="$name"
-        version="$(echo "$name" | sed "s/^${PLATFORM_PKG}-//;s/\.tgz$//")"
+        version="$(echo "$name" | sed "s/^atlas-//;s/-${platform_tag}\.tar\.gz$//")"
         download_url="$(echo "$releases_json" | grep -oE "\"browser_download_url\":\"[^\"]*${name}\"" | head -1 | sed 's/"browser_download_url":"//;s/"//')"
         tag_name="$(echo "$releases_json" | grep -oE "\"tag_name\":\"[^\"]*\"" | head -1 | sed 's/"tag_name":"//;s/"//')"
         break
     done
+    # Fallback to legacy naming
+    if [ -z "$download_url" ]; then
+        for name in $(echo "$releases_json" | grep -oE "\"name\":\"${PLATFORM_PKG}-[0-9][^\"]*\.tgz\"" | sed 's/"name":"//;s/"//'); do
+            asset_name="$name"
+            version="$(echo "$name" | sed "s/^${PLATFORM_PKG}-//;s/\.tgz$//")"
+            download_url="$(echo "$releases_json" | grep -oE "\"browser_download_url\":\"[^\"]*${name}\"" | head -1 | sed 's/"browser_download_url":"//;s/"//')"
+            tag_name="$(echo "$releases_json" | grep -oE "\"tag_name\":\"[^\"]*\"" | head -1 | sed 's/"tag_name":"//;s/"//')"
+            break
+        done
+    fi
     if [ -z "$download_url" ]; then
         log_error "No ${PLATFORM_PKG} asset found in any GitHub release"
         exit 1

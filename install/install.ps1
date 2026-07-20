@@ -276,16 +276,21 @@ function Download-RuntimeFromGithub {
     $asset = $null; $tagName = $null; $version = $null
     foreach ($rel in $releases) {
         foreach ($a in $rel.assets) {
-            if ($a.name -like "$platformPkg-*.tgz") {
-                $asset = $a
-                $tagName = $rel.tag_name
-                $version = $a.name -replace "^$platformPkg-",'' -replace '\.tgz$',''
-                break
+            # New-style: atlas-{version}-win32-x64.tar.gz
+            if ($a.name -match '^atlas-(\d+\.\d+\.\d+)-win32-x64\.tar\.gz$') {
+                $asset = $a; $tagName = $rel.tag_name; $version = $Matches[1]; break
+            }
+        }
+        if ($asset) { break }
+        foreach ($a in $rel.assets) {
+            # Legacy: systemsl2-atlas-win32-x64-{version}.tgz
+            if ($a.name -match '^systemsl2-atlas-win32-x64-(\d+\.\d+\.\d+)\.tgz$') {
+                $asset = $a; $tagName = $rel.tag_name; $version = $Matches[1]; break
             }
         }
         if ($asset) { break }
     }
-    if (-not $asset) { throw "No $platformPkg asset found in any GitHub release" }
+    if (-not $asset) { throw "No Windows x64 runtime asset found in any GitHub release" }
 
     Write-Step "Downloading ATLAS runtime v$version ($($asset.name))"
     $tmpDir = Join-Path $env:TEMP "atlas-runtime-$(Get-Random)"
@@ -298,16 +303,10 @@ function Download-RuntimeFromGithub {
     New-Item -ItemType Directory -Path $dest -Force | Out-Null
 
     Write-Step 'Extracting runtime'
-    # .tgz — extract with tar (available on Windows 10+)
+    # .tar.gz or .tgz — extract with tar (available on Windows 10+)
     & tar -xzf $archivePath -C $dest 2>$null
     if ($LASTEXITCODE -ne 0) {
-        # Fallback: extract with PowerShell (zip) if tar fails
-        Expand-Archive -Path $archivePath -DestinationPath $tmpDir -Force
-        $extracted = Get-ChildItem $tmpDir -Directory | Where-Object { $_.Name -ne $asset.Name } | Select-Object -First 1
-        if ($extracted) {
-            Move-Item -Path "$($extracted.FullName)\*" -Destination $dest -Force
-            Remove-Item -Path $extracted.FullName -Recurse -Force
-        }
+        throw "Failed to extract runtime archive (tar exited $LASTEXITCODE)"
     }
 
     # If the archive contained a single top-level directory, flatten it
