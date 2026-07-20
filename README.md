@@ -113,7 +113,7 @@ only prerequisites; Git, Python, Go, and Rust are not required. Source developer
 still use the PowerShell bootstrap:
 
 ```powershell
-irm https://raw.githubusercontent.com/L2-ootm/L2-ATLAS-PROJECT/main/install/install.ps1 | iex
+irm https://raw.githubusercontent.com/L2-ootm/L2-ATLAS-PROJECT/main/install/install.ps1 -OutFile $env:TEMP\atlas-install.ps1; powershell -ExecutionPolicy Bypass -File $env:TEMP\atlas-install.ps1
 ```
 
 The PowerShell URL is public and now uses the same npm release path by default. See

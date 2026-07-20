@@ -7,8 +7,11 @@ clean-Windows UAT remains recommended for release acceptance.
 ## Windows — one line (PowerShell)
 
 ```powershell
-irm https://raw.githubusercontent.com/L2-ootm/L2-ATLAS-PROJECT/main/install/install.ps1 | iex
+irm https://raw.githubusercontent.com/L2-ootm/L2-ATLAS-PROJECT/main/install/install.ps1 -OutFile $env:TEMP\atlas-install.ps1; powershell -ExecutionPolicy Bypass -File $env:TEMP\atlas-install.ps1
 ```
+
+> `irm | iex` does not work — the script's `param()` block is only valid in
+> script files, not inside `Invoke-Expression` strings.
 
 What it does:
 
@@ -18,7 +21,7 @@ What it does:
 3. Verifies the immutable installation and prints the next steps (`atlas up`,
    `atlas doctor`, `atlas`).
 
-Parameters (call the script directly instead of `| iex` to pass them):
+Parameters (pass them after the `-File` path):
 `-ReleaseManifest <url>` for an advanced manifest override. Developer source
 mode is explicit with `-Source`; only that mode uses `-InstallDir`, `-Repo`,
 or `-Claude` and requires Git/Python/build tools.
