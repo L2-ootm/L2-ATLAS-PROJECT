@@ -45,9 +45,9 @@ function Assert-VersionContract {
 }
 
 function Assert-Unpublished([string]$Package) {
-    $existing = [string](& npm view "$Package@$Version" version 2>$null)
+    $existing = & npm view "$Package@$Version" version 2>$null
     $global:LASTEXITCODE = 0
-    if ($existing.Trim() -eq $Version) {
+    if ($existing -and "$existing".Trim() -eq $Version) {
         Write-Host "$Package@$Version is already published; skipping" -ForegroundColor Yellow
         return $false
     }
