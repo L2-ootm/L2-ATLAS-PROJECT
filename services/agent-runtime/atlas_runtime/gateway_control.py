@@ -179,10 +179,10 @@ def _pid_process_name(pid: int) -> str | None:
             out = subprocess.run(
                 ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
                 capture_output=True,
-                text=True,
                 check=False,
                 timeout=10,
-            ).stdout.strip()
+            )
+            out = (out.stdout or b"").decode("utf-8", errors="replace").strip()
             # CSV row: "image.exe","pid",... ; "INFO: No tasks..." when dead.
             if out.startswith('"'):
                 return out.split('","')[0].strip('"')

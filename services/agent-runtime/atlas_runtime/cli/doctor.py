@@ -243,9 +243,9 @@ def _doctor_cmd(json_output: bool = typer.Option(False, "--json", help="Emit the
                 if os.name == "nt":
                     tasklist = subprocess.run(
                         ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
-                        capture_output=True, text=True, timeout=5,
+                        capture_output=True, timeout=5,
                     )
-                    pid_alive = str(pid) in tasklist.stdout
+                    pid_alive = str(pid) in (tasklist.stdout or b"").decode("utf-8", errors="replace")
                 else:
                     os.kill(pid, 0)
                     pid_alive = True

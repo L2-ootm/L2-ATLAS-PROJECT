@@ -69,10 +69,10 @@ def _pid_alive(pid: int) -> bool:
             out = subprocess.run(
                 ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
                 capture_output=True,
-                text=True,
                 check=False,
             )
-            return str(pid) in (out.stdout or "")
+            stdout = (out.stdout or b"").decode("utf-8", errors="replace")
+            return str(pid) in stdout
         except Exception:
             return False
     try:
