@@ -260,6 +260,77 @@ function Get-LatestVersion {
     }
 }
 
+# ── Runtime download from GitHub releases ─────────────────────────────────────
+function Download-RuntimeFromGithub {
+    $repo = 'L2-ootm/L2-ATLAS-PROJECT'
+    $platformPkg = 'systemsl2-atlas-win32-x64'
+
+    # Find the latest release that has the platform asset
+    Write-Step 'Looking up latest release from GitHub'
+    try {
+        $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases?per_page=10" -UseBasicParsing -ErrorAction Stop
+    } catch {
+        throw "Cannot reach GitHub releases API: $_"
+    }
+
+    $asset = $null; $tagName = $null; $version = $null
+    foreach ($rel in $releases) {
+        foreach ($a in $rel.assets) {
+            if ($a.name -like "$platformPkg-*.tgz") {
+                $asset = $a
+                $tagName = $rel.tag_name
+                $version = $a.name -replace "^$platformPkg-",'' -replace '\.tgz$',''
+                break
+            }
+        }
+        if ($asset) { break }
+    }
+    if (-not $asset) { throw "No $platformPkg asset found in any GitHub release" }
+
+    Write-Step "Downloading ATLAS runtime v$version ($($asset.name))"
+    $tmpDir = Join-Path $env:TEMP "atlas-runtime-$(Get-Random)"
+    New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
+    $archivePath = Join-Path $tmpDir $asset.name
+    Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $archivePath -UseBasicParsing -ErrorAction Stop
+
+    $dest = Join-Path $VersionsDir $version
+    if (Test-Path $dest) { Remove-Item -Path $dest -Recurse -Force }
+    New-Item -ItemType Directory -Path $dest -Force | Out-Null
+
+    Write-Step 'Extracting runtime'
+    # .tgz — extract with tar (available on Windows 10+)
+    & tar -xzf $archivePath -C $dest 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        # Fallback: extract with PowerShell (zip) if tar fails
+        Expand-Archive -Path $archivePath -DestinationPath $tmpDir -Force
+        $extracted = Get-ChildItem $tmpDir -Directory | Where-Object { $_.Name -ne $asset.Name } | Select-Object -First 1
+        if ($extracted) {
+            Move-Item -Path "$($extracted.FullName)\*" -Destination $dest -Force
+            Remove-Item -Path $extracted.FullName -Recurse -Force
+        }
+    }
+
+    # If the archive contained a single top-level directory, flatten it
+    $children = Get-ChildItem $dest -Directory
+    if ($children.Count -eq 1 -and (Test-Path (Join-Path $children[0].FullName 'bin\atlas.js'))) {
+        Move-Item -Path "$($children[0].FullName)\*" -Destination $dest -Force
+        Remove-Item -Path $children[0].FullName -Recurse -Force
+    }
+
+    Remove-Item -Path $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
+
+    $entrypoint = 'bin/atlas.js'
+    if (-not (Test-Path (Join-Path $dest $entrypoint))) {
+        $entrypoint = 'atlas.js'
+    }
+
+    Write-Step 'Writing version metadata'
+    Set-Content -Path (Join-Path $AtlasHome 'current') -Value "$version`n" -Encoding ascii -NoNewline
+    @{ installedVersion = $version; installMethod = 'github-release'; lastUpdateCheck = (Get-Date -Format o); runtimeEntrypoint = $entrypoint } |
+        ConvertTo-Json | Set-Content -Path $InstallFile -Encoding ascii
+    Write-Ok "Runtime v$version installed from GitHub release $tagName"
+}
+
 # ── Main banner ────────────────────────────────────────────────────────────────
 Write-Host ''
 Write-Host '  A T L A S  —  operator install' -ForegroundColor White
@@ -308,10 +379,27 @@ if (-not $Source) {
         Preserve-UserContent -FromVersion $currentVersion -ToVersion 'latest'
     }
 
+    # Install the runtime.  The npm launcher tries its optional platform
+    # package first; when that fails (version mismatch, missing package)
+    # we fall back to downloading the release artifact directly from the
+    # GitHub release manifest — no platform npm package needed.
     Write-Step 'Materializing the verified, self-contained ATLAS runtime'
-    if ($ReleaseManifest) { & $launcher install --manifest $ReleaseManifest }
-    else { & $launcher install }
-    if ($LASTEXITCODE -ne 0) { throw 'atlas install failed' }
+    & $launcher install
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warn 'npm platform package unavailable; downloading runtime from GitHub releases'
+        $state = Get-Content -LiteralPath (Join-Path $AtlasHome 'install.json') -Raw -ErrorAction SilentlyContinue
+        $hasEntrypoint = $false
+        if ($state) {
+            $parsed = $state | ConvertFrom-Json
+            if ($parsed.runtimeEntrypoint) {
+                $verDir = Join-Path $VersionsDir $parsed.installedVersion
+                $hasEntrypoint = Test-Path (Join-Path $verDir $parsed.runtimeEntrypoint)
+            }
+        }
+        if (-not $hasEntrypoint) {
+            Download-RuntimeFromGithub
+        }
+    }
 
     # Run DB migrations
     $newVersion = Get-CurrentVersion

@@ -38,7 +38,7 @@
 		"access": "public"
 	},
 	"optionalDependencies": {
-		"@systemsl2/atlas-win32-x64": "0.1.1"
+		"@systemsl2/atlas-win32-x64": "^0.1.0"
 	},
 	"atlas": {
 		"releaseManifest": "https://github.com/L2-ootm/L2-ATLAS-PROJECT/releases/latest/download/atlas-release-index.json"

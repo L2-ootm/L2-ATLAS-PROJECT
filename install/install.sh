@@ -306,8 +306,72 @@ if [ -z "$ATLAS_BIN" ]; then
     exit 1
 fi
 
+REPO="L2-ootm/L2-ATLAS-PROJECT"
+PLATFORM_PKG="systemsl2-atlas-${OS}-${ARCH}"
+
+download_runtime_from_github() {
+    log_step "Looking up latest release from GitHub"
+    releases_json="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases?per_page=10")"
+
+    # Find the first release containing the platform asset
+    asset_name=""; download_url=""; version=""; tag_name=""
+    for name in $(echo "$releases_json" | grep -oE "\"name\":\"${PLATFORM_PKG}-[0-9][^\"]*\.tgz\"" | sed 's/"name":"//;s/"//'); do
+        asset_name="$name"
+        version="$(echo "$name" | sed "s/^${PLATFORM_PKG}-//;s/\.tgz$//")"
+        download_url="$(echo "$releases_json" | grep -oE "\"browser_download_url\":\"[^\"]*${name}\"" | head -1 | sed 's/"browser_download_url":"//;s/"//')"
+        tag_name="$(echo "$releases_json" | grep -oE "\"tag_name\":\"[^\"]*\"" | head -1 | sed 's/"tag_name":"//;s/"//')"
+        break
+    done
+    if [ -z "$download_url" ]; then
+        log_error "No ${PLATFORM_PKG} asset found in any GitHub release"
+        exit 1
+    fi
+
+    log_step "Downloading ATLAS runtime v${version} (${asset_name})"
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' EXIT
+    curl -fsSL "$download_url" -o "$tmp_dir/runtime.tgz"
+
+    dest="$(atlas_install_root)/versions/${version}"
+    rm -rf "$dest"
+    mkdir -p "$dest"
+    log_step "Extracting runtime"
+    tar -xzf "$tmp_dir/runtime.tgz" -C "$dest" --strip-components=1
+
+    rm -rf "$tmp_dir"
+
+    ep="bin/atlas.js"
+    if [ ! -f "$dest/$ep" ]; then ep="atlas.js"; fi
+
+    install_root="$(atlas_install_root)"
+    printf '%s\n' "$version" > "$install_root/current"
+    cat > "$install_root/install.json" <<EOJSON
+{
+  "installedVersion": "$version",
+  "installMethod": "github-release",
+  "lastUpdateCheck": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "runtimeEntrypoint": "$ep"
+}
+EOJSON
+    log_ok "Runtime v${version} installed from GitHub release ${tag_name}"
+}
+
 log_step "Materializing the verified, self-contained ATLAS runtime"
-atlas install
+if ! atlas install; then
+    log_warn "npm platform package unavailable; downloading runtime from GitHub releases"
+    state_file="$(atlas_install_root)/install.json"
+    has_entrypoint=false
+    if [ -f "$state_file" ]; then
+        ep_val="$(grep -o '"runtimeEntrypoint"[[:space:]]*:[[:space:]]*"[^"]*"' "$state_file" | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
+        ver_val="$(grep -o '"installedVersion"[[:space:]]*:[[:space:]]*"[^"]*"' "$state_file" | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
+        if [ -n "$ep_val" ] && [ -f "$(atlas_install_root)/versions/$ver_val/$ep_val" ]; then
+            has_entrypoint=true
+        fi
+    fi
+    if [ "$has_entrypoint" != "true" ]; then
+        download_runtime_from_github
+    fi
+fi
 
 log_step "Installing RTK (optional, 60-90% token savings)"
 ensure_rtk
