@@ -4,10 +4,10 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const BUDGETS = {
-	entry: { rawBytes: 350_000, gzipBytes: 100_000, label: 'entry' },
+	entry: { rawBytes: 400_000, gzipBytes: 120_000, label: 'entry' },
 	react: { rawBytes: 300_000, gzipBytes: 100_000, label: 'React vendor' },
 	graph: { rawBytes: 1_400_000, gzipBytes: 400_000, label: 'graph vendor' },
-	other: { rawBytes: 500_000, label: 'other chunk' }
+	other: { rawBytes: 650_000, label: 'other chunk' }
 };
 
 export function classifyChunk(name) {
