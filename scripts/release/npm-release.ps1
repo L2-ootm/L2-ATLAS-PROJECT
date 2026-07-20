@@ -45,9 +45,13 @@ function Assert-VersionContract {
 }
 
 function Assert-Unpublished([string]$Package) {
-    $null = & npm view "$Package@$Version" version --json 2>$null
-    if ($LASTEXITCODE -eq 0) { throw "$Package@$Version is already published" }
+    $existing = [string](& npm view "$Package@$Version" version 2>$null)
     $global:LASTEXITCODE = 0
+    if ($existing.Trim() -eq $Version) {
+        Write-Host "$Package@$Version is already published; skipping" -ForegroundColor Yellow
+        return $false
+    }
+    return $true
 }
 
 if ($Mode -eq 'Prepare') {
@@ -104,10 +108,10 @@ if ($Mode -eq 'Publish') {
     $dirty = @(git -C $repo status --porcelain)
     if ($dirty.Count -gt 0 -and -not $AllowDirty) { throw 'publish requires a clean committed working tree' }
     Invoke-Checked 'Verify npm identity' { npm whoami }
-    Assert-Unpublished $platformName
-    Assert-Unpublished $launcherName
-    Invoke-Checked "Publish $platformName@$Version" { npm publish $platformDir --access public }
-    Invoke-Checked "Publish $launcherName@$Version" { npm publish $launcherDir --access public }
+    $needPlatform = Assert-Unpublished $platformName
+    $needLauncher = Assert-Unpublished $launcherName
+    if ($needPlatform) { Invoke-Checked "Publish $platformName@$Version" { npm publish $platformDir --access public } }
+    if ($needLauncher) { Invoke-Checked "Publish $launcherName@$Version" { npm publish $launcherDir --access public } }
 }
 
 Invoke-Checked 'Verify public npm versions' {
