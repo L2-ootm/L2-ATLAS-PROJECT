@@ -27,6 +27,8 @@ import threading
 from typing import Literal, Optional
 
 from atlas_core.schemas.core import Run
+import uuid
+
 from atlas_runtime.audit_service import emit, get_events_for_run
 from atlas_runtime.run_summary_service import generate_run_summary
 
@@ -48,6 +50,11 @@ def start_run(
     Raises:
         ValueError: If the mission does not exist or is not in pending state.
     """
+    # Auto-generate session_id so the agent always receives prior context.
+    # Without this, native.py's ConversationHistoryRetriever gate fails
+    # because session_id is NULL and no history is injected.
+    if session_id is None:
+        session_id = f"cli-{uuid.uuid4().hex[:12]}"
     # Pydantic-first: construct Run model before any SQL
     run = Run(mission_id=mission_id, session_id=session_id, agent_runtime=agent_runtime)
     run_row = run.model_dump()

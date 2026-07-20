@@ -8,9 +8,12 @@
 	"scripts": {
 		"dev": "bun run --conditions=browser src/main.tsx",
 		"smoke": "bun run --conditions=browser src/main.tsx --smoke",
+		"build": "bun build --compile --conditions=browser --preload=@opentui/solid/preload src/main.tsx --outfile atlas-terminal",
+		"build:release": "bun build --compile --conditions=browser --preload=@opentui/solid/preload --minify src/main.tsx --outfile atlas-terminal",
 		"test": "bun test",
 		"typecheck": "bunx tsc --noEmit"
 	},
+	"bin": "./atlas-terminal",
 	"dependencies": {
 		"@effect/platform-node": "4.0.0-beta.48",
 		"@opentui/core": "0.1.99",

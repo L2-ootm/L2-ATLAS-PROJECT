@@ -23,6 +23,7 @@ sqlite-vec / fastembed lazily with an FTS5 fallback.
 """
 from __future__ import annotations
 
+import datetime
 import json
 import pathlib
 import re
@@ -314,15 +315,33 @@ def history_snippets_to_messages(snippets: list[MemorySnippet]) -> list[dict[str
 
 
 class ObservationRetriever:
-    """Recent loop observations (WP-5 compounding loop) — what prior runs learned."""
+    """Recent loop observations (WP-5 compounding loop) — what prior runs learned.
+
+    Staleness filter: observations older than MAX_OBSERVATION_AGE_DAYS are
+    excluded to prevent stale/fabricated observations from persisting in context.
+    """
+
+    MAX_OBSERVATION_AGE_DAYS = 7
 
     def section_lines(self, query: RouterQuery) -> list[str]:
         return ["## Recent Observations"]
 
     def retrieve(self, conn: sqlite3.Connection, query: RouterQuery) -> list[MemorySnippet]:
-        observations = goal_service.list_observations(conn, limit=query.max_runs)
+        observations = goal_service.list_observations(conn, limit=query.max_runs * 3)
         out: list[MemorySnippet] = []
+        now = datetime.datetime.now(datetime.timezone.utc)
         for i, obs in enumerate(observations):
+            # Staleness filter: skip observations older than MAX_OBSERVATION_AGE_DAYS.
+            if obs.created_at is not None:
+                try:
+                    created = obs.created_at
+                    if hasattr(created, 'tzinfo') and created.tzinfo is None:
+                        created = created.replace(tzinfo=datetime.timezone.utc)
+                    age_days = (now - created).total_seconds() / 86400
+                    if age_days > self.MAX_OBSERVATION_AGE_DAYS:
+                        continue
+                except (ValueError, TypeError, AttributeError):
+                    pass  # legacy observation without parseable date — include
             text = f"- _({obs.source})_ {obs.body}"
             out.append(
                 MemorySnippet(
@@ -332,6 +351,8 @@ class ObservationRetriever:
                     approx_tokens=estimate_tokens(text),
                 )
             )
+            if len(out) >= query.max_runs:
+                break
         return out
 
 

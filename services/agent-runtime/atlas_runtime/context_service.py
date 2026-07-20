@@ -197,7 +197,7 @@ def assemble_context(
         conn,
         query,
         token_budget=ctx_cfg.token_budget,
-        relevance_threshold=-1_000_000.0,
+        relevance_threshold=0.25,
     )
     if retrieval.markdown:
         lines.extend(retrieval.markdown.rstrip().splitlines())
