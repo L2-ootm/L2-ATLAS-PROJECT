@@ -10,17 +10,29 @@ function hashFile(filePath) {
 	return crypto.createHash('sha256').update(data).digest('hex');
 }
 
+/** Directories to skip during file listing (ephemeral, generated, or irrelevant). */
+const SKIP_DIRS = new Set([
+	'__pycache__', '.git', '.svn', '.hg', 'node_modules', '.mypy_cache',
+	'.pytest_cache', '.ruff_cache', '.tox', '.eggs', '*.egg-info',
+	'build', 'dist', '.next', '.vercel', '.svelte-kit', 'target',
+]);
+
+/** File extensions to skip (ephemeral artifacts). */
+const SKIP_EXTS = new Set(['.pyc', '.pyo', '.pyd', '.DS_Store', '.swp', '.swo']);
+
 /** Recursively list every file under dir, relative paths, POSIX-separated. */
 function listFiles(dir) {
 	const out = [];
 	const walk = (current, rel) => {
 		for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+			if (SKIP_DIRS.has(entry.name)) continue;
 			const abs = path.join(current, entry.name);
 			const relPath = rel ? `${rel}/${entry.name}` : entry.name;
 			if (entry.isDirectory()) {
 				walk(abs, relPath);
 			} else if (entry.isFile()) {
-				out.push(relPath);
+				const ext = path.extname(entry.name).toLowerCase();
+				if (!SKIP_EXTS.has(ext)) out.push(relPath);
 			}
 		}
 	};

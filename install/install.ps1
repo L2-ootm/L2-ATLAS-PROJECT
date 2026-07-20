@@ -378,29 +378,49 @@ if (-not $Source) {
         Preserve-UserContent -FromVersion $currentVersion -ToVersion 'latest'
     }
 
-    # Install the runtime.  The npm launcher tries its optional platform
-    # package first; when that fails (version mismatch, missing package)
-    # we fall back to downloading the release artifact directly from the
-    # GitHub release manifest — no platform npm package needed.
+    # ── Clean stale version directories ────────────────────────────────────
+    # The npm launcher's installBundledPlatform refuses to overwrite a version
+    # directory whose manifest fails checksum verification (unless the dir is
+    # orphaned).  Rather than fight that, remove ALL version directories up
+    # front.  User content (config, data, skills) lives outside versions/ and
+    # is unaffected.
+    if (Test-Path $VersionsDir) {
+        $staleDirs = @(Get-ChildItem -Path $VersionsDir -Directory -ErrorAction SilentlyContinue)
+        if ($staleDirs.Count -gt 0) {
+            Write-Step "Cleaning $($staleDirs.Count) stale version director$(if ($staleDirs.Count -eq 1) { 'y' } else { 'ies' })"
+            foreach ($dir in $staleDirs) {
+                Remove-Item -Path $dir.FullName -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    # ── Materialize the runtime ────────────────────────────────────────────
     Write-Step 'Materializing the verified, self-contained ATLAS runtime'
-    & $launcher install
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warn 'npm platform package unavailable; downloading runtime from GitHub releases'
-        $state = Get-Content -LiteralPath (Join-Path $AtlasHome 'install.json') -Raw -ErrorAction SilentlyContinue
-        $hasEntrypoint = $false
+    $materialized = $false
+
+    # Primary path: npm platform package (bundled inside the launcher)
+    & $launcher install 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        # Verify the entrypoint actually exists on disk
+        $state = Get-Content -LiteralPath $InstallFile -Raw -ErrorAction SilentlyContinue
         if ($state) {
             $parsed = $state | ConvertFrom-Json
             if ($parsed.runtimeEntrypoint) {
                 $verDir = Join-Path $VersionsDir $parsed.installedVersion
-                $hasEntrypoint = Test-Path (Join-Path $verDir $parsed.runtimeEntrypoint)
+                if (Test-Path (Join-Path $verDir $parsed.runtimeEntrypoint)) {
+                    $materialized = $true
+                }
             }
-        }
-        if (-not $hasEntrypoint) {
-            Download-RuntimeFromGithub
         }
     }
 
-    # Run DB migrations
+    # Fallback path: download the release asset directly from GitHub
+    if (-not $materialized) {
+        Write-Warn 'npm platform package unavailable; downloading runtime from GitHub releases'
+        Download-RuntimeFromGithub
+    }
+
+    # DB migrations (preserves user data across upgrades)
     $newVersion = Get-CurrentVersion
     if ($newVersion -and $isUpdate) {
         Run-DbMigrations -Version $newVersion

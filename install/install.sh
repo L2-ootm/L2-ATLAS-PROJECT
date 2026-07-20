@@ -370,8 +370,23 @@ EOJSON
     log_ok "Runtime v${version} installed from GitHub release ${tag_name}"
 }
 
+# Clean stale version directories before materializing.
+# The npm launcher's installBundledPlatform refuses to overwrite a version
+# directory whose manifest fails checksum verification. Rather than fight
+# that, remove ALL version directories up front. User content (config, data,
+# skills) lives outside versions/ and is unaffected.
+install_root="$(atlas_install_root)"
+versions_dir="$install_root/versions"
+if [ -d "$versions_dir" ]; then
+    stale_count="$(find "$versions_dir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)"
+    if [ "$stale_count" -gt 0 ]; then
+        log_step "Cleaning ${stale_count} stale version director$( [ "$stale_count" -eq 1 ] && echo y || echo ies )"
+        rm -rf "$versions_dir"/*
+    fi
+fi
+
 log_step "Materializing the verified, self-contained ATLAS runtime"
-if ! atlas install; then
+if ! atlas install 2>/dev/null; then
     log_warn "npm platform package unavailable; downloading runtime from GitHub releases"
     state_file="$(atlas_install_root)/install.json"
     has_entrypoint=false
