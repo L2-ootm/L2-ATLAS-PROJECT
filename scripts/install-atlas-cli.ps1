@@ -124,6 +124,9 @@ if ((Get-Command bun -ErrorAction SilentlyContinue) -and (Test-Path $atlasTermin
     Write-Host "Skipping atlas-terminal build (bun not found)."
 }
 
+# Resolve the console script installed by the editable pip install.
+$atlasExe = Join-Path $venv 'Scripts\atlas.exe'
+
 # Bootstrap / migrate the DB (idempotent, non-destructive).
 & $atlasExe db init
 
