@@ -1,9 +1,10 @@
 # ATLAS one-line bootstrap for Windows (PowerShell).
 #
-#   irm https://raw.githubusercontent.com/L2-ootm/L2-ATLAS-PROJECT/main/install/install.ps1 -OutFile $env:TEMP\atlas-install.ps1; powershell -ExecutionPolicy Bypass -File $env:TEMP\atlas-install.ps1
+#   $f="$env:TEMP\atlas-install.ps1"; (irm https://raw.githubusercontent.com/L2-ootm/L2-ATLAS-PROJECT/main/install/install.ps1) | Set-Content -Path $f -Encoding UTF8; powershell -ExecutionPolicy Bypass -File $f
 #
 # (irm | iex does not work because the param() block is only valid in script
-#  files, not inside Invoke-Expression strings.)
+#  files, not inside Invoke-Expression strings.  irm -OutFile can also save
+#  with the wrong encoding on PS 5.1; Set-Content -Encoding UTF8 avoids this.)
 #
 # What it does:
 #   1. RELEASE mode (default): ensures Node.js >= 20, installs the public npm
