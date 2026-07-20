@@ -102,7 +102,7 @@ Assert-VersionContract
 
 if ($Mode -eq 'Publish') {
     $dirty = @(git -C $repo status --porcelain)
-    if ($dirty.Count -gt 0) { throw 'publish requires a clean committed working tree' }
+    if ($dirty.Count -gt 0 -and -not $AllowDirty) { throw 'publish requires a clean committed working tree' }
     Invoke-Checked 'Verify npm identity' { npm whoami }
     Assert-Unpublished $platformName
     Assert-Unpublished $launcherName

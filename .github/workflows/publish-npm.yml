@@ -103,7 +103,7 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          ./scripts/release/npm-release.ps1 -Version "${{ steps.version.outputs.version }}" -Mode Publish
+          ./scripts/release/npm-release.ps1 -Version "${{ steps.version.outputs.version }}" -Mode Publish -AllowDirty
 
       - name: Upload release tarballs
         uses: actions/upload-artifact@v4
