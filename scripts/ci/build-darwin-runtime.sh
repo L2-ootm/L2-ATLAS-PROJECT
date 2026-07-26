@@ -112,6 +112,39 @@ copy_tracked_path() {
     done
 }
 
+apply_payload_manifest() {
+    # Copy every entry declared in the shared payload manifest. Keep this parser
+    # in sync with Invoke-PayloadManifest in build-windows-runtime.ps1 and with
+    # readPayloadManifest() in scripts/ci/payload-manifest.js. Pathspecs are
+    # never word-split unquoted — `:(glob)…/*.py` must not be shell-expanded.
+    manifest="$1"
+    if [ ! -f "$manifest" ]; then
+        echo "payload manifest missing: $manifest" >&2
+        exit 1
+    fi
+    entries=0
+    while IFS= read -r raw || [ -n "$raw" ]; do
+        if [[ ! "$raw" =~ ^[[:space:]]*([a-z]+)[[:space:]]+(.*[^[:space:]])[[:space:]]*$ ]]; then
+            if [[ "$raw" =~ ^[[:space:]]*(#.*)?$ ]]; then continue; fi
+            echo "malformed payload manifest line: $raw" >&2
+            exit 1
+        fi
+        mode="${BASH_REMATCH[1]}"
+        spec="${BASH_REMATCH[2]}"
+        case "$mode" in
+            tracked) copy_tracked_path "$spec" ;;
+            tree) copy_tree "$spec" ;;
+            *) echo "unknown payload manifest mode '$mode' in line: $raw" >&2; exit 1 ;;
+        esac
+        entries=$((entries + 1))
+    done < "$manifest"
+    if [ "$entries" -eq 0 ]; then
+        echo "payload manifest declared no entries: $manifest" >&2
+        exit 1
+    fi
+    echo "payload entries: $entries"
+}
+
 clean_pycache() {
     find "$BUNDLE" -type d -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true
     find "$BUNDLE" -type f -name '*.pyc' -delete 2>/dev/null || true
@@ -255,35 +288,11 @@ export PYTHONNOUSERSITE=1
     'claude-agent-sdk==0.2.104'
 
 # ---------------------------------------------------------------------------
-# Runtime trees (same source paths as build-windows-runtime.ps1)
+# Runtime payload — declared once in infra/release/payload.manifest and shared
+# by all three platform builders, so a tree can never ship on one OS and
+# silently vanish on another. See the manifest header for the doctrine.
 # ---------------------------------------------------------------------------
-for relative in \
-    "infra/migrations" \
-    "modules" \
-    "skills/atlas" \
-    "packages/atlas-core/atlas_core" \
-    "services/agent-runtime/atlas_runtime" \
-    "services/agent-runtime/atlas_audit" \
-    "services/wiki-runtime/atlas_wiki" \
-    "foundation/atlas-hermes/acp_adapter" \
-    "foundation/atlas-hermes/acp_registry" \
-    "foundation/atlas-hermes/agent" \
-    "foundation/atlas-hermes/assets" \
-    "foundation/atlas-hermes/cron" \
-    "foundation/atlas-hermes/gateway" \
-    "foundation/atlas-hermes/hermes_cli" \
-    "foundation/atlas-hermes/locales" \
-    "foundation/atlas-hermes/optional-skills" \
-    "foundation/atlas-hermes/plugins" \
-    "foundation/atlas-hermes/providers" \
-    "foundation/atlas-hermes/skills" \
-    "foundation/atlas-hermes/tools" \
-    "foundation/atlas-hermes/tui_gateway"; do
-    copy_tracked_path "$relative"
-done
-copy_tracked_path ':(glob)foundation/atlas-hermes/*.py'
-copy_tree "services/web-ui-react/dist"
-copy_tree "services/web-ui-react/scripts/serve-dist.mjs"
+apply_payload_manifest "$REPO/infra/release/payload.manifest"
 
 copy_tracked_path "services/atlas-tui/go.mod"
 mkdir -p "$BUNDLE/native/atlas-core-rs/target/release"

@@ -61,6 +61,31 @@ function Copy-TrackedPath([string]$Pathspec) {
     }
 }
 
+# Copy every entry declared in the shared payload manifest. Keep this parser in
+# sync with the POSIX twins in build-linux-runtime.sh / build-darwin-runtime.sh
+# and with readPayloadManifest() in scripts/ci/payload-manifest.js.
+function Invoke-PayloadManifest([string]$ManifestPath) {
+    if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) {
+        throw "payload manifest missing: $ManifestPath"
+    }
+    $entries = 0
+    foreach ($line in Get-Content -LiteralPath $ManifestPath) {
+        $trimmed = $line.Trim()
+        if (-not $trimmed -or $trimmed.StartsWith('#')) { continue }
+        $parts = $trimmed -split '\s+', 2
+        if ($parts.Count -ne 2) { throw "malformed payload manifest line: $line" }
+        $pathspec = $parts[1].Trim()
+        switch ($parts[0]) {
+            'tracked' { Copy-TrackedPath $pathspec }
+            'tree'    { Copy-Tree $pathspec }
+            default   { throw "unknown payload manifest mode '$($parts[0])' in line: $line" }
+        }
+        $entries++
+    }
+    if ($entries -eq 0) { throw "payload manifest declared no entries: $ManifestPath" }
+    Write-Host "payload entries: $entries"
+}
+
 if (-not $SkipNativeBuild) {
     New-Item -ItemType Directory -Force -Path $nativeBuildRoot | Out-Null
     $previousCargoTarget = $env:CARGO_TARGET_DIR
@@ -145,33 +170,11 @@ $runtimeDependencies = @(
 & $python -s -m pip install --disable-pip-version-check --no-compile $runtimeDependencies
 if ($LASTEXITCODE) { throw 'runtime dependency installation failed' }
 
-$runtimeTrees = @(
-    'infra\migrations',
-    'modules',
-    'skills\atlas',
-    'packages\atlas-core\atlas_core',
-    'services\agent-runtime\atlas_runtime',
-    'services\agent-runtime\atlas_audit',
-    'services\wiki-runtime\atlas_wiki',
-    'foundation\atlas-hermes\acp_adapter',
-    'foundation\atlas-hermes\acp_registry',
-    'foundation\atlas-hermes\agent',
-    'foundation\atlas-hermes\assets',
-    'foundation\atlas-hermes\cron',
-    'foundation\atlas-hermes\gateway',
-    'foundation\atlas-hermes\hermes_cli',
-    'foundation\atlas-hermes\locales',
-    'foundation\atlas-hermes\optional-skills',
-    'foundation\atlas-hermes\plugins',
-    'foundation\atlas-hermes\providers',
-    'foundation\atlas-hermes\skills',
-    'foundation\atlas-hermes\tools',
-    'foundation\atlas-hermes\tui_gateway'
-)
-foreach ($relative in $runtimeTrees) { Copy-TrackedPath $relative }
-Copy-TrackedPath ':(glob)foundation/atlas-hermes/*.py'
-Copy-Tree 'services\web-ui-react\dist'
-Copy-Tree 'services\web-ui-react\scripts\serve-dist.mjs'
+# Payload composition is declared once in infra/release/payload.manifest and
+# consumed identically by all three platform builders. Previously this list was
+# hardcoded here and hand-mirrored into the linux and darwin scripts, so a tree
+# could ship on one OS and silently vanish on another.
+Invoke-PayloadManifest (Join-Path $repo 'infra\release\payload.manifest')
 
 Copy-TrackedPath 'services/atlas-tui/go.mod'
 New-Item -ItemType Directory -Force -Path (Join-Path $bundle 'native\atlas-core-rs\target\release') | Out-Null

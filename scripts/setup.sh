@@ -61,14 +61,58 @@ atlas_shim="$root/atlas"
 } > "$atlas_shim"
 chmod +x "$atlas_shim"
 
+# ---------------------------------------------------------------------------
+# Core install completes BEFORE any optional sidecar is built.
+#
+# `atlas db init` used to run last, after the go/cargo/npm/bun builds. Under
+# `set -e`, one failing optional build — a TypeScript error in the donor
+# atlas-terminal was the common case — killed the script and left the database
+# uninitialized, so a machine with *more* toolchains installed ended up with a
+# *more* broken install. Ordering the critical path first means an optional
+# build can only cost you that optional component.
+# ---------------------------------------------------------------------------
+
+# Bootstrap / migrate the DB (idempotent, non-destructive).
+"$atlas_exe" db init
+
+# Verify the console script resolved inside the venv.
+"$atlas_exe" --help | head -n 1
+echo "Core install complete (CLI + database)."
+
+# ---------------------------------------------------------------------------
+# Optional sidecars — every failure here is a warning, never fatal.
+# ---------------------------------------------------------------------------
+# A counter plus a plain string rather than an array: macOS still ships bash 3.2,
+# where expanding an empty array under `set -u` is itself an error.
+optional_warning_count=0
+optional_warnings=''
+
+optional_step() {
+  # optional_step <label> <dir> <command...>
+  label="$1"
+  dir="$2"
+  shift 2
+  echo "$label"
+  # `set -e` does not apply to a command whose status is tested, so running the
+  # subshell as an `if` condition keeps a failure from terminating the script.
+  if (cd "$dir" && "$@"); then
+    return 0
+  fi
+  echo "  [WARN] $label failed (non-fatal)" >&2
+  optional_warning_count=$((optional_warning_count + 1))
+  optional_warnings="${optional_warnings}  - ${label} failed (non-fatal)
+"
+  return 0
+}
+
 # Build the Go/BubbleTea sidecar into the ATLAS-owned binary directory used by
 # the Python launcher. No shell or foundation npm bundle participates in P8.
 atlas_home="${ATLAS_HOME:-$HOME/.atlas}"
 tui="$root/services/atlas-tui"
 if command -v go >/dev/null 2>&1; then
   mkdir -p "$atlas_home/bin"
-  echo "Building atlas-tui -> $atlas_home/bin/atlas-tui"
-  (cd "$tui" && go build -trimpath -ldflags='-s -w' -o "$atlas_home/bin/atlas-tui" .)
+  optional_step "Building atlas-tui -> $atlas_home/bin/atlas-tui" "$tui" \
+    go build -trimpath -ldflags='-s -w' -o "$atlas_home/bin/atlas-tui" .
 else
   echo "Skipping atlas-tui build: Go not found. Install Go 1.26+ and rerun, or set ATLAS_TUI_BIN to a prebuilt binary."
 fi
@@ -77,8 +121,8 @@ fi
 # absent — `atlas up` will report "gateway: down" via `atlas doctor` until a
 # binary is built, but the rest of the install still completes.
 if command -v cargo >/dev/null 2>&1; then
-  echo "Building atlas-gateway (cargo build --release)"
-  (cd "$root/native/atlas-core-rs" && cargo build --release -p atlas-gateway)
+  optional_step 'Building atlas-gateway (cargo build --release)' \
+    "$root/native/atlas-core-rs" cargo build --release -p atlas-gateway
 else
   echo "Skipping gateway build (cargo not found); install Rust or set up the gateway manually."
 fi
@@ -87,29 +131,33 @@ fi
 # cockpit_control.start()). Skipped gracefully when npm is absent.
 cockpit="$root/services/web-ui-react"
 if command -v npm >/dev/null 2>&1 && [ -d "$cockpit" ]; then
-  echo "Building the cockpit ($cockpit)"
-  (cd "$cockpit" && npm install && npm run build)
+  optional_step "Building the cockpit ($cockpit)" "$cockpit" \
+    sh -c 'npm install && npm run build'
 else
   echo "Skipping cockpit build (npm not found)."
 fi
 
 # Install + typecheck atlas-terminal (donor-based TUI surface, not yet the
 # default `atlas tui` entry — see STAGE 3 retirement gate). Skipped gracefully
-# when bun is absent, same as the go/cargo/npm steps above; like those steps,
-# a typecheck failure here aborts the rest of install (set -e).
+# when bun is absent, and a typecheck failure now only disables this surface.
 atlas_terminal="$root/services/atlas-terminal"
 if command -v bun >/dev/null 2>&1 && [ -d "$atlas_terminal" ]; then
-  echo "Installing + typechecking atlas-terminal ($atlas_terminal)"
-  (cd "$atlas_terminal" && bun install && bun run typecheck)
+  optional_step "Installing + typechecking atlas-terminal ($atlas_terminal)" \
+    "$atlas_terminal" sh -c 'bun install && bun run typecheck'
 else
   echo "Skipping atlas-terminal build (bun not found)."
 fi
 
-# Bootstrap / migrate the DB (idempotent, non-destructive).
-"$atlas_exe" db init
-
-# Verify the console script resolved inside the venv.
-"$atlas_exe" --help | head -n 1
 echo ""
 echo "Done. The 'atlas' console script lives at $atlas_exe."
 echo "Use './atlas <cmd>' from the repo root, or add '$venv/bin' to PATH for a bare 'atlas'."
+if [ "$optional_warning_count" -gt 0 ]; then
+  echo ""
+  echo "$optional_warning_count optional component(s) did not build:" >&2
+  printf '%s' "$optional_warnings" >&2
+  echo "Run 'atlas doctor' to see which surfaces are affected." >&2
+fi
+
+# Exit explicitly so a soft-failed optional build can never become this script's
+# exit status. Reaching here means the core install (CLI + database) succeeded.
+exit 0

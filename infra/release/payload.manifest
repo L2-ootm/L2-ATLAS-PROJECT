@@ -1,0 +1,98 @@
+# ATLAS release payload manifest — the single source of truth for what ships
+# inside a platform runtime bundle.
+#
+# WHY THIS FILE EXISTS
+# --------------------
+# The payload used to be a hardcoded list duplicated in all three platform
+# build scripts (build-windows-runtime.ps1, build-linux-runtime.sh,
+# build-darwin-runtime.sh). Consistency was maintained by hand — the darwin
+# script literally carried the comment "same source paths as
+# build-windows-runtime.ps1". Anything omitted from the list silently never
+# shipped, and no test asserted the three lists agreed. That is how
+# services/cashflow, services/discord-bot, services/atlas-terminal and
+# docs/imports/SKILL_INVENTORY.md ended up unreachable in release installs
+# even though runtime code resolves paths into the bundle expecting them.
+#
+# FORMAT
+# ------
+#   <mode> <pathspec>
+#
+#   tracked   Copy only files `git ls-files -- <pathspec>` reports. This ships
+#             SOURCE and nothing else: no node_modules, no .next, no cargo
+#             target, no __pycache__. A pathspec that matches zero tracked
+#             files is a hard build error, so renames cannot silently drop a
+#             tree from the payload.
+#   tree      Copy a path verbatim from the working tree. Reserved for build
+#             OUTPUTS that are intentionally not in git (e.g. the prebuilt
+#             cockpit bundle produced by CI earlier in the same build).
+#
+# Blank lines and lines beginning with `#` are ignored. Fields are separated by
+# whitespace. Parsers exist for PowerShell, POSIX sh, and Node — keep the
+# format dependency-free (no YAML/JSON) so no build host needs jq or a Python
+# interpreter that is not yet bootstrapped at payload-copy time.
+#
+# SHIPPING DOCTRINE
+# -----------------
+# Ship source; build heavy artifacts on the user's machine at first use.
+#
+# A component is prebuilt in CI only when its build output is self-contained
+# and needs no dependency tree at runtime. The React cockpit qualifies: it
+# compiles to static files served by serve-dist.mjs, so `tree` entries carry
+# the finished `dist`. Next.js applications do NOT qualify — `next start`
+# requires node_modules present at runtime, and a cashflow bundle with
+# node_modules and .next is ~1.3 GB against 1.4 MB of tracked source. Those
+# components ship as `tracked` source and are provisioned on demand by
+# atlas_runtime.provisioning, which builds into the persistent ATLAS_HOME
+# rather than the immutable versions/<version>/ runtime directory that the
+# updater deletes.
+
+# --- Database schema -------------------------------------------------------
+tracked infra/migrations
+
+# --- Optional module framework --------------------------------------------
+tracked modules
+
+# --- Agent skills ---------------------------------------------------------
+tracked skills/atlas
+
+# Read at runtime by memory_router.py to route skill-inventory context.
+tracked docs/imports/SKILL_INVENTORY.md
+
+# --- Python runtime packages ----------------------------------------------
+tracked packages/atlas-core/atlas_core
+tracked services/agent-runtime/atlas_runtime
+tracked services/agent-runtime/atlas_audit
+tracked services/wiki-runtime/atlas_wiki
+
+# --- Vendored Hermes foundation -------------------------------------------
+tracked foundation/atlas-hermes/acp_adapter
+tracked foundation/atlas-hermes/acp_registry
+tracked foundation/atlas-hermes/agent
+tracked foundation/atlas-hermes/assets
+tracked foundation/atlas-hermes/cron
+tracked foundation/atlas-hermes/gateway
+tracked foundation/atlas-hermes/hermes_cli
+tracked foundation/atlas-hermes/locales
+tracked foundation/atlas-hermes/optional-skills
+tracked foundation/atlas-hermes/plugins
+tracked foundation/atlas-hermes/providers
+tracked foundation/atlas-hermes/skills
+tracked foundation/atlas-hermes/tools
+tracked foundation/atlas-hermes/tui_gateway
+tracked :(glob)foundation/atlas-hermes/*.py
+
+# --- Sidecar services shipped as source, provisioned on demand ------------
+# cashflow_control.py:20 resolves <bundle>/services/cashflow.
+tracked services/cashflow
+# discord_control.py:27 resolves <bundle>/services/discord-bot.
+tracked services/discord-bot
+# cli/atlas_terminal.py resolve_terminal_dir() resolves
+# <bundle>/services/atlas-terminal.
+tracked services/atlas-terminal
+
+# --- Go TUI module metadata (binary is copied separately by the builder) ---
+tracked services/atlas-tui/go.mod
+
+# --- Prebuilt cockpit (CI build output, not in git) -----------------------
+tree services/web-ui-react/dist
+tree services/web-ui-react/scripts/serve-dist.mjs

@@ -2115,13 +2115,38 @@ def cashflow_start(
         raise typer.Exit(1)
 
 
+@cashflow_app.command("provision")
+def cashflow_provision(
+    force: bool = typer.Option(
+        False, "--force", help="Reinstall and rebuild even if fingerprints match."
+    ),
+) -> None:
+    """Install deps and build the cashflow bundle now, streaming progress.
+
+    Cashflow ships as source, so this is the step that turns it into something
+    runnable. `cashflow start` triggers the same work in the background; run
+    this when you would rather watch it finish.
+    """
+    from atlas_runtime import cashflow_control
+
+    ok, message = cashflow_control.provision(force=force, log=typer.echo)
+    typer.echo(message)
+    if not ok:
+        raise typer.Exit(1)
+
+
 @cashflow_app.command("status")
 def cashflow_status() -> None:
-    """Print cashflow process status as 'running|stopped <backend>'."""
+    """Print cashflow process status as 'running|stopped|provisioning <backend>'."""
     from atlas_runtime import cashflow_control
 
     st = cashflow_control.status()
-    typer.echo(f"{'running' if st['running'] else 'stopped'} {st['backend']}")
+    phase = st.get("phase", "idle")
+    label = "running" if st["running"] else ("provisioning" if phase == "provisioning" else "stopped")
+    typer.echo(f"{label} {st['backend']}")
+    detail = st.get("detail")
+    if detail:
+        typer.echo(detail)
 
 
 @cashflow_app.command("stop")
