@@ -149,13 +149,22 @@ class _FakeHarness:
         self.calls: list[str] = []
         self.system_messages: list[str | None] = []
         self.task_ids: list[str | None] = []
+        self.persisted: list[str | None] = []
+        self.histories: list[list | None] = []
 
     def run_conversation(
-        self, user_message: str, system_message=None, task_id=None  # noqa: ANN001
+        self,
+        user_message: str,
+        system_message=None,  # noqa: ANN001
+        task_id=None,  # noqa: ANN001
+        conversation_history=None,  # noqa: ANN001
+        persist_user_message=None,  # noqa: ANN001
     ):
         self.calls.append(user_message)
         self.system_messages.append(system_message)
         self.task_ids.append(task_id)
+        self.persisted.append(persist_user_message)
+        self.histories.append(conversation_history)
         return self._result
 
 
@@ -209,14 +218,38 @@ def test_native_final_surface_event_is_not_capped_to_run_summary(
     assert payload["text"].endswith("COMPLETE_ENDING")
 
 
-def test_native_passes_goal_context_to_harness_system_message(
-    db: sqlite3.Connection, lock: threading.Lock
-) -> None:
+def _running_run_in_session(
+    db: sqlite3.Connection, mission_id: str, session_id: str
+) -> str:
+    rid = str(uuid.uuid4())
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    db.execute(
+        "INSERT INTO runs(id, mission_id, session_id, status, started_at, finished_at, summary) "
+        "VALUES (?, ?, ?, 'running', ?, NULL, '')",
+        (rid, mission_id, session_id, now),
+    )
+    db.commit()
+    return rid
+
+
+def _context_fixture(db: sqlite3.Connection, lock: threading.Lock) -> None:
     focus = focus_service.create_focus(db, lock, title="Ship Command Center", framework="GSD")
     goal = goal_service.create_goal(
         db, lock, title="Wire NativeAtlasAgent to the harness", focus_id=focus.id
     )
-    goal_service.create_task(db, lock, goal_id=goal.id, title="pass context as system_message")
+    goal_service.create_task(db, lock, goal_id=goal.id, title="deliver context per turn")
+
+
+def test_native_system_message_carries_only_the_stable_contract(
+    db: sqlite3.Connection, lock: threading.Lock
+) -> None:
+    """The cached prompt must hold nothing that changes between turns.
+
+    The foundation stores `system_message` in the session row and reuses it
+    verbatim on later turns, so volatile operator context here would be frozen
+    at turn 1 (or would destroy the prefix cache if it forced a rebuild).
+    """
+    _context_fixture(db, lock)
     mid = _pending_mission(db)
     rid = _running_run(db, mid)
     harness = _FakeHarness(
@@ -228,18 +261,129 @@ def test_native_passes_goal_context_to_harness_system_message(
     )
 
     assert outcome.status == "succeeded"
-    assert harness.calls == ["advance the focus"]
     assert harness.task_ids == [rid]
-    assert len(harness.system_messages) == 1
     system_message = harness.system_messages[0] or ""
     assert "# ATLAS Run Contract" in system_message
     assert "## Core Operating Policy" in system_message
     assert "You are ATLAS" in system_message
     assert "verified-live" in system_message
-    assert "Ship Command Center" in system_message
-    assert "Wire NativeAtlasAgent to the harness" in system_message
-    assert "pass context as system_message" in system_message
-    assert "## Operating Contract" in system_message
+    # Volatile sections must NOT be in the cached prompt.
+    assert "Ship Command Center" not in system_message
+    assert "## Operator Context" not in system_message
+    assert "## Dynamic Context Envelope" not in system_message
+
+
+def test_native_delivers_operator_context_on_every_turn(
+    db: sqlite3.Connection, lock: threading.Lock
+) -> None:
+    """Context rides the turn message, and the clean prompt is what persists."""
+    _context_fixture(db, lock)
+    mid = _pending_mission(db)
+    rid = _running_run(db, mid)
+    harness = _FakeHarness(
+        {"final_response": "ok", "api_calls": 1, "completed": True, "failed": False, "error": None}
+    )
+
+    NativeAtlasAgent(agent_factory=lambda session_id: harness).execute(
+        db, lock, mission_id=mid, run_id=rid, prompt="advance the focus"
+    )
+
+    turn_message = harness.calls[0]
+    assert "# ATLAS Run State (current turn)" in turn_message
+    assert "Ship Command Center" in turn_message
+    assert "Wire NativeAtlasAgent to the harness" in turn_message
+    assert "deliver context per turn" in turn_message
+    # The real prompt still terminates the message so the ask stays last.
+    assert turn_message.endswith("advance the focus")
+    # History/transcripts store the clean prompt, so injected context cannot
+    # accumulate into every later turn's replayed history.
+    assert harness.persisted == ["advance the focus"]
+
+
+def test_native_does_not_send_context_twice(
+    db: sqlite3.Connection, lock: threading.Lock
+) -> None:
+    """The JSON envelope duplicated every evidence body; it must not be sent.
+
+    memory_router writes each evidence.content into both the envelope's
+    `selected` list and the markdown, so sending both transmitted every run
+    summary, wiki snippet and observation twice per turn.
+    """
+    _context_fixture(db, lock)
+    mid = _pending_mission(db)
+    rid = _running_run(db, mid)
+    harness = _FakeHarness(
+        {"final_response": "ok", "api_calls": 1, "completed": True, "failed": False, "error": None}
+    )
+
+    NativeAtlasAgent(agent_factory=lambda session_id: harness).execute(
+        db, lock, mission_id=mid, run_id=rid, prompt="advance the focus"
+    )
+
+    payload = (harness.system_messages[0] or "") + harness.calls[0]
+    # The focus title is real routed context: it must appear exactly once.
+    assert payload.count("Ship Command Center") == 1
+    # The canonical-JSON envelope marker must be absent entirely.
+    assert '"selected"' not in payload
+
+
+def test_native_reuses_the_surface_session_for_the_harness(
+    db: sqlite3.Connection, lock: threading.Lock
+) -> None:
+    """Two turns in one session share a harness session_id and system prompt.
+
+    Passing run_id made every turn a new harness session, so the foundation
+    never found the stored system prompt and rebuilt it each turn — an Anthropic
+    prefix-cache miss on every request.
+    """
+    _context_fixture(db, lock)
+    mid = _pending_mission(db)
+    session = "surface-session-1"
+    seen_sessions: list[str] = []
+    result = {
+        "final_response": "ok",
+        "api_calls": 1,
+        "completed": True,
+        "failed": False,
+        "error": None,
+    }
+    harness = _FakeHarness(result)
+
+    def factory(session_id):  # noqa: ANN001, ANN202
+        seen_sessions.append(session_id)
+        return harness
+
+    for prompt in ("first turn", "second turn"):
+        rid = _running_run_in_session(db, mid, session)
+        NativeAtlasAgent(agent_factory=factory).execute(
+            db, lock, mission_id=mid, run_id=rid, prompt=prompt
+        )
+
+    assert seen_sessions == [session, session]
+    # Byte-stable cacheable prefix across turns.
+    assert harness.system_messages[0] == harness.system_messages[1]
+
+
+def test_native_falls_back_to_run_id_without_a_session(
+    db: sqlite3.Connection, lock: threading.Lock
+) -> None:
+    """A run with no surface session still gets a usable harness session id."""
+    mid = _pending_mission(db)
+    rid = _running_run(db, mid)
+    seen_sessions: list[str] = []
+    harness = _FakeHarness(
+        {"final_response": "ok", "api_calls": 1, "completed": True, "failed": False, "error": None}
+    )
+
+    def factory(session_id):  # noqa: ANN001, ANN202
+        seen_sessions.append(session_id)
+        return harness
+
+    NativeAtlasAgent(agent_factory=factory).execute(
+        db, lock, mission_id=mid, run_id=rid, prompt="no session"
+    )
+
+    assert seen_sessions == [rid]
 
 
 def test_native_maps_failed_result(db: sqlite3.Connection, lock: threading.Lock) -> None:
@@ -689,3 +833,36 @@ def test_json_safe_preview_caps_and_roundtrips() -> None:
     # Oversized structures degrade to a capped JSON string.
     big = _json_safe_preview({"k": "y" * 5000}, 100)
     assert isinstance(big, str) and len(big) == 100
+
+
+# --- compaction hardening (silent middle-turn deletion) --------------------
+
+
+def test_harden_compaction_flips_abort_on_summary_failure() -> None:
+    """An aux-model failure must not silently erase the middle of a session.
+
+    The foundation default drops the summarised window and relies on flags only
+    its own gateway reads; the native runtime bypasses that gateway and runs
+    quiet_mode=True, so the loss is invisible.
+    """
+    from atlas_runtime.agents.native import _harden_compaction
+
+    class _Compressor:
+        abort_on_summary_failure = False
+
+    class _Agent:
+        def __init__(self) -> None:
+            self.context_compressor = _Compressor()
+
+    agent = _Agent()
+    _harden_compaction(agent)
+    assert agent.context_compressor.abort_on_summary_failure is True
+
+
+def test_harden_compaction_tolerates_compression_disabled() -> None:
+    from atlas_runtime.agents.native import _harden_compaction
+
+    class _Agent:
+        context_compressor = None
+
+    _harden_compaction(_Agent())  # must not raise

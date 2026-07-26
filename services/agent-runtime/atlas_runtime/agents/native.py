@@ -297,7 +297,34 @@ def _default_factory(
     # letting every surface reconstruct one honest live actor tree.
     if tool_progress_callback is not None:
         kwargs["tool_progress_callback"] = tool_progress_callback
-    return AIAgent(**kwargs)
+    agent = AIAgent(**kwargs)
+    _harden_compaction(agent)
+    return agent
+
+
+def _harden_compaction(agent: Any) -> None:
+    """Refuse to silently delete conversation turns when summarisation fails.
+
+    The foundation's compressor defaults `abort_on_summary_failure=False`: when
+    the auxiliary summary model errors, it drops the middle window and inserts a
+    "summary unavailable" placeholder. Hermes surfaces that through
+    `_last_summary_fallback_used`, but only its own gateway reads those flags and
+    the native runtime bypasses it — and ATLAS additionally passes
+    `quiet_mode=True`, which suppresses the console warning. The result is that
+    an aux-model hiccup silently erases the middle of a conversation.
+
+    Aborting instead returns the messages unchanged, so the turn either proceeds
+    intact or fails loudly on a genuine context overflow. Set on the instance
+    rather than patching the vendored default: the divergence ladder in
+    docs/decisions/DIV-001 prefers an ATLAS-only fix over an in-core edit.
+    """
+    compressor = getattr(agent, "context_compressor", None)
+    if compressor is None:
+        return
+    try:
+        compressor.abort_on_summary_failure = True
+    except Exception as exc:  # noqa: BLE001 — never block a run on hardening
+        logger.debug("Could not harden compaction failure mode: %s", exc)
 
 
 def _resolve_reasoning_effort() -> str:
@@ -670,8 +697,26 @@ class NativeAtlasAgent(AgentRuntime):
                     tool_complete_callback=_emit_tool_complete,
                     tool_progress_callback=_emit_subagent_progress,
                 )
+        # Resolve the persistent surface session BEFORE constructing the agent.
+        # Passing run_id as the harness session_id made every turn a brand-new
+        # harness session: the foundation looks up the session row to restore
+        # the cached system prompt (conversation_loop._restore_or_build_system_prompt),
+        # so a per-run id read as "missing" every time — a full prompt rebuild
+        # each turn and an Anthropic prefix-cache miss on every request.
+        # Per-run identity is still carried by task_id in _drive() below.
+        session_key: Optional[str] = None
         try:
-            agent = factory(session_id=run_id)
+            session_row = conn.execute(
+                "SELECT session_id FROM runs WHERE id=?", (run_id,)
+            ).fetchone()
+            if session_row and session_row[0]:
+                session_key = str(session_row[0])
+        except Exception as exc:
+            logger.debug("Failed to resolve surface session for run %s: %s", run_id, exc)
+        harness_session_id = session_key or run_id
+
+        try:
+            agent = factory(session_id=harness_session_id)
         except Exception as exc:  # foundation missing / construction error
             logger.warning("NativeAtlasAgent harness unavailable: %s", exc)
             self._safe_emit(
@@ -688,7 +733,12 @@ class NativeAtlasAgent(AgentRuntime):
         result_holder: dict[str, Any] = {}
         error_holder: dict[str, BaseException] = {}
 
+        # Split stable from volatile: the foundation caches `system_message`
+        # verbatim in the session row and reuses it on every later turn, so
+        # anything volatile placed there would be frozen at turn 1. Operator
+        # context is delivered per turn instead (see _drive below).
         system_message = _contract_system_message(contract_snapshot)
+        volatile_context = _volatile_context_message(contract_snapshot)
 
         # Load conversation history from previous runs in the same session so
         # the agent has context from earlier turns (session continuity).
@@ -700,18 +750,17 @@ class NativeAtlasAgent(AgentRuntime):
         # back to a tool_calls fingerprint, capped at ~2000 tokens for this
         # section regardless of how many prior runs exist (memory_router.py).
         conversation_history: list[dict[str, Any]] = []
-        try:
-            session_row = conn.execute(
-                "SELECT session_id FROM runs WHERE id=?", (run_id,)
-            ).fetchone()
-            if session_row and session_row[0]:
-                history_query = RouterQuery(session_id=session_row[0], max_runs=5)
+        if session_key:
+            try:
+                history_query = RouterQuery(session_id=session_key, max_runs=5)
                 snippets = ConversationHistoryRetriever().retrieve(conn, history_query)
                 conversation_history = history_snippets_to_messages(snippets)
-        except Exception as exc:
-            logger.debug("Failed to load conversation history for session continuity: %s", exc)
-            # Non-fatal: proceed without history
-            conversation_history = []
+            except Exception as exc:
+                logger.debug(
+                    "Failed to load conversation history for session continuity: %s", exc
+                )
+                # Non-fatal: proceed without history
+                conversation_history = []
 
         def _drive() -> None:
             try:
@@ -727,7 +776,24 @@ class NativeAtlasAgent(AgentRuntime):
                     kwargs["task_id"] = run_id
                 if conversation_history:
                     kwargs["conversation_history"] = conversation_history
-                result_holder["result"] = run_method(prompt, **kwargs)
+                # Deliver volatile operator context as a synthetic prefix on
+                # this turn's message, after the cached system prompt. That
+                # keeps the cacheable prefix byte-stable across turns while
+                # still giving the model current goals/runs/knowledge.
+                turn_message = prompt
+                if volatile_context:
+                    turn_message = f"{volatile_context}\n\n---\n\n{prompt}"
+                    supports_persist = any(
+                        parameter.name == "persist_user_message"
+                        or parameter.kind is inspect.Parameter.VAR_KEYWORD
+                        for parameter in parameters
+                    )
+                    if supports_persist:
+                        # Store the clean prompt in history/transcripts so the
+                        # injected context does not accumulate into every
+                        # later turn's replayed history.
+                        kwargs["persist_user_message"] = prompt
+                result_holder["result"] = run_method(turn_message, **kwargs)
             except BaseException as exc:  # noqa: BLE001 — surfaced below
                 error_holder["error"] = exc
 
@@ -890,23 +956,53 @@ def _is_model_override(conn: sqlite3.Connection, value: str) -> bool:
 
 
 def _contract_system_message(snapshot: Any) -> str:
-    """Render the immutable run contract as the harness system message.
+    """Render the STABLE half of the run contract as the harness system message.
 
-    The foundation harness accepts a separate `system_message`; use it for the
-    generated bootstrap plus the full secret-redacted operator context so the
-    run acts on Current Focus/Goals instead of only the raw mission prompt.
+    Only content identical across turns belongs here. The foundation stores this
+    prompt in the session row and reuses it verbatim on every subsequent turn
+    (`conversation_loop._restore_or_build_system_prompt`) so the Anthropic prefix
+    cache matches. Volatile operator context used to be concatenated in, which
+    forced a choice between two failures: rebuild every turn and never hit the
+    cache, or reuse turn 1's prompt and act on frozen context. It is now
+    delivered per turn by `_volatile_context_message()`.
+
+    Only `stable_prompt` qualifies. It is the compiler's designated stable layer
+    — `prompt_compiler` hashes it and enforces a 4,000-token budget precisely so
+    it can serve as a cacheable prefix. `bootstrap_message` does NOT belong here
+    despite sounding static: it is canonical JSON of the SessionBootstrap, which
+    embeds `run_id` and the surface identity, so including it changed the prompt
+    on every single turn and defeated the cache even for a persistent session.
     """
     return (
         "# ATLAS Run Contract\n\n"
         "## Core Operating Policy\n"
-        f"{snapshot.stable_prompt.rstrip()}\n\n"
-        "## Session Bootstrap\n"
-        f"{snapshot.bootstrap_message}\n\n"
-        "## Operator Context\n"
-        f"{snapshot.context_markdown.rstrip()}\n\n"
-        "## Dynamic Context Envelope\n"
-        f"{snapshot.context_message}"
+        f"{snapshot.stable_prompt.rstrip()}"
     )
+
+
+def _volatile_context_message(snapshot: Any) -> str:
+    """Render the per-turn run identity and operator context, or "" if empty.
+
+    Carries the session bootstrap (run-specific ids) and `context_markdown`.
+    `snapshot.context_message` is deliberately NOT emitted: it is a canonical
+    JSON envelope of the same retrieval, and `memory_router` writes each
+    `evidence.content` into both the envelope's `selected` list and the
+    markdown — so sending both transmitted every run summary, wiki snippet and
+    router observation twice per turn. The envelope's non-duplicated fields are
+    retrieval bookkeeping (policy, budget, relevance, retrieved_at) that the
+    model cannot act on; it stays on the snapshot for audit consumers.
+    """
+    sections: list[str] = []
+    bootstrap = (getattr(snapshot, "bootstrap_message", "") or "").strip()
+    if bootstrap:
+        sections.append(f"## Session Bootstrap\n{bootstrap}")
+    markdown = (getattr(snapshot, "context_markdown", "") or "").rstrip()
+    if markdown:
+        sections.append(f"## Operator Context\n{markdown}")
+    if not sections:
+        return ""
+    body = "\n\n".join(sections)
+    return f"# ATLAS Run State (current turn)\n\n{body}"
 
 
 def _contains_secret(text: str) -> bool:
