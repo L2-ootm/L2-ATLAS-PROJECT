@@ -264,16 +264,24 @@ class ConversationHistoryRetriever:
     def retrieve(self, conn: sqlite3.Connection, query: RouterQuery) -> list[MemorySnippet]:
         if not query.session_id:
             return []
+        # The mission intent is what the operator actually asked for. Without it
+        # the replayed history is assistant turns only — answers with no
+        # questions — which reads to the model as if it had spoken unprompted
+        # and hides what each prior run was for. `runs` stores no prompt column,
+        # so the intent behind the run is the closest durable record of the ask.
         rows = conn.execute(
-            "SELECT id, summary FROM runs WHERE session_id=? "
-            "AND status IN ('succeeded','completed') "
-            "ORDER BY started_at ASC LIMIT ?",
+            "SELECT r.id, r.summary, COALESCE(m.intent, '') "
+            "FROM runs r LEFT JOIN missions m ON m.id = r.mission_id "
+            "WHERE r.session_id=? AND r.status IN ('succeeded','completed') "
+            "ORDER BY r.started_at ASC LIMIT ?",
             (query.session_id, query.max_runs),
         ).fetchall()
         out: list[MemorySnippet] = []
         used_tokens = 0
-        for i, (run_id, summary) in enumerate(rows):
+        last_intent = ""
+        for i, (run_id, summary, intent) in enumerate(rows):
             summary = (summary or "").strip()
+            intent = (intent or "").strip()
             if summary:
                 text = f"- **run {run_id[:8]} summary:** {summary}"
                 source = f"run_summary:{run_id}"
@@ -283,15 +291,31 @@ class ConversationHistoryRetriever:
                     continue
                 text = f"- **run {run_id[:8]} tools:** {fingerprint}"
                 source = f"run_tools:{run_id}"
-            tokens = estimate_tokens(text)
+
+            pending: list[tuple[str, str]] = []
+            # Consecutive runs of one mission share an intent; emitting it once
+            # keeps the transcript readable instead of repeating the same ask.
+            if intent and intent != last_intent:
+                pending.append((f"- **asked:** {intent}", f"run_prompt:{run_id}"))
+            pending.append((text, source))
+
+            tokens = sum(estimate_tokens(item[0]) for item in pending)
             # Dedicated per-section budget: keep at least one entry, then cap
             # (mirrors WikiFtsRetriever's char-budget pattern).
             if out and used_tokens + tokens > _CONVERSATION_TOKEN_BUDGET:
                 break
             used_tokens += tokens
-            out.append(
-                MemorySnippet(text=text, score=float(-i), source=source, approx_tokens=tokens)
-            )
+            if intent:
+                last_intent = intent
+            for entry_text, entry_source in pending:
+                out.append(
+                    MemorySnippet(
+                        text=entry_text,
+                        score=float(-i),
+                        source=entry_source,
+                        approx_tokens=estimate_tokens(entry_text),
+                    )
+                )
         return out
 
 
@@ -322,6 +346,11 @@ def history_snippets_to_messages(snippets: list[MemorySnippet]) -> list[dict[str
                     "tool_call_id": f"history-{source_id}-{i}",
                 }
             )
+        elif source_type == "run_prompt":
+            # Restores user/assistant alternation. Previously every replayed
+            # turn was an assistant message, so the model saw a transcript of
+            # answers to questions that were never shown.
+            messages.append({"role": "user", "content": text})
         else:
             messages.append({"role": "assistant", "content": text})
     return messages

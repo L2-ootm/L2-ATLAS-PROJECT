@@ -488,3 +488,66 @@ def test_envelope_filters_only_snippets_reporting_real_relevance(db):
     assert "unscored" in sources
     assert "weak" not in sources
     assert "weak" in envelope.rejected_source_ids
+
+
+# --- session history includes the operator's ask ---------------------------
+
+
+def _session_run(db, session_id, mission_id, summary, started_at):
+    rid = str(uuid.uuid4())
+    db.execute(
+        "INSERT INTO runs(id, mission_id, session_id, status, started_at, finished_at, summary) "
+        "VALUES (?, ?, ?, 'succeeded', ?, ?, ?)",
+        (rid, mission_id, session_id, started_at, started_at, summary),
+    )
+    db.commit()
+    return rid
+
+
+def _mission(db, intent):
+    mid = str(uuid.uuid4())
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    db.execute(
+        "INSERT INTO missions(id, title, intent, status, project, created_at, updated_at) "
+        "VALUES (?, 't', ?, 'succeeded', '', ?, ?)",
+        (mid, intent, now, now),
+    )
+    db.commit()
+    return mid
+
+
+def test_history_replays_the_ask_not_just_the_answer(db):
+    """Assistant-only history reads as answers to unseen questions."""
+    session = "s-hist-1"
+    m1 = _mission(db, "audit the installer")
+    m2 = _mission(db, "ship the release")
+    _session_run(db, session, m1, "found the payload bug", "2026-07-26T01:00:00Z")
+    _session_run(db, session, m2, "cut 0.1.2", "2026-07-26T02:00:00Z")
+
+    snippets = mr.ConversationHistoryRetriever().retrieve(
+        db, mr.RouterQuery(session_id=session, max_runs=5)
+    )
+    messages = mr.history_snippets_to_messages(snippets)
+
+    roles = [m["role"] for m in messages]
+    assert roles == ["user", "assistant", "user", "assistant"]
+    assert "audit the installer" in messages[0]["content"]
+    assert "found the payload bug" in messages[1]["content"]
+    assert "ship the release" in messages[2]["content"]
+
+
+def test_history_does_not_repeat_one_mission_intent_per_run(db):
+    """Several runs of one mission share an ask; state it once."""
+    session = "s-hist-2"
+    mid = _mission(db, "keep going until green")
+    _session_run(db, session, mid, "first attempt", "2026-07-26T01:00:00Z")
+    _session_run(db, session, mid, "second attempt", "2026-07-26T02:00:00Z")
+
+    messages = mr.history_snippets_to_messages(
+        mr.ConversationHistoryRetriever().retrieve(
+            db, mr.RouterQuery(session_id=session, max_runs=5)
+        )
+    )
+
+    assert [m["role"] for m in messages] == ["user", "assistant", "assistant"]
+    assert sum("keep going until green" in m["content"] for m in messages) == 1
