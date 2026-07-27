@@ -4,6 +4,7 @@ from __future__ import annotations
 import datetime
 import hashlib
 import json
+import logging
 import sqlite3
 import uuid
 from pathlib import Path
@@ -14,6 +15,7 @@ from atlas_core.schemas.agent_contract import (
     ContextEnvelope,
     ContextSource,
     ContractVersion,
+    InstructionSource,
     ModelIdentity,
     SessionBootstrap,
     SurfaceIdentity,
@@ -21,12 +23,30 @@ from atlas_core.schemas.agent_contract import (
 )
 from atlas_runtime.context_service import assemble_context
 from atlas_runtime.memory_router import redact
-from atlas_runtime.prompt_compiler import compile_prompt
+from atlas_runtime.prompt_compiler import _contains_secret, compile_prompt
 from atlas_runtime.tool_catalog import build_shipped_catalog
 
 PROMPT_VERSION = "1.0.1"
 CONTEXT_POLICY_VERSION = "1.0.0"
 _CORE_PATH = Path(__file__).parent / "prompts" / "atlas_core.md"
+
+logger = logging.getLogger(__name__)
+
+# L4 WORKSPACE INSTRUCTIONS — the layer prompt_compiler has always been able to
+# render (hash-pinned, secret-scanned, trust-tagged) and nothing ever filled.
+# These are the files a workspace uses to tell an agent how to work in it, in
+# precedence order; the first one found wins per name, all found are included.
+# `.atlas/instructions.md` is ATLAS's own, listed last so a repo that already
+# has AGENTS.md/CLAUDE.md needs no new file to be understood.
+WORKSPACE_INSTRUCTION_FILES = ("AGENTS.md", "CLAUDE.md", ".atlas/instructions.md")
+
+# The stable prompt is capped at 4,000 estimated tokens by compile_prompt, and
+# the base layers already use ~1,400. A large AGENTS.md must degrade to a
+# truncated instruction block, never push the whole prefix over the limit and
+# fail every run in that workspace.
+_INSTRUCTION_FILE_CHARS = 4000
+_INSTRUCTION_TOTAL_CHARS = 6000
+_TRUNCATION_NOTE = "\n\n[truncated by ATLAS: workspace instruction size limit]"
 
 
 class ContractCompatibilityError(RuntimeError):
@@ -132,6 +152,69 @@ def _surface_and_workspace(
     )
 
 
+def load_workspace_instructions(
+    workspace: WorkspaceIdentity,
+) -> tuple[tuple[InstructionSource, ...], tuple[str, ...]]:
+    """Read a workspace's agent-instruction files into hash-pinned L4 sources.
+
+    Returns (sources, contents) in the order prompt_compiler expects: it
+    re-hashes each content against its source and refuses a mismatch, so the two
+    tuples are a single unit and must not be reordered independently.
+
+    Three degradations, all deliberate, because this runs on every run and a
+    problem in a project file must never make the workspace unusable:
+
+      * A file containing a credential is **skipped**, not raised on. Raising
+        would fail contract preparation and therefore every run in that
+        workspace; skipping keeps the secret out of the persisted contract and
+        off the wire, which is what the scan is for. It is logged as a warning.
+      * Oversized files are truncated with a visible marker, so the model knows
+        its copy is partial rather than silently reading half a policy.
+      * Unreadable files (permissions, deleted mid-read, undecodable bytes) are
+        skipped with a debug log.
+
+    Trust is "project": these files come from the workspace, so they rank below
+    platform and operator instruction layers by construction.
+    """
+    root = Path(workspace.root)
+    sources: list[InstructionSource] = []
+    contents: list[str] = []
+    budget = _INSTRUCTION_TOTAL_CHARS
+    for name in WORKSPACE_INSTRUCTION_FILES:
+        if budget <= 0:
+            break
+        path = root / name
+        try:
+            if not path.is_file():
+                continue
+            text = path.read_text(encoding="utf-8").strip()
+        except (OSError, UnicodeDecodeError) as exc:
+            logger.debug("workspace instruction %s unreadable: %s", path, exc)
+            continue
+        if not text:
+            continue
+        if _contains_secret(text):
+            logger.warning(
+                "workspace instruction %s contains a credential pattern — excluded "
+                "from the agent prompt; remove the secret to have it applied", path,
+            )
+            continue
+        cap = min(_INSTRUCTION_FILE_CHARS, budget)
+        if len(text) > cap:
+            text = text[:cap].rstrip() + _TRUNCATION_NOTE
+        budget -= len(text)
+        contents.append(text)
+        sources.append(
+            InstructionSource(
+                source_id=name,
+                path=str(path),
+                sha256=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                trust="project",
+            )
+        )
+    return tuple(sources), tuple(contents)
+
+
 def prepare_run_contract(
     conn: sqlite3.Connection,
     *,
@@ -145,7 +228,9 @@ def prepare_run_contract(
     context = assemble_context(conn, mission_id=mission_id)
     envelope = _context_envelope(context, context_ref)
     surface, workspace = _surface_and_workspace(conn, run_id)
+    instruction_sources, instruction_contents = load_workspace_instructions(workspace)
     bootstrap = SessionBootstrap(
+        instruction_sources=instruction_sources,
         surface=surface,
         workspace=workspace,
         mission_id=mission_id,
@@ -162,7 +247,11 @@ def prepare_run_contract(
         context_policy=context_ref,
         context_budget_tokens=envelope.budget_tokens,
     )
-    compilation = compile_prompt(bootstrap=bootstrap, context=envelope)
+    compilation = compile_prompt(
+        bootstrap=bootstrap,
+        context=envelope,
+        workspace_instructions=instruction_contents,
+    )
     created_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
     base = {
         "run_id": run_id,
@@ -173,7 +262,7 @@ def prepare_run_contract(
         "tool_catalog_version": catalog.catalog_version,
         "tool_catalog_sha256": catalog.catalog_sha256,
         "context_policy_version": context_ref.version,
-        "instruction_source_ids": (),
+        "instruction_source_ids": tuple(s.source_id for s in instruction_sources),
         # Include both static context sources (focus/goals/project/operator observations)
         # and routed dynamic sources. The ContextEnvelope stores only routed evidence;
         # the markdown brief below is the full operator context actually supplied to

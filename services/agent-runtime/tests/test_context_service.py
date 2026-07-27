@@ -230,3 +230,48 @@ def test_no_knowledge_section_without_focus(db, lock):
     # No focus → no query terms → no retrieval.
     _wiki_page(db, lock, slug="x", title="Executor", body="executor notes here")
     assert "## Relevant Knowledge" not in cs.assemble_context(db).markdown
+
+
+# --- goal-tree depth cap ------------------------------------------------------
+
+
+def _nested_goal(depth: int, index: int = 0) -> dict:
+    """A single chain of goals `depth` levels deep."""
+    node = {"id": f"g{index}", "title": f"level-{index}", "status": "open",
+            "description": "", "tasks": [], "observations": [], "children": []}
+    if index + 1 < depth:
+        node["children"] = [_nested_goal(depth, index + 1)]
+    return node
+
+
+def test_goal_tree_render_stops_at_the_depth_cap() -> None:
+    """Static context sits outside the router's token budget, so it needs its own bound."""
+    from atlas_runtime import context_service
+
+    lines: list[str] = []
+    sources: list[str] = []
+    context_service._render_goal_nodes([_nested_goal(8)], 0, lines, sources)
+
+    rendered = "\n".join(lines)
+    assert "level-3" in rendered
+    assert "level-4" not in rendered
+    assert len([s for s in sources if s.startswith("goal:")]) == 4
+
+
+def test_omitted_goals_are_reported_not_silently_dropped() -> None:
+    from atlas_runtime import context_service
+
+    lines: list[str] = []
+    context_service._render_goal_nodes([_nested_goal(8)], 0, lines, [])
+    rendered = "\n".join(lines)
+    assert "4 deeper goal(s) omitted at depth 4" in rendered
+
+
+def test_a_shallow_tree_renders_whole_with_no_omission_notice() -> None:
+    from atlas_runtime import context_service
+
+    lines: list[str] = []
+    context_service._render_goal_nodes([_nested_goal(3)], 0, lines, [])
+    rendered = "\n".join(lines)
+    assert "level-2" in rendered
+    assert "omitted" not in rendered

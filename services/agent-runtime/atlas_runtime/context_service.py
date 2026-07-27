@@ -43,6 +43,16 @@ _KNOWLEDGE_STOPWORDS = frozenset(
 )
 _KNOWLEDGE_MAX_TERMS = 12
 
+# Goal-tree render depth. The retrieved sections below are token-budgeted by the
+# MemoryRouter, but the goal tree is static context assembled before any budget
+# applies and `build_goal_tree` imposes no depth limit — so a deeply nested plan
+# could grow this section without bound and crowd out everything ranked as more
+# relevant. Four levels covers focus → goal → sub-goal → sub-sub-goal, which is
+# as deep as the goal model is meaningfully used; deeper nodes are reported as
+# omitted rather than dropped silently, so the model knows its view is partial
+# instead of concluding the work does not exist.
+_MAX_GOAL_DEPTH = 4
+
 
 @dataclass(frozen=True)
 class AgentContext:
@@ -53,12 +63,32 @@ class AgentContext:
     retrieval: RetrievalEnvelope | None = None
 
 
+def _count_descendants(nodes: list[dict]) -> int:
+    return sum(1 + _count_descendants(node.get("children") or []) for node in nodes)
+
+
 def _render_goal_nodes(
-    nodes: list[dict], depth: int, lines: list[str], sources: list[str]
+    nodes: list[dict],
+    depth: int,
+    lines: list[str],
+    sources: list[str],
+    max_depth: int = _MAX_GOAL_DEPTH,
 ) -> None:
     """Render the goal tree (goals → sub-goals → tasks) as nested markdown, in
-    place. Records goal/observation provenance into `sources`."""
+    place. Records goal/observation provenance into `sources`.
+
+    Bounded at `max_depth` levels (see _MAX_GOAL_DEPTH): this section is static
+    context outside the MemoryRouter's token budget, so an unbounded recursion
+    over a deep plan would silently displace better-ranked evidence."""
     indent = "  " * depth
+    if depth >= max_depth:
+        omitted = _count_descendants(nodes)
+        if omitted:
+            lines.append(
+                f"{indent}- _({omitted} deeper goal(s) omitted at depth {max_depth}"
+                " — query the goal tree directly if they matter)_"
+            )
+        return
     for node in nodes:
         sources.append(f"goal:{node['id']}")
         status = node.get("status", "open")
@@ -77,7 +107,9 @@ def _render_goal_nodes(
                 f"{indent}  · _obs ({redact(obs.get('source', ''))}):_ {redact(obs['body'])}"
             )
             sources.append(f"observation:{obs['id']}")
-        _render_goal_nodes(node.get("children") or [], depth + 1, lines, sources)
+        _render_goal_nodes(
+            node.get("children") or [], depth + 1, lines, sources, max_depth
+        )
 
 
 def _collect_open_titles(nodes: list[dict], out: list[str]) -> None:
