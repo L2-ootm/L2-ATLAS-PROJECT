@@ -162,6 +162,23 @@ type MdProps<Tag extends keyof JSX.IntrinsicElements> = ComponentPropsWithoutRef
 	node?: unknown;
 };
 
+// GFM task lists arrive as a leading <input type="checkbox"> element inside the
+// <li>. Narrowing it with a type guard rather than an `any` cast keeps the two
+// property reads (`type`, `checked`) checked, and makes a future react-markdown
+// change to that shape a compile error instead of a silent undefined.
+type CheckboxElement = { props: { type: 'checkbox'; checked?: boolean } };
+
+function isCheckboxElement(child: unknown): child is CheckboxElement {
+	if (typeof child !== 'object' || child === null) return false;
+	if (!('type' in child) || (child as { type: unknown }).type !== 'input') return false;
+	const props = (child as { props?: unknown }).props;
+	return (
+		typeof props === 'object' &&
+		props !== null &&
+		(props as { type?: unknown }).type === 'checkbox'
+	);
+}
+
 function omitNode<Tag extends keyof JSX.IntrinsicElements>(
 	props: MdProps<Tag>
 ): ComponentPropsWithoutRef<Tag> {
@@ -300,6 +317,15 @@ function MediaPreview({ path, alt }: { path: string; alt?: string }) {
 	);
 }
 
+// The HTML `align` attribute allows "char", which CSS text-align does not.
+// GFM only ever emits left/center/right, so anything else falls back to left
+// rather than being cast through.
+function cellAlign(align: string | undefined): CSSProperties['textAlign'] {
+	return align === 'center' || align === 'right' || align === 'justify'
+		? align
+		: 'left';
+}
+
 const markdownComponents: Components = {
 	p: (props: MdProps<'p'>) => {
 		const { children } = omitNode(props);
@@ -329,14 +355,8 @@ const markdownComponents: Components = {
 		// Task list checkbox rendering
 		const childArray = Array.isArray(children) ? children : [children];
 		const firstChild = childArray[0];
-		if (
-			typeof firstChild === 'object' &&
-			firstChild !== null &&
-			'type' in firstChild &&
-			firstChild.type === 'input' &&
-			(firstChild as any).props?.type === 'checkbox'
-		) {
-			const checked = (firstChild as any).props.checked;
+		if (isCheckboxElement(firstChild)) {
+			const checked = Boolean(firstChild.props.checked);
 			return (
 				<li style={{ margin: 0, display: 'flex', alignItems: 'flex-start', gap: 8, listStyle: 'none' }}>
 					<span
@@ -383,15 +403,15 @@ const markdownComponents: Components = {
 		</div>
 	),
 	thead: (props: MdProps<'thead'>) => <thead {...omitNode(props)} />,
+	// `style` is spread first and then overridden: this component owns the
+	// cell's look, and GFM never emits an inline style to preserve anyway.
 	th: (props: MdProps<'th'>) => {
-		const { style: thStyleProp, ...rest } = omitNode(props);
-		const align = (rest as any).align;
-		return <th style={{ ...thStyle, textAlign: align || 'left' }} {...rest} />;
+		const { align, ...rest } = omitNode(props);
+		return <th {...rest} style={{ ...thStyle, textAlign: cellAlign(align) }} />;
 	},
 	td: (props: MdProps<'td'>) => {
-		const { style: tdStyleProp, ...rest } = omitNode(props);
-		const align = (rest as any).align;
-		return <td style={{ ...tdStyle, textAlign: align || 'left' }} {...rest} />;
+		const { align, ...rest } = omitNode(props);
+		return <td {...rest} style={{ ...tdStyle, textAlign: cellAlign(align) }} />;
 	},
 	pre: CodeBlock,
 	code: InlineOrBlockCode

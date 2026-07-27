@@ -257,10 +257,22 @@ function ArtifactContent({ artifact }: { artifact: Artifact }) {
 	}
 }
 
+/** A non-empty array of objects — the shape the table branch can render. */
+function isRowArray(value: unknown): value is Record<string, unknown>[] {
+	return (
+		Array.isArray(value) &&
+		value.length > 0 &&
+		typeof value[0] === 'object' &&
+		value[0] !== null
+	);
+}
+
 function DataRenderer({ content }: { content: string }) {
 	try {
-		const data = JSON.parse(content);
-		if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'object') {
+		// JSON.parse is `any` by definition; narrow it once here so the table
+		// branch below reads typed rows instead of casting at each access.
+		const data: unknown = JSON.parse(content);
+		if (isRowArray(data)) {
 			const headers = Object.keys(data[0]);
 			return (
 				<div style={{ overflow: 'auto' }}>
@@ -284,7 +296,7 @@ function DataRenderer({ content }: { content: string }) {
 							</tr>
 						</thead>
 						<tbody>
-							{data.map((row: any, i: number) => (
+							{data.map((row, i) => (
 								<tr key={i}>
 									{headers.map((h) => (
 										<td key={h} style={{
