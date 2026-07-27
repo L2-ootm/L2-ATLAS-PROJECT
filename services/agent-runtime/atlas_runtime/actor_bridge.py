@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import uuid
 from typing import Any, Optional
@@ -81,19 +82,22 @@ TOOL_SCHEMA = {
     "name": "atlas_actor",
     "description": (
         "Durable ATLAS actor supervisor. Spawn child agents that survive "
-        "this turn (and process restarts), inspect them, join them, or "
-        "cancel them. op=run spawns and joins (blocks up to "
+        "this turn (and process restarts), inspect them, join them, steer "
+        "them, or cancel them. op=run spawns and joins (blocks up to "
         "timeout_seconds); op=spawn returns a stable actor_id immediately "
         "and the completion is delivered to you at a later turn boundary; "
         "op=status inspects without consuming; op=wait joins an existing "
-        "actor; op=cancel idempotently stops an actor and its descendants."
+        "actor; op=logs tails what a running actor has actually been doing; "
+        "op=steer sends a correction the actor reads at its next step, so a "
+        "child going the wrong way can be redirected instead of killed; "
+        "op=cancel idempotently stops an actor and its descendants."
     ),
     "parameters": {
         "type": "object",
         "properties": {
             "op": {
                 "type": "string",
-                "enum": ["run", "spawn", "status", "wait", "cancel"],
+                "enum": ["run", "spawn", "status", "wait", "cancel", "steer", "logs"],
                 "description": "Actor operation.",
             },
             "goal": {
@@ -118,6 +122,22 @@ TOOL_SCHEMA = {
                     "Optional explicit spawn key. Identical keys return the "
                     "existing actor; pass unique keys to intentionally run "
                     "the same goal twice."
+                ),
+            },
+            "message": {
+                "type": "string",
+                "description": "Steering text for op=steer; the actor reads it at its next step.",
+            },
+            "limit": {
+                "type": "number",
+                "description": "How many recent events op=logs returns (default 30).",
+            },
+            "wakeup": {
+                "type": "boolean",
+                "description": (
+                    "op=spawn only: start a follow-up run in this session when "
+                    "the actor finishes, instead of waiting for the next turn "
+                    "to deliver it. Use when nobody will be typing."
                 ),
             },
         },
@@ -173,6 +193,61 @@ def _actor_view(actor: dict[str, Any]) -> dict[str, Any]:
     return view
 
 
+# How often a join publishes liveness. The poll itself runs every 0.25s; an
+# audit event per poll would bury the run's real activity under 480 heartbeats
+# for a two-minute join.
+_HEARTBEAT_EVERY_SECONDS = 10.0
+
+
+def _wait_heartbeat(conn: Any, lock: Any, run_id: str, parent_agent: Any):
+    """Build the `on_tick` callback that keeps a long join visibly alive.
+
+    A join occupies the harness thread and used to emit nothing while it did,
+    so a two-minute wait was indistinguishable from a hung agent and tripped
+    client inactivity timeouts on a run that was working fine. Two signals, both
+    best-effort: the harness's own activity touch (so the transport's idle timer
+    resets) and a throttled audit event (so the cockpit shows what is being
+    waited on, and for how long).
+    """
+    # Negative so the first tick emits: the operator should learn a wait has
+    # started when it starts, not ten seconds into it.
+    state = {"last": -_HEARTBEAT_EVERY_SECONDS}
+
+    def _tick(actor: dict[str, Any], waited: float) -> None:
+        touch = getattr(parent_agent, "_touch_activity", None)
+        if callable(touch):
+            try:
+                touch("waiting_for_actor")
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("activity touch failed: %s", exc)
+        if waited - state["last"] < _HEARTBEAT_EVERY_SECONDS:
+            return
+        state["last"] = waited
+        try:
+            from atlas_runtime.audit_service import emit  # noqa: PLC0415
+
+            emit(
+                conn, lock, run_id=run_id, event_type="subagent_run",
+                task_id=actor["id"],
+                session_id=actor.get("session_id"),
+                data={
+                    "runtime": "native",
+                    "orchestration": "subagent",
+                    "actor": True,
+                    "phase": "waiting",
+                    "subagent_id": actor["id"],
+                    "parent_id": actor.get("parent_actor_id") or actor["parent_run_id"],
+                    "status": actor["status"],
+                    "waited_seconds": round(waited, 1),
+                    "goal": str(actor.get("goal") or "")[:1000],
+                },
+            )
+        except Exception as exc:  # noqa: BLE001 — liveness is not the join
+            logger.debug("wait heartbeat emit failed: %s", exc)
+
+    return _tick
+
+
 def atlas_actor_tool(
     args: Optional[dict[str, Any]] = None,
     *,
@@ -184,7 +259,10 @@ def atlas_actor_tool(
     # Preserve the pre-0022 direct-call seam for programmatic callers while
     # making the production plugin ABI (one args dict + context kwargs) primary.
     if args is None:
-        known = {"op", "goal", "actor_id", "model", "timeout_seconds", "idempotency_key"}
+        known = {
+            "op", "goal", "actor_id", "model", "timeout_seconds", "idempotency_key",
+            "message", "limit", "wakeup",
+        }
         args = {key: value for key, value in framework.items() if key in known}
     if not isinstance(args, dict):
         return _tool_error("atlas_actor arguments must be an object")
@@ -225,6 +303,10 @@ def atlas_actor_tool(
                 model=model,
                 session_id=actor_session_id,
                 idempotency_key=idempotency_key,
+                # Only a detached spawn can request a wakeup: a joined run is
+                # already being waited on by the caller, so starting a second
+                # run to announce the result would duplicate it.
+                wakeup_parent=bool(args.get("wakeup")) and op == "spawn",
             )
             if created:
                 from atlas_runtime.actor_worker import launch_actor_worker  # noqa: PLC0415
@@ -247,7 +329,8 @@ def atlas_actor_tool(
                     }
                 )
             joined = actor_service.wait_for_actor(
-                conn, lock, actor["id"], timeout_seconds=timeout
+                conn, lock, actor["id"], timeout_seconds=timeout,
+                on_tick=_wait_heartbeat(conn, lock, run_id, parent_agent),
             )
             if joined is None:
                 return json.dumps(
@@ -275,7 +358,8 @@ def atlas_actor_tool(
             if not actor_id:
                 return _tool_error("op=wait requires actor_id")
             joined = actor_service.wait_for_actor(
-                conn, lock, actor_id, timeout_seconds=timeout
+                conn, lock, actor_id, timeout_seconds=timeout,
+                on_tick=_wait_heartbeat(conn, lock, run_id, parent_agent),
             )
             if joined is None:
                 existing = actor_service.get_actor(conn, actor_id)
@@ -290,6 +374,41 @@ def atlas_actor_tool(
                     }
                 )
             return json.dumps({"ok": True, **_actor_view(joined)})
+
+        if op == "steer":
+            if not actor_id:
+                return _tool_error("op=steer requires actor_id")
+            message = args.get("message")
+            if not message or not str(message).strip():
+                return _tool_error("op=steer requires a message")
+            queued = actor_service.enqueue_steering(
+                conn, lock, str(actor_id), message=str(message)
+            )
+            return json.dumps(
+                {
+                    "ok": True,
+                    "actor_id": actor_id,
+                    "seq": queued["seq"],
+                    "note": (
+                        "steering queued; the actor reads it at its next step. "
+                        "It has not been applied yet — check op=logs or op=status "
+                        "before assuming the correction landed."
+                    ),
+                }
+            )
+
+        if op == "logs":
+            if not actor_id:
+                return _tool_error("op=logs requires actor_id")
+            limit = args.get("limit")
+            return json.dumps(
+                {
+                    "ok": True,
+                    **actor_service.actor_logs(
+                        conn, str(actor_id), limit=int(limit) if limit else 30
+                    ),
+                }
+            )
 
         if op == "cancel":
             if not actor_id:
@@ -322,26 +441,58 @@ def atlas_actor_tool(
 # ---------------------------------------------------------------------------
 
 
+def _own_steering_context(conn: Any, lock: Any) -> Optional[str]:
+    """Drain steering addressed to the actor THIS process is executing.
+
+    The worker exports its actor id as ATLAS_ACTOR_ID, so a child recognizes
+    messages meant for itself without any IPC or live handle: it reads its own
+    queue at the same model-call boundary the parent uses to read completions.
+    Returns None when this process is not an actor worker or has nothing queued.
+    """
+    own_actor_id = os.environ.get("ATLAS_ACTOR_ID", "").strip()
+    if not own_actor_id:
+        return None
+    drained = actor_service.drain_steering(conn, lock, own_actor_id)
+    if not drained:
+        return None
+    lines = [
+        "[ATLAS steering — a supervisor sent this while you were working. "
+        "Treat it as an instruction that supersedes your earlier plan where "
+        "they conflict.]"
+    ]
+    lines.extend(f"- {item['message']}" for item in drained)
+    return "\n".join(lines)
+
+
 def on_pre_llm_call(*, session_id: str = "", **_: Any) -> Optional[dict[str, str]]:
-    """Claim pending actor completions and inject a compact notice this turn."""
+    """Claim pending actor completions and inject a compact notice this turn.
+
+    Also drains steering aimed at this process's own actor, so the same hook
+    serves both directions: results flowing up to a parent, corrections flowing
+    down into a child.
+    """
     try:
         import atlas_audit  # noqa: PLC0415
 
         conn, lock = _shared_state()
-        if conn is None or lock is None or not session_id:
+        if conn is None or lock is None:
             return None
+        steering = _own_steering_context(conn, lock)
+        if not session_id:
+            return {"context": steering} if steering else None
         run_id = atlas_audit.run_for_session(session_id)
         if run_id is None:
-            return None
+            return {"context": steering} if steering else None
         token = str(uuid.uuid4())
         claimed = actor_service.claim_deliveries(
             conn, lock, parent_run_id=run_id, claim_token=token
         )
         if not claimed:
-            return None
+            return {"context": steering} if steering else None
         with _CLAIMS_LOCK:
             _PENDING_CLAIMS[run_id] = token
-        lines = ["[ATLAS actor completions]"]
+        lines = [steering] if steering else []
+        lines.append("[ATLAS actor completions]")
         for delivery in claimed:
             status = delivery.get("status", "completed")
             frag = f"- actor {delivery.get('actor_id')}: {status}"

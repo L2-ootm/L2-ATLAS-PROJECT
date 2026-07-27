@@ -272,3 +272,205 @@ def test_record_surface_session_ignores_equal_or_missing_ids() -> None:
     actor_bridge.record_surface_session(session_id=None, run_id="run-y")
     actor_bridge.record_surface_session(session_id="sess-z", run_id=None)
     assert actor_bridge._SURFACE_SESSION_BY_RUN == {}
+
+
+# ---------------------------------------------------------------------------
+# CASE-04: steering, log tailing, join liveness, opt-in wakeup
+# ---------------------------------------------------------------------------
+
+
+def test_steer_queues_a_message_for_a_running_actor(bound, monkeypatch) -> None:
+    agent, _ = bound
+    _launched(monkeypatch)
+    spawned = json.loads(
+        actor_bridge.atlas_actor_tool(op="spawn", goal="long job", parent_agent=agent)
+    )
+    conn, lock = atlas_audit.get_connection(), atlas_audit.get_lock()
+    actor_service.mark_running(conn, lock, spawned["actor_id"], pid=1)
+
+    out = json.loads(
+        actor_bridge.atlas_actor_tool(
+            op="steer", actor_id=spawned["actor_id"], message="use the cached index",
+            parent_agent=agent,
+        )
+    )
+    assert out["ok"] is True
+    assert out["seq"] == 1
+    assert actor_service.pending_steering(conn, spawned["actor_id"]) == 1
+
+
+def test_steer_requires_a_message(bound, monkeypatch) -> None:
+    agent, _ = bound
+    _launched(monkeypatch)
+    spawned = json.loads(
+        actor_bridge.atlas_actor_tool(op="spawn", goal="g", parent_agent=agent)
+    )
+    out = json.loads(
+        actor_bridge.atlas_actor_tool(
+            op="steer", actor_id=spawned["actor_id"], parent_agent=agent
+        )
+    )
+    assert out["ok"] is False
+    assert "message" in out["error"]
+
+
+def test_steering_a_terminal_actor_is_a_named_failure(bound, monkeypatch) -> None:
+    """Silently accepting a steer nothing will ever read is worse than failing."""
+    agent, _ = bound
+    _launched(monkeypatch)
+    spawned = json.loads(
+        actor_bridge.atlas_actor_tool(op="spawn", goal="g", parent_agent=agent)
+    )
+    conn, lock = atlas_audit.get_connection(), atlas_audit.get_lock()
+    actor_service.mark_running(conn, lock, spawned["actor_id"], pid=1)
+    actor_service.complete_actor(conn, lock, spawned["actor_id"], result_preview="done")
+
+    out = json.loads(
+        actor_bridge.atlas_actor_tool(
+            op="steer", actor_id=spawned["actor_id"], message="too late",
+            parent_agent=agent,
+        )
+    )
+    assert out["ok"] is False
+    assert "already completed" in out["error"]
+
+
+def test_child_drains_its_own_steering_at_the_next_model_call(
+    bound, monkeypatch
+) -> None:
+    """The child recognizes messages for itself via ATLAS_ACTOR_ID — no IPC."""
+    agent, _ = bound
+    _launched(monkeypatch)
+    spawned = json.loads(
+        actor_bridge.atlas_actor_tool(op="spawn", goal="g", parent_agent=agent)
+    )
+    conn, lock = atlas_audit.get_connection(), atlas_audit.get_lock()
+    actor_service.mark_running(conn, lock, spawned["actor_id"], pid=1)
+    actor_service.enqueue_steering(
+        conn, lock, spawned["actor_id"], message="prefer the smaller model",
+    )
+
+    monkeypatch.setenv("ATLAS_ACTOR_ID", spawned["actor_id"])
+    injected = actor_bridge.on_pre_llm_call(session_id="")
+    assert injected is not None
+    assert "prefer the smaller model" in injected["context"]
+
+    # At-most-once: the second boundary has nothing left to deliver.
+    assert actor_bridge.on_pre_llm_call(session_id="") is None
+
+
+def test_a_process_that_is_not_an_actor_drains_nothing(bound, monkeypatch) -> None:
+    monkeypatch.delenv("ATLAS_ACTOR_ID", raising=False)
+    assert actor_bridge.on_pre_llm_call(session_id="") is None
+
+
+def test_logs_before_the_child_run_exists_says_so(bound, monkeypatch) -> None:
+    agent, _ = bound
+    _launched(monkeypatch)
+    spawned = json.loads(
+        actor_bridge.atlas_actor_tool(op="spawn", goal="g", parent_agent=agent)
+    )
+    out = json.loads(
+        actor_bridge.atlas_actor_tool(
+            op="logs", actor_id=spawned["actor_id"], parent_agent=agent
+        )
+    )
+    assert out["ok"] is True
+    assert out["events"] == []
+    assert "has not started" in out["note"]
+
+
+def test_logs_tails_the_child_runs_audit_trail(bound, monkeypatch, run_id) -> None:
+    """op=logs reads the audit trail rather than inventing a second log path."""
+    agent, _ = bound
+    _launched(monkeypatch)
+    spawned = json.loads(
+        actor_bridge.atlas_actor_tool(op="spawn", goal="g", parent_agent=agent)
+    )
+    conn, lock = atlas_audit.get_connection(), atlas_audit.get_lock()
+    actor_service.mark_running(conn, lock, spawned["actor_id"], pid=1)
+    actor_service.attach_child_run(conn, lock, spawned["actor_id"], run_id)
+    from atlas_runtime.audit_service import emit
+
+    emit(conn, lock, run_id=run_id, event_type="tool_completed", tool_name="workspace",
+         data={"text": "wrote 3 files"})
+
+    out = json.loads(
+        actor_bridge.atlas_actor_tool(
+            op="logs", actor_id=spawned["actor_id"], parent_agent=agent
+        )
+    )
+    assert out["ok"] is True
+    assert out["child_run_id"] == run_id
+    assert any(e.get("text") == "wrote 3 files" for e in out["events"])
+
+
+def test_join_publishes_liveness_while_it_waits(bound, monkeypatch) -> None:
+    """A silent 120s join was indistinguishable from a hung agent."""
+    agent, _ = bound
+    _launched(monkeypatch)
+    spawned = json.loads(
+        actor_bridge.atlas_actor_tool(op="spawn", goal="g", parent_agent=agent)
+    )
+    conn, lock = atlas_audit.get_connection(), atlas_audit.get_lock()
+    actor_service.mark_running(conn, lock, spawned["actor_id"], pid=1)
+
+    touched: list[str] = []
+    agent._touch_activity = touched.append  # the harness's own idle-timer reset
+
+    actor_bridge.atlas_actor_tool(
+        op="wait", actor_id=spawned["actor_id"], timeout_seconds=0.4,
+        parent_agent=agent,
+    )
+    assert touched, "no activity touch was issued during the join"
+
+    waiting = conn.execute(
+        "SELECT COUNT(*) FROM audit_events WHERE event_type='subagent_run'"
+        " AND data LIKE '%\"phase\": \"waiting\"%'"
+    ).fetchone()[0]
+    assert waiting >= 1, "the first poll must publish a waiting heartbeat"
+
+
+def test_wakeup_is_off_unless_asked_for(bound, monkeypatch) -> None:
+    agent, _ = bound
+    _launched(monkeypatch)
+    spawned = json.loads(
+        actor_bridge.atlas_actor_tool(op="spawn", goal="g", parent_agent=agent)
+    )
+    stored = actor_service.get_actor(atlas_audit.get_connection(), spawned["actor_id"])
+    assert stored["wakeup_parent"] == 0
+
+
+def test_wakeup_is_recorded_when_requested_on_a_detached_spawn(
+    bound, monkeypatch
+) -> None:
+    agent, _ = bound
+    _launched(monkeypatch)
+    spawned = json.loads(
+        actor_bridge.atlas_actor_tool(
+            op="spawn", goal="unattended job", wakeup=True, parent_agent=agent
+        )
+    )
+    stored = actor_service.get_actor(atlas_audit.get_connection(), spawned["actor_id"])
+    assert stored["wakeup_parent"] == 1
+
+
+def test_joined_run_never_requests_a_wakeup(bound, monkeypatch) -> None:
+    """op=run is already being waited on; a wakeup would duplicate the result."""
+    agent, _ = bound
+    conn, lock = atlas_audit.get_connection(), atlas_audit.get_lock()
+
+    def _fake_launch(c, l, actor_id, **kw):  # noqa: ANN001, E741
+        actor_service.mark_running(conn, lock, actor_id, pid=1)
+        actor_service.complete_actor(conn, lock, actor_id, result_preview="r")
+        return 1
+
+    monkeypatch.setattr("atlas_runtime.actor_worker.launch_actor_worker", _fake_launch)
+    out = json.loads(
+        actor_bridge.atlas_actor_tool(
+            op="run", goal="joined job", wakeup=True, timeout_seconds=5,
+            parent_agent=agent,
+        )
+    )
+    stored = actor_service.get_actor(conn, out["actor_id"])
+    assert stored["wakeup_parent"] == 0

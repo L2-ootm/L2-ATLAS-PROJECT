@@ -312,3 +312,153 @@ def test_run_actor_noops_on_non_queued(db, lock, run_id) -> None:
     actor, _ = _spawn(db, lock, run_id)
     actor_service.mark_running(db, lock, actor["id"])
     assert not run_actor(db, lock, actor["id"], agent_factory=lambda n: None)
+
+
+# --- CASE-04: steering, log tailing, opt-in parent wakeup ---------------------
+
+
+def test_steering_is_ordered_and_delivered_at_most_once(db, lock, run_id) -> None:
+    actor, _ = _spawn(db, lock, run_id)
+    actor_service.mark_running(db, lock, actor["id"], pid=1)
+    actor_service.enqueue_steering(db, lock, actor["id"], message="first")
+    actor_service.enqueue_steering(db, lock, actor["id"], message="second")
+
+    drained = actor_service.drain_steering(db, lock, actor["id"])
+    assert [d["message"] for d in drained] == ["first", "second"]
+    assert [d["seq"] for d in drained] == [1, 2]
+    assert actor_service.drain_steering(db, lock, actor["id"]) == []
+
+
+def test_delivered_steering_is_kept_for_audit_not_deleted(db, lock, run_id) -> None:
+    actor, _ = _spawn(db, lock, run_id)
+    actor_service.mark_running(db, lock, actor["id"], pid=1)
+    actor_service.enqueue_steering(db, lock, actor["id"], message="redirect")
+    actor_service.drain_steering(db, lock, actor["id"])
+    row = db.execute(
+        "SELECT status, message FROM actor_steering WHERE actor_id=?", (actor["id"],)
+    ).fetchone()
+    assert row == ("delivered", "redirect")
+
+
+def test_steering_rejects_empty_terminal_and_unknown(db, lock, run_id) -> None:
+    actor, _ = _spawn(db, lock, run_id)
+    actor_service.mark_running(db, lock, actor["id"], pid=1)
+    with pytest.raises(ValueError, match="non-empty"):
+        actor_service.enqueue_steering(db, lock, actor["id"], message="   ")
+    with pytest.raises(ValueError, match="unknown actor"):
+        actor_service.enqueue_steering(db, lock, "actor-nope", message="hi")
+    actor_service.complete_actor(db, lock, actor["id"], result_preview="done")
+    with pytest.raises(ValueError, match="nothing to steer"):
+        actor_service.enqueue_steering(db, lock, actor["id"], message="late")
+
+
+def test_attach_child_run_links_a_live_actor_to_its_audit_trail(db, lock, run_id) -> None:
+    actor, _ = _spawn(db, lock, run_id)
+    actor_service.mark_running(db, lock, actor["id"], pid=1)
+    assert actor_service.attach_child_run(db, lock, actor["id"], run_id) is True
+    assert actor_service.get_actor(db, actor["id"])["child_run_id"] == run_id
+
+
+def test_attach_child_run_refuses_a_terminal_actor(db, lock, run_id) -> None:
+    actor, _ = _spawn(db, lock, run_id)
+    actor_service.mark_running(db, lock, actor["id"], pid=1)
+    actor_service.complete_actor(db, lock, actor["id"], result_preview="done")
+    assert actor_service.attach_child_run(db, lock, actor["id"], run_id) is False
+
+
+def test_worker_records_the_child_run_before_it_finishes(db, lock, run_id) -> None:
+    """op=logs on a live actor needs the link to exist while it is still working."""
+    seen: dict = {}
+    actor, _ = _spawn(db, lock, run_id)
+
+    class _Peeking:
+        def execute(self, conn, lock_, *, mission_id, run_id, prompt, cancel_token=None):  # noqa: ANN001
+            seen["child_run_id"] = actor_service.get_actor(conn, actor["id"])["child_run_id"]
+            return RunOutcome(status="succeeded", summary="ok")
+
+    run_actor(db, lock, actor["id"], agent_factory=lambda name: _Peeking())
+    assert seen["child_run_id"], "child_run_id was still unset while the actor ran"
+
+
+def test_wakeup_starts_a_follow_up_run_in_the_parent_session(
+    db, lock, run_id, surface_session, monkeypatch
+) -> None:
+    monkeypatch.delenv("ATLAS_WAKEUP_RUN", raising=False)
+    db.execute("UPDATE surface_sessions SET state='active' WHERE id=?", (surface_session,))
+    db.commit()
+    actor, _ = _spawn(
+        db, lock, run_id, mode="detached", session_id=surface_session, wakeup_parent=True,
+    )
+    runtime = _FakeRuntime(RunOutcome(status="succeeded", summary="found the cause"))
+    run_actor(db, lock, actor["id"], agent_factory=lambda name: runtime)
+
+    # Two prompts: the actor's own goal, then the wakeup turn in the parent session.
+    assert len(runtime.prompts) == 2
+    assert "A background actor you started has finished" in runtime.prompts[1]
+    assert "found the cause" in runtime.prompts[1]
+    follow_up = db.execute(
+        "SELECT COUNT(*) FROM runs WHERE session_id=? AND id!=?", (surface_session, run_id)
+    ).fetchone()[0]
+    assert follow_up >= 1
+
+
+def test_wakeup_consumes_the_delivery_so_it_is_not_announced_twice(
+    db, lock, run_id, surface_session, monkeypatch
+) -> None:
+    monkeypatch.delenv("ATLAS_WAKEUP_RUN", raising=False)
+    db.execute("UPDATE surface_sessions SET state='active' WHERE id=?", (surface_session,))
+    db.commit()
+    actor, _ = _spawn(
+        db, lock, run_id, mode="detached", session_id=surface_session, wakeup_parent=True,
+    )
+    run_actor(
+        db, lock, actor["id"],
+        agent_factory=lambda name: _FakeRuntime(RunOutcome(status="succeeded", summary="r")),
+    )
+    status = db.execute(
+        "SELECT status FROM actor_deliveries WHERE actor_id=?", (actor["id"],)
+    ).fetchone()[0]
+    assert status == "consumed"
+
+
+def test_wakeup_is_suppressed_inside_a_wakeup_chain(
+    db, lock, run_id, surface_session, monkeypatch
+) -> None:
+    """One follow-up turn, not a self-triggering loop."""
+    monkeypatch.setenv("ATLAS_WAKEUP_RUN", "1")
+    db.execute("UPDATE surface_sessions SET state='active' WHERE id=?", (surface_session,))
+    db.commit()
+    actor, _ = _spawn(
+        db, lock, run_id, mode="detached", session_id=surface_session, wakeup_parent=True,
+    )
+    runtime = _FakeRuntime(RunOutcome(status="succeeded", summary="r"))
+    run_actor(db, lock, actor["id"], agent_factory=lambda name: runtime)
+    assert len(runtime.prompts) == 1
+
+
+def test_wakeup_skipped_when_the_session_is_no_longer_live(
+    db, lock, run_id, surface_session, monkeypatch
+) -> None:
+    monkeypatch.delenv("ATLAS_WAKEUP_RUN", raising=False)
+    db.execute("UPDATE surface_sessions SET state='completed' WHERE id=?", (surface_session,))
+    db.commit()
+    actor, _ = _spawn(
+        db, lock, run_id, mode="detached", session_id=surface_session, wakeup_parent=True,
+    )
+    runtime = _FakeRuntime(RunOutcome(status="succeeded", summary="r"))
+    run_actor(db, lock, actor["id"], agent_factory=lambda name: runtime)
+    assert len(runtime.prompts) == 1
+
+
+def test_no_wakeup_leaves_the_delivery_pending_for_the_inbox(
+    db, lock, run_id, surface_session, monkeypatch
+) -> None:
+    monkeypatch.delenv("ATLAS_WAKEUP_RUN", raising=False)
+    actor, _ = _spawn(db, lock, run_id, mode="detached", session_id=surface_session)
+    runtime = _FakeRuntime(RunOutcome(status="succeeded", summary="r"))
+    run_actor(db, lock, actor["id"], agent_factory=lambda name: runtime)
+    assert len(runtime.prompts) == 1
+    status = db.execute(
+        "SELECT status FROM actor_deliveries WHERE actor_id=?", (actor["id"],)
+    ).fetchone()[0]
+    assert status == "pending"

@@ -54,6 +54,10 @@ def launch_actor_worker(
     cmd = [sys.executable, "-m", "atlas_runtime.actor_worker", actor_id]
     env = dict(os.environ)
     env["ATLAS_DB"] = db_path or str(atlas_db.default_db_path())
+    # The child recognizes steering aimed at itself by this id (actor_bridge's
+    # pre_llm_call drain). argv already carries it, but the harness runs several
+    # frames below main() and env is how the rest of the runtime is configured.
+    env["ATLAS_ACTOR_ID"] = actor_id
     try:
         if os.name == "nt":
             proc = subprocess.Popen(  # noqa: S603
@@ -102,6 +106,101 @@ def terminate_actor_pids(actors: list[dict[str, Any]]) -> None:
                 os.kill(int(pid), 15)
         except Exception as exc:  # noqa: BLE001
             logger.debug("terminate pid %s failed: %s", pid, exc)
+
+
+# Set in the environment of any process executing a wakeup follow-up run. It is
+# inherited by every actor worker that run spawns, which is what bounds the
+# chain: a wakeup can start one follow-up turn, and nothing that turn spawns can
+# start another. Without it, two actors each waking the parent, whose turns each
+# spawn more waking actors, is an unbounded self-triggering loop.
+WAKEUP_ENV_FLAG = "ATLAS_WAKEUP_RUN"
+
+# Live surface-session states — a completion is only worth waking a session that
+# still exists. Mirrors surface_session_service's non-terminal set.
+_LIVE_SESSION_STATES = ("starting", "active", "suspended", "resuming")
+
+
+def _wake_parent(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    actor_id: str,
+    *,
+    agent_factory: Optional[Callable[[str], Any]] = None,
+) -> Optional[str]:
+    """Start a follow-up run in the parent's session announcing this completion.
+
+    A detached actor's result otherwise sits in `actor_deliveries` until the
+    parent happens to take another turn — which, once the parent run has ended,
+    only happens when a human types something. For unattended work that is the
+    difference between "finished" and "finished and acted on".
+
+    Executed here, in the worker, because the worker is the only process still
+    alive at completion time; the parent run's process is gone. Returns the new
+    run id, or None when the wakeup was not applicable (not requested, chained,
+    or the session is no longer live) — all of which are normal, not failures.
+    """
+    actor = actor_service.get_actor(conn, actor_id)
+    if actor is None or not actor.get("wakeup_parent"):
+        return None
+    if os.environ.get(WAKEUP_ENV_FLAG):
+        logger.info("actor %s: wakeup suppressed (already inside a wakeup chain)", actor_id)
+        return None
+    session_id = actor.get("session_id")
+    if not session_id:
+        return None
+    row = conn.execute(
+        "SELECT state FROM surface_sessions WHERE id=?", (session_id,)
+    ).fetchone()
+    if row is None or row[0] not in _LIVE_SESSION_STATES:
+        logger.info("actor %s: wakeup skipped, session not live", actor_id)
+        return None
+
+    # Deliver the completion as the prompt and consume the inbox record, so the
+    # parent is not told the same thing twice by two different mechanisms.
+    delivery = actor_service.consume_delivery(conn, lock, actor_id) or {}
+    status = delivery.get("status") or actor["status"]
+    detail = delivery.get("result_preview") or delivery.get("error") or ""
+    prompt = (
+        f"A background actor you started has finished.\n\n"
+        f"- actor: {actor_id}\n"
+        f"- status: {status}\n"
+        f"- goal: {actor.get('goal') or ''}\n"
+        f"- result: {detail}\n\n"
+        "Continue the work this result unblocks. If it failed, decide whether to "
+        "retry differently or report the blocker; do not silently repeat it."
+    )
+
+    os.environ[WAKEUP_ENV_FLAG] = "1"
+    try:
+        if agent_factory is None:
+            from atlas_runtime.agents import get_agent as agent_factory  # noqa: PLC0415
+
+        mission = create_mission(
+            conn, lock,
+            title=f"actor wakeup: {str(actor.get('goal') or '')[:48]}",
+            intent=prompt,
+            origin="system",
+        )
+        run = start_run(
+            conn, lock,
+            mission_id=mission.id,
+            session_id=session_id,
+            agent_runtime="native",
+        )
+        outcome = agent_factory("native").execute(
+            conn, lock, mission_id=mission.id, run_id=run.id, prompt=prompt
+        )
+        complete_run(
+            conn, lock,
+            run_id=run.id, mission_id=mission.id,
+            status=outcome.status, summary=outcome.summary,
+        )
+        return run.id
+    except Exception as exc:  # noqa: BLE001 — the actor already finished cleanly
+        logger.warning("actor %s wakeup run failed: %s", actor_id, exc)
+        return None
+    finally:
+        os.environ.pop(WAKEUP_ENV_FLAG, None)
 
 
 def run_actor(
@@ -161,6 +260,10 @@ def run_actor(
             session_id=actor.get("session_id"),
             agent_runtime="native",
         )
+        # Link the actor to its run NOW, not at completion: until this exists
+        # nothing connects a working actor to the audit trail carrying its
+        # activity, so `op=logs` on a live actor had nothing to read.
+        actor_service.attach_child_run(conn, lock, actor_id, run.id)
         runtime = agent_factory("native")
         outcome = runtime.execute(
             conn, lock,
@@ -187,6 +290,15 @@ def run_actor(
                 error=outcome.summary or outcome.stop_reason or "child run failed",
                 child_run_id=run.id,
             )
+        # Stop heartbeating before the wakeup drives a whole second run on this
+        # connection: the actor is terminal, so the beat is already a no-op, and
+        # two threads interleaving execute() on one sqlite3 connection raises
+        # "bad parameter or other API misuse" (same hazard wait_for_actor
+        # documents). The finally below is idempotent.
+        stop.set()
+        # After the terminal write, so a wakeup failure can never leave the
+        # actor itself un-finalized.
+        _wake_parent(conn, lock, actor_id, agent_factory=agent_factory)
         return True
     except Exception as exc:  # noqa: BLE001 — durable failure, never crash silent
         logger.warning("actor %s execution failed: %s", actor_id, exc)

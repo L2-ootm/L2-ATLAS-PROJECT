@@ -128,11 +128,17 @@ def spawn_actor(
     workspace_root: Optional[str] = None,
     depth: int = 1,
     idempotency_key: Optional[str] = None,
+    wakeup_parent: bool = False,
 ) -> tuple[dict[str, Any], bool]:
     """Idempotently insert a queued actor. Returns (actor, created).
 
     Duplicate delivery of the same spawn mutation (same idempotency key)
     returns the existing actor instead of starting another child.
+
+    `wakeup_parent` asks the worker to start a follow-up run in the parent's
+    session when this actor finishes, instead of leaving the completion in the
+    inbox until the parent happens to take another turn. Off by default: it
+    starts agent execution nobody typed a prompt for.
     """
     goal = (goal or "").strip()
     if not goal:
@@ -156,12 +162,12 @@ def spawn_actor(
             conn.execute(
                 "INSERT INTO actors(id, parent_run_id, parent_actor_id, session_id,"
                 " idempotency_key, role, goal, model, mode, status, workspace_root,"
-                " depth, created_at, updated_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?,'queued',?,?,?,?)",
+                " depth, wakeup_parent, created_at, updated_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?,'queued',?,?,?,?,?)",
                 (
                     actor_id, parent_run_id, parent_actor_id, session_id,
                     key, role, goal, model, mode, workspace_root,
-                    depth, now, now,
+                    depth, 1 if wakeup_parent else 0, now, now,
                 ),
             )
     actor = _fetch_actor(conn, actor_id)
@@ -399,6 +405,7 @@ def wait_for_actor(
     timeout_seconds: float = 120.0,
     poll_interval: float = 0.25,
     consume: bool = True,
+    on_tick: Optional[Any] = None,
 ) -> Optional[dict[str, Any]]:
     """Join an existing actor with a bounded timeout.
 
@@ -407,8 +414,18 @@ def wait_for_actor(
     `consume`) so a later pre-model inbox claim cannot inject a duplicate.
     Returns the actor row (with `delivery` payload when one was consumed) or
     None when the timeout elapsed with the actor still active.
+
+    `on_tick(actor, waited_seconds)` is called once per poll while the actor is
+    still active. This loop occupies the harness thread for as long as the join
+    lasts and emitted nothing while it did, so a two-minute join looked
+    indistinguishable from a hung agent: no stream output, no activity touch,
+    and gateway/client inactivity timeouts firing on a run that was working
+    fine. The callback is where liveness is published (see actor_bridge); it is
+    called inside the loop but never holds the lock, and an exception in it is
+    swallowed — a failed heartbeat must not abort a healthy join.
     """
     deadline = time.monotonic() + max(0.0, timeout_seconds)
+    started = time.monotonic()
     while True:
         # Serialize the poll read on the shared write lock: the actor may be
         # completed concurrently on the same sqlite3 connection from a worker
@@ -424,7 +441,176 @@ def wait_for_actor(
             return actor
         if time.monotonic() >= deadline:
             return None
+        if on_tick is not None:
+            try:
+                on_tick(actor, time.monotonic() - started)
+            except Exception as exc:  # noqa: BLE001 — liveness is not the join
+                logger.debug("actor wait tick failed: %s", exc)
         time.sleep(poll_interval)
+
+
+def attach_child_run(
+    conn: sqlite3.Connection, lock: threading.Lock, actor_id: str, child_run_id: str
+) -> bool:
+    """Record the child run id while the actor is still running.
+
+    `_finish` also writes child_run_id, but only at terminal transition — which
+    meant that for the entire time an actor was actually working, nothing linked
+    it to the run carrying its audit trail, so there was no way to tail a live
+    actor's activity. Written here at run creation instead. Only running actors
+    accept it (the 0022 trigger makes terminal rows immutable).
+    """
+    now = _now()
+    with lock:
+        with conn:
+            cur = conn.execute(
+                "UPDATE actors SET child_run_id=?, updated_at=?"
+                " WHERE id=? AND status IN ('queued','running')",
+                (child_run_id, now, actor_id),
+            )
+            return cur.rowcount == 1
+
+
+# ---------------------------------------------------------------------------
+# Steering (mid-flight correction) and log tailing
+# ---------------------------------------------------------------------------
+
+
+def enqueue_steering(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    actor_id: str,
+    *,
+    message: str,
+    origin: str = "agent",
+) -> dict[str, Any]:
+    """Queue a steering message for a still-active actor.
+
+    Delivery is pull-based: the child drains its own queue at its next model
+    call boundary (`actor_bridge.on_pre_llm_call`), so this needs no live
+    process handle and a message survives a worker restart. Raises ValueError
+    for an unknown or already-terminal actor — steering something that has
+    finished is a caller mistake worth reporting, not a silent no-op.
+    """
+    message = (message or "").strip()
+    if not message:
+        raise ValueError("steering message must be non-empty")
+    message = message[:GOAL_CAP]
+    now = _now()
+    with lock:
+        with conn:
+            actor = _fetch_actor(conn, actor_id)
+            if actor is None:
+                raise ValueError(f"unknown actor: {actor_id}")
+            if actor["status"] in TERMINAL_STATUSES:
+                raise ValueError(
+                    f"actor {actor_id} is already {actor['status']}; nothing to steer"
+                )
+            seq = conn.execute(
+                "SELECT COALESCE(MAX(seq), 0) + 1 FROM actor_steering WHERE actor_id=?",
+                (actor_id,),
+            ).fetchone()[0]
+            steering_id = f"steer-{uuid.uuid4()}"
+            conn.execute(
+                "INSERT INTO actor_steering(id, actor_id, seq, message, origin,"
+                " status, created_at) VALUES (?,?,?,?,?,'pending',?)",
+                (steering_id, actor_id, seq, message, origin, now),
+            )
+    return {"id": steering_id, "actor_id": actor_id, "seq": seq, "message": message}
+
+
+def drain_steering(
+    conn: sqlite3.Connection, lock: threading.Lock, actor_id: str, *, limit: int = 10
+) -> list[dict[str, Any]]:
+    """Claim and mark delivered every pending steering message for one actor.
+
+    At-most-once by design: a message is latched delivered in the same
+    transaction that reads it, so a crash after the drain but before the model
+    sees it loses that steer rather than replaying it into a later turn where
+    it would arrive without its context. Rows are kept (not deleted) so what
+    was injected into a child stays auditable.
+    """
+    now = _now()
+    drained: list[dict[str, Any]] = []
+    with lock:
+        with conn:
+            rows = conn.execute(
+                "SELECT id, seq, message, origin FROM actor_steering"
+                " WHERE actor_id=? AND status='pending' ORDER BY seq ASC LIMIT ?",
+                (actor_id, max(1, limit)),
+            ).fetchall()
+            for steering_id, seq, message, origin in rows:
+                cur = conn.execute(
+                    "UPDATE actor_steering SET status='delivered', delivered_at=?"
+                    " WHERE id=? AND status='pending'",
+                    (now, steering_id),
+                )
+                if cur.rowcount == 1:
+                    drained.append(
+                        {"id": steering_id, "seq": seq, "message": message, "origin": origin}
+                    )
+    return drained
+
+
+def pending_steering(conn: sqlite3.Connection, actor_id: str) -> int:
+    return int(
+        conn.execute(
+            "SELECT COUNT(*) FROM actor_steering WHERE actor_id=? AND status='pending'",
+            (actor_id,),
+        ).fetchone()[0]
+    )
+
+
+def actor_logs(
+    conn: sqlite3.Connection, actor_id: str, *, limit: int = 30
+) -> dict[str, Any]:
+    """Tail an actor's child-run audit trail, newest last.
+
+    There is no separate log stream to tail: the worker runs the child as an
+    ordinary mission+run, so its activity is already the audit_events of
+    `actors.child_run_id`. This projects the tail of that trail into a compact,
+    model-readable shape rather than inventing a second logging path that could
+    disagree with the audit trail.
+    """
+    actor = _fetch_actor(conn, actor_id)
+    if actor is None:
+        raise ValueError(f"unknown actor: {actor_id}")
+    child_run_id = actor.get("child_run_id")
+    if not child_run_id:
+        return {
+            "actor_id": actor_id,
+            "status": actor["status"],
+            "child_run_id": None,
+            "events": [],
+            "note": "the actor has not started its child run yet",
+        }
+    limit = max(1, min(int(limit), 200))
+    rows = conn.execute(
+        "SELECT event_type, tool_name, timestamp, data FROM audit_events"
+        " WHERE run_id=? ORDER BY timestamp DESC, id DESC LIMIT ?",
+        (child_run_id, limit),
+    ).fetchall()
+    events = []
+    for event_type, tool_name, timestamp, data in reversed(rows):
+        entry: dict[str, Any] = {
+            "at": timestamp,
+            "event": event_type,
+            "tool": tool_name or "",
+        }
+        try:
+            payload = json.loads(data or "{}")
+        except (TypeError, ValueError):
+            payload = {}
+        text = payload.get("text") or payload.get("delta") or payload.get("error")
+        if isinstance(text, str) and text.strip():
+            entry["text"] = text[:1000]
+        events.append(entry)
+    return {
+        "actor_id": actor_id,
+        "status": actor["status"],
+        "child_run_id": child_run_id,
+        "events": events,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -598,6 +784,11 @@ def reconcile_orphan_actors(
 
 __all__ = [
     "MAX_DEPTH",
+    "actor_logs",
+    "attach_child_run",
+    "drain_steering",
+    "enqueue_steering",
+    "pending_steering",
     "spawn_actor",
     "mark_running",
     "heartbeat_actor",
