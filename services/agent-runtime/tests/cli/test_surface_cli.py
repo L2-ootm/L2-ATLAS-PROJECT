@@ -10,7 +10,7 @@ import threading
 import pytest
 from typer.testing import CliRunner
 
-from atlas_runtime import db, project_service
+from atlas_runtime import db, project_service, session_message_service
 from atlas_runtime.cli import surface as surface_cli
 
 runner = CliRunner()
@@ -324,3 +324,63 @@ def test_resume_rotates_owner_token_and_reopens_channel(
         is None
     )
     conn.close()
+
+
+def _seed_messages(patched_surface_db, session_id, contents):
+    """Append conversation history through the service the CLI reads back."""
+    conn = sqlite3.connect(str(patched_surface_db["path"]), check_same_thread=False)
+    conn.execute("PRAGMA foreign_keys = ON")
+    lock = threading.Lock()
+    for role, content in contents:
+        session_message_service.append_message(
+            conn, lock, surface_session_id=session_id, role=role, content=content
+        )
+    conn.close()
+
+
+def test_messages_returns_the_newest_window_oldest_first(patched_surface_db) -> None:
+    created = _invoke("create", "--surface-kind", "webui", "--global")
+    _seed_messages(
+        patched_surface_db,
+        created["id"],
+        [("user", "first ask"), ("assistant", "first answer"), ("user", "second ask")],
+    )
+
+    page = _invoke("messages", created["id"], "--limit", "2")
+
+    assert [m["content"] for m in page["messages"]] == ["first answer", "second ask"]
+    assert page["total"] == 3
+    assert page["has_more"] is True
+
+
+def test_messages_pages_forward_with_after_seq(patched_surface_db) -> None:
+    created = _invoke("create", "--surface-kind", "webui", "--global")
+    _seed_messages(
+        patched_surface_db,
+        created["id"],
+        [("user", "a"), ("assistant", "b"), ("user", "c")],
+    )
+
+    page = _invoke("messages", created["id"], "--after-seq", "2")
+
+    assert [m["seq"] for m in page["messages"]] == [3]
+    assert page["has_more"] is False
+
+
+def test_messages_on_an_unknown_session_fails_with_a_named_error() -> None:
+    result = runner.invoke(surface_cli.surface_app, ["messages", "nope", "--json"])
+    assert result.exit_code == 1
+    assert json.loads(result.output)["error"]["code"] == "surface_not_found"
+
+
+def test_search_finds_history_across_sessions(patched_surface_db) -> None:
+    first = _invoke("create", "--surface-kind", "webui", "--surface-id", "t1", "--global")
+    second = _invoke("create", "--surface-kind", "webui", "--surface-id", "t2", "--global")
+    _seed_messages(patched_surface_db, first["id"], [("user", "the migration wedged")])
+    _seed_messages(patched_surface_db, second["id"], [("user", "unrelated chatter")])
+
+    everywhere = _invoke("search", "migration")
+    scoped = _invoke("search", "migration", "--session-id", second["id"])
+
+    assert [m["surface_session_id"] for m in everywhere["messages"]] == [first["id"]]
+    assert scoped["messages"] == []

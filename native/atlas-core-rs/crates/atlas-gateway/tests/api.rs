@@ -3216,3 +3216,64 @@ async fn team_run_cancel_dispatches() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["ok"], true);
 }
+
+#[tokio::test]
+async fn surface_messages_returns_a_history_window() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"session_id":"surface-1","messages":[{"seq":4,"role":"user","content":"why did it wedge"}],"total":12,"limit":1,"has_more":true}"#,
+        &stub_dir,
+    );
+    let (status, body) = get_json(
+        &router,
+        "/v1/surface-sessions/surface-1/messages?limit=1&after_seq=3",
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["messages"][0]["seq"], 4);
+    assert_eq!(body["messages"][0]["role"], "user");
+    assert_eq!(body["has_more"], true);
+}
+
+#[tokio::test]
+async fn surface_messages_requires_owner_token() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(seeded_db(&dir), r#"{"messages":[]}"#, &stub_dir);
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri("/v1/surface-sessions/surface-1/messages")
+                .header("x-atlas-surface-owner", "wrong-owner")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn session_message_search_spans_sessions() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(
+        seeded_db(&dir),
+        r#"{"query":"wedge","session_id":null,"messages":[{"surface_session_id":"surface-1","seq":4,"role":"user","content":"why did it wedge"}]}"#,
+        &stub_dir,
+    );
+    let (status, body) = get_json(&router, "/v1/session-messages/search?q=wedge").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["messages"][0]["surface_session_id"], "surface-1");
+}
+
+#[tokio::test]
+async fn session_message_search_rejects_an_empty_query() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let router = test_app_with_stub(seeded_db(&dir), r#"{"messages":[]}"#, &stub_dir);
+    let (status, _body) = get_json(&router, "/v1/session-messages/search?q=").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}

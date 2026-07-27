@@ -1869,6 +1869,86 @@ async fn surface_events(
     Ok(Json(value))
 }
 
+/// Query params for GET /v1/surface-sessions/{id}/messages — durable
+/// conversation history (migration 0030). Cursors mirror the CLI: `after_seq`
+/// pages forward for polling, `before_seq` pages backwards for infinite scroll.
+#[derive(Deserialize)]
+struct SurfaceMessagesQuery {
+    limit: Option<i64>,
+    before_seq: Option<i64>,
+    after_seq: Option<i64>,
+}
+
+async fn surface_messages(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    Query(query): Query<SurfaceMessagesQuery>,
+    headers: HeaderMap,
+) -> ApiResult {
+    require_arg(&id, "surface session id must be non-empty")?;
+    // Same owner gate as surface_events: a transcript is at least as sensitive
+    // as the event stream over the same session.
+    require_surface_owner(&state, &headers, &id).await?;
+    let mut args: Vec<String> = vec!["surface".into(), "messages".into(), "--json".into()];
+    if let Some(limit) = query.limit {
+        args.push("--limit".into());
+        args.push(limit.to_string());
+    }
+    if let Some(before_seq) = query.before_seq {
+        args.push("--before-seq".into());
+        args.push(before_seq.to_string());
+    }
+    if let Some(after_seq) = query.after_seq {
+        args.push("--after-seq".into());
+        args.push(after_seq.to_string());
+    }
+    args.push("--".into());
+    args.push(id.clone());
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let value = dispatch_json_cli(&state.atlas_cmd, &refs, "surface messages").await?;
+    Ok(Json(value))
+}
+
+/// Query params for GET /v1/session-messages/search — cross-session full-text
+/// history search. Deliberately NOT under /v1/surface-sessions/: finding which
+/// session discussed a thing is the point, so it has no session in its path
+/// (and cannot collide with the `{id}` route).
+#[derive(Deserialize)]
+struct SurfaceSearchQuery {
+    q: Option<String>,
+    session_id: Option<String>,
+    limit: Option<i64>,
+}
+
+async fn surface_search(
+    State(state): State<AppState>,
+    Query(query): Query<SurfaceSearchQuery>,
+    headers: HeaderMap,
+) -> ApiResult {
+    let q = query.q.unwrap_or_default();
+    require_arg(&q, "q must be non-empty")?;
+    let mut args: Vec<String> = vec!["surface".into(), "search".into(), "--json".into()];
+    // A session-scoped search is owner-gated exactly like reading that
+    // session's messages. The unscoped search stays behind the gateway's own
+    // auth layer only — it spans sessions, so no single owner token can
+    // authorize it.
+    if let Some(session_id) = query.session_id.as_deref() {
+        require_arg(session_id, "session_id must be non-empty")?;
+        require_surface_owner(&state, &headers, session_id).await?;
+        args.push("--session-id".into());
+        args.push(session_id.to_string());
+    }
+    if let Some(limit) = query.limit {
+        args.push("--limit".into());
+        args.push(limit.to_string());
+    }
+    args.push("--".into());
+    args.push(q);
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let value = dispatch_json_cli(&state.atlas_cmd, &refs, "surface search").await?;
+    Ok(Json(value))
+}
+
 #[derive(Deserialize)]
 struct SurfaceOwnerBody {
     owner_token: String,
@@ -3484,6 +3564,8 @@ pub fn app(state: AppState) -> Router {
         )
         .route("/v1/surface-sessions/{id}", get(surface_get))
         .route("/v1/surface-sessions/{id}/events", get(surface_events))
+        .route("/v1/surface-sessions/{id}/messages", get(surface_messages))
+        .route("/v1/session-messages/search", get(surface_search))
         .route(
             "/v1/surface-sessions/{session_id}/approvals",
             get(surface_tool_approvals),

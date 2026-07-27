@@ -508,6 +508,36 @@ class NativeAtlasAgent(AgentRuntime):
             data={"runtime": "native", "mission_id": mission_id},
         )
 
+        # Resolve the persistent surface session BEFORE the harness factory.
+        # Passing run_id as the harness session_id made every turn a brand-new
+        # harness session: the foundation looks up the session row to restore
+        # the cached system prompt (conversation_loop._restore_or_build_system_prompt),
+        # so a per-run id read as "missing" every time — a full prompt rebuild
+        # each turn and an Anthropic prefix-cache miss on every request.
+        # Per-run identity is still carried by task_id in _drive() below.
+        #
+        # Resolved here rather than next to its first use because the tool
+        # callbacks below close over it to persist conversation history: relying
+        # on a closure reading a name assigned later in the function works, but
+        # only by accident of call ordering.
+        session_key: Optional[str] = None
+        try:
+            session_row = conn.execute(
+                "SELECT session_id FROM runs WHERE id=?", (run_id,)
+            ).fetchone()
+            if session_row and session_row[0]:
+                session_key = str(session_row[0])
+        except Exception as exc:
+            logger.debug("Failed to resolve surface session for run %s: %s", run_id, exc)
+
+        # Durable conversation history (migration 0030). The operator's ask is
+        # recorded before execution so a run that dies mid-turn still leaves the
+        # question in the transcript — the cockpit's history is otherwise
+        # localStorage-only and dies with the browser tab.
+        self._record_message(
+            conn, lock, session_key, run_id=run_id, role="user", content=prompt
+        )
+
         # --- resolve the harness factory -----------------------------------
         # The default factory selects provider/model from ATLAS config + the
         # active Focus (A4); an injected factory (tests) bypasses resolution.
@@ -636,6 +666,17 @@ class NativeAtlasAgent(AgentRuntime):
                             "text": _json_safe_preview(text_source, 4000),
                         },
                     )
+                    # Same compressed text into durable history: audit_events is
+                    # purged by retention, session_messages is the record meant
+                    # to survive it.
+                    preview = _json_safe_preview(text_source, 4000)
+                    self._record_message(
+                        conn, lock, session_key, run_id=run_id, role="tool",
+                        content=preview if isinstance(preview, str) else json.dumps(preview),
+                        tool_call_id=str(call_id),
+                        tool_name=tool_name,
+                        metadata={"is_error": failed},
+                    )
 
                 # Hermes normalises nested delegate activity onto this single
                 # callback. Emit compact state changes only: thinking deltas
@@ -706,22 +747,6 @@ class NativeAtlasAgent(AgentRuntime):
                     tool_complete_callback=_emit_tool_complete,
                     tool_progress_callback=_emit_subagent_progress,
                 )
-        # Resolve the persistent surface session BEFORE constructing the agent.
-        # Passing run_id as the harness session_id made every turn a brand-new
-        # harness session: the foundation looks up the session row to restore
-        # the cached system prompt (conversation_loop._restore_or_build_system_prompt),
-        # so a per-run id read as "missing" every time — a full prompt rebuild
-        # each turn and an Anthropic prefix-cache miss on every request.
-        # Per-run identity is still carried by task_id in _drive() below.
-        session_key: Optional[str] = None
-        try:
-            session_row = conn.execute(
-                "SELECT session_id FROM runs WHERE id=?", (run_id,)
-            ).fetchone()
-            if session_row and session_row[0]:
-                session_key = str(session_row[0])
-        except Exception as exc:
-            logger.debug("Failed to resolve surface session for run %s: %s", run_id, exc)
         harness_session_id = session_key or run_id
 
         try:
@@ -861,9 +886,48 @@ class NativeAtlasAgent(AgentRuntime):
         return self._map_result(
             conn, lock, run_id, result_holder.get("result", {}),
             streamed_final=delta_buffer.last_turn_text if delta_buffer is not None else "",
+            session_key=session_key,
         )
 
     # -- internal ----------------------------------------------------------
+
+    @staticmethod
+    def _record_message(
+        conn: sqlite3.Connection,
+        lock: threading.Lock,
+        session_key: Optional[str],
+        *,
+        run_id: str,
+        role: str,
+        content: str,
+        tool_call_id: Optional[str] = None,
+        tool_name: Optional[str] = None,
+        metadata: Optional[dict[str, Any]] = None,
+    ) -> None:
+        """Append one turn to durable conversation history (migration 0030).
+
+        No-ops without a surface session: `session_messages.surface_session_id`
+        is FK-bound, and a run outside any session has nothing to attach to.
+        Fail-open like `_safe_emit` — losing a history row must never take down
+        a run that is otherwise succeeding.
+        """
+        if not session_key or not content:
+            return
+        try:
+            from atlas_runtime import session_message_service  # noqa: PLC0415
+
+            session_message_service.append_message(
+                conn, lock,
+                surface_session_id=session_key,
+                run_id=run_id,
+                role=role,
+                content=content,
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+                metadata=metadata,
+            )
+        except Exception as exc:  # noqa: BLE001 — fail-open history
+            logger.debug("session message persistence failed (%s): %s", role, exc)
 
     def _map_result(
         self,
@@ -873,6 +937,7 @@ class NativeAtlasAgent(AgentRuntime):
         result: dict[str, Any],
         *,
         streamed_final: str = "",
+        session_key: Optional[str] = None,
     ) -> RunOutcome:
         """Map the harness result dict → audit event + RunOutcome with claims."""
         final_response = (result.get("final_response") or "").strip()
@@ -903,6 +968,9 @@ class NativeAtlasAgent(AgentRuntime):
                 "text": final_response,
                 "text_length": len(final_response),
             },
+        )
+        self._record_message(
+            conn, lock, session_key, run_id=run_id, role="assistant", content=final_response
         )
 
         status = "succeeded" if (completed and not failed and not error) else "failed"

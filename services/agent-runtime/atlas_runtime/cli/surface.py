@@ -29,6 +29,7 @@ from atlas_runtime import (
     config_service,
     permission_broker,
     run_service,
+    session_message_service,
     surface_events,
     surface_session_service,
     tool_catalog,
@@ -464,6 +465,60 @@ def close(
         cancelled=False,
         json_out=json_out,
     )
+
+
+@surface_app.command("messages")
+def messages(
+    session_id: str,
+    limit: int = typer.Option(50, "--limit", min=1, max=500),
+    before_seq: Optional[int] = typer.Option(None, "--before-seq", min=1),
+    after_seq: Optional[int] = typer.Option(None, "--after-seq", min=0),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Read one window of a session's durable conversation history.
+
+    Backs GET /v1/surface-sessions/{id}/messages. `--after-seq` pages forward
+    (polling for new turns), `--before-seq` pages backwards (scrolling into
+    older history); with neither, the newest `--limit` messages are returned.
+    Every mode returns oldest-first with a `has_more` flag.
+    """
+    conn = _get_connection()
+    _session_or_fail(conn, session_id)
+    page = session_message_service.list_messages(
+        conn, session_id, limit=limit, before_seq=before_seq, after_seq=after_seq
+    )
+    if json_out:
+        _echo(page)
+        return
+    for message in page["messages"]:
+        typer.echo(f"{message['seq']}\t{message['role']}\t{message['content'][:120]}")
+
+
+@surface_app.command("search")
+def search(
+    query: str,
+    session_id: Optional[str] = typer.Option(None, "--session-id"),
+    limit: int = typer.Option(50, "--limit", min=1, max=500),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Full-text search across conversation history, newest match first.
+
+    Cross-session by default — the search a localStorage-only transcript could
+    never do. `--session-id` narrows it to one session.
+    """
+    conn = _get_connection()
+    if session_id:
+        _session_or_fail(conn, session_id)
+    hits = session_message_service.search_messages(
+        conn, query, surface_session_id=session_id, limit=limit
+    )
+    if json_out:
+        _echo({"query": query, "session_id": session_id, "messages": hits})
+        return
+    for hit in hits:
+        typer.echo(
+            f"{hit['surface_session_id']}\t{hit['seq']}\t{hit['role']}\t{hit['content'][:120]}"
+        )
 
 
 __all__ = ["surface_app"]
