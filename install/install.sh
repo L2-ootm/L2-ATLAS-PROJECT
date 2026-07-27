@@ -75,6 +75,10 @@ NODE_INSTALL_DIR="$HOME/.atlas/node"
 LOCAL_BIN="$HOME/.local/bin"
 RTK_VERSION="0.43.0"
 RTK_BIN_DIR="$HOME/.atlas/rtk"
+# Same suffix packages/atlas-cli/src/commands.js uses (STAGING_SUFFIX): a name
+# that can never collide with a semver directory, and that listVersions and
+# `atlas versions repair` already treat as reclaimable pre-commit scratch.
+STAGING_SUFFIX=".atlas-staging"
 
 # ---------------------------------------------------------------------------
 # Platform detection
@@ -271,6 +275,41 @@ current_atlas_version() {
         | head -1 | sed -E 's/.*"([^"]*)"$/\1/'
 }
 
+recorded_entrypoint() {
+    install_json="$(atlas_install_root)/install.json"
+    [ -f "$install_json" ] || return 0
+    grep -o '"runtimeEntrypoint"[[:space:]]*:[[:space:]]*"[^"]*"' "$install_json" \
+        | head -1 | sed -E 's/.*"([^"]*)"$/\1/'
+}
+
+# Is the version install.json names actually materialized and runnable?
+#
+# install.json is metadata, not evidence. This script replaces version
+# directories as a normal part of every run, so the window where install.json
+# names a version that is no longer on disk is routine — and an interrupted run
+# makes it permanent. Without this check the "Already on latest" fast path below
+# exits 0 forever against an install where `atlas doctor` reports
+# current-version-present: FAIL and every other command dies with "ATLAS runtime
+# entrypoint is not installed", because bin/atlas.js only re-materializes when
+# the recorded version is FALSY — and a stale version string is not falsy.
+version_usable() {
+    _vu_version="$1"
+    [ -n "$_vu_version" ] || return 1
+    _vu_dir="$(atlas_install_root)/versions/${_vu_version}"
+    [ -d "$_vu_dir" ] || return 1
+    _vu_ep="$(recorded_entrypoint || true)"
+    if [ -n "$_vu_ep" ]; then
+        [ -f "$_vu_dir/$_vu_ep" ] && return 0
+        return 1
+    fi
+    # No recorded entrypoint (pre-manifest install): probe the same candidates
+    # packages/atlas-cli/src/commands.js does.
+    for _vu_cand in bin/atlas atlas bin/atlas.js atlas.js; do
+        [ -f "$_vu_dir/$_vu_cand" ] && return 0
+    done
+    return 1
+}
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -280,15 +319,26 @@ printf "  %bL2 Systems%b\n\n" "$GRAY" "$NC"
 detect_platform
 
 current_version="$(current_atlas_version || true)"
+current_usable=false
+if version_usable "$current_version"; then current_usable=true; fi
+
 if [ -n "$current_version" ]; then
     log_ok "Current installation: $current_version"
+    if [ "$current_usable" = false ]; then
+        log_warn "install.json names $current_version but it is not materialized on disk — repairing"
+    fi
     latest_version="$(npm view "$NPM_PACKAGE" version 2>/dev/null || true)"
-    if [ -n "$latest_version" ] && [ "$latest_version" = "$current_version" ] && [ "$FORCE" = false ]; then
+    # "Same version" is only a reason to stop when that version is ALSO present
+    # and usable (see version_usable); otherwise this fast path turns an
+    # interrupted run into a permanently broken install that reports itself
+    # healthy and refuses to repair without --force.
+    if [ -n "$latest_version" ] && [ "$latest_version" = "$current_version" ] \
+        && [ "$current_usable" = true ] && [ "$FORCE" = false ]; then
         printf "\n  Already on latest version (%s)\n" "$current_version"
         printf "  Run with --force to reinstall, or: atlas update\n\n"
         exit 0
     fi
-    if [ -n "$latest_version" ]; then
+    if [ -n "$latest_version" ] && [ "$latest_version" != "$current_version" ]; then
         log_warn "Available update: $latest_version"
     fi
 fi
@@ -346,23 +396,57 @@ download_runtime_from_github() {
     trap 'rm -rf "$tmp_dir"' EXIT
     curl -fsSL "$download_url" -o "$tmp_dir/runtime.tgz"
 
-    dest="$(atlas_install_root)/versions/${version}"
-    rm -rf "$dest"
-    mkdir -p "$dest"
+    # Stage-then-swap, mirroring stageVersionAtomically in
+    # packages/atlas-cli/src/commands.js. Extracting straight into
+    # versions/<version>/ (which is what this used to do) meant a killed tar or
+    # a truncated download left a half-populated directory AT THE REAL VERSION
+    # PATH with no manifest.json. On the next run installBundledPlatform sees a
+    # directory that exists, fails verification, and — because install.json
+    # still names that version — is not orphaned, so it throws "exists but
+    # failed verification" and the install is wedged. Building in a sibling
+    # staging directory means a crash can only ever leave scratch behind
+    # (`atlas versions repair` reclaims it); the real path appears fully formed
+    # or not at all. STAGING_SUFFIX is shared with the Node CLI.
+    install_root="$(atlas_install_root)"
+    dest="$install_root/versions/${version}"
+    staging="$install_root/versions/${version}${STAGING_SUFFIX}"
+    rm -rf "$staging"
+    mkdir -p "$staging"
     log_step "Extracting runtime"
-    tar -xzf "$tmp_dir/runtime.tgz" -C "$dest" --strip-components=1
-
-    rm -rf "$tmp_dir"
+    if ! tar -xzf "$tmp_dir/runtime.tgz" -C "$staging" --strip-components=1; then
+        rm -rf "$staging"
+        log_error "Failed to extract the runtime archive"
+        exit 1
+    fi
 
     ep="bin/atlas.js"
-    if [ ! -f "$dest/$ep" ]; then ep="atlas.js"; fi
+    if [ ! -f "$staging/$ep" ]; then ep="atlas.js"; fi
+    if [ ! -f "$staging/$ep" ]; then
+        rm -rf "$staging"
+        log_error "Extracted archive contains no runtime entrypoint (bin/atlas.js or atlas.js)"
+        exit 1
+    fi
 
-    install_root="$(atlas_install_root)"
+    # Swap last, once the payload is proven complete.
+    rm -rf "$dest"
+    mv "$staging" "$dest"
+    rm -rf "$tmp_dir"
+
+    # Merge over the existing state rather than replacing it, for the same
+    # reason commitVersionState does: previousVersion/rollbackHistory/channel
+    # are lifecycle history this path has no business erasing. sh has no JSON
+    # parser, so preserve exactly the one field a rollback needs and let the
+    # Node CLI own the rest from its next write onward.
+    prev_line=""
+    if [ -n "$current_version" ] && [ "$current_version" != "$version" ]; then
+        prev_line="  \"previousVersion\": \"$current_version\","
+    fi
     printf '%s\n' "$version" > "$install_root/current"
     cat > "$install_root/install.json" <<EOJSON
 {
   "installedVersion": "$version",
   "installMethod": "github-release",
+${prev_line}
   "lastUpdateCheck": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "runtimeEntrypoint": "$ep"
 }
@@ -370,19 +454,26 @@ EOJSON
     log_ok "Runtime v${version} installed from GitHub release ${tag_name}"
 }
 
-# Clean stale version directories before materializing.
-# The npm launcher's installBundledPlatform refuses to overwrite a version
-# directory whose manifest fails checksum verification. Rather than fight
-# that, remove ALL version directories up front. User content (config, data,
-# skills) lives outside versions/ and is unaffected.
+# Repair stale version directories before materializing.
+#
+# This used to delete EVERY directory under versions/, on the grounds that
+# installBundledPlatform refuses to overwrite a version dir whose manifest fails
+# checksum verification. That also deleted the directories install.json's
+# previousVersion and rollbackHistory name, leaving those references dangling —
+# so `atlas rollback` failed with "version X is not installed" exactly when a
+# bad update made the operator reach for it. `atlas versions repair` removes
+# only what is genuinely useless (leaked staging dirs, dirs that fail integrity
+# verification, dirs nothing in install.json references) and retains every
+# healthy rollback target. The orphan/verification logic lives in one place —
+# packages/atlas-cli/src/commands.js — instead of being reimplemented here and
+# in install.ps1.
 install_root="$(atlas_install_root)"
 versions_dir="$install_root/versions"
 if [ -d "$versions_dir" ]; then
-    stale_count="$(find "$versions_dir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)"
-    if [ "$stale_count" -gt 0 ]; then
-        log_step "Cleaning ${stale_count} stale version director$( [ "$stale_count" -eq 1 ] && echo y || echo ies )"
-        rm -rf "$versions_dir"/*
-    fi
+    log_step "Repairing stale version directories"
+    # An older globally-installed launcher may not know the subcommand. Never
+    # fatal: materialization below has its own orphan handling.
+    atlas versions repair || log_warn "'atlas versions repair' failed — continuing"
 fi
 
 log_step "Materializing the verified, self-contained ATLAS runtime"
@@ -399,6 +490,13 @@ if ! atlas install 2>/dev/null; then
     fi
     if [ "$has_entrypoint" != "true" ]; then
         download_runtime_from_github
+        # This path never goes through the Node lifecycle code, so nothing has
+        # run migrations for the version just materialized. `db init` is
+        # idempotent (it stamps and skips already-applied files), so calling it
+        # on every fallback install converges rather than double-applying.
+        # Non-fatal, and never reported as success on a non-zero exit.
+        log_step "Applying database migrations (atlas db init)"
+        atlas db init || log_warn "atlas db init failed — run it manually to see the error"
     fi
 fi
 

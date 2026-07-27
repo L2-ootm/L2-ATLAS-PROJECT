@@ -37,16 +37,35 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# ── ATLAS home directory ──────────────────────────────────────────────────────
-$AtlasHome = "$env:LOCALAPPDATA\atlas"
-$VersionsDir = Join-Path $AtlasHome 'versions'
-$CurrentLink = Join-Path $AtlasHome 'current'
-$ConfigDir = Join-Path $AtlasHome 'config'
-$DataDir = Join-Path $AtlasHome 'data'
-$SkillsDir = Join-Path $AtlasHome 'skills'
-$InstallFile = Join-Path $AtlasHome 'install.json'
+# ── ATLAS install root ────────────────────────────────────────────────────────
+# ATLAS_INSTALL_ROOT overrides the application root, exactly as
+# packages/atlas-cli/src/paths.js:atlasInstallRoot(), install/install.sh's
+# atlas_install_root() and docs/operations/INSTALL.md all define it. This script
+# used to hardcode %LOCALAPPDATA%\atlas: with the variable set, it read
+# install.json from the wrong root (so every run looked like a fresh install),
+# cleaned the wrong versions/ tree, and wrote `current`/install.json where the
+# npm launcher would never look — then aborted at the final `doctor` because the
+# launcher, which DOES honor the variable, saw nothing installed.
+# NOTE: this is the INSTALL root (immutable releases + lifecycle metadata), not
+# ATLAS_HOME (the operator's state: atlas.db, config.yaml, auth.json, wiki/).
+# The two are deliberately different trees; nothing here ever writes to state.
+$InstallRoot = if ($env:ATLAS_INSTALL_ROOT) {
+    [IO.Path]::GetFullPath($env:ATLAS_INSTALL_ROOT)
+} else {
+    "$env:LOCALAPPDATA\atlas"
+}
+$VersionsDir = Join-Path $InstallRoot 'versions'
+$CurrentLink = Join-Path $InstallRoot 'current'
+$ConfigDir = Join-Path $InstallRoot 'config'
+$DataDir = Join-Path $InstallRoot 'data'
+$SkillsDir = Join-Path $InstallRoot 'skills'
+$InstallFile = Join-Path $InstallRoot 'install.json'
 $RtkVersion = '0.43.0'
-$RtkBinDir = Join-Path $AtlasHome 'rtk'
+$RtkBinDir = Join-Path $InstallRoot 'rtk'
+# Same suffix packages/atlas-cli/src/commands.js uses (STAGING_SUFFIX): a name
+# that can never collide with a semver directory, and that listVersions/
+# `atlas versions repair` already know to treat as reclaimable scratch.
+$StagingSuffix = '.atlas-staging'
 
 function Write-Step([string]$msg) {
     Write-Host "==> $msg" -ForegroundColor Cyan
@@ -164,34 +183,44 @@ function Preserve-UserContent {
 
     # Backup install metadata
     if (Test-Path $InstallFile) {
-        $backupFile = Join-Path $AtlasHome "install-backup-$FromVersion.json"
+        $backupFile = Join-Path $InstallRoot "install-backup-$FromVersion.json"
         Copy-Item -LiteralPath $InstallFile -Destination $backupFile -Force
         Write-Ok "Install metadata backed up"
     }
 }
 
 # ── DB migration runner ────────────────────────────────────────────────────────
-function Run-DbMigrations {
-    param([string]$Version)
+# Run-DbMigrations was DELETED here rather than repaired. It stacked three
+# independent defects and could not report a true result under any of them:
+#   1. it guarded on $DataDir\atlas.db — %LOCALAPPDATA%\atlas\data\atlas.db, a
+#      path ATLAS never creates. The database lives at $ATLAS_HOME/atlas.db
+#      (services/agent-runtime/atlas_runtime/db.py), so the guard returned early
+#      on every real machine and the function was dead code;
+#   2. it invoked `db migrate`, which does not exist — the runtime CLI registers
+#      only `db init` and `db status`;
+#   3. its catch{} could never fire, because a native non-zero exit does not
+#      throw in PowerShell. Typer's usage error would be echoed and then
+#      "[OK] Database migrations complete" printed on top of it.
+# Migrations are already owned by the Node lifecycle path: install/update call
+# runMigrations() (packages/atlas-cli/src/commands.js), which resolves the
+# runtime entrypoint of the version just materialized, shells out to `db init`,
+# and returns a structured result. The one gap that left is the GitHub-release
+# fallback below, which never goes through the Node CLI — Invoke-DbInit covers
+# exactly that, with a real exit-code check instead of an unreachable catch.
 
-    $dbFile = Join-Path $DataDir 'atlas.db'
-    if (-not (Test-Path $dbFile)) { return }
+function Invoke-DbInit {
+    param([string]$Launcher)
 
-    $migrationsDir = Join-Path $VersionsDir "$Version\infra\migrations"
-    if (-not (Test-Path $migrationsDir)) { return }
-
-    Write-Step 'Running database migrations'
-
-    # Find the atlas CLI in the new version
-    $atlasCmd = Join-Path $VersionsDir "$Version\bin\atlas.js"
-    if (-not (Test-Path $atlasCmd)) { return }
-
-    try {
-        & node $atlasCmd db migrate 2>&1 | ForEach-Object { Write-Host "  $_" }
-        Write-Ok 'Database migrations complete'
-    } catch {
-        Write-Warn "DB migration failed (non-fatal): $_"
+    Write-Step 'Applying database migrations (atlas db init)'
+    & $Launcher db init 2>&1 | ForEach-Object { Write-Host "  $_" }
+    if ($LASTEXITCODE -ne 0) {
+        # Non-fatal: the runtime is installed and usable, and `atlas doctor`
+        # surfaces schema problems. Never print success on a non-zero exit.
+        Write-Warn "atlas db init exited $LASTEXITCODE — run 'atlas db init' manually to see the error"
+        return $false
     }
+    Write-Ok 'Database schema up to date'
+    return $true
 }
 
 # ── RTK (Rust Token Killer) — optional but recommended ─────────────────────────
@@ -249,6 +278,43 @@ function Get-CurrentVersion {
     }
 }
 
+# ── Is the recorded version actually on disk and usable? ───────────────────────
+# install.json is metadata, not evidence. This script deletes/replaces version
+# directories as a normal part of every run, so the window where install.json
+# names a version that is no longer materialized is routine — and an
+# interrupted run (Ctrl-C, network drop, sleep) makes it permanent. Without this
+# check the "Already on latest" fast path below would exit 0 forever against an
+# install where `atlas doctor` reports current-version-present: FAIL and every
+# other command dies with "ATLAS runtime entrypoint is not installed", because
+# bin/atlas.js only re-materializes when the recorded version is FALSY — and a
+# stale version string is not falsy. Verified here so re-running the bootstrap
+# repairs the install instead of congratulating the operator on it.
+function Test-VersionUsable {
+    param([string]$Version)
+
+    if (-not $Version) { return $false }
+    $verDir = Join-Path $VersionsDir $Version
+    if (-not (Test-Path -LiteralPath $verDir -PathType Container)) { return $false }
+
+    $entrypoint = $null
+    if (Test-Path $InstallFile) {
+        try {
+            $entrypoint = (Get-Content -LiteralPath $InstallFile -Raw | ConvertFrom-Json).runtimeEntrypoint
+        } catch {
+            $entrypoint = $null
+        }
+    }
+    if ($entrypoint) {
+        return (Test-Path -LiteralPath (Join-Path $verDir $entrypoint) -PathType Leaf)
+    }
+    # No recorded entrypoint (pre-manifest install): fall back to the same
+    # candidates packages/atlas-cli/src/commands.js probes for.
+    foreach ($candidate in @('bin\atlas.exe', 'atlas.exe', 'bin\atlas.js', 'atlas.js')) {
+        if (Test-Path -LiteralPath (Join-Path $verDir $candidate) -PathType Leaf) { return $true }
+    }
+    return $false
+}
+
 # ── Check for updates ──────────────────────────────────────────────────────────
 function Get-LatestVersion {
     try {
@@ -298,35 +364,78 @@ function Download-RuntimeFromGithub {
     $archivePath = Join-Path $tmpDir $asset.name
     Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $archivePath -UseBasicParsing -ErrorAction Stop
 
+    # Stage-then-swap, mirroring stageVersionAtomically in
+    # packages/atlas-cli/src/commands.js. Extracting straight into
+    # versions/<version>/ (which is what this used to do) meant a killed tar or
+    # a truncated download left a half-populated directory AT THE REAL VERSION
+    # PATH with no manifest.json. On the next run installBundledPlatform sees a
+    # directory that exists, fails verification, and — because install.json
+    # still names that version — is not orphaned, so it throws
+    # "exists but failed verification" and the install is wedged. Building in a
+    # sibling staging directory means a crash can only ever leave scratch behind
+    # (`atlas versions repair` reclaims it); the real path appears fully formed
+    # or not at all.
     $dest = Join-Path $VersionsDir $version
-    if (Test-Path $dest) { Remove-Item -Path $dest -Recurse -Force }
-    New-Item -ItemType Directory -Path $dest -Force | Out-Null
+    $staging = Join-Path $VersionsDir "$version$StagingSuffix"
+    if (Test-Path $staging) { Remove-Item -Path $staging -Recurse -Force }
+    New-Item -ItemType Directory -Path $staging -Force | Out-Null
 
-    Write-Step 'Extracting runtime'
-    # .tar.gz or .tgz — extract with tar (available on Windows 10+)
-    & tar -xzf $archivePath -C $dest 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to extract runtime archive (tar exited $LASTEXITCODE)"
+    try {
+        Write-Step 'Extracting runtime'
+        # .tar.gz or .tgz — extract with tar (available on Windows 10+)
+        & tar -xzf $archivePath -C $staging 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to extract runtime archive (tar exited $LASTEXITCODE)"
+        }
+
+        # If the archive contained a single top-level directory, flatten it
+        $children = Get-ChildItem $staging -Directory
+        if ($children.Count -eq 1 -and (Test-Path (Join-Path $children[0].FullName 'bin\atlas.js'))) {
+            Move-Item -Path "$($children[0].FullName)\*" -Destination $staging -Force
+            Remove-Item -Path $children[0].FullName -Recurse -Force
+        }
+
+        $entrypoint = 'bin/atlas.js'
+        if (-not (Test-Path (Join-Path $staging $entrypoint))) {
+            $entrypoint = 'atlas.js'
+        }
+        if (-not (Test-Path (Join-Path $staging $entrypoint))) {
+            throw "Extracted archive contains no runtime entrypoint (bin/atlas.js or atlas.js)"
+        }
+
+        # Swap last, once the payload is proven complete. Same-volume Move-Item
+        # is the closest PowerShell equivalent of the Node path's rename.
+        if (Test-Path $dest) { Remove-Item -Path $dest -Recurse -Force }
+        Move-Item -Path $staging -Destination $dest -Force
+    } catch {
+        Remove-Item -Path $staging -Recurse -Force -ErrorAction SilentlyContinue
+        throw
+    } finally {
+        Remove-Item -Path $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
     }
 
-    # If the archive contained a single top-level directory, flatten it
-    $children = Get-ChildItem $dest -Directory
-    if ($children.Count -eq 1 -and (Test-Path (Join-Path $children[0].FullName 'bin\atlas.js'))) {
-        Move-Item -Path "$($children[0].FullName)\*" -Destination $dest -Force
-        Remove-Item -Path $children[0].FullName -Recurse -Force
-    }
-
-    Remove-Item -Path $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
-
-    $entrypoint = 'bin/atlas.js'
-    if (-not (Test-Path (Join-Path $dest $entrypoint))) {
-        $entrypoint = 'atlas.js'
-    }
-
+    # Merge over the existing state rather than replacing it, for the same
+    # reason commitVersionState does: previousVersion/rollbackHistory/channel
+    # are lifecycle history this path has no business erasing.
     Write-Step 'Writing version metadata'
-    Set-Content -Path (Join-Path $AtlasHome 'current') -Value "$version`n" -Encoding ascii -NoNewline
-    @{ installedVersion = $version; installMethod = 'github-release'; lastUpdateCheck = (Get-Date -Format o); runtimeEntrypoint = $entrypoint } |
-        ConvertTo-Json | Set-Content -Path $InstallFile -Encoding ascii
+    $state = [ordered]@{}
+    if (Test-Path $InstallFile) {
+        try {
+            (Get-Content -LiteralPath $InstallFile -Raw | ConvertFrom-Json).PSObject.Properties |
+                ForEach-Object { $state[$_.Name] = $_.Value }
+        } catch {
+            Write-Warn 'install.json was unreadable — writing a fresh one'
+            $state = [ordered]@{}
+        }
+    }
+    $priorVersion = $state['installedVersion']
+    if ($priorVersion -and $priorVersion -ne $version) { $state['previousVersion'] = $priorVersion }
+    $state['installedVersion'] = $version
+    $state['installMethod'] = 'github-release'
+    $state['lastUpdateCheck'] = (Get-Date -Format o)
+    $state['runtimeEntrypoint'] = $entrypoint
+    $state | ConvertTo-Json -Depth 10 | Set-Content -Path $InstallFile -Encoding ascii
+    Set-Content -Path $CurrentLink -Value "$version`n" -Encoding ascii -NoNewline
     Write-Ok "Runtime v$version installed from GitHub release $tagName"
 }
 
@@ -340,19 +449,27 @@ Write-Host ''
 $currentVersion = Get-CurrentVersion
 $isUpdate = $null -ne $currentVersion
 
+$currentUsable = Test-VersionUsable -Version $currentVersion
+
 if ($isUpdate) {
     Write-Host "  Current installation: $currentVersion" -ForegroundColor DarkGray
+    if (-not $currentUsable) {
+        Write-Warn "install.json names $currentVersion but it is not materialized under $VersionsDir — repairing"
+    }
 
-    # Check if update is needed
+    # Check if update is needed. "Same version" is only a reason to stop when
+    # that version is ALSO present and usable on disk (see Test-VersionUsable);
+    # otherwise this fast path turns an interrupted run into a permanently
+    # broken install that reports itself as healthy.
     $latestVersion = Get-LatestVersion
-    if ($latestVersion -and $latestVersion -eq $currentVersion -and -not $Force) {
+    if ($latestVersion -and $latestVersion -eq $currentVersion -and $currentUsable -and -not $Force) {
         Write-Host ''
         Write-Host "  Already on latest version ($currentVersion)" -ForegroundColor Green
         Write-Host '  Run with -Force to reinstall, or: atlas update' -ForegroundColor DarkGray
         Write-Host ''
         exit 0
     }
-    if ($latestVersion) {
+    if ($latestVersion -and $latestVersion -ne $currentVersion) {
         Write-Host "  Available update: $latestVersion" -ForegroundColor Yellow
     }
 }
@@ -378,19 +495,25 @@ if (-not $Source) {
         Preserve-UserContent -FromVersion $currentVersion -ToVersion 'latest'
     }
 
-    # ── Clean stale version directories ────────────────────────────────────
-    # The npm launcher's installBundledPlatform refuses to overwrite a version
-    # directory whose manifest fails checksum verification (unless the dir is
-    # orphaned).  Rather than fight that, remove ALL version directories up
-    # front.  User content (config, data, skills) lives outside versions/ and
-    # is unaffected.
+    # ── Repair stale version directories ───────────────────────────────────
+    # This used to delete EVERY directory under versions/, on the grounds that
+    # installBundledPlatform refuses to overwrite a version dir whose manifest
+    # fails checksum verification. That also deleted the directories
+    # install.json's previousVersion and rollbackHistory name, leaving those
+    # references dangling — so `atlas rollback` failed with "version X is not
+    # installed" exactly when a bad update made the operator reach for it.
+    # `atlas versions repair` removes only what is genuinely useless (leaked
+    # staging dirs, dirs that fail integrity verification, dirs nothing in
+    # install.json references) and retains every healthy rollback target. The
+    # orphan/verification logic lives in one place — packages/atlas-cli/src/
+    # commands.js — instead of being reimplemented here and in install.sh.
     if (Test-Path $VersionsDir) {
-        $staleDirs = @(Get-ChildItem -Path $VersionsDir -Directory -ErrorAction SilentlyContinue)
-        if ($staleDirs.Count -gt 0) {
-            Write-Step "Cleaning $($staleDirs.Count) stale version director$(if ($staleDirs.Count -eq 1) { 'y' } else { 'ies' })"
-            foreach ($dir in $staleDirs) {
-                Remove-Item -Path $dir.FullName -Recurse -Force -ErrorAction SilentlyContinue
-            }
+        Write-Step 'Repairing stale version directories'
+        & $launcher versions repair
+        if ($LASTEXITCODE -ne 0) {
+            # An older globally-installed launcher may not know the subcommand.
+            # Never fatal: materialization below has its own orphan handling.
+            Write-Warn "'atlas versions repair' exited $LASTEXITCODE — continuing"
         }
     }
 
@@ -418,17 +541,19 @@ if (-not $Source) {
     if (-not $materialized) {
         Write-Warn 'npm platform package unavailable; downloading runtime from GitHub releases'
         Download-RuntimeFromGithub
-    }
-
-    # DB migrations (preserves user data across upgrades)
-    $newVersion = Get-CurrentVersion
-    if ($newVersion -and $isUpdate) {
-        Run-DbMigrations -Version $newVersion
+        # This path never goes through the Node lifecycle code, so nothing has
+        # run migrations for the version just materialized. `db init` is
+        # idempotent (it stamps and skips already-applied files), so calling it
+        # on every fallback install converges rather than double-applying.
+        $newVersion = Get-CurrentVersion
+        if ($newVersion) { Invoke-DbInit -Launcher $launcher | Out-Null }
     }
 
     # Older source installers placed a Python-forwarding shim before npm on
     # PATH. Replace only that ATLAS-owned compatibility shim so `atlas update`
-    # always reaches the lifecycle launcher from every directory.
+    # always reaches the lifecycle launcher from every directory. Hardcoded to
+    # the historical %LOCALAPPDATA% location on purpose: it is a legacy artifact
+    # left by past installers, not something $InstallRoot ever creates.
     $legacyShim = Join-Path $env:LOCALAPPDATA 'atlas\bin\atlas.cmd'
     if (Test-Path -LiteralPath $legacyShim) {
         $compat = "@echo off`r`ncall `"$launcher`" %*`r`nexit /b %errorlevel%`r`n"

@@ -13,6 +13,7 @@ const { hashFile } = require('../src/manifest');
 const { buildReleaseIndex } = require('../src/buildReleaseIndex');
 const { createTarGz } = require('../src/tarball');
 const { verifyCleanInstall } = require('../src/verifyCleanInstall');
+const { readInstallState } = require('../src/installState');
 const { resolveRollbackTarget } = require('../src/rollbackHistory');
 
 const packageJson = require('../package.json');
@@ -1296,4 +1297,107 @@ test('F19 P1: install cleans up on a simulated disk-full (ENOSPC) failure mid-co
 	assert.equal(fs.existsSync(path.join(home, 'versions', '0.1.0')), false);
 	assert.equal(fs.existsSync(cmds.stagingDirFor(home, '0.1.0')), false);
 	assert.deepEqual(cmds.listVersions(home), []);
+});
+
+// --- Lifecycle-state durability, --purge, and versions repair -----------------
+// These three guard fixes whose failure mode is silent: the operator sees a
+// success message either way, and only discovers the loss when they reach for
+// rollback (gone), decommission a machine (credentials still on disk), or
+// re-run an installer over a half-extracted release (blocked).
+
+test('update preserves install-state fields it does not own (rollback chain survives)', () => {
+	const home = tempDir('home');
+	const bundleV1 = tempDir('bundle-v1');
+	const bundleV2 = tempDir('bundle-v2');
+	const bundleV3 = tempDir('bundle-v3');
+	stageBundle(bundleV1, { 'bin/atlas-gateway': 'v1' });
+	stageBundle(bundleV2, { 'bin/atlas-gateway': 'v2' });
+	stageBundle(bundleV3, { 'bin/atlas-gateway': 'v3' });
+
+	// The operator path that exposes the bug: a bad update, a rollback (which is
+	// the only writer of rollbackHistory), then a later update.
+	cmds.install(home, { from: bundleV1, version: '0.1.0' });
+	cmds.update(home, { from: bundleV2, version: '0.2.0' });
+	cmds.rollback(home, {});
+	assert.equal(cmds.readCurrent(home), '0.1.0');
+	assert.equal(readInstallState(home).rollbackHistory.length, 1, 'precondition: rollback recorded a chain entry');
+
+	cmds.update(home, { from: bundleV3, version: '0.3.0' });
+
+	const state = readInstallState(home);
+	// `{...state, installedVersion}` used to REPLACE the record, so this later
+	// update silently erased the chain resolveRollbackTarget reads first.
+	assert.ok(Array.isArray(state.rollbackHistory), 'rollbackHistory survives a subsequent update');
+	assert.equal(state.rollbackHistory.length, 1);
+	assert.equal(state.rollbackHistory[0].from, '0.2.0');
+});
+
+test('a corrupt install.json fails loudly instead of being read as "nothing installed"', () => {
+	const home = tempDir('home');
+	const bundle = tempDir('bundle');
+	stageBundle(bundle, { 'bin/atlas-gateway': 'v1' });
+	cmds.install(home, { from: bundle, version: '0.1.0' });
+	fs.writeFileSync(path.join(home, 'install.json'), '{ not json', 'utf8');
+
+	// Tolerating this (returning null) would make install() believe the machine
+	// is clean and overwrite a live release. Surfacing the parse error is the
+	// safe contract; the installed version must still be on disk afterwards.
+	const bundle2 = tempDir('bundle2');
+	stageBundle(bundle2, { 'bin/atlas-gateway': 'v2' });
+	assert.throws(() => cmds.update(home, { from: bundle2, version: '0.2.0' }), SyntaxError);
+	assert.equal(fs.existsSync(path.join(home, 'versions', '0.1.0')), true, 'the installed release is not destroyed by a corrupt state file');
+});
+
+test('uninstall --purge removes operator state, and refuses unsafe targets', () => {
+	const home = tempDir('home');
+	const stateHome = tempDir('state');
+	const bundle = tempDir('bundle');
+	stageBundle(bundle, { 'bin/atlas-gateway': 'v1' });
+	cmds.install(home, { from: bundle, version: '0.1.0' });
+	fs.writeFileSync(path.join(stateHome, 'atlas.db'), 'missions', 'utf8');
+
+	const r = cmds.uninstall(home, { purge: true, purgePaths: [stateHome] });
+	assert.equal(r.purged, true);
+	assert.equal(fs.existsSync(stateHome), false, '--purge must actually delete operator state');
+	assert.ok(r.removed.includes(path.resolve(stateHome)));
+
+	// The guard: ATLAS_HOME typo'd to the user's home or a filesystem root.
+	assert.equal(cmds.isSafePurgeTarget(os.homedir()), false);
+	assert.equal(cmds.isSafePurgeTarget(path.parse(process.cwd()).root), false);
+	assert.equal(cmds.isSafePurgeTarget(path.join(os.homedir(), '.atlas')), true);
+
+	const home2 = tempDir('home2');
+	cmds.install(home2, { from: bundle, version: '0.1.0' });
+	const guarded = cmds.uninstall(home2, { purge: true, purgePaths: [os.homedir()] });
+	assert.deepEqual(guarded.skipped, [path.resolve(os.homedir())]);
+	assert.equal(fs.existsSync(os.homedir()), true, 'refused target is left untouched');
+});
+
+test('versions repair reclaims junk but keeps every referenced, verifiable release', () => {
+	const home = tempDir('home');
+	const bundleV1 = tempDir('bundle-v1');
+	const bundleV2 = tempDir('bundle-v2');
+	stageBundle(bundleV1, { 'bin/atlas-gateway': 'v1' });
+	stageBundle(bundleV2, { 'bin/atlas-gateway': 'v2' });
+	cmds.install(home, { from: bundleV1, version: '0.1.0' });
+	cmds.update(home, { from: bundleV2, version: '0.2.0' });
+
+	// Junk the blanket `rm -rf versions/` was reaching for.
+	fs.mkdirSync(cmds.stagingDirFor(home, '0.9.0'), { recursive: true });
+	const orphan = path.join(home, 'versions', '9.9.9');
+	fs.mkdirSync(orphan, { recursive: true });
+	fs.writeFileSync(path.join(orphan, 'stray'), 'x', 'utf8');
+
+	const dry = cmds.repairVersions(home, { dryRun: true });
+	assert.equal(dry.dryRun, true);
+	assert.equal(fs.existsSync(orphan), true, 'dry run must not delete');
+
+	const r = cmds.repairVersions(home, {});
+	const removedNames = r.removed.map((e) => e.name);
+	assert.ok(removedNames.includes('9.9.9'), 'unreferenced version dir is reclaimed');
+	assert.equal(fs.existsSync(orphan), false);
+	assert.deepEqual(r.kept, ['0.1.0', '0.2.0'], 'current AND rollback target are both retained');
+	// The regression the blanket wipe caused: rollback must still work after repair.
+	cmds.rollback(home, {});
+	assert.equal(cmds.readCurrent(home), '0.1.0');
 });

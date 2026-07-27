@@ -116,9 +116,41 @@ function writeCurrent(home, version) {
  * happens (crash, disk full), the mirror is merely stale until the next
  * successful pointer flip; atlas-cli's own view is never ambiguous because
  * it never reads that file when install.json is present.
+ *
+ * The caller literal is MERGED OVER the persisted state, never substituted for
+ * it. Before this, `{...state, installedVersion}` wrote whatever the caller
+ * happened to name and dropped everything else on the floor: install()/update()
+ * never mention `rollbackHistory`, so a single `atlas update` erased the entire
+ * rollback chain that `resolveRollbackTarget` treats as its primary source, and
+ * update() additionally dropped `channel`/`platform`/`releaseManifest`/
+ * `packageName` — after which a bare `atlas update` silently fell back to the
+ * package-default manifest instead of the one the operator installed from.
+ * Merging is also what makes a re-run converge: fields a caller doesn't own are
+ * carried forward untouched rather than being reset to their defaults.
+ *
+ * A caller can still explicitly CLEAR a field by naming it with an `undefined`
+ * value (spread puts the key in the object; JSON.stringify then omits it) —
+ * that is exactly how stageRelease/installBundledPlatform reset
+ * `previousVersion` on a fresh install. Omitting a key preserves it; naming it
+ * `undefined` clears it.
  */
 function commitVersionState(home, version, state) {
-	const newState = { ...state, installedVersion: version };
+	let existing;
+	try {
+		existing = readInstallState(home) || {};
+	} catch {
+		// Unparseable install.json: there is nothing to preserve, so commit a
+		// clean record rather than failing the write we are already committed
+		// to. This is NOT a general corrupt-state recovery guarantee — the
+		// lifecycle commands read install.json before reaching here and will
+		// still surface a parse error first, deliberately: `readInstallState`
+		// returning null on corrupt JSON would read as "nothing installed" and
+		// let install() overwrite a live release. This catch only covers the
+		// narrow window where the file is damaged between that read and this
+		// write.
+		existing = {};
+	}
+	const newState = { ...existing, ...state, installedVersion: version };
 	writeInstallState(home, newState);
 	try {
 		writeCurrent(home, version);
@@ -562,13 +594,39 @@ function rollbackHistory(home) {
 }
 
 /**
+ * Refuse to recursively delete a path that is obviously not an ATLAS state
+ * directory. `--purge` is the one destructive flag in this CLI, and its target
+ * comes from an environment variable (ATLAS_HOME) an operator can typo or
+ * export empty — `ATLAS_HOME=` resolving to the home directory and then being
+ * rm -rf'd is not a recoverable mistake. A filesystem root or the user's own
+ * home directory is never a legitimate ATLAS state home.
+ */
+function isSafePurgeTarget(target) {
+	const resolved = path.resolve(target);
+	if (path.dirname(resolved) === resolved) return false; // filesystem root
+	if (resolved === path.resolve(os.homedir())) return false;
+	return true;
+}
+
+/**
  * `atlas-cli uninstall [--purge]` — removes versions/current/install.json.
- * `--purge` additionally removes runtime state (atlas.db, config) if the
- * caller passes their location; left to the caller to avoid this package
- * guessing at ATLAS_HOME-adjacent runtime paths it doesn't own.
+ *
+ * `--purge` additionally removes operator state under ATLAS_HOME (atlas.db,
+ * config.yaml, auth.json, wiki/, modules/, sidecars/, logs/). It used to be
+ * gated on `opts.purgePaths`, which NOTHING ever populated — so `--purge` was
+ * parsed, printed the same `removed:` list as a plain uninstall, and left every
+ * credential and the mission database exactly where they were. An operator
+ * decommissioning a machine had no way to tell. The target is now resolved here
+ * from atlasStateHome() (`opts.purgePaths` still overrides, for tests and for
+ * callers that own a non-default layout), so the flag does what it says.
+ *
+ * The non-purge path is unchanged and still touches only the install root:
+ * state under ATLAS_HOME is preserved structurally, because nothing below
+ * writes outside `home`.
  */
 function uninstall(home, opts) {
 	const removed = [];
+	const skipped = [];
 	const versions = versionsDir(home);
 	if (fs.existsSync(versions)) {
 		fs.rmSync(versions, { recursive: true, force: true });
@@ -584,15 +642,23 @@ function uninstall(home, opts) {
 		fs.rmSync(installFile, { force: true });
 		removed.push(installFile);
 	}
-	if (opts.purge && opts.purgePaths) {
-		for (const p of opts.purgePaths) {
-			if (fs.existsSync(p)) {
-				fs.rmSync(p, { recursive: true, force: true });
-				removed.push(p);
+	if (opts.purge) {
+		const targets = Array.isArray(opts.purgePaths) && opts.purgePaths.length
+			? opts.purgePaths
+			: [atlasStateHome()];
+		for (const p of targets) {
+			const target = path.resolve(p);
+			if (!isSafePurgeTarget(target)) {
+				skipped.push(target);
+				continue;
+			}
+			if (fs.existsSync(target)) {
+				fs.rmSync(target, { recursive: true, force: true });
+				removed.push(target);
 			}
 		}
 	}
-	return { removed };
+	return { removed, purged: !!opts.purge, skipped };
 }
 
 /**
@@ -724,6 +790,61 @@ function pruneVersions(home, opts = {}) {
 }
 
 /**
+ * `atlas-cli versions repair [--dry-run]` — converge `versions/` to the set of
+ * directories that are both referenced and usable.
+ *
+ * This exists so `install/install.ps1` and `install/install.sh` stop
+ * reimplementing version-directory management in PowerShell and sh. Both used
+ * to delete EVERY directory under `versions/` before materializing, with the
+ * justification that installBundledPlatform refuses to overwrite a version dir
+ * whose manifest fails verification. That blanket wipe also destroyed the
+ * directories `previousVersion`/`rollbackHistory` name, leaving those
+ * references dangling and `atlas rollback` dead precisely when a bad update
+ * makes an operator reach for it.
+ *
+ * A directory is removed only when it is genuinely useless:
+ *   - `*.atlas-staging` — pre-commit scratch from a killed stage. Nothing
+ *     durable ever names one (see stageVersionAtomically), so these are always
+ *     safe to reclaim, and pruneVersions can never see them because
+ *     listVersions filters them out.
+ *   - fails verifyVersionIntegrity — a truncated/half-extracted release. It
+ *     cannot serve as a rollback target (rollback pre-verifies with this exact
+ *     check and would refuse it) and, when still referenced, it is the one
+ *     thing that blocks re-materializing over it. Removing it is what actually
+ *     unblocks the re-run the blanket wipe was reaching for.
+ *   - orphaned per isOrphanedVersionDir — no install.json field names it, so
+ *     nothing ever attested to it being a completed install.
+ *
+ * Everything else — current, previousVersion, and every rollbackHistory target
+ * that still verifies — is retained.
+ */
+function repairVersions(home, opts = {}) {
+	const dir = versionsDir(home);
+	const removed = [];
+	const kept = [];
+	if (!fs.existsSync(dir)) return { dryRun: !!opts.dryRun, kept, removed };
+
+	const entries = fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory());
+	for (const entry of entries) {
+		let reason = null;
+		if (isStagingDirName(entry.name)) {
+			reason = 'leaked staging directory';
+		} else {
+			const integrity = verifyVersionIntegrity(home, entry.name);
+			if (!integrity.ok) reason = integrity.reason;
+			else if (isOrphanedVersionDir(home, entry.name)) reason = 'unreferenced by install.json';
+		}
+		if (!reason) {
+			kept.push(entry.name);
+			continue;
+		}
+		if (!opts.dryRun) fs.rmSync(path.join(dir, entry.name), { recursive: true, force: true });
+		removed.push({ name: entry.name, reason });
+	}
+	return { dryRun: !!opts.dryRun, kept: kept.sort(), removed: removed.sort((a, b) => a.name.localeCompare(b.name)) };
+}
+
+/**
  * `atlas-cli use <version> [--dry-run] [--no-verify]` (Gap 3) — directly
  * activate an already-installed version without going through rollback
  * semantics. Verifies the target is present in `versions/` and its manifest
@@ -796,12 +917,14 @@ module.exports = {
 	doctor,
 	versions,
 	pruneVersions,
+	repairVersions,
 	use,
 	readCurrent,
 	listVersions,
 	runMigrations,
 	verifyVersionIntegrity,
 	isOrphanedVersionDir,
+	isSafePurgeTarget,
 	// F18 Option C internals — exported so tests can compute/inspect the
 	// exact staging path without duplicating the suffix as a magic string.
 	STAGING_SUFFIX,

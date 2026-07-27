@@ -166,12 +166,21 @@ async function main() {
 				break;
 			}
 			case 'uninstall': {
+				// --purge deletes the operator's ATLAS_HOME. Resolve and announce
+				// the exact target before touching anything: the old code parsed
+				// the flag, purged nothing, and still printed a success list.
+				if (opts.purge && !opts.json) {
+					console.log(`purging operator state: ${cmds.atlasStateHome()}`);
+				}
 				const r = cmds.uninstall(home, opts);
 				if (opts.json) {
 					printJson(r);
 					break;
 				}
 				console.log(r.removed.length ? `removed:\n  ${r.removed.join('\n  ')}` : 'nothing to remove');
+				for (const s of r.skipped) {
+					console.error(`refused to purge unsafe path: ${s}`);
+				}
 				break;
 			}
 			case 'doctor': {
@@ -196,6 +205,24 @@ async function main() {
 					const verb = r.dryRun ? 'would remove' : 'removed';
 					console.log(`keeping (${r.keep} most recent + current): ${r.kept.join(', ') || '(none)'}`);
 					console.log(r.removed.length ? `${verb}: ${r.removed.join(', ')}` : `${verb}: (nothing to prune)`);
+					break;
+				}
+				if (opts._[0] === 'repair') {
+					// Called by install/install.{ps1,sh} in place of their old
+					// blanket `versions/` wipe, so orphan detection lives in one
+					// implementation instead of three.
+					const r = cmds.repairVersions(home, opts);
+					if (opts.json) {
+						printJson(r);
+						break;
+					}
+					const verb = r.dryRun ? 'would remove' : 'removed';
+					console.log(`kept: ${r.kept.join(', ') || '(none)'}`);
+					if (r.removed.length === 0) {
+						console.log(`${verb}: (nothing to repair)`);
+					} else {
+						for (const entry of r.removed) console.log(`${verb}: ${entry.name} — ${entry.reason}`);
+					}
 					break;
 				}
 				const list = cmds.versions(home);
@@ -231,7 +258,7 @@ async function main() {
 					process.exitCode = launchRuntime(home, command ? [command, ...rest] : []);
 					break;
 				}
-				console.log('usage: atlas <install|update|check|upgrade|rollback|rollback-history|use|uninstall|doctor|versions|versions prune|runtime-command> [--manifest url] [--channel stable] [--version x] [--keep n] [--dry-run] [--no-verify]');
+				console.log('usage: atlas <install|update|check|upgrade|rollback|rollback-history|use|uninstall|doctor|versions|versions prune|versions repair|runtime-command> [--manifest url] [--channel stable] [--version x] [--keep n] [--dry-run] [--no-verify] [--purge]');
 				console.log('No ATLAS runtime is installed. Run `atlas install`.');
 				if (command) process.exitCode = 1;
 				break;
