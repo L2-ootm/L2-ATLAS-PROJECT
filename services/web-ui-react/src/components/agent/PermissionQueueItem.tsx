@@ -22,6 +22,10 @@ export default function PermissionQueueItem({ approval }: { approval: ToolApprov
 	const [error, setError] = useState<string | null>(null);
 	const working = approval.status === 'executing';
 	const hardline = isHardline(approval);
+	// Scope the lockout to THIS approval's own failed decide(). `surface.error`
+	// is set by any provider failure — including one missed 2 s heartbeat — and
+	// gating on it locked the operator out while an agent sat blocked.
+	const blocked = working || error !== null;
 
 	async function decide(decision: 'deny' | 'once' | 'session' | 'durable') {
 		if (
@@ -67,14 +71,19 @@ export default function PermissionQueueItem({ approval }: { approval: ToolApprov
 				{expanded ? 'HIDE EVIDENCE' : 'SHOW EVIDENCE'}
 			</button>
 			{expanded && <pre className="permission-args">{safeArgs(approval)}</pre>}
-			{error && <div className="permission-error" role="alert" tabIndex={-1}>{error}</div>}
+			{error && (
+				<div className="permission-error" role="alert" tabIndex={-1}>
+					{error}
+					<button type="button" onClick={() => setError(null)}>RE-ENABLE DECISIONS</button>
+				</div>
+			)}
 			<div className="permission-actions" aria-label={`Decision for ${approval.tool_name}`}>
-				<button type="button" onClick={() => void decide('deny')} disabled={working || Boolean(surface.error)}>DENY</button>
+				<button type="button" onClick={() => void decide('deny')} disabled={blocked}>DENY</button>
 				{!hardline && (
 					<>
-						<button type="button" onClick={() => void decide('once')} disabled={working || Boolean(surface.error)}>ALLOW ONCE</button>
-						<button type="button" onClick={() => void decide('session')} disabled={working || Boolean(surface.error)}>ALLOW SESSION</button>
-						<button type="button" onClick={() => void decide('durable')} disabled={working || Boolean(surface.error)}>ALLOW SCOPED</button>
+						<button type="button" onClick={() => void decide('once')} disabled={blocked}>ALLOW ONCE</button>
+						<button type="button" onClick={() => void decide('session')} disabled={blocked}>ALLOW SESSION</button>
+						<button type="button" onClick={() => void decide('durable')} disabled={blocked}>ALLOW SCOPED</button>
 					</>
 				)}
 			</div>

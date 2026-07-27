@@ -2,32 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { Search, ChevronDown } from 'lucide-react';
 import { Page } from '../components/Page';
 import { GlassPanel, HudLabel } from '../components/hud';
+import { listSkills, setSkillTier, type SkillInfo, type SkillLoadingTier } from '../lib/api';
 
-interface SkillInfo {
-	id: string;
-	name: string;
-	description: string;
-	version: string;
-	author: string;
-	license: string;
-	category: string;
-	tags: string[];
-	provenance: {
-		tier: 'original' | 'framework' | 'third-party';
-		source: 'bundled' | 'hub' | 'user' | 'agent' | 'plugin';
-	};
-	loading_tier: 'full' | 'name-only' | 'deactivated';
-	platforms: string[];
-	enabled: boolean;
-	pinned: boolean;
-	state: 'active' | 'stale' | 'archived';
-	usage: {
-		use_count: number;
-		view_count: number;
-		last_used_at: string | null;
-	};
-	path: string;
-}
+/** Discriminated load state so an offline gateway or a non-2xx is never
+ * rendered as "No skills found." (the shape Missions.tsx:28-32 uses). */
+type Load = { s: 'loading' } | { s: 'ready' } | { s: 'error' };
 
 const TIER_LABELS: Record<string, { label: string; color: string }> = {
 	full: { label: 'FULL', color: 'var(--atlas-emerald)' },
@@ -43,28 +22,30 @@ const PROVENANCE_LABELS: Record<string, { label: string; color: string }> = {
 
 export default function SkillsPage() {
 	const [skills, setSkills] = useState<SkillInfo[]>([]);
-	const [loading, setLoading] = useState(true);
+	const [load, setLoad] = useState<Load>({ s: 'loading' });
 	const [search, setSearch] = useState('');
 	const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
 
-	const refresh = useCallback(async () => {
-		setLoading(true);
+	const fetchSkills = useCallback(async (silent: boolean) => {
+		if (!silent) setLoad({ s: 'loading' });
 		try {
-			const res = await fetch('http://127.0.0.1:8484/api/skills');
-			if (res.ok) {
-				const data = await res.json();
-				setSkills(data.skills || []);
-			}
+			const { skills } = await listSkills();
+			setSkills(skills || []);
+			setLoad({ s: 'ready' });
 		} catch {
-			// Gateway offline
-		} finally {
-			setLoading(false);
+			if (!silent) setLoad({ s: 'error' });
 		}
 	}, []);
 
 	useEffect(() => {
-		void refresh();
-	}, [refresh]);
+		void fetchSkills(false);
+	}, [fetchSkills]);
+
+	/** A tier change touches exactly one card — patch it in place instead of
+	 * refetching the whole grid and flashing a LOADING… panel over it. */
+	const applyTier = useCallback((id: string, tier: SkillLoadingTier) => {
+		setSkills((prior) => prior.map((s) => (s.id === id ? { ...s, loading_tier: tier } : s)));
+	}, []);
 
 	const categories = Array.from(new Set(skills.map((s) => s.category))).sort();
 
@@ -161,9 +142,13 @@ export default function SkillsPage() {
 					</div>
 
 					{/* Skills grid */}
-					{loading ? (
+					{load.s === 'loading' ? (
 						<GlassPanel style={{ padding: 48, display: 'grid', placeItems: 'center' }}>
 							<HudLabel>LOADING…</HudLabel>
+						</GlassPanel>
+					) : load.s === 'error' ? (
+						<GlassPanel style={{ padding: 0, overflow: 'hidden' }}>
+							<Offline onRetry={() => void fetchSkills(false)} />
 						</GlassPanel>
 					) : filtered.length === 0 ? (
 						<GlassPanel style={{ padding: 48, display: 'grid', placeItems: 'center' }}>
@@ -174,7 +159,7 @@ export default function SkillsPage() {
 					) : (
 						<div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
 							{filtered.map((skill) => (
-								<SkillCard key={skill.id} skill={skill} onUpdate={refresh} />
+								<SkillCard key={skill.id} skill={skill} onApplied={applyTier} />
 							))}
 						</div>
 					)}
@@ -184,22 +169,56 @@ export default function SkillsPage() {
 	);
 }
 
-function SkillCard({ skill, onUpdate }: { skill: SkillInfo; onUpdate: () => void }) {
+/** Shared offline panel — same copy as Missions.tsx:449 / Models.tsx:453. */
+function Offline({ onRetry }: { onRetry: () => void }) {
+	return (
+		<div style={{ padding: '24px 18px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+			<span style={{ width: 7, height: 7, marginTop: 4, borderRadius: '50%', background: 'var(--l2-error)', boxShadow: '0 0 9px rgba(255,0,85,0.55)', flex: 'none' }} />
+			<div>
+				<div style={{ color: 'var(--l2-fg-1)', fontSize: 14, marginBottom: 4 }}>Skill registry unavailable</div>
+				<div style={{ color: 'var(--l2-fg-3)', fontSize: 11.5, fontFamily: 'var(--l2-font-mono)', letterSpacing: '0.04em', marginBottom: 12 }}>
+					NO RESPONSE FROM 127.0.0.1:8484 — START THE GATEWAY
+				</div>
+				<button
+					type="button"
+					onClick={onRetry}
+					style={{
+						padding: '6px 12px', borderRadius: 2, border: '1px solid var(--l2-hairline)',
+						background: 'transparent', color: 'var(--l2-fg-2)',
+						fontFamily: 'var(--l2-font-mono)', fontSize: 10.5, letterSpacing: '0.14em', cursor: 'pointer'
+					}}
+				>
+					RETRY
+				</button>
+			</div>
+		</div>
+	);
+}
+
+function SkillCard({ skill, onApplied }: {
+	skill: SkillInfo;
+	onApplied: (id: string, tier: SkillLoadingTier) => void;
+}) {
 	const [tierOpen, setTierOpen] = useState(false);
+	const [busy, setBusy] = useState(false);
+	const [error, setError] = useState<string | null>(null);
 	const tier = TIER_LABELS[skill.loading_tier] || TIER_LABELS.full;
 	const provenance = PROVENANCE_LABELS[skill.provenance?.tier] || PROVENANCE_LABELS['third-party'];
 
-	async function setTier(newTier: string) {
+	// This mutation controls whether a skill loads at all — the old raw fetch
+	// never checked res.ok, so a 4xx closed the menu exactly like a success.
+	async function setTier(newTier: SkillLoadingTier) {
+		if (busy) return;
+		setBusy(true);
+		setError(null);
 		try {
-			await fetch('http://127.0.0.1:8484/api/skills/tier', {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ id: skill.id, tier: newTier })
-			});
+			await setSkillTier(skill.id, newTier);
+			onApplied(skill.id, newTier);
 			setTierOpen(false);
-			onUpdate();
-		} catch {
-			// ignore
+		} catch (e) {
+			setError(e instanceof Error ? e.message : 'Tier change failed');
+		} finally {
+			setBusy(false);
 		}
 	}
 
@@ -232,6 +251,9 @@ function SkillCard({ skill, onUpdate }: { skill: SkillInfo; onUpdate: () => void
 						<button
 							type="button"
 							onClick={() => setTierOpen(!tierOpen)}
+							disabled={busy}
+							aria-disabled={busy}
+							title={busy ? 'Applying tier…' : `Loading tier: ${tier.label}`}
 							style={{
 								display: 'flex',
 								alignItems: 'center',
@@ -244,10 +266,11 @@ function SkillCard({ skill, onUpdate }: { skill: SkillInfo; onUpdate: () => void
 								fontFamily: 'var(--l2-font-mono)',
 								fontSize: 9,
 								letterSpacing: '0.14em',
-								cursor: 'pointer'
+								cursor: busy ? 'wait' : 'pointer',
+								opacity: busy ? 0.5 : 1
 							}}
 						>
-							{tier.label}
+							{busy ? 'APPLYING…' : tier.label}
 							<ChevronDown size={10} />
 						</button>
 						{tierOpen && (
@@ -269,7 +292,9 @@ function SkillCard({ skill, onUpdate }: { skill: SkillInfo; onUpdate: () => void
 										<button
 											key={key}
 											type="button"
-											onClick={() => setTier(key)}
+											onClick={() => void setTier(key as SkillLoadingTier)}
+											disabled={busy}
+											aria-disabled={busy}
 											style={{
 												display: 'block',
 												width: '100%',
@@ -282,7 +307,8 @@ function SkillCard({ skill, onUpdate }: { skill: SkillInfo; onUpdate: () => void
 												fontFamily: 'var(--l2-font-mono)',
 												fontSize: 9.5,
 												letterSpacing: '0.12em',
-												cursor: 'pointer'
+												cursor: busy ? 'wait' : 'pointer',
+												opacity: busy ? 0.5 : 1
 											}}
 										>
 											{val.label}
@@ -293,6 +319,18 @@ function SkillCard({ skill, onUpdate }: { skill: SkillInfo; onUpdate: () => void
 						)}
 					</div>
 				</div>
+				{error && (
+					<div
+						role="alert"
+						style={{
+							marginBottom: 8, padding: '5px 8px', borderRadius: 2,
+							border: '1px solid rgba(255,82,82,0.3)', background: 'rgba(255,82,82,0.1)',
+							color: 'var(--l2-error)', fontFamily: 'var(--l2-font-mono)', fontSize: 10.5, lineHeight: 1.4
+						}}
+					>
+						TIER UNCHANGED — {error}
+					</div>
+				)}
 				<div style={{ display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'var(--l2-font-mono)', fontSize: 10, color: 'var(--l2-fg-3)' }}>
 					<span>v{skill.version}</span>
 					<span>{skill.category}</span>

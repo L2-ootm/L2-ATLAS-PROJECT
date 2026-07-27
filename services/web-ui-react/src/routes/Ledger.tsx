@@ -26,7 +26,9 @@ interface LedgerEvent extends AuditEvent {
 
 type Load =
 	| { s: 'loading' }
-	| { s: 'ready'; events: LedgerEvent[] }
+	// `unreadable` / `scanned`: partial fan-out failures. For an audit surface a
+	// silently truncated log is worse than an error, so the count is rendered.
+	| { s: 'ready'; events: LedgerEvent[]; unreadable: number; scanned: number }
 	| { s: 'error' };
 
 function rel(iso: string): string {
@@ -57,26 +59,34 @@ export default function Ledger() {
 	const [typeFilter, setTypeFilter] = useState('ALL');
 	const [policyOnly, setPolicyOnly] = useState(false);
 	const [selected, setSelected] = useState<AuditLogItem<LedgerEvent> | null>(null);
+	const [refetching, setRefetching] = useState(false);
 	const { epoch } = useGatewayHealth();
 	const nav = useNavigate();
 
 	const refresh = useCallback(async () => {
+		setRefetching(true);
 		try {
 			const { runs } = await listRuns(RUN_FANOUT);
 			const settled = await Promise.allSettled(
 				runs.map((r) => getRunEvents(r.id, 0, EVENTS_PER_RUN))
 			);
 			const events: LedgerEvent[] = [];
+			let unreadable = 0;
 			settled.forEach((res, i) => {
-				if (res.status !== 'fulfilled') return;
+				if (res.status !== 'fulfilled') {
+					unreadable += 1;
+					return;
+				}
 				for (const ev of res.value.events) {
 					events.push({ ...ev, mission_title: runs[i].mission_title });
 				}
 			});
 			events.sort((a, b) => b.cursor - a.cursor);
-			setLoad({ s: 'ready', events });
+			setLoad({ s: 'ready', events, unreadable, scanned: runs.length });
 		} catch {
 			setLoad({ s: 'error' });
+		} finally {
+			setRefetching(false);
 		}
 	}, []);
 
@@ -121,6 +131,7 @@ export default function Ledger() {
 			title="Ledger"
 			actions={
 				<span style={mono(11, 'var(--l2-fg-3)')}>
+					{refetching && load.s === 'ready' ? 'REFRESHING · ' : ''}
 					{total === null ? '—' : `${filtered.length} ROWS · ${total} EVENTS`}
 				</span>
 			}
@@ -149,6 +160,37 @@ export default function Ledger() {
 					</Chip>
 				))}
 			</div>
+
+			{/* An audit trail that silently omits runs is worse than one that errors. */}
+			{load.s === 'ready' && load.unreadable > 0 && (
+				<div
+					role="alert"
+					style={{
+						display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12,
+						padding: '10px 14px', borderRadius: 2,
+						border: '1px solid rgba(242,182,90,0.35)', background: 'rgba(242,182,90,0.1)',
+						color: 'var(--l2-warning, #f2b65a)', ...mono(11, 'var(--l2-warning, #f2b65a)')
+					}}
+				>
+					<span>
+						INCOMPLETE TRAIL — {load.unreadable} OF {load.scanned} RUNS UNREADABLE
+					</span>
+					<button
+						type="button"
+						onClick={() => void refresh()}
+						disabled={refetching}
+						style={{
+							marginLeft: 'auto', padding: '4px 10px', borderRadius: 2,
+							border: '1px solid rgba(242,182,90,0.4)', background: 'transparent',
+							color: 'var(--l2-warning, #f2b65a)', ...mono(10, 'var(--l2-warning, #f2b65a)'),
+							letterSpacing: '0.14em', cursor: refetching ? 'wait' : 'pointer',
+							opacity: refetching ? 0.5 : 1
+						}}
+					>
+						{refetching ? 'RETRYING…' : 'RETRY'}
+					</button>
+				</div>
+			)}
 
 			{/* ledger table */}
 			<GlassPanel style={{ overflow: 'hidden' }}>

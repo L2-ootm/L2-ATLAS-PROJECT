@@ -78,6 +78,9 @@ function isActive(status: string): boolean {
 
 type FocusLoad = { s: 'loading' } | { s: 'ready'; focus: Focus | null } | { s: 'error' };
 
+/** Mirrors `setTaskStatus`'s accepted values (api.ts:587). */
+type TaskStatus = 'todo' | 'doing' | 'done';
+
 export default function Command() {
 	const { online, epoch } = useGatewayHealth();
 	const [focusLoad, setFocusLoad] = useState<FocusLoad>({ s: 'loading' });
@@ -90,6 +93,10 @@ export default function Command() {
 	const [editing, setEditing] = useState<Focus | 'new' | null>(null);
 	const [launchBusy, setLaunchBusy] = useState(false);
 	const [launchErr, setLaunchErr] = useState<string | null>(null);
+	// Page-level banner for focus-scoped mutations (switch/archive) — those have
+	// no card of their own and used to fail with no signal at all.
+	const [focusBusy, setFocusBusy] = useState(false);
+	const [focusErr, setFocusErr] = useState<string | null>(null);
 	const navigate = useNavigate();
 
 	const focus = focusLoad.s === 'ready' ? focusLoad.focus : null;
@@ -129,11 +136,17 @@ export default function Command() {
 
 	const onSwitchFocus = useCallback(
 		async (id: string) => {
+			setFocusBusy(true);
+			setFocusErr(null);
 			try {
 				await activateFocus(id);
 				await refreshFocus();
-			} catch {
-				/* surfaced by the next focus refresh */
+			} catch (e) {
+				// refreshFocus() lives inside the try and never runs on failure, so
+				// without this the old focus stayed rendered with no signal.
+				setFocusErr(`SWITCH FAILED — ${e instanceof Error ? e.message : String(e)}`);
+			} finally {
+				setFocusBusy(false);
 			}
 		},
 		[refreshFocus]
@@ -158,17 +171,16 @@ export default function Command() {
 			.catch(() => setOperations([]));
 	}, [epoch, refreshFocus, refreshFeed]);
 
+	// Throws on failure: the caller (GoalNodeView) owns the row-scoped busy flag
+	// and renders the message in its existing goalErr slot. A failed operation
+	// creates no run row, so the activity feed can never surface it.
 	const onRunOperation = useCallback(
 		async (opId: string, goalId: string) => {
-			try {
-				await runOperation(opId, goalId);
-				await refreshFeed();
-				// The agent writes tasks/observations back asynchronously; pull the
-				// tree again shortly so they surface without a manual refresh.
-				window.setTimeout(() => void refreshTree(focus?.id ?? null), 4000);
-			} catch {
-				/* surfaced via the activity feed / next refresh */
-			}
+			await runOperation(opId, goalId);
+			await refreshFeed();
+			// The agent writes tasks/observations back asynchronously; pull the
+			// tree again shortly so they surface without a manual refresh.
+			window.setTimeout(() => void refreshTree(focus?.id ?? null), 4000);
 		},
 		[refreshFeed, refreshTree, focus]
 	);
@@ -180,11 +192,15 @@ export default function Command() {
 	}, [refreshFeed]);
 
 	async function onArchive(f: Focus) {
+		setFocusBusy(true);
+		setFocusErr(null);
 		try {
 			await archiveFocus(f.id);
 			await refreshFocus();
-		} catch {
-			/* surfaced by the next focus refresh; no-op on transient failure */
+		} catch (e) {
+			setFocusErr(`ARCHIVE FAILED — ${e instanceof Error ? e.message : String(e)}`);
+		} finally {
+			setFocusBusy(false);
 		}
 	}
 
@@ -217,11 +233,33 @@ export default function Command() {
 				</>
 			}
 		>
+			{focusErr && (
+				<div
+					role="alert"
+					style={{
+						display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14,
+						padding: '10px 14px', borderRadius: 2,
+						border: '1px solid rgba(255,82,82,0.3)', background: 'rgba(255,82,82,0.1)',
+						color: 'var(--l2-error)', fontFamily: 'var(--l2-font-mono)', fontSize: 11.5, letterSpacing: '0.04em'
+					}}
+				>
+					<span>{focusErr}</span>
+					<button
+						type="button"
+						onClick={() => setFocusErr(null)}
+						aria-label="Dismiss error"
+						style={{ background: 'none', border: 'none', color: 'var(--l2-error)', cursor: 'pointer', padding: 0, marginLeft: 'auto', display: 'flex' }}
+					>
+						<X size={12} strokeWidth={2} />
+					</button>
+				</div>
+			)}
 			<div className="atlas-command-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.5fr) minmax(0, 1fr)', gap: 16, alignItems: 'start' }}>
 				<div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
 					<FocusCard
 						load={focusLoad}
 						allFocus={allFocus}
+						busy={focusBusy}
 						onEdit={(f) => setEditing(f)}
 						onArchive={onArchive}
 						onSet={() => setEditing('new')}
@@ -265,6 +303,7 @@ export default function Command() {
 function FocusCard({
 	load,
 	allFocus,
+	busy,
 	onEdit,
 	onArchive,
 	onSet,
@@ -272,6 +311,7 @@ function FocusCard({
 }: {
 	load: FocusLoad;
 	allFocus: Focus[];
+	busy: boolean;
 	onEdit: (f: Focus) => void;
 	onArchive: (f: Focus) => void;
 	onSet: () => void;
@@ -284,7 +324,7 @@ function FocusCard({
 				<Crosshair size={14} strokeWidth={1.8} color="var(--atlas-bronze)" />
 				<HudLabel style={{ color: 'var(--atlas-bronze)' }}>CURRENT FOCUS</HudLabel>
 				{allFocus.length > 1 && (
-					<FocusSwitcher focus={allFocus} currentId={current?.id ?? null} onSwitch={onSwitch} />
+					<FocusSwitcher focus={allFocus} currentId={current?.id ?? null} busy={busy} onSwitch={onSwitch} />
 				)}
 			</div>
 
@@ -292,7 +332,12 @@ function FocusCard({
 			{load.s === 'error' && <Offline />}
 			{load.s === 'ready' && load.focus === null && <NoFocus onSet={onSet} />}
 			{load.s === 'ready' && load.focus !== null && (
-				<FocusBody focus={load.focus} onEdit={() => onEdit(load.focus as Focus)} onArchive={() => onArchive(load.focus as Focus)} />
+				<FocusBody
+					focus={load.focus}
+					busy={busy}
+					onEdit={() => onEdit(load.focus as Focus)}
+					onArchive={() => onArchive(load.focus as Focus)}
+				/>
 			)}
 		</GlassPanel>
 	);
@@ -303,10 +348,12 @@ function FocusCard({
 function FocusSwitcher({
 	focus,
 	currentId,
+	busy,
 	onSwitch
 }: {
 	focus: Focus[];
 	currentId: string | null;
+	busy: boolean;
 	onSwitch: (id: string) => void;
 }) {
 	const [open, setOpen] = useState(false);
@@ -315,6 +362,8 @@ function FocusSwitcher({
 			<button
 				type="button"
 				onClick={() => setOpen((v) => !v)}
+				disabled={busy}
+				aria-disabled={busy}
 				title="Switch goal set"
 				style={{
 					display: 'inline-flex',
@@ -328,10 +377,11 @@ function FocusSwitcher({
 					fontFamily: 'var(--l2-font-mono)',
 					fontSize: 9.5,
 					letterSpacing: '0.14em',
-					cursor: 'pointer'
+					cursor: busy ? 'wait' : 'pointer',
+					opacity: busy ? 0.5 : 1
 				}}
 			>
-				{focus.length} GOAL SETS
+				{busy ? 'SWITCHING…' : `${focus.length} GOAL SETS`}
 				<ChevronDown size={12} strokeWidth={2} />
 			</button>
 			{open && (
@@ -358,7 +408,8 @@ function FocusSwitcher({
 								<button
 									key={f.id}
 									type="button"
-									disabled={isCurrent}
+									disabled={isCurrent || busy}
+									aria-disabled={isCurrent || busy}
 									onClick={() => {
 										setOpen(false);
 										onSwitch(f.id);
@@ -373,10 +424,11 @@ function FocusSwitcher({
 										background: 'none',
 										border: 'none',
 										borderBottom: '1px solid var(--l2-hairline)',
-										cursor: isCurrent ? 'default' : 'pointer'
+										cursor: isCurrent ? 'default' : busy ? 'wait' : 'pointer',
+										opacity: busy && !isCurrent ? 0.5 : 1
 									}}
 									onMouseEnter={(e) => {
-										if (!isCurrent) e.currentTarget.style.background = 'rgba(79,139,255,0.08)';
+										if (!isCurrent && !busy) e.currentTarget.style.background = 'rgba(79,139,255,0.08)';
 									}}
 									onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
 								>
@@ -406,7 +458,7 @@ function FocusSwitcher({
 	);
 }
 
-function FocusBody({ focus, onEdit, onArchive }: { focus: Focus; onEdit: () => void; onArchive: () => void }) {
+function FocusBody({ focus, busy, onEdit, onArchive }: { focus: Focus; busy: boolean; onEdit: () => void; onArchive: () => void }) {
 	return (
 		<div data-topo="good" style={{ padding: '18px 18px 20px' }}>
 			<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 14, marginBottom: 14 }}>
@@ -414,10 +466,10 @@ function FocusBody({ focus, onEdit, onArchive }: { focus: Focus; onEdit: () => v
 					{focus.title}
 				</h2>
 				<div style={{ display: 'flex', gap: 8, flex: 'none' }}>
-					<IconButton title="Edit focus" onClick={onEdit}>
+					<IconButton title="Edit focus" onClick={onEdit} disabled={busy}>
 						<Pencil size={14} strokeWidth={1.7} />
 					</IconButton>
-					<IconButton title="Archive focus" onClick={onArchive}>
+					<IconButton title={busy ? 'Archiving…' : 'Archive focus'} onClick={onArchive} disabled={busy}>
 						<Archive size={14} strokeWidth={1.7} />
 					</IconButton>
 				</div>
@@ -509,11 +561,12 @@ function GoalsPanel({
 	tree: GoalNode[];
 	treeErr: string | null;
 	operations: Operation[];
-	onRunOperation: (opId: string, goalId: string) => void;
+	onRunOperation: (opId: string, goalId: string) => Promise<void>;
 	onChanged: () => void;
 }) {
 	const [adding, setAdding] = useState(false);
 	const [busy, setBusy] = useState(false);
+	const [addErr, setAddErr] = useState<string | null>(null);
 	const [showDone, setShowDone] = useState(false);
 
 	const activeTree = tree.filter((n) => n.status !== 'done');
@@ -522,12 +575,16 @@ function GoalsPanel({
 
 	async function addRoot(title: string) {
 		setBusy(true);
+		setAddErr(null);
 		try {
 			await createGoal({ title, focus: focus.id });
 			onChanged();
+			setAdding(false);
+		} catch (e) {
+			// Keep the form open so the typed title survives the failure.
+			setAddErr(e instanceof Error ? e.message : 'Add goal failed');
 		} finally {
 			setBusy(false);
-			setAdding(false);
 		}
 	}
 
@@ -578,7 +635,32 @@ function GoalsPanel({
 				</div>
 			</div>
 			<div style={{ padding: visibleTree.length === 0 && !adding ? '20px 18px' : '12px 10px 14px' }}>
-				{adding && <InlineAdd placeholder="New goal…" busy={busy} onSubmit={addRoot} onCancel={() => setAdding(false)} />}
+				{adding && (
+					<InlineAdd
+						placeholder="New goal…"
+						busy={busy}
+						onSubmit={addRoot}
+						onCancel={() => { setAdding(false); setAddErr(null); }}
+					/>
+				)}
+				{addErr && (
+					<div style={{
+						margin: '0 0 8px', padding: '4px 8px', borderRadius: 2,
+						background: 'rgba(255,82,82,0.1)', border: '1px solid rgba(255,82,82,0.3)',
+						color: 'var(--l2-error)', fontSize: 11, fontFamily: 'var(--l2-font-mono)',
+						display: 'flex', alignItems: 'center', gap: 6
+					}}>
+						<span>{addErr}</span>
+						<button
+							type="button"
+							onClick={() => setAddErr(null)}
+							aria-label="Dismiss error"
+							style={{ background: 'none', border: 'none', color: 'var(--l2-error)', cursor: 'pointer', padding: 0, marginLeft: 'auto', display: 'flex' }}
+						>
+							<X size={10} strokeWidth={2} />
+						</button>
+					</div>
+				)}
 				{visibleTree.length === 0 && !adding && treeErr && (
 					<div style={{ padding: '12px 18px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
 						<span style={{ width: 6, height: 6, marginTop: 4, borderRadius: '50%', background: 'var(--l2-error)', boxShadow: '0 0 6px rgba(255,0,85,0.4)', flex: 'none' }} />
@@ -632,7 +714,7 @@ function GoalNodeView({
 	focusId: string;
 	depth: number;
 	operations: Operation[];
-	onRunOperation: (opId: string, goalId: string) => void;
+	onRunOperation: (opId: string, goalId: string) => Promise<void>;
 	onChanged: () => void;
 }) {
 	const [mode, setMode] = useState<null | 'task' | 'subgoal' | 'conclude'>(null);
@@ -640,6 +722,10 @@ function GoalNodeView({
 	const [busy, setBusy] = useState(false);
 	const [confirmDelete, setConfirmDelete] = useState(false);
 	const [goalErr, setGoalErr] = useState<string | null>(null);
+	// Optimistic paint for the checkbox: the glyph is otherwise derived purely
+	// from server state, so a tick shows nothing until two CLI round trips land.
+	const [taskOverride, setTaskOverride] = useState<Record<string, TaskStatus>>({});
+	const [taskBusy, setTaskBusy] = useState<string | null>(null);
 	const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	useEffect(() => {
@@ -647,6 +733,13 @@ function GoalNodeView({
 			if (confirmTimer.current) clearTimeout(confirmTimer.current);
 		};
 	}, []);
+
+	// Reconcile from authority: a refetched tree (this node's task statuses
+	// changed) is the truth, so drop every local override the moment it lands.
+	const tasksKey = node.tasks.map((t) => `${t.id}:${t.status}`).join('|');
+	useEffect(() => {
+		setTaskOverride((prior) => (Object.keys(prior).length === 0 ? prior : {}));
+	}, [tasksKey]);
 
 	async function addTask(title: string) {
 		setBusy(true);
@@ -674,10 +767,37 @@ function GoalNodeView({
 			setMode(null);
 		}
 	}
-	async function toggleTask(taskId: string, status: string) {
-		const next = status === 'todo' ? 'doing' : status === 'doing' ? 'done' : 'todo';
-		await setTaskStatus(taskId, next as 'todo' | 'doing' | 'done');
-		onChanged();
+	async function toggleTask(taskId: string, status: TaskStatus) {
+		const next: TaskStatus = status === 'todo' ? 'doing' : status === 'doing' ? 'done' : 'todo';
+		setGoalErr(null);
+		setTaskOverride((prior) => ({ ...prior, [taskId]: next }));
+		setTaskBusy(taskId);
+		try {
+			await setTaskStatus(taskId, next);
+			onChanged();
+		} catch (e) {
+			setGoalErr(e instanceof Error ? e.message : 'Task update failed');
+			// Roll the optimistic paint back to the last known server value.
+			setTaskOverride((prior) => {
+				const rest = { ...prior };
+				delete rest[taskId];
+				return rest;
+			});
+		} finally {
+			setTaskBusy(null);
+		}
+	}
+
+	async function runOp(opId: string) {
+		setBusy(true);
+		setGoalErr(null);
+		try {
+			await onRunOperation(opId, node.id);
+		} catch (e) {
+			setGoalErr(e instanceof Error ? e.message : 'Operation failed');
+		} finally {
+			setBusy(false);
+		}
 	}
 	async function togglePause() {
 		setBusy(true);
@@ -723,12 +843,15 @@ function GoalNodeView({
 		}
 	}
 	async function archive() {
+		setBusy(true);
 		setGoalErr(null);
 		try {
 			await archiveGoal(node.id);
 			onChanged();
 		} catch (e) {
 			setGoalErr(e instanceof Error ? e.message : 'Archive failed');
+		} finally {
+			setBusy(false);
 		}
 	}
 
@@ -753,8 +876,9 @@ function GoalNodeView({
 						{operations.length > 0 && (
 							<div style={{ position: 'relative', flex: 'none' }}>
 								<GoalIconButton
-									title="Run an operation on this goal"
+									title={busy ? 'Working…' : 'Run an operation on this goal'}
 									onClick={() => setOpsOpen((v) => !v)}
+									disabled={busy}
 									active={opsOpen}
 								>
 									<Zap size={12} strokeWidth={1.9} />
@@ -764,7 +888,7 @@ function GoalNodeView({
 										operations={operations}
 										onPick={(opId) => {
 											setOpsOpen(false);
-											onRunOperation(opId, node.id);
+											void runOp(opId);
 										}}
 										onClose={() => setOpsOpen(false)}
 									/>
@@ -791,7 +915,7 @@ function GoalNodeView({
 								<CheckCircle2 size={12} strokeWidth={1.9} />
 							</GoalIconButton>
 						)}
-						<GoalIconButton title="Archive goal" onClick={() => void archive()}>
+						<GoalIconButton title="Archive goal" onClick={() => void archive()} disabled={busy}>
 							<Archive size={12} strokeWidth={1.8} />
 						</GoalIconButton>
 						<GoalIconButton
@@ -817,28 +941,39 @@ function GoalNodeView({
 				)}
 				{node.tasks.length > 0 && (
 					<div style={{ marginTop: 6, marginLeft: 14, display: 'flex', flexDirection: 'column', gap: 3 }}>
-						{node.tasks.map((t) => (
-							<button
-								key={t.id}
-								type="button"
-								onClick={() => void toggleTask(t.id, t.status)}
-								title={`Status: ${t.status} — click to advance`}
-								style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}
-							>
-								<span aria-hidden style={{
-									width: 13, height: 13, borderRadius: 2, flex: 'none',
-									border: `1px solid ${t.status === 'done' ? 'var(--atlas-emerald)' : 'var(--l2-hairline)'}`,
-									background: t.status === 'done' ? 'rgba(70,240,160,0.18)' : t.status === 'doing' ? 'rgba(79,139,255,0.18)' : 'transparent',
-									display: 'inline-flex', alignItems: 'center', justifyContent: 'center'
-								}}>
-									{t.status === 'done' && <Check size={10} strokeWidth={2.6} color="var(--atlas-emerald)" />}
-									{t.status === 'doing' && <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--atlas-celestial)' }} />}
-								</span>
-								<span style={{ fontSize: 12.5, color: t.status === 'done' ? 'var(--l2-fg-3)' : 'var(--l2-fg-2)', textDecoration: t.status === 'done' ? 'line-through' : 'none' }}>
-									{t.title}
-								</span>
-							</button>
-						))}
+						{node.tasks.map((t) => {
+							// Optimistic status wins until the refetched tree lands.
+							const status = taskOverride[t.id] ?? (t.status as TaskStatus);
+							const pending = taskBusy === t.id;
+							return (
+								<button
+									key={t.id}
+									type="button"
+									onClick={() => void toggleTask(t.id, status)}
+									disabled={pending}
+									aria-disabled={pending}
+									title={pending ? `Saving “${status}”…` : `Status: ${status} — click to advance`}
+									style={{
+										display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none',
+										cursor: pending ? 'wait' : 'pointer', padding: 0, textAlign: 'left',
+										opacity: pending ? 0.65 : 1
+									}}
+								>
+									<span aria-hidden style={{
+										width: 13, height: 13, borderRadius: 2, flex: 'none',
+										border: `1px solid ${status === 'done' ? 'var(--atlas-emerald)' : 'var(--l2-hairline)'}`,
+										background: status === 'done' ? 'rgba(70,240,160,0.18)' : status === 'doing' ? 'rgba(79,139,255,0.18)' : 'transparent',
+										display: 'inline-flex', alignItems: 'center', justifyContent: 'center'
+									}}>
+										{status === 'done' && <Check size={10} strokeWidth={2.6} color="var(--atlas-emerald)" />}
+										{status === 'doing' && <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--atlas-celestial)' }} />}
+									</span>
+									<span style={{ fontSize: 12.5, color: status === 'done' ? 'var(--l2-fg-3)' : 'var(--l2-fg-2)', textDecoration: status === 'done' ? 'line-through' : 'none' }}>
+										{t.title}
+									</span>
+								</button>
+							);
+						})}
 					</div>
 				)}
 				{node.observations.length > 0 && (
@@ -1432,13 +1567,15 @@ function LaunchButton({ disabled, busy, onClick }: { disabled: boolean; busy: bo
 	);
 }
 
-function IconButton({ children, title, onClick }: { children: React.ReactNode; title: string; onClick: () => void }) {
+function IconButton({ children, title, onClick, disabled }: { children: React.ReactNode; title: string; onClick: () => void; disabled?: boolean }) {
 	return (
 		<button
 			type="button"
 			title={title}
 			aria-label={title}
 			onClick={onClick}
+			disabled={disabled}
+			aria-disabled={disabled}
 			style={{
 				display: 'inline-flex',
 				alignItems: 'center',
@@ -1449,10 +1586,12 @@ function IconButton({ children, title, onClick }: { children: React.ReactNode; t
 				border: '1px solid var(--l2-hairline)',
 				background: 'transparent',
 				color: 'var(--l2-fg-3)',
-				cursor: 'pointer',
+				cursor: disabled ? 'wait' : 'pointer',
+				opacity: disabled ? 0.5 : 1,
 				transition: 'border-color var(--l2-duration-xs) var(--l2-ease), color var(--l2-duration-xs) var(--l2-ease)'
 			}}
 			onMouseEnter={(e) => {
+				if (disabled) return;
 				e.currentTarget.style.borderColor = 'rgba(70,240,160,0.4)';
 				e.currentTarget.style.color = 'var(--l2-fg-1)';
 			}}

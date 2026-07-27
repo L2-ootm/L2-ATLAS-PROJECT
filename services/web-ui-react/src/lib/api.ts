@@ -1786,3 +1786,50 @@ export async function rejectToolCall(
 		})
 	});
 }
+
+// ── Skills registry ───────────────────────────────────────────────────────────
+// NOTE: the skills routes live under /api/* (atlas_runtime/cli/skills.py), not
+// /v1/*, unlike every other endpoint here. Routed through apiFetch anyway so
+// non-2xx raises ApiError instead of falling through as a silent success.
+
+export type SkillLoadingTier = 'full' | 'name-only' | 'deactivated';
+
+export interface SkillInfo {
+	id: string;
+	name: string;
+	description: string;
+	version: string;
+	author: string;
+	license: string;
+	category: string;
+	tags: string[];
+	provenance: {
+		tier: 'original' | 'framework' | 'third-party';
+		source: 'bundled' | 'hub' | 'user' | 'agent' | 'plugin';
+	};
+	loading_tier: SkillLoadingTier;
+	platforms: string[];
+	enabled: boolean;
+	pinned: boolean;
+	state: 'active' | 'stale' | 'archived';
+	usage: {
+		use_count: number;
+		view_count: number;
+		last_used_at: string | null;
+	};
+	path: string;
+}
+
+export async function listSkills(): Promise<{ skills: SkillInfo[] }> {
+	return apiFetch('/api/skills');
+}
+
+export async function setSkillTier(
+	id: string,
+	tier: SkillLoadingTier
+): Promise<{ updated?: boolean; id?: string; tier?: string }> {
+	return apiFetch('/api/skills/tier', {
+		method: 'PUT',
+		body: JSON.stringify({ id, tier })
+	});
+}

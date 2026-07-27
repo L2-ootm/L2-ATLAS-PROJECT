@@ -15,14 +15,33 @@ import { ATLAS_COMMANDS, expandCommandTemplate, matchAtlasCommands, type AtlasCo
 import { loadAtlasCommandCatalog } from '../../lib/commandCatalog';
 import type { QueuedChatPrompt } from '../../lib/chatPersistence';
 
+// The gateway's only prompt channel is `createMission(title, intent)` — a text
+// intent. There is no multipart/attachment endpoint, so a text-like file is
+// inlined into the prompt behind a delimiter and anything binary is rejected
+// with a visible reason rather than silently dropped.
 interface ChatAttachment {
 	id: string;
 	name: string;
-	type: 'image' | 'file';
 	mimeType: string;
 	size: number;
-	data?: string; // base64 for images
-	previewUrl?: string;
+	/** Decoded text content — what actually reaches the agent. */
+	text: string;
+}
+
+interface RejectedAttachment {
+	id: string;
+	name: string;
+	reason: string;
+}
+
+/** Wrap each attachment in a fenced, labelled block so the agent can tell
+ * operator prose from file content. */
+function attachmentsToPrompt(prompt: string, attachments: ChatAttachment[]): string {
+	if (attachments.length === 0) return prompt;
+	const blocks = attachments.map(
+		(att) => `--- ATTACHED FILE: ${att.name} (${att.mimeType || 'text/plain'}, ${att.size} bytes) ---\n${att.text}\n--- END ${att.name} ---`
+	);
+	return prompt ? `${prompt}\n\n${blocks.join('\n\n')}` : blocks.join('\n\n');
 }
 
 export function QueuedChatComposer({
@@ -56,6 +75,7 @@ export function QueuedChatComposer({
 }) {
 	const [localDraft, setLocalDraft] = useState(draft);
 	const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
+	const [rejected, setRejected] = useState<RejectedAttachment[]>([]);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const [catalog, setCatalog] = useState<AtlasCommand[]>(ATLAS_COMMANDS);
 	const [slashSelected, setSlashSelected] = useState(0);
@@ -109,57 +129,82 @@ export function QueuedChatComposer({
 		}
 		setLocalDraft('');
 		setAttachments([]);
+		setRejected([]);
 		onDraftPersist('');
 	}
 
-	const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+	// Inlined into the prompt, so the cap is about prompt size, not upload size.
+	const MAX_FILE_SIZE = 256 * 1024; // 256KB of text per file
 	const MAX_FILES = 5;
-	const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml'];
-	const ALLOWED_TYPES = [...IMAGE_TYPES, 'application/pdf', 'text/plain', 'text/markdown', 'text/csv', 'application/json'];
+	const TEXT_TYPES = ['text/plain', 'text/markdown', 'text/csv', 'application/json'];
+	const TEXT_EXTENSIONS = /\.(txt|md|csv|json|py|js|ts|jsx|tsx|html|css|yaml|yml|toml|sql|sh|rs|go|toml|ini|log|xml)$/i;
+	const ACCEPT_HINT = [...TEXT_TYPES, '.md', '.py', '.ts', '.tsx', '.js', '.jsx', '.yaml', '.yml', '.toml', '.rs', '.go', '.sh', '.sql'].join(',');
+
+	function noteRejection(name: string, reason: string) {
+		setRejected((prev) => [
+			...prev,
+			{ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name, reason }
+		]);
+	}
+
+	function isTextLike(file: File): boolean {
+		if (TEXT_TYPES.includes(file.type)) return true;
+		if (file.type.startsWith('text/')) return true;
+		// Editors often report an empty type for source files; trust the extension.
+		return (file.type === '' || !file.type.includes('/')) && TEXT_EXTENSIONS.test(file.name);
+	}
 
 	function handleFiles(files: FileList | File[]) {
 		const fileArray = Array.from(files);
-		if (attachments.length + fileArray.length > MAX_FILES) {
-			return; // Silently ignore excess files
-		}
+		setRejected([]);
+		let slots = MAX_FILES - attachments.length;
 
 		for (const file of fileArray) {
-			if (file.size > MAX_FILE_SIZE) continue;
-			if (!ALLOWED_TYPES.includes(file.type) && !file.name.match(/\.(txt|md|csv|json|py|js|ts|jsx|tsx|html|css|yaml|yml|toml)$/i)) {
+			if (slots <= 0) {
+				noteRejection(file.name, `over the ${MAX_FILES}-file limit`);
 				continue;
 			}
+			if (!isTextLike(file)) {
+				noteRejection(
+					file.name,
+					`${file.type || 'binary'} is not supported — the agent accepts text only`
+				);
+				continue;
+			}
+			if (file.size > MAX_FILE_SIZE) {
+				noteRejection(
+					file.name,
+					`${(file.size / 1024).toFixed(0)}KB exceeds the ${MAX_FILE_SIZE / 1024}KB text limit`
+				);
+				continue;
+			}
+			slots -= 1;
 
 			const reader = new FileReader();
-			const isImage = IMAGE_TYPES.includes(file.type);
-
+			reader.onerror = () => noteRejection(file.name, 'could not be read');
 			reader.onload = (e) => {
-				const result = e.target?.result as string;
-				const attachment: ChatAttachment = {
-					id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-					name: file.name,
-					type: isImage ? 'image' : 'file',
-					mimeType: file.type,
-					size: file.size,
-					data: isImage ? result : undefined,
-					previewUrl: isImage ? URL.createObjectURL(file) : undefined
-				};
-				setAttachments((prev) => [...prev, attachment]);
+				const result = e.target?.result;
+				if (typeof result !== 'string') {
+					noteRejection(file.name, 'could not be decoded as text');
+					return;
+				}
+				setAttachments((prev) => [
+					...prev,
+					{
+						id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+						name: file.name,
+						mimeType: file.type || 'text/plain',
+						size: file.size,
+						text: result
+					}
+				]);
 			};
-
-			if (isImage) {
-				reader.readAsDataURL(file);
-			} else {
-				reader.readAsText(file);
-			}
+			reader.readAsText(file);
 		}
 	}
 
 	function removeAttachment(id: string) {
-		setAttachments((prev) => {
-			const att = prev.find((a) => a.id === id);
-			if (att?.previewUrl) URL.revokeObjectURL(att.previewUrl);
-			return prev.filter((a) => a.id !== id);
-		});
+		setAttachments((prev) => prev.filter((a) => a.id !== id));
 	}
 
 	function handlePaste(event: React.ClipboardEvent) {
@@ -188,7 +233,12 @@ export function QueuedChatComposer({
 			return;
 		}
 		const execution = command ? expandCommandTemplate(command.template, match?.[2] ?? '') : localDraft;
-		if (onSubmit(localDraft, execution)) clearDraft();
+		// Display keeps the operator's own words; the executed prompt carries the
+		// inlined file content, which is the only channel the gateway accepts.
+		const display = attachments.length > 0
+			? `${localDraft}${localDraft ? '\n\n' : ''}${attachments.map((a) => `📎 ${a.name}`).join('\n')}`
+			: localDraft;
+		if (onSubmit(display, attachmentsToPrompt(execution, attachments))) clearDraft();
 	}
 	const placeholder = busy
 		? `Write the next request for ${agentRuntimeLabel(agent)}`
@@ -218,9 +268,7 @@ export function QueuedChatComposer({
 								color: 'var(--l2-fg-2)'
 							}}
 						>
-							{att.type === 'image' && att.previewUrl && (
-								<img src={att.previewUrl} alt="" style={{ width: 20, height: 20, objectFit: 'cover', borderRadius: 1 }} />
-							)}
+							<Paperclip size={11} aria-hidden="true" />
 							<span>{att.name}</span>
 							<span style={{ color: 'var(--l2-fg-3)', fontSize: 10 }}>
 								{(att.size / 1024).toFixed(0)}KB
@@ -228,9 +276,41 @@ export function QueuedChatComposer({
 							<button
 								type="button"
 								onClick={() => removeAttachment(att.id)}
+								title={`Remove ${att.name}`}
+								aria-label={`Remove ${att.name}`}
 								style={{ background: 'none', border: 'none', color: 'var(--l2-fg-3)', cursor: 'pointer', padding: 0, display: 'flex' }}
 							>
 								<X size={12} />
+							</button>
+						</div>
+					))}
+				</div>
+			)}
+			{rejected.length > 0 && (
+				<div
+					role="status"
+					style={{
+						display: 'flex',
+						flexDirection: 'column',
+						gap: 3,
+						padding: '6px 10px',
+						borderBottom: '1px solid rgba(237,234,224,0.06)',
+						fontFamily: 'var(--l2-font-mono)',
+						fontSize: 10.5,
+						color: 'var(--l2-error)'
+					}}
+				>
+					{rejected.map((item) => (
+						<div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+							<span>NOT ATTACHED · {item.name} — {item.reason}</span>
+							<button
+								type="button"
+								onClick={() => setRejected((prev) => prev.filter((r) => r.id !== item.id))}
+								title="Dismiss"
+								aria-label={`Dismiss ${item.name}`}
+								style={{ background: 'none', border: 'none', color: 'var(--l2-error)', cursor: 'pointer', padding: 0, marginLeft: 'auto', display: 'flex' }}
+							>
+								<X size={11} />
 							</button>
 						</div>
 					))}
@@ -287,7 +367,7 @@ export function QueuedChatComposer({
 					ref={fileInputRef}
 					type="file"
 					multiple
-					accept={ALLOWED_TYPES.join(',')}
+					accept={ACCEPT_HINT}
 					style={{ display: 'none' }}
 					onChange={(e) => {
 						if (e.target.files) handleFiles(e.target.files);
@@ -344,8 +424,8 @@ export function QueuedChatComposer({
 						<button
 							type="button"
 							onClick={() => fileInputRef.current?.click()}
-							title="Attach files"
-							aria-label="Attach files"
+							title="Attach text files — their contents are inlined into the prompt (images and other binaries are not supported)"
+							aria-label="Attach text files"
 							style={{
 								display: 'inline-flex',
 								alignItems: 'center',

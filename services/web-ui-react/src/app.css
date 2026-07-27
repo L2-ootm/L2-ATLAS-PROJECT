@@ -957,6 +957,7 @@ body,
 	padding: 0 9px;
 }
 .agent-icon-control--danger { color: var(--l2-error); }
+.agent-icon-control:disabled { opacity: .45; cursor: wait; }
 .agent-session-header button:focus-visible,
 .permission-queue button:focus-visible,
 .permission-queue [tabindex]:focus-visible {
@@ -1094,6 +1095,13 @@ body,
 	color: var(--l2-error);
 	font: 600 9px/1.4 var(--l2-font-mono);
 	letter-spacing: .08em;
+}
+.permission-error button {
+	display: block;
+	margin-top: 8px;
+	min-height: 26px;
+	padding: 0 8px;
+	color: var(--l2-error);
 }
 .policy-receipt {
 	display: flex;

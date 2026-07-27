@@ -199,12 +199,38 @@ export function AgentSurfaceProvider({ children }: { children: ReactNode }) {
 		[openSurface, retainSession]
 	);
 
+	/** Re-read the session from the gateway after a failed optimistic paint so
+	 * the header never keeps a state the server never reached. */
+	const reconcileSession = useCallback(
+		async (prior: SurfaceSession) => {
+			try {
+				const projected = await getSurfaceSession(prior.id, prior.owner_token);
+				retainSession(withOwnerToken(projected, prior));
+			} catch {
+				retainSession(prior);
+			}
+		},
+		[retainSession]
+	);
+
 	const cancel = useCallback(async () => {
 		const current = sessionRef.current;
 		if (!current) return;
-		const next = withOwnerToken(await cancelSurfaceSession(current), current);
-		retainSession(next);
-	}, [retainSession]);
+		setBusy(true);
+		setError(null);
+		// Optimistic: the CANCEL button's only guard reads session.state, which
+		// cannot become 'cancelling' until the gateway+CLI round trip returns.
+		retainSession({ ...current, state: 'cancelling' });
+		try {
+			const next = withOwnerToken(await cancelSurfaceSession(current), current);
+			retainSession(next);
+		} catch (cause) {
+			setError(cause instanceof Error ? cause.message : String(cause));
+			await reconcileSession(current);
+		} finally {
+			setBusy(false);
+		}
+	}, [reconcileSession, retainSession]);
 
 	/** Drop the held surface session (workspace rebind, unbind). The session
 	 * is workspace-bound at creation, so a binding change must not keep
@@ -227,9 +253,19 @@ export function AgentSurfaceProvider({ children }: { children: ReactNode }) {
 	const resume = useCallback(async () => {
 		const current = sessionRef.current;
 		if (!current) return;
-		const next = withOwnerToken(await resumeSurfaceSession(current), current);
-		retainSession(next);
-	}, [retainSession]);
+		setBusy(true);
+		setError(null);
+		retainSession({ ...current, state: 'resuming' });
+		try {
+			const next = withOwnerToken(await resumeSurfaceSession(current), current);
+			retainSession(next);
+		} catch (cause) {
+			setError(cause instanceof Error ? cause.message : String(cause));
+			await reconcileSession(current);
+		} finally {
+			setBusy(false);
+		}
+	}, [reconcileSession, retainSession]);
 
 	const decide = useCallback(
 		async (

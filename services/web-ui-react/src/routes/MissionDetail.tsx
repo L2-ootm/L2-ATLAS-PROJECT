@@ -40,6 +40,7 @@ export default function MissionDetail() {
 	const [retrying, setRetrying] = useState(false);
 	const [confirmCancel, setConfirmCancel] = useState(false);
 	const [cancelError, setCancelError] = useState<string | null>(null);
+	const [cancelling, setCancelling] = useState(false);
 	const [archiveOpen, setArchiveOpen] = useState(false);
 	const [archiveDays, setArchiveDays] = useState(30);
 	const [archiveError, setArchiveError] = useState<string | null>(null);
@@ -92,8 +93,11 @@ export default function MissionDetail() {
 		}
 	}
 
+	// `atlas mission cancel` halts every active run of the mission — slow and
+	// irreversible, so the button must not stay live (or double-fire) meanwhile.
 	async function doCancel() {
-		if (load.s !== 'ready') return;
+		if (load.s !== 'ready' || cancelling) return;
+		setCancelling(true);
 		setCancelError(null);
 		try {
 			await cancelRun(load.mission.id);
@@ -101,6 +105,8 @@ export default function MissionDetail() {
 			await refresh();
 		} catch (e) {
 			setCancelError(`CANCEL FAILED — ${e instanceof Error ? e.message : String(e)}`);
+		} finally {
+			setCancelling(false);
 		}
 	}
 
@@ -379,8 +385,12 @@ export default function MissionDetail() {
 								</p>
 							)}
 							<div style={{ display: 'flex', gap: 10 }}>
-								<GhostButton danger onClick={doCancel}>Confirm cancel</GhostButton>
-								<GhostButton onClick={() => { setConfirmCancel(false); setCancelError(null); }}>Keep run</GhostButton>
+								<GhostButton danger onClick={doCancel} disabled={cancelling}>
+									{cancelling ? 'Cancelling…' : 'Confirm cancel'}
+								</GhostButton>
+								<GhostButton onClick={() => { setConfirmCancel(false); setCancelError(null); }} disabled={cancelling}>
+									Keep run
+								</GhostButton>
 							</div>
 						</GlassPanel>
 					)}
@@ -679,12 +689,15 @@ function AgentSelect({ value, onChange, disabled }: { value: AgentRuntime; onCha
 	);
 }
 
-function GhostButton({ children, icon, onClick, danger }: { children: React.ReactNode; icon?: React.ReactNode; onClick?: () => void; danger?: boolean }) {
+function GhostButton({ children, icon, onClick, danger, disabled }: { children: React.ReactNode; icon?: React.ReactNode; onClick?: () => void; danger?: boolean; disabled?: boolean }) {
 	const color = danger ? 'var(--l2-error)' : 'var(--l2-fg-2)';
 	const border = danger ? 'rgba(255,0,85,0.4)' : 'var(--l2-hairline)';
 	return (
 		<button
+			type="button"
 			onClick={onClick}
+			disabled={disabled}
+			aria-disabled={disabled}
 			style={{
 				display: 'inline-flex',
 				alignItems: 'center',
@@ -698,7 +711,8 @@ function GhostButton({ children, icon, onClick, danger }: { children: React.Reac
 				fontSize: 11,
 				letterSpacing: '0.14em',
 				textTransform: 'uppercase',
-				cursor: 'pointer'
+				cursor: disabled ? 'wait' : 'pointer',
+				opacity: disabled ? 0.5 : 1
 			}}
 		>
 			{icon}

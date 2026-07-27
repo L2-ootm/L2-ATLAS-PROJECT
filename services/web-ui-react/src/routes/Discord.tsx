@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
 	Hash, Volume2, MessagesSquare, Megaphone, Mic, Power, Server, Users,
 	Plus, Pencil, Trash2, Send, ShieldHalf, Check, X, Clock
@@ -53,12 +53,22 @@ export default function Discord() {
 	const [loadingStruct, setLoadingStruct] = useState(false);
 	const [err, setErr] = useState<string | null>(null);
 	const [modal, setModal] = useState<ModalSpec | null>(null);
+	const [proposing, setProposing] = useState(false);
+	// Approvals whose decision is in flight. Doubles as the double-click guard
+	// and as the marker the 10 s poll must not overwrite.
+	const decidingRef = useRef<Set<string>>(new Set());
 
 	const refresh = useCallback(async () => {
 		const [s, g, a] = await Promise.allSettled([discordStatus(), listGuilds(), listDiscordApprovals()]);
 		setStatus(s.status === 'fulfilled' ? s.value : STOPPED);
 		setGuilds(g.status === 'fulfilled' ? g.value : []);
-		setApprovals(a.status === 'fulfilled' ? a.value : []);
+		setApprovals(
+			a.status === 'fulfilled'
+				? a.value.map((item) =>
+						decidingRef.current.has(item.id) ? { ...item, status: 'executing' as const } : item
+					)
+				: []
+		);
 	}, []);
 
 	useEffect(() => {
@@ -108,23 +118,39 @@ export default function Discord() {
 	async function propose(action: DiscordAction, params: Record<string, unknown>, target?: string | null) {
 		if (!selected) return;
 		setErr(null);
+		setProposing(true);
 		try {
 			await proposeDiscordWrite({ action, guild: selected, target: target ?? null, params });
 			setModal(null);
 			await refresh();
 		} catch {
 			setErr('Could not propose that action — is the gateway running?');
+		} finally {
+			setProposing(false);
 		}
 	}
 
+	// approveDiscordWrite runs a real write against the live Discord API — the
+	// slowest call in the cockpit. Paint 'executing' immediately (the same shape
+	// as AgentSurfaceProvider.decide), drop the row on success, and re-read from
+	// authority on failure. The 10 s poll would otherwise erase any local marker.
 	async function decide(id: string, approve: boolean) {
+		if (decidingRef.current.has(id)) return;
+		decidingRef.current.add(id);
 		setErr(null);
+		setApprovals((prior) =>
+			prior.map((item) => (item.id === id ? { ...item, status: 'executing' } : item))
+		);
 		try {
 			if (approve) await approveDiscordWrite(id);
 			else await rejectDiscordWrite(id);
+			setApprovals((prior) => prior.filter((item) => item.id !== id));
 			await Promise.all([refresh(), selected ? loadStructure(selected) : Promise.resolve()]);
 		} catch {
 			setErr('Could not record that decision — is the gateway running?');
+			await refresh();
+		} finally {
+			decidingRef.current.delete(id);
 		}
 	}
 
@@ -157,7 +183,13 @@ export default function Discord() {
 			)}
 
 			{modal && structure && (
-				<WriteModal spec={modal} roles={structure.roles} onClose={() => setModal(null)} onPropose={propose} />
+				<WriteModal
+					spec={modal}
+					roles={structure.roles}
+					proposing={proposing}
+					onClose={() => setModal(null)}
+					onPropose={propose}
+				/>
 			)}
 		</Page>
 	);
@@ -226,10 +258,24 @@ function ApprovalsPanel({ approvals, onDecide }: { approvals: DiscordApproval[];
 								{a.action} · {a.status}
 							</div>
 						</div>
-						{a.status === 'pending' && (
+						{(a.status === 'pending' || a.status === 'executing') && (
 							<div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-								<IconBtn tone="var(--atlas-cyan)" title="Approve" onClick={() => onDecide(a.id, true)}><Check size={13} /></IconBtn>
-								<IconBtn tone="var(--l2-error)" title="Reject" onClick={() => onDecide(a.id, false)}><X size={13} /></IconBtn>
+								<IconBtn
+									tone="var(--atlas-cyan)"
+									title={a.status === 'executing' ? 'Executing…' : 'Approve'}
+									disabled={a.status === 'executing'}
+									onClick={() => onDecide(a.id, true)}
+								>
+									<Check size={13} />
+								</IconBtn>
+								<IconBtn
+									tone="var(--l2-error)"
+									title={a.status === 'executing' ? 'Executing…' : 'Reject'}
+									disabled={a.status === 'executing'}
+									onClick={() => onDecide(a.id, false)}
+								>
+									<X size={13} />
+								</IconBtn>
 							</div>
 						)}
 					</div>
@@ -285,14 +331,21 @@ function channelIcon(type: string) {
 	return <Hash size={13} color={c} />;
 }
 
-function IconBtn({ children, tone, title, onClick }: { children: React.ReactNode; tone: string; title: string; onClick: () => void }) {
+function IconBtn({ children, tone, title, onClick, disabled }: {
+	children: React.ReactNode; tone: string; title: string; onClick: () => void; disabled?: boolean;
+}) {
 	return (
 		<button
+			type="button"
 			title={title}
+			aria-label={title}
 			onClick={onClick}
+			disabled={disabled}
+			aria-disabled={disabled}
 			style={{
 				display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26,
-				borderRadius: 2, border: '1px solid var(--l2-hairline)', background: 'transparent', color: tone, cursor: 'pointer'
+				borderRadius: 2, border: '1px solid var(--l2-hairline)', background: 'transparent', color: tone,
+				cursor: disabled ? 'wait' : 'pointer', opacity: disabled ? 0.45 : 1
 			}}
 		>
 			{children}
@@ -417,9 +470,10 @@ const LABEL = { fontFamily: 'var(--l2-font-mono)', fontSize: 9.5, letterSpacing:
 const ROLE_PERMS = ['administrator', 'manage_channels', 'manage_roles', 'manage_messages', 'kick_members', 'ban_members'];
 const OVERWRITE_PERMS = ['view_channel', 'send_messages', 'manage_messages', 'connect', 'speak'];
 
-function WriteModal({ spec, roles, onClose, onPropose }: {
+function WriteModal({ spec, roles, proposing, onClose, onPropose }: {
 	spec: ModalSpec;
 	roles: DiscordRole[];
+	proposing: boolean;
 	onClose: () => void;
 	onPropose: (action: DiscordAction, params: Record<string, unknown>, target?: string | null) => void;
 }) {
@@ -428,6 +482,7 @@ function WriteModal({ spec, roles, onClose, onPropose }: {
 	const [perms, setPerms] = useState<Record<string, boolean>>({});
 	const [overwrite, setOverwrite] = useState<Record<string, 'allow' | 'deny' | ''>>({});
 	const [roleId, setRoleId] = useState<string>(roles[0]?.id ?? '');
+	const [fieldErr, setFieldErr] = useState<string | null>(null);
 	const set = (k: string, v: string) => setF((p) => ({ ...p, [k]: v }));
 
 	const title: Record<ModalSpec['kind'], string> = {
@@ -436,12 +491,37 @@ function WriteModal({ spec, roles, onClose, onPropose }: {
 		create_role: 'New role', edit_role: 'Edit role', delete_role: 'Delete role'
 	};
 
-	function submit() {
+	/** Required-field gate per kind — an empty name used to propose `{ name: '' }`. */
+	function validate(): string | null {
 		switch (spec.kind) {
 			case 'create_channel':
-				return onPropose('create_channel', { name: f.name, type: f.type || 'text', topic: f.topic || '' });
+				return (f.name || '').trim() ? null : 'A channel name is required.';
 			case 'edit_channel':
-				return onPropose('edit_channel', { name: f.name || spec.ch.name, topic: f.topic ?? '' }, spec.ch.id);
+				return (f.name ?? spec.ch.name).trim() ? null : 'A channel name is required.';
+			case 'create_role':
+				return (f.name || '').trim() ? null : 'A role name is required.';
+			case 'edit_role':
+				return (f.name ?? spec.role.name).trim() ? null : 'A role name is required.';
+			case 'send_message':
+				return (f.title || '').trim() || (f.body || '').trim()
+					? null
+					: 'An embed title or body is required.';
+			case 'permissions':
+				return roleId ? null : 'Select a role to scope the overwrite.';
+			default:
+				return null;
+		}
+	}
+
+	function submit() {
+		const invalid = validate();
+		setFieldErr(invalid);
+		if (invalid) return;
+		switch (spec.kind) {
+			case 'create_channel':
+				return onPropose('create_channel', { name: f.name.trim(), type: f.type || 'text', topic: f.topic || '' });
+			case 'edit_channel':
+				return onPropose('edit_channel', { name: (f.name ?? spec.ch.name).trim(), topic: f.topic ?? '' }, spec.ch.id);
 			case 'delete_channel':
 				return onPropose('delete_channel', {}, spec.ch.id);
 			case 'send_message':
@@ -452,9 +532,9 @@ function WriteModal({ spec, roles, onClose, onPropose }: {
 				return onPropose('set_permissions', { role_id: roleId, allow, deny }, spec.ch.id);
 			}
 			case 'create_role':
-				return onPropose('create_role', { name: f.name, color_hex: f.color || '', permissions: perms });
+				return onPropose('create_role', { name: f.name.trim(), color_hex: f.color || '', permissions: perms });
 			case 'edit_role':
-				return onPropose('edit_role', { name: f.name || spec.role.name, color_hex: f.color ?? '' }, spec.role.id);
+				return onPropose('edit_role', { name: (f.name ?? spec.role.name).trim(), color_hex: f.color ?? '' }, spec.role.id);
 			case 'delete_role':
 				return onPropose('delete_role', {}, spec.role.id);
 		}
@@ -560,12 +640,18 @@ function WriteModal({ spec, roles, onClose, onPropose }: {
 					)}
 				</div>
 
+				{fieldErr && (
+					<div role="alert" style={{ padding: '0 20px 4px', color: 'var(--l2-error)', fontFamily: 'var(--l2-font-mono)', fontSize: 11, letterSpacing: '0.06em' }}>
+						{fieldErr}
+					</div>
+				)}
+
 				<footer style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '14px 20px', borderTop: '1px solid var(--l2-hairline)' }}>
-					<button onClick={onClose} style={{ padding: '8px 14px', borderRadius: 2, border: '1px solid var(--l2-hairline)', background: 'transparent', color: 'var(--l2-fg-2)', fontFamily: 'var(--l2-font-mono)', fontSize: 11, letterSpacing: '0.12em', cursor: 'pointer' }}>
+					<button type="button" onClick={onClose} disabled={proposing} style={{ padding: '8px 14px', borderRadius: 2, border: '1px solid var(--l2-hairline)', background: 'transparent', color: 'var(--l2-fg-2)', fontFamily: 'var(--l2-font-mono)', fontSize: 11, letterSpacing: '0.12em', cursor: proposing ? 'wait' : 'pointer', opacity: proposing ? 0.5 : 1 }}>
 						CANCEL
 					</button>
-					<button onClick={submit} style={{ padding: '8px 16px', borderRadius: 2, border: `1px solid ${isDelete ? 'var(--l2-error)' : 'var(--atlas-cyan)'}`, background: 'transparent', color: isDelete ? 'var(--l2-error)' : 'var(--atlas-cyan)', fontFamily: 'var(--l2-font-mono)', fontSize: 11, letterSpacing: '0.12em', cursor: 'pointer' }}>
-						PROPOSE
+					<button type="button" onClick={submit} disabled={proposing} aria-disabled={proposing} style={{ padding: '8px 16px', borderRadius: 2, border: `1px solid ${isDelete ? 'var(--l2-error)' : 'var(--atlas-cyan)'}`, background: 'transparent', color: isDelete ? 'var(--l2-error)' : 'var(--atlas-cyan)', fontFamily: 'var(--l2-font-mono)', fontSize: 11, letterSpacing: '0.12em', cursor: proposing ? 'wait' : 'pointer', opacity: proposing ? 0.5 : 1 }}>
+						{proposing ? 'PROPOSING…' : 'PROPOSE'}
 					</button>
 				</footer>
 			</div>

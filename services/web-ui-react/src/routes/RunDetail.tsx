@@ -33,6 +33,10 @@ export default function RunDetail() {
 	const [confirmCancel, setConfirmCancel] = useState(false);
 	const [cancelError, setCancelError] = useState<string | null>(null);
 	const [exportError, setExportError] = useState<string | null>(null);
+	const [cancelling, setCancelling] = useState(false);
+	// null = idle; a number = the export's current page, so the button can show
+	// progress instead of freezing for seconds on a long run.
+	const [exportPage, setExportPage] = useState<number | null>(null);
 
 	const stream = useRunStream(id, run);
 	const active = isActive(stream.status);
@@ -163,19 +167,23 @@ export default function RunDetail() {
 	}, [run, stream.finishedAt, nowTick]);
 
 	async function doCancel() {
-		if (!run) return;
+		if (!run || cancelling) return;
+		setCancelling(true);
 		setCancelError(null);
 		try {
 			await cancelRun(run.mission_id);
 			setConfirmCancel(false);
 		} catch (e) {
 			setCancelError(`CANCEL FAILED — ${e instanceof Error ? e.message : String(e)}`);
+		} finally {
+			setCancelling(false);
 		}
 	}
 
 	async function exportJsonl() {
-		if (!run) return;
+		if (!run || exportPage !== null) return;
 		setExportError(null);
+		setExportPage(0);
 		try {
 			let cursor: number | undefined;
 			let all: typeof stream.events = [];
@@ -186,6 +194,7 @@ export default function RunDetail() {
 					truncated = true;
 					break;
 				}
+				setExportPage(i + 1);
 				const res = await getRunEvents(run.id, cursor, 1000);
 				all = [...all, ...res.events];
 				if (!res.next_cursor || res.events.length === 0) break;
@@ -205,6 +214,8 @@ export default function RunDetail() {
 			URL.revokeObjectURL(url);
 		} catch (e) {
 			setExportError(`EXPORT FAILED — ${e instanceof Error ? e.message : String(e)}`);
+		} finally {
+			setExportPage(null);
 		}
 	}
 
@@ -221,8 +232,12 @@ export default function RunDetail() {
 						</ActionBtn>
 					)}
 					{!active && stream.status && (
-						<ActionBtn icon={<Download size={15} strokeWidth={1.5} />} onClick={exportJsonl}>
-							Export JSONL
+						<ActionBtn
+							icon={<Download size={15} strokeWidth={1.5} />}
+							onClick={exportJsonl}
+							disabled={exportPage !== null}
+						>
+							{exportPage !== null ? `Exporting… (${exportPage})` : 'Export JSONL'}
 						</ActionBtn>
 					)}
 				</>
@@ -263,8 +278,12 @@ export default function RunDetail() {
 						<p style={{ margin: '0 0 10px', fontFamily: 'var(--l2-font-mono)', fontSize: 12, color: 'var(--l2-error)' }}>{cancelError}</p>
 					)}
 					<div style={{ display: 'flex', gap: 10 }}>
-						<ActionBtn danger onClick={doCancel}>Confirm cancel</ActionBtn>
-						<ActionBtn onClick={() => { setConfirmCancel(false); setCancelError(null); }}>Keep run</ActionBtn>
+						<ActionBtn danger onClick={doCancel} disabled={cancelling}>
+							{cancelling ? 'Cancelling…' : 'Confirm cancel'}
+						</ActionBtn>
+						<ActionBtn onClick={() => { setConfirmCancel(false); setCancelError(null); }} disabled={cancelling}>
+							Keep run
+						</ActionBtn>
 					</div>
 				</GlassPanel>
 			)}
@@ -403,12 +422,15 @@ export default function RunDetail() {
 	);
 }
 
-function ActionBtn({ children, icon, onClick, danger }: { children: React.ReactNode; icon?: React.ReactNode; onClick?: () => void; danger?: boolean }) {
+function ActionBtn({ children, icon, onClick, danger, disabled }: { children: React.ReactNode; icon?: React.ReactNode; onClick?: () => void; danger?: boolean; disabled?: boolean }) {
 	const color = danger ? 'var(--l2-error)' : 'var(--l2-fg-2)';
 	const border = danger ? 'rgba(255,0,85,0.4)' : 'var(--l2-hairline)';
 	return (
 		<button
+			type="button"
 			onClick={onClick}
+			disabled={disabled}
+			aria-disabled={disabled}
 			style={{
 				display: 'inline-flex',
 				alignItems: 'center',
@@ -422,7 +444,8 @@ function ActionBtn({ children, icon, onClick, danger }: { children: React.ReactN
 				fontSize: 11,
 				letterSpacing: '0.14em',
 				textTransform: 'uppercase',
-				cursor: 'pointer'
+				cursor: disabled ? 'wait' : 'pointer',
+				opacity: disabled ? 0.5 : 1
 			}}
 		>
 			{icon}

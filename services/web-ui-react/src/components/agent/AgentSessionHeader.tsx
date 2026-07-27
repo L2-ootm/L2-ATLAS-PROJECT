@@ -39,20 +39,45 @@ export default function AgentSessionHeader() {
 				>
 					PERMISSION QUEUE · {surface.approvals.length}
 				</button>
-				{session.state === 'suspended' ? (
-					<button type="button" className="agent-icon-control" onClick={() => void surface.resume()}>
+				{surface.error && (
+					<span
+						role="alert"
+						title={surface.error}
+						style={{
+							fontFamily: 'var(--l2-font-mono)',
+							fontSize: 10,
+							letterSpacing: '0.1em',
+							color: 'var(--l2-error)',
+							maxWidth: 260,
+							overflow: 'hidden',
+							textOverflow: 'ellipsis',
+							whiteSpace: 'nowrap'
+						}}
+					>
+						{surface.error}
+					</span>
+				)}
+				{session.state === 'suspended' || session.state === 'resuming' ? (
+					<button
+						type="button"
+						className="agent-icon-control"
+						onClick={() => void surface.resume()}
+						disabled={surface.busy || session.state === 'resuming'}
+						aria-disabled={surface.busy || session.state === 'resuming'}
+					>
 						<Pause size={14} aria-hidden="true" />
-						RESUME
+						{session.state === 'resuming' ? 'RESUMING…' : 'RESUME'}
 					</button>
 				) : (
 					<button
 						type="button"
 						className="agent-icon-control agent-icon-control--danger"
 						onClick={() => void surface.cancel()}
-						disabled={session.state === 'cancelling'}
+						disabled={surface.busy || session.state === 'cancelling'}
+						aria-disabled={surface.busy || session.state === 'cancelling'}
 					>
 						<Square size={13} aria-hidden="true" />
-						CANCEL
+						{session.state === 'cancelling' ? 'CANCELLING…' : 'CANCEL'}
 					</button>
 				)}
 			</div>
