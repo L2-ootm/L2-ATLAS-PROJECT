@@ -198,7 +198,35 @@ function listVersions(home) {
  * imported, to avoid a require cycle: launcher.js requires commands.js for
  * readCurrent). */
 function _candidateRuntimeEntrypoints(platform = process.platform) {
-	return platform === 'win32' ? ['bin/atlas.exe', 'atlas.exe'] : ['bin/atlas', 'atlas'];
+	// The `.js` candidates are not optional padding: every bundle the Windows
+	// builder currently produces declares `bin/atlas.js` as its entrypoint
+	// (scripts/ci/build-windows-runtime.ps1 -> runtime.json), and _spawnRuntime
+	// already runs a `.js` entrypoint under this process's Node. Probing only
+	// the native binaries made this fallback unable to resolve a real release,
+	// so a version whose recorded entrypoint was absent silently skipped its
+	// migrations. Same candidate set install.ps1's Test-VersionUsable and
+	// install.sh's version_usable probe.
+	return platform === 'win32'
+		? ['bin/atlas.exe', 'atlas.exe', 'bin/atlas.js', 'atlas.js']
+		: ['bin/atlas', 'atlas', 'bin/atlas.js', 'atlas.js'];
+}
+
+/** Entrypoint a staged bundle declares for itself, if it declares one.
+ *
+ * `--from` has no `--entrypoint` flag, so without this the install/update paths
+ * passed `undefined` — which the commitVersionState merge treats as an explicit
+ * CLEAR — and wiped the recorded entrypoint of a working install. The bundle
+ * already states the answer in runtime.json; reading it is strictly better than
+ * guessing or discarding. */
+function _bundleEntrypoint(source) {
+	try {
+		const runtimeJson = path.join(source, 'runtime.json');
+		if (!fs.existsSync(runtimeJson)) return undefined;
+		const entrypoint = JSON.parse(fs.readFileSync(runtimeJson, 'utf8')).entrypoint;
+		return typeof entrypoint === 'string' && entrypoint ? entrypoint : undefined;
+	} catch {
+		return undefined; // malformed runtime.json is not a reason to fail an install
+	}
 }
 
 /** Resolve the runtime entrypoint inside a specific installed version dir
@@ -245,7 +273,16 @@ function _spawnRuntime(entrypoint, args, home) {
 function runMigrations(home, version) {
 	const entrypoint = _resolveRuntimeEntrypointFor(home, version);
 	if (!entrypoint) {
-		return { ok: true, applied: [], note: 'runtime entrypoint not found, skipping migrations' };
+		// NOT ok: the schema was not migrated, so the runtime that just got
+		// installed may not be able to open the database. This returned ok:true,
+		// which meant `atlas update` printed a clean success over a version whose
+		// migrations never ran — the same "report success on a step that did not
+		// happen" defect removed from install.ps1's migration runner.
+		return {
+			ok: false,
+			applied: [],
+			error: `runtime entrypoint not found for ${version}; migrations did not run — run 'atlas db init' manually`
+		};
 	}
 
 	const result = _spawnRuntime(entrypoint, ['db', 'init'], home);
@@ -300,10 +337,14 @@ function install(home, opts) {
 		}
 	});
 
+	const entrypoint = opts.entrypoint || _bundleEntrypoint(source);
 	commitVersionState(home, version, {
 		installMethod: 'local-staged',
 		lastUpdateCheck: new Date().toISOString(),
-		runtimeEntrypoint: opts.entrypoint || undefined
+		// Omit (not `undefined`) when neither the flag nor the bundle names
+		// one, so a previously recorded entrypoint is preserved rather than
+		// cleared by the merge.
+		...(entrypoint ? { runtimeEntrypoint: entrypoint } : {})
 	});
 
 	const migrations = runMigrations(home, version);
@@ -341,11 +382,15 @@ function update(home, opts) {
 		}
 	});
 
+	const entrypoint = opts.entrypoint || _bundleEntrypoint(source);
 	commitVersionState(home, opts.version, {
 		installMethod: 'local-staged',
 		lastUpdateCheck: new Date().toISOString(),
 		previousVersion: previous || undefined,
-		runtimeEntrypoint: opts.entrypoint || undefined
+		// Omit (not `undefined`) when neither the flag nor the bundle names
+		// one, so a previously recorded entrypoint is preserved rather than
+		// cleared by the merge.
+		...(entrypoint ? { runtimeEntrypoint: entrypoint } : {})
 	});
 
 	const migrations = runMigrations(home, opts.version);
@@ -481,16 +526,21 @@ async function updateFromRelease(home, opts) {
 
 /**
  * Verify a version directory has a valid manifest and all checksums match.
- * Returns { ok, reason } where reason is a human-readable failure description.
+ * Returns { ok, reason, code } where reason is a human-readable description and
+ * `code` is a stable discriminator for callers that must act differently per
+ * failure kind — notably repairVersions, which treats an ABSENT manifest
+ * (a legacy install predating manifests, still perfectly runnable) very
+ * differently from checksums that actively disagree (real corruption).
+ * Matching on the prose would have coupled a deletion decision to wording.
  */
 function verifyVersionIntegrity(home, version) {
 	const dest = versionDir(home, version);
 	if (!fs.existsSync(dest)) {
-		return { ok: false, reason: `version directory missing: ${dest}` };
+		return { ok: false, code: 'missing-dir', reason: `version directory missing: ${dest}` };
 	}
 	const manifestPath = manifestFile(dest);
 	if (!fs.existsSync(manifestPath)) {
-		return { ok: false, reason: `manifest missing for ${version}` };
+		return { ok: false, code: 'manifest-missing', reason: `manifest missing for ${version}` };
 	}
 	const manifest = readManifest(manifestPath);
 	const result = verifyManifest(dest, manifest);
@@ -499,9 +549,9 @@ function verifyVersionIntegrity(home, version) {
 			result.mismatches.length ? `mismatched: ${result.mismatches.join(', ')}` : '',
 			result.missing.length ? `missing: ${result.missing.join(', ')}` : ''
 		].filter(Boolean).join('; ');
-		return { ok: false, reason: `checksum verification failed — ${details}` };
+		return { ok: false, code: 'checksum-failed', reason: `checksum verification failed — ${details}` };
 	}
-	return { ok: true, reason: null };
+	return { ok: true, code: null, reason: null };
 }
 
 /**
@@ -807,32 +857,58 @@ function pruneVersions(home, opts = {}) {
  *     durable ever names one (see stageVersionAtomically), so these are always
  *     safe to reclaim, and pruneVersions can never see them because
  *     listVersions filters them out.
- *   - fails verifyVersionIntegrity — a truncated/half-extracted release. It
- *     cannot serve as a rollback target (rollback pre-verifies with this exact
- *     check and would refuse it) and, when still referenced, it is the one
- *     thing that blocks re-materializing over it. Removing it is what actually
- *     unblocks the re-run the blanket wipe was reaching for.
  *   - orphaned per isOrphanedVersionDir — no install.json field names it, so
  *     nothing ever attested to it being a completed install.
+ *   - checksum verification actively FAILS while the directory is not the
+ *     active version — a truncated or half-extracted release that rollback
+ *     would refuse anyway (it pre-verifies with this same check).
+ *
+ * Two rules exist because the obvious "remove anything that fails
+ * verifyVersionIntegrity" is wrong in both directions, and a dry run against a
+ * real install proved it by proposing to delete every version present:
+ *
+ *   - A MISSING manifest is not corruption. Versions installed before manifests
+ *     existed, and every version materialized by the GitHub-release fallback,
+ *     have no manifest and are perfectly runnable. Deleting them is exactly the
+ *     "rollback target vanishes" regression this function was written to stop,
+ *     just with a narrower blast radius. Unverifiable is not the same as bad:
+ *     such a directory is kept unless it is also unreferenced.
+ *   - The ACTIVE version is never removed, whatever its integrity. Stranding an
+ *     operator with zero runtimes is strictly worse than the wedge this is
+ *     reaching to prevent, and it does not even buy that: installBundledPlatform
+ *     only refuses when re-materializing the SAME version, so a normal upgrade
+ *     to a new version never collides. Drift in the active release is reported
+ *     through `warnings` for `atlas doctor` and the installers to surface.
  *
  * Everything else — current, previousVersion, and every rollbackHistory target
- * that still verifies — is retained.
+ * — is retained.
  */
 function repairVersions(home, opts = {}) {
 	const dir = versionsDir(home);
 	const removed = [];
 	const kept = [];
-	if (!fs.existsSync(dir)) return { dryRun: !!opts.dryRun, kept, removed };
+	const warnings = [];
+	if (!fs.existsSync(dir)) return { dryRun: !!opts.dryRun, kept, removed, warnings };
 
+	const active = readCurrent(home);
 	const entries = fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory());
 	for (const entry of entries) {
 		let reason = null;
 		if (isStagingDirName(entry.name)) {
 			reason = 'leaked staging directory';
+		} else if (isOrphanedVersionDir(home, entry.name)) {
+			reason = 'unreferenced by install.json';
 		} else {
 			const integrity = verifyVersionIntegrity(home, entry.name);
-			if (!integrity.ok) reason = integrity.reason;
-			else if (isOrphanedVersionDir(home, entry.name)) reason = 'unreferenced by install.json';
+			if (integrity.code === 'checksum-failed') {
+				if (entry.name === active) {
+					warnings.push(`${entry.name} (active) ${integrity.reason} — kept; reinstall to restore it`);
+				} else {
+					reason = integrity.reason;
+				}
+			} else if (integrity.code === 'manifest-missing') {
+				warnings.push(`${entry.name} has no manifest and cannot be verified — kept (legacy install)`);
+			}
 		}
 		if (!reason) {
 			kept.push(entry.name);
@@ -841,7 +917,12 @@ function repairVersions(home, opts = {}) {
 		if (!opts.dryRun) fs.rmSync(path.join(dir, entry.name), { recursive: true, force: true });
 		removed.push({ name: entry.name, reason });
 	}
-	return { dryRun: !!opts.dryRun, kept: kept.sort(), removed: removed.sort((a, b) => a.name.localeCompare(b.name)) };
+	return {
+		dryRun: !!opts.dryRun,
+		kept: kept.sort(),
+		removed: removed.sort((a, b) => a.name.localeCompare(b.name)),
+		warnings
+	};
 }
 
 /**

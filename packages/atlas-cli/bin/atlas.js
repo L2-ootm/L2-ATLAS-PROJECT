@@ -223,6 +223,9 @@ async function main() {
 					} else {
 						for (const entry of r.removed) console.log(`${verb}: ${entry.name} — ${entry.reason}`);
 					}
+					// Directories deliberately kept despite not verifying. Silence
+					// here would make a drifted or unverifiable release look clean.
+					for (const w of r.warnings || []) console.error(`warning: ${w}`);
 					break;
 				}
 				const list = cmds.versions(home);

@@ -664,16 +664,52 @@ test('migration failure is reported but does not block install', () => {
 	assert.equal(cmds.readCurrent(home), '0.1.0');
 });
 
-test('install skips migrations when no runtime entrypoint is bundled', () => {
+test('a bundle with no runtime entrypoint reports migrations as FAILED, not skipped', () => {
 	const home = tempDir('home');
 	const bundle = tempDir('bundle');
 	stageBundle(bundle, { 'README.txt': 'no runtime here' });
 
 	const result = cmds.install(home, { from: bundle, version: '0.1.0' });
 
-	assert.equal(result.migrations.ok, true);
+	// This used to return ok:true with a note, so `atlas update` printed a clean
+	// success over a version whose schema was never migrated. Not running is a
+	// failure to report, not an outcome to congratulate.
+	assert.equal(result.migrations.ok, false);
 	assert.deepEqual(result.migrations.applied, []);
-	assert.match(result.migrations.note, /not found/);
+	assert.match(result.migrations.error, /migrations did not run/);
+});
+
+test('install --from adopts the entrypoint the bundle declares in runtime.json', () => {
+	const home = tempDir('home');
+	const bundle = tempDir('bundle');
+	// A real Windows release: a .js entrypoint declared in runtime.json, which
+	// the win32 candidate list historically did not probe for.
+	stageBundle(bundle, {
+		'runtime.json': JSON.stringify({ version: '0.1.0', platform: 'win32-x64', entrypoint: 'bin/atlas.js' }),
+		'bin/atlas.js': 'process.exit(0);'
+	});
+
+	cmds.install(home, { from: bundle, version: '0.1.0' });
+	assert.equal(readInstallState(home).runtimeEntrypoint, 'bin/atlas.js');
+});
+
+test('update --from preserves a recorded entrypoint when the bundle declares none', () => {
+	const home = tempDir('home');
+	const bundleV1 = tempDir('bundle-v1');
+	const bundleV2 = tempDir('bundle-v2');
+	stageBundle(bundleV1, {
+		'runtime.json': JSON.stringify({ entrypoint: 'bin/atlas.js' }),
+		'bin/atlas.js': 'process.exit(0);'
+	});
+	stageBundle(bundleV2, { 'bin/atlas.js': 'process.exit(0);' });
+
+	cmds.install(home, { from: bundleV1, version: '0.1.0' });
+	cmds.update(home, { from: bundleV2, version: '0.2.0' });
+
+	// `runtimeEntrypoint: opts.entrypoint || undefined` used to CLEAR this, and
+	// the fallback candidate list could not rediscover a .js entrypoint — so the
+	// next migration run silently found nothing.
+	assert.equal(readInstallState(home).runtimeEntrypoint, 'bin/atlas.js');
 });
 
 test('update and rollback both run migrations against their respective target versions', () => {
@@ -1399,5 +1435,36 @@ test('versions repair reclaims junk but keeps every referenced, verifiable relea
 	assert.deepEqual(r.kept, ['0.1.0', '0.2.0'], 'current AND rollback target are both retained');
 	// The regression the blanket wipe caused: rollback must still work after repair.
 	cmds.rollback(home, {});
+	assert.equal(cmds.readCurrent(home), '0.1.0');
+});
+
+test('versions repair never strands the operator: keeps the active release and legacy installs', () => {
+	// Reproduces the real machine state that exposed this: install.json names a
+	// current version whose files have drifted from its manifest, and the
+	// rollback target predates manifests entirely. The naive "remove anything
+	// that fails verifyVersionIntegrity" proposed deleting BOTH — every runtime
+	// on the box.
+	const home = tempDir('home');
+	const bundleV1 = tempDir('bundle-v1');
+	const bundleV2 = tempDir('bundle-v2');
+	stageBundle(bundleV1, { 'bin/atlas-gateway': 'v1' });
+	stageBundle(bundleV2, { 'bin/atlas-gateway': 'v2' });
+	cmds.install(home, { from: bundleV1, version: '0.1.0' });
+	cmds.update(home, { from: bundleV2, version: '0.2.0' });
+
+	// Legacy rollback target: no manifest at all.
+	fs.rmSync(path.join(home, 'versions', '0.1.0', 'manifest.json'), { force: true });
+	// Active release: drifted from its recorded checksums.
+	fs.writeFileSync(path.join(home, 'versions', '0.2.0', 'bin', 'atlas-gateway'), 'hot-patched', 'utf8');
+
+	const r = cmds.repairVersions(home, {});
+	assert.deepEqual(r.kept, ['0.1.0', '0.2.0'], 'neither the active release nor the legacy rollback target is deleted');
+	assert.deepEqual(r.removed, []);
+	assert.equal(r.warnings.length, 2, 'both conditions are reported rather than silently tolerated');
+	assert.ok(r.warnings.some((w) => w.includes('0.2.0') && w.includes('active')));
+	assert.ok(r.warnings.some((w) => w.includes('0.1.0') && w.includes('no manifest')));
+
+	// The point of keeping them: rollback still works.
+	cmds.rollback(home, { noVerify: true });
 	assert.equal(cmds.readCurrent(home), '0.1.0');
 });
