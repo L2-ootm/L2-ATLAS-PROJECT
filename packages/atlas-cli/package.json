@@ -1,6 +1,6 @@
 {
 	"name": "@systemsl2/atlas",
-	"version": "0.1.1",
+	"version": "0.1.3",
 	"private": false,
 	"description": "Install and operate the complete ATLAS AI cockpit with versioned, verified releases.",
 	"license": "MIT",
