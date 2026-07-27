@@ -418,3 +418,73 @@ def test_failure_pattern_structured_summary_with_no_blockers_uses_outcome(db, lo
     snippets = mr.FailurePatternRetriever().retrieve(db, mr.RouterQuery(mission_id=mid))
     texts = [s.text for s in snippets]
     assert any("harness unavailable" in t for t in texts)
+
+
+# --- assemble_envelope relevance gating ------------------------------------
+#
+# assemble_envelope is the path context_service actually calls; the older
+# assemble() tests above do not exercise the relevance threshold at all, which
+# is how a threshold that rejected every rank-ordered snippet shipped green.
+
+
+class _FixedRetriever:
+    """Emits pre-built snippets so the gate can be tested in isolation."""
+
+    def __init__(self, snippets):
+        self._snippets = snippets
+
+    def retrieve(self, conn, query):  # noqa: ANN001, ARG002
+        return list(self._snippets)
+
+    def section_lines(self, query):  # noqa: ANN001, ARG002
+        return ["## Fixed evidence"]
+
+
+def _snippet(source: str, score: float, relevance=None) -> mr.MemorySnippet:
+    return mr.MemorySnippet(
+        text=f"evidence from {source}",
+        score=score,
+        source=source,
+        approx_tokens=5,
+        relevance=relevance,
+    )
+
+
+def test_envelope_keeps_rank_ordered_snippets_regardless_of_threshold(db):
+    """A negated-index sort key must never be read as a relevance value.
+
+    Five retrievers emit score=-i purely to preserve SQL ordering, so their best
+    possible score is 0.0. Comparing that to a positive relevance threshold
+    rejected all of them and blanked the operator context.
+    """
+    router = mr.MemoryRouter(retrievers=[
+        _FixedRetriever([_snippet("run:1", -0.0), _snippet("run:2", -1.0)])
+    ])
+
+    envelope = router.assemble_envelope(
+        db, mr.RouterQuery(terms=("ship",)), relevance_threshold=0.25
+    )
+
+    assert [item.source_id for item in envelope.selected] == ["run:1", "run:2"]
+    assert envelope.rejected_source_ids == ()
+    assert "evidence from run:1" in envelope.markdown
+
+
+def test_envelope_filters_only_snippets_reporting_real_relevance(db):
+    router = mr.MemoryRouter(retrievers=[
+        _FixedRetriever([
+            _snippet("weak", 100.0, relevance=0.10),
+            _snippet("strong", -5.0, relevance=0.90),
+            _snippet("unscored", -1.0),
+        ])
+    ])
+
+    envelope = router.assemble_envelope(
+        db, mr.RouterQuery(terms=("ship",)), relevance_threshold=0.25
+    )
+
+    sources = [item.source_id for item in envelope.selected]
+    assert "strong" in sources
+    assert "unscored" in sources
+    assert "weak" not in sources
+    assert "weak" in envelope.rejected_source_ids

@@ -866,3 +866,30 @@ def test_harden_compaction_tolerates_compression_disabled() -> None:
         context_compressor = None
 
     _harden_compaction(_Agent())  # must not raise
+
+
+# --- native tool failure reporting -----------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("result", "expected"),
+    [
+        ('{"ok": false, "error": "actor not found"}', True),
+        ('{"ok": true, "actor_id": "a1"}', False),
+        ('{"error": "boom"}', True),
+        ('{"error": null}', False),
+        ({"ok": False}, True),
+        ({"ok": True}, False),
+        # Free-text tool output must never be sniffed for the word "error":
+        # a grep hit, a log tail or a passing test report would be misreported.
+        ("Found 3 matches for 'error' in server.log", False),
+        ("", False),
+        (None, False),
+        ("not json at all", False),
+        (b'{"ok": false}', True),
+    ],
+)
+def test_tool_result_failed_is_structural(result, expected) -> None:
+    from atlas_runtime.agents.native import _tool_result_failed
+
+    assert _tool_result_failed(result) is expected

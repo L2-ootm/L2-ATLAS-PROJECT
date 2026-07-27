@@ -193,11 +193,15 @@ def assemble_context(
         enable_skills=ctx_cfg.enable_skills,
         enable_brain=ctx_cfg.enable_brain,
     )
+    # No explicit threshold: it applies only to retrievers that report a real
+    # normalised relevance (MemorySnippet.relevance). Passing a positive value
+    # here once compared it against every retriever's private sort key and
+    # rejected all rank-ordered evidence, so runs executed with no recent-run
+    # history, no observations and no wiki knowledge.
     retrieval = router.assemble_envelope(
         conn,
         query,
         token_budget=ctx_cfg.token_budget,
-        relevance_threshold=0.25,
     )
     if retrieval.markdown:
         lines.extend(retrieval.markdown.rstrip().splitlines())

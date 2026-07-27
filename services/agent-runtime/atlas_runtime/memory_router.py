@@ -87,12 +87,25 @@ def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
 
 @dataclass(frozen=True)
 class MemorySnippet:
-    """One rendered brief line with its ranking, budget cost, and provenance."""
+    """One rendered brief line with its ranking, budget cost, and provenance.
+
+    `score` is a SORT KEY, not a relevance value, and its scale is private to the
+    retriever that produced it: most emit a negated list index (`-i`) purely to
+    preserve SQL ordering, so their best possible score is 0.0, while others emit
+    a count, an overlap size, or a confidence. Comparing `score` against a shared
+    relevance threshold is therefore meaningless — doing so silently rejected
+    every rank-ordered snippet and blanked the operator context entirely.
+
+    A retriever that can produce a genuine, normalised 0..1 relevance sets
+    `relevance`; only those snippets are threshold-filtered. Leaving it None
+    means "rank-ordered — order and the token budget already decide inclusion".
+    """
 
     text: str
     score: float
     source: str
     approx_tokens: int
+    relevance: float | None = None
 
 
 @dataclass(frozen=True)
@@ -784,7 +797,12 @@ class MemoryRouter:
         for retriever in self.retrievers:
             accepted: list[tuple[MemorySnippet, RetrievedEvidence]] = []
             for snippet in retriever.retrieve(conn, query):
-                if snippet.score < relevance_threshold:
+                # Only snippets carrying a genuine normalised relevance are
+                # threshold-filtered. Filtering on `score` rejected every
+                # rank-ordered retriever (best score 0.0 < any positive
+                # threshold), which emptied recent runs, observations and wiki
+                # knowledge out of every run's context. See MemorySnippet.
+                if snippet.relevance is not None and snippet.relevance < relevance_threshold:
                     rejected.append(snippet.source)
                     continue
                 if used + snippet.approx_tokens > token_budget:

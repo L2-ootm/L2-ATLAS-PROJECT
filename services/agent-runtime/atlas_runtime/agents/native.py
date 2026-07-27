@@ -617,13 +617,22 @@ class NativeAtlasAgent(AgentRuntime):
                     text_source: Any = result
                     if isinstance(result, str) and isinstance(args, dict):
                         text_source = storage_compressor.compress_tool_output(tool_name, args, result)
+                    # Native used to hardcode tool_completed regardless of
+                    # outcome, unlike claude_code.py and codex.py. That blinded
+                    # surface_events (which maps tool_failed -> "error"),
+                    # mis-bucketed run summaries, and starved
+                    # FailurePatternRetriever of the most common failure class —
+                    # so a retried mission repeated the same tool error forever.
+                    failed = _tool_result_failed(result)
                     self._safe_emit(
-                        conn, lock, run_id, event_type="tool_completed",
+                        conn, lock, run_id,
+                        event_type="tool_failed" if failed else "tool_completed",
                         tool_name=tool_name,
                         data={
                             "runtime": "native",
                             "tool": tool_name,
                             "call_id": str(call_id),
+                            "is_error": failed,
                             "text": _json_safe_preview(text_source, 4000),
                         },
                     )
@@ -953,6 +962,38 @@ def _is_model_override(conn: sqlite3.Connection, value: str) -> bool:
         )
     except Exception:  # noqa: BLE001 — registry unavailable → not a model
         return False
+
+
+def _tool_result_failed(result: Any) -> bool:
+    """True when a tool result explicitly declares failure.
+
+    ATLAS bridges return a JSON string shaped `{"ok": bool, ...}`
+    (`actor_bridge._tool_error`, `graph_bridge`), while foundation tools return
+    free text. Detection is therefore structural: parse only what is actually a
+    JSON object and read the declared flag. Substring-matching on "error" was
+    rejected deliberately — it would mark any tool whose successful output
+    merely discusses an error (a grep hit, a log tail, a test report) as failed,
+    which is worse than the under-reporting it replaces.
+    """
+    payload: Any = result
+    if isinstance(payload, (bytes, bytearray)):
+        try:
+            payload = payload.decode("utf-8", errors="replace")
+        except Exception:  # noqa: BLE001 — undecodable is not a declared failure
+            return False
+    if isinstance(payload, str):
+        text = payload.strip()
+        if not text.startswith("{"):
+            return False
+        try:
+            payload = json.loads(text)
+        except (ValueError, TypeError):
+            return False
+    if not isinstance(payload, dict):
+        return False
+    if "ok" in payload:
+        return not bool(payload["ok"])
+    return bool(payload.get("error"))
 
 
 def _contract_system_message(snapshot: Any) -> str:
