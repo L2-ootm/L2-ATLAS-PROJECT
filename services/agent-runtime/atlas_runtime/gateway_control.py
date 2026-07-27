@@ -21,13 +21,29 @@ import sys
 import time
 import urllib.request
 
+from atlas_runtime import config_service, provisioning
 from atlas_runtime.db import MIGRATIONS_DIR
 
 # services/agent-runtime (so the gateway's spawned CLI can import atlas_runtime).
 _AGENT_RUNTIME_DIR = pathlib.Path(__file__).resolve().parents[1]
 
 GATEWAY_URL = os.environ.get("ATLAS_GATEWAY_URL", "http://127.0.0.1:8484")
-PID_FILE = pathlib.Path.home() / ".atlas" / "gateway.pid"
+
+
+def pid_file() -> pathlib.Path:
+    """`<ATLAS home>/gateway.pid`, resolved at CALL time.
+
+    This was `PID_FILE = pathlib.Path.home() / ".atlas" / "gateway.pid"`
+    evaluated at import time, which ignored ATLAS_HOME entirely and froze the
+    answer at the first import. Anything that set ATLAS_HOME afterwards — a
+    test, a spawned subprocess, an operator with state on another volume — still
+    had its PID file written into the real `~/.atlas`, so `atlas gateway stop`
+    looked in one home while `start` had recorded the PID in another.
+
+    Deliberately a function and not a module constant: the whole defect was a
+    path answered once instead of on demand.
+    """
+    return config_service.atlas_home() / "gateway.pid"
 
 
 def gateway_binary() -> str | None:
@@ -88,7 +104,19 @@ def _child_env() -> dict[str, str]:
     env = os.environ.copy()
     root = MIGRATIONS_DIR.parent.parent  # infra/migrations -> infra -> repo root
     env.setdefault("ATLAS_REPO_ROOT", str(root))
-    env.setdefault("ATLAS_CASHFLOW_DB_PATH", str(root / "services" / "cashflow" / "dev.db"))
+    # The cashflow DB default must be the directory the cashflow app actually
+    # runs from, resolved by the SAME resolver the sidecar uses. This used to be
+    # `<root>/services/cashflow/dev.db`, which in a release install is
+    # `versions/<version>/services/cashflow/dev.db` — inside the immutable
+    # release directory. The app never writes there (provisioning mirrors it to
+    # `<ATLAS home>/sidecars/cashflow` precisely so nothing is built inside a
+    # release), so the gateway read an absent or stale file while the data sat
+    # under ATLAS_HOME. It is also the one path that would put live state
+    # somewhere the next update and `atlas versions prune` delete without
+    # warning. `lib/db/index.ts` opens `path.join(process.cwd(), 'dev.db')`,
+    # and cwd is the workspace — so workspace/dev.db is the real file.
+    workspace, _mirrored = provisioning.resolve_workspace(provisioning.cashflow_component())
+    env.setdefault("ATLAS_CASHFLOW_DB_PATH", str(workspace / "dev.db"))
     if "ATLAS_CLI" not in env and " " not in sys.executable:
         env["ATLAS_CLI"] = f"{sys.executable} -m atlas_runtime.cli.main"
         existing = env.get("PYTHONPATH", "")
@@ -158,8 +186,9 @@ def start(poll_seconds: float = 15.0) -> tuple[bool, str]:
         env=_child_env(),
         **kwargs,
     )
-    PID_FILE.parent.mkdir(parents=True, exist_ok=True)
-    PID_FILE.write_text(str(proc.pid))
+    pid_path = pid_file()
+    pid_path.parent.mkdir(parents=True, exist_ok=True)
+    pid_path.write_text(str(proc.pid))
     deadline = time.monotonic() + poll_seconds
     while time.monotonic() < deadline:
         if health_ok():
@@ -204,19 +233,20 @@ def _pid_process_name(pid: int) -> str | None:
 
 def stop() -> tuple[bool, str]:
     """Stop a gateway started by this primitive (via its PID file)."""
-    if not PID_FILE.exists():
+    pid_path = pid_file()
+    if not pid_path.exists():
         return False, "no pid file; gateway not managed here"
     try:
-        pid = int(PID_FILE.read_text().strip())
+        pid = int(pid_path.read_text().strip())
     except (ValueError, OSError):
-        PID_FILE.unlink(missing_ok=True)
+        pid_path.unlink(missing_ok=True)
         return False, "invalid pid file (removed)"
     name = _pid_process_name(pid)
     if name is None:
-        PID_FILE.unlink(missing_ok=True)
+        pid_path.unlink(missing_ok=True)
         return False, f"pid {pid} not running (stale pid file removed)"
     if "atlas-gateway" not in name.lower():
-        PID_FILE.unlink(missing_ok=True)
+        pid_path.unlink(missing_ok=True)
         return False, (
             f"pid {pid} is {name!r}, not atlas-gateway — refusing to kill "
             "(pid reuse; stale pid file removed)"
@@ -227,5 +257,5 @@ def stop() -> tuple[bool, str]:
         else:
             os.kill(pid, 15)
     finally:
-        PID_FILE.unlink(missing_ok=True)
+        pid_path.unlink(missing_ok=True)
     return True, f"stopped (pid {pid})"

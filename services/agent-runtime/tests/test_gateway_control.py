@@ -17,9 +17,15 @@ from atlas_runtime import gateway_control
 
 @pytest.fixture()
 def pid_file(tmp_path, monkeypatch):
-    path = tmp_path / "gateway.pid"
-    monkeypatch.setattr(gateway_control, "PID_FILE", path)
-    return path
+    """Redirect the PID file by pointing ATLAS_HOME at a tmp dir.
+
+    Drives the same env var operators set rather than patching a module
+    attribute, so these tests also prove `pid_file()` honors ATLAS_HOME —
+    the defect that made `start` and `stop` disagree about which home owns
+    the gateway.
+    """
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    return tmp_path / "gateway.pid"
 
 
 def test_stop_without_pid_file(pid_file) -> None:

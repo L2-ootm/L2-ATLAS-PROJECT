@@ -234,7 +234,7 @@ def _doctor_cmd(json_output: bool = typer.Option(False, "--json", help="Emit the
     try:
         from atlas_runtime import gateway_control
 
-        pid_file = gateway_control.PID_FILE
+        pid_file = gateway_control.pid_file()
         pid_alive = False
         pid_info = "no pid file"
         if pid_file.is_file():

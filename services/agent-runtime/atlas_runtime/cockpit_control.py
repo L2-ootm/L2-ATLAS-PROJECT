@@ -23,6 +23,8 @@ import time
 import urllib.parse
 import urllib.request
 
+from atlas_runtime import config_service
+
 # Windows creationflags, with literal fallbacks (values are stable Win32 API
 # constants) so the Windows spawn path stays importable and unit-testable on
 # POSIX, where the subprocess module does not define these attributes.
@@ -37,7 +39,36 @@ _DIST_INDEX = _COCKPIT_DIR / "dist" / "index.html"
 _DIST_SERVER = _COCKPIT_DIR / "scripts" / "serve-dist.mjs"
 
 COCKPIT_URL = os.environ.get("ATLAS_COCKPIT_URL", "http://127.0.0.1:5173")
-PID_FILE = pathlib.Path.home() / ".atlas" / "cockpit.pid"
+
+
+def _is_windows() -> bool:
+    """Windows-branch predicate, deliberately the only reader of `os.name` here.
+
+    Tests exercising the POSIX branch used to patch `os.name` directly, but that
+    is a process-global switch: `pathlib` reads it too, so a patched `os.name`
+    makes `pathlib.Path(...)` construct a PosixPath and raise on Windows. That
+    was harmless only while the PID path was a module constant built at import;
+    once it is resolved per call, the two concerns collide. Routing every OS
+    branch through one predicate lets a test vary the branch it means to vary
+    without changing how paths are constructed everywhere else.
+    """
+    return os.name == "nt"
+
+
+def pid_file() -> pathlib.Path:
+    """`<ATLAS home>/cockpit.pid`, resolved at CALL time.
+
+    Was `PID_FILE = pathlib.Path.home() / ".atlas" / "cockpit.pid"` evaluated at
+    import, which ignored ATLAS_HOME and froze the answer at the first import.
+    Anything that set ATLAS_HOME afterwards — a test, a spawned subprocess, an
+    operator keeping state on another volume — still had its PID written into
+    the real `~/.atlas`, so `stop()` looked in one home while `start()` had
+    recorded the PID in another.
+
+    Deliberately a function and not a module constant: the whole defect was a
+    path answered once instead of on demand.
+    """
+    return config_service.atlas_home() / "cockpit.pid"
 
 
 def _parse_port(url: str) -> int:
@@ -93,10 +124,10 @@ def start(poll_seconds: float = 15.0) -> tuple[bool, str]:
         # Vite and node_modules would add hundreds of megabytes to every release.
         cmd = ["node", str(_DIST_SERVER), "--port", str(port), "--host", host]
     else:
-        npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
+        npm_cmd = "npm.cmd" if _is_windows() else "npm"
         cmd = [npm_cmd, "run", "preview", "--", "--port", str(port), "--host", host]
     kwargs: dict = {}
-    if os.name == "nt":
+    if _is_windows():
         # CREATE_NO_WINDOW is the extra flag beyond gateway_control's two-flag set:
         # The development fallback is a .cmd shell shim and can otherwise flash
         # a console; the same flags are harmless for the production node process.
@@ -113,8 +144,9 @@ def start(poll_seconds: float = 15.0) -> tuple[bool, str]:
         stderr=subprocess.DEVNULL,
         **kwargs,
     )
-    PID_FILE.parent.mkdir(parents=True, exist_ok=True)
-    PID_FILE.write_text(str(proc.pid))
+    pid_path = pid_file()
+    pid_path.parent.mkdir(parents=True, exist_ok=True)
+    pid_path.write_text(str(proc.pid))
     deadline = time.monotonic() + poll_seconds
     while time.monotonic() < deadline:
         if health_ok():
@@ -134,7 +166,7 @@ def _pid_alive(pid: int) -> bool:
     PID. That is the best stdlib-only signal available; full identity
     verification would require psutil or a stored process fingerprint.
     """
-    if os.name == "nt":
+    if _is_windows():
         try:
             out = subprocess.run(
                 ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
@@ -166,18 +198,19 @@ def _wait_for_exit(pid: int, timeout: float = 5.0) -> bool:
 
 def stop() -> tuple[bool, str]:
     """Stop a cockpit started by this primitive (via its PID file)."""
-    if not PID_FILE.exists():
+    pid_path = pid_file()
+    if not pid_path.exists():
         return False, "no pid file; cockpit not managed here"
     try:
-        pid = int(PID_FILE.read_text().strip())
+        pid = int(pid_path.read_text().strip())
     except (ValueError, OSError):
-        PID_FILE.unlink(missing_ok=True)
+        pid_path.unlink(missing_ok=True)
         return False, "invalid pid file (removed)"
     if not _pid_alive(pid):
-        PID_FILE.unlink(missing_ok=True)
+        pid_path.unlink(missing_ok=True)
         return False, f"cockpit process already gone (pid {pid}, removed)"
     try:
-        if os.name == "nt":
+        if _is_windows():
             # /T is required for both the production node server and the
             # development npm/Vite process tree.
             subprocess.run(
@@ -191,5 +224,5 @@ def stop() -> tuple[bool, str]:
         return False, f"failed to stop cockpit process tree (pid {pid}): {exc}"
     if not _wait_for_exit(pid):
         return False, f"cockpit process tree still running (pid {pid}); pid file retained"
-    PID_FILE.unlink(missing_ok=True)
+    pid_path.unlink(missing_ok=True)
     return True, f"stopped (pid {pid})"

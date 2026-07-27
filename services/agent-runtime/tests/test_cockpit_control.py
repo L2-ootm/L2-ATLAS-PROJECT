@@ -57,11 +57,11 @@ def test_start_is_idempotent_when_already_healthy():
 
 
 def test_start_on_windows_sets_console_flash_guard_flags(tmp_path, monkeypatch):
-    monkeypatch.setattr(cockpit_control.os, "name", "nt")
+    monkeypatch.setattr(cockpit_control, "_is_windows", lambda: True)
     health_calls = iter([False, True])
     monkeypatch.setattr(cockpit_control, "health_ok", lambda timeout=1.0: next(health_calls))
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
     pid_file = tmp_path / "cockpit.pid"
-    monkeypatch.setattr(cockpit_control, "PID_FILE", pid_file)
 
     mock_proc = MagicMock()
     mock_proc.pid = 4242
@@ -82,10 +82,10 @@ def test_start_on_windows_sets_console_flash_guard_flags(tmp_path, monkeypatch):
 
 
 def test_start_resolves_npm_cmd_on_windows(tmp_path, monkeypatch):
-    monkeypatch.setattr(cockpit_control.os, "name", "nt")
+    monkeypatch.setattr(cockpit_control, "_is_windows", lambda: True)
     health_calls = iter([False, True])
     monkeypatch.setattr(cockpit_control, "health_ok", lambda timeout=1.0: next(health_calls))
-    monkeypatch.setattr(cockpit_control, "PID_FILE", tmp_path / "cockpit.pid")
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
     monkeypatch.setattr(cockpit_control, "_DIST_INDEX", tmp_path / "missing-index.html")
 
     mock_proc = MagicMock()
@@ -113,7 +113,7 @@ def test_start_prefers_dependency_free_dist_server(tmp_path, monkeypatch):
     monkeypatch.setattr(cockpit_control, "_DIST_SERVER", dist_server)
     health_calls = iter([False, True])
     monkeypatch.setattr(cockpit_control, "health_ok", lambda timeout=1.0: next(health_calls))
-    monkeypatch.setattr(cockpit_control, "PID_FILE", tmp_path / "cockpit.pid")
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
 
     mock_proc = MagicMock(pid=7)
     with patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
@@ -126,10 +126,10 @@ def test_start_prefers_dependency_free_dist_server(tmp_path, monkeypatch):
 
 
 def test_start_resolves_npm_on_posix(tmp_path, monkeypatch):
-    monkeypatch.setattr(cockpit_control.os, "name", "posix")
+    monkeypatch.setattr(cockpit_control, "_is_windows", lambda: False)
     health_calls = iter([False, True])
     monkeypatch.setattr(cockpit_control, "health_ok", lambda timeout=1.0: next(health_calls))
-    monkeypatch.setattr(cockpit_control, "PID_FILE", tmp_path / "cockpit.pid")
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
     monkeypatch.setattr(cockpit_control, "_DIST_INDEX", tmp_path / "missing-index.html")
 
     mock_proc = MagicMock()
@@ -142,16 +142,16 @@ def test_start_resolves_npm_on_posix(tmp_path, monkeypatch):
 
 
 def test_stop_with_no_pid_file_returns_message(tmp_path, monkeypatch):
-    monkeypatch.setattr(cockpit_control, "PID_FILE", tmp_path / "cockpit.pid")
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
     ok, message = cockpit_control.stop()
     assert ok is False
     assert message == "no pid file; cockpit not managed here"
 
 
 def test_stop_skips_signal_and_unlinks_when_pid_already_gone(tmp_path, monkeypatch):
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
     pid_file = tmp_path / "cockpit.pid"
     pid_file.write_text("99999")
-    monkeypatch.setattr(cockpit_control, "PID_FILE", pid_file)
     monkeypatch.setattr(cockpit_control, "_pid_alive", lambda pid: False)
     with patch("subprocess.run") as mock_run, patch("os.kill") as mock_kill:
         ok, message = cockpit_control.stop()
@@ -164,12 +164,12 @@ def test_stop_skips_signal_and_unlinks_when_pid_already_gone(tmp_path, monkeypat
 
 
 def test_stop_signals_when_pid_is_alive(tmp_path, monkeypatch):
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
     pid_file = tmp_path / "cockpit.pid"
     pid_file.write_text("4242")
-    monkeypatch.setattr(cockpit_control, "PID_FILE", pid_file)
     monkeypatch.setattr(cockpit_control, "_pid_alive", lambda pid: True)
     monkeypatch.setattr(cockpit_control, "_wait_for_exit", lambda pid: True)
-    monkeypatch.setattr(cockpit_control.os, "name", "posix")
+    monkeypatch.setattr(cockpit_control, "_is_windows", lambda: False)
     with patch("os.kill") as mock_kill:
         ok, message = cockpit_control.stop()
     assert ok is True
@@ -179,12 +179,12 @@ def test_stop_signals_when_pid_is_alive(tmp_path, monkeypatch):
 
 
 def test_stop_windows_kills_entire_process_tree(tmp_path, monkeypatch):
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
     pid_file = tmp_path / "cockpit.pid"
     pid_file.write_text("4242")
-    monkeypatch.setattr(cockpit_control, "PID_FILE", pid_file)
     monkeypatch.setattr(cockpit_control, "_pid_alive", lambda pid: True)
     monkeypatch.setattr(cockpit_control, "_wait_for_exit", lambda pid: True)
-    monkeypatch.setattr(cockpit_control.os, "name", "nt")
+    monkeypatch.setattr(cockpit_control, "_is_windows", lambda: True)
     with patch("subprocess.run") as mock_run:
         ok, message = cockpit_control.stop()
     assert ok is True
@@ -194,12 +194,12 @@ def test_stop_windows_kills_entire_process_tree(tmp_path, monkeypatch):
 
 
 def test_stop_retains_pid_file_when_tree_survives(tmp_path, monkeypatch):
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
     pid_file = tmp_path / "cockpit.pid"
     pid_file.write_text("4242")
-    monkeypatch.setattr(cockpit_control, "PID_FILE", pid_file)
     monkeypatch.setattr(cockpit_control, "_pid_alive", lambda pid: True)
     monkeypatch.setattr(cockpit_control, "_wait_for_exit", lambda pid: False)
-    monkeypatch.setattr(cockpit_control.os, "name", "nt")
+    monkeypatch.setattr(cockpit_control, "_is_windows", lambda: True)
     with patch("subprocess.run"):
         ok, message = cockpit_control.stop()
     assert ok is False
@@ -208,19 +208,19 @@ def test_stop_retains_pid_file_when_tree_survives(tmp_path, monkeypatch):
 
 
 def test_pid_alive_posix_returns_false_for_dead_pid(monkeypatch):
-    monkeypatch.setattr(cockpit_control.os, "name", "posix")
+    monkeypatch.setattr(cockpit_control, "_is_windows", lambda: False)
     with patch("os.kill", side_effect=ProcessLookupError):
         assert cockpit_control._pid_alive(123) is False
 
 
 def test_pid_alive_posix_returns_true_for_live_pid(monkeypatch):
-    monkeypatch.setattr(cockpit_control.os, "name", "posix")
+    monkeypatch.setattr(cockpit_control, "_is_windows", lambda: False)
     with patch("os.kill", return_value=None):
         assert cockpit_control._pid_alive(123) is True
 
 
 def test_pid_alive_windows_checks_tasklist_output(monkeypatch):
-    monkeypatch.setattr(cockpit_control.os, "name", "nt")
+    monkeypatch.setattr(cockpit_control, "_is_windows", lambda: True)
     mock_result = MagicMock()
     # subprocess.run(capture_output=True) without text=True yields bytes; the
     # code decodes with errors="replace" to survive CP1252 console output.
@@ -233,7 +233,7 @@ def test_pid_alive_windows_checks_tasklist_output(monkeypatch):
 
 
 def test_pid_alive_windows_returns_false_when_pid_absent(monkeypatch):
-    monkeypatch.setattr(cockpit_control.os, "name", "nt")
+    monkeypatch.setattr(cockpit_control, "_is_windows", lambda: True)
     mock_result = MagicMock()
     mock_result.stdout = b"INFO: No tasks are running which match the specified criteria."
     with patch("subprocess.run", return_value=mock_result):
