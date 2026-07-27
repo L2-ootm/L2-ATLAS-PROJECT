@@ -605,6 +605,13 @@ class NativeAtlasAgent(AgentRuntime):
                 from atlas_runtime import graph_bridge  # noqa: PLC0415
 
                 graph_bridge.ensure_graph_bridge()
+                # Agent team engine: run and observe the rosters an operator
+                # defined. The backend (team_service/team_run_service/worker)
+                # already existed with gateway routes and CLI commands; only the
+                # model had no way in. Same registration pattern; best-effort.
+                from atlas_runtime import team_bridge  # noqa: PLC0415
+
+                team_bridge.ensure_team_bridge()
                 reasoning_effort = _resolve_reasoning_effort()
 
                 def _emit_delta(text: str, final: bool) -> None:

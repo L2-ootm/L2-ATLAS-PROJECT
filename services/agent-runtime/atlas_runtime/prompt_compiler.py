@@ -32,7 +32,7 @@ _L3_WORKFLOW = (
 # Kept here rather than imported from the bridges to avoid an import cycle in
 # contract compilation; test_prompt_compiler asserts it matches what the
 # bridges register, so the two cannot drift apart silently.
-AGENT_FACING_TOOLS = ("atlas_actor", "atlas_graph")
+AGENT_FACING_TOOLS = ("atlas_actor", "atlas_graph", "atlas_team")
 _PROVIDER_ADAPTERS = {
     "generic": "Use standard role and tool-call semantics supplied by the active transport.",
     "openai-compatible": (
