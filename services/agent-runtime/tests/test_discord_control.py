@@ -59,8 +59,18 @@ def test_start_spawns_detached_and_records_pid(monkeypatch, tmp_path) -> None:
     (bot_dir / "bot").mkdir(parents=True)
     (bot_dir / "bot" / "main.py").write_text("", encoding="utf-8")
     monkeypatch.setattr(dc, "DISCORD_DIR", bot_dir)
-    monkeypatch.setattr(dc, "bot_python", lambda: "python")
+    monkeypatch.setattr(dc, "bot_python", lambda work_dir=None: "python")
     monkeypatch.setattr(dc, "health_ok", lambda timeout=1.0: False)
+    # start() now provisions the bot venv before spawning; the provisioning
+    # contract itself is covered by test_provisioning.
+    from atlas_runtime import provisioning
+
+    monkeypatch.setattr(
+        provisioning, "ensure_provisioned",
+        lambda component, **kw: provisioning.ProvisionResult(
+            True, "stubbed", bot_dir
+        ),
+    )
     captured: dict = {}
 
     def _fake_popen(args, **kwargs):

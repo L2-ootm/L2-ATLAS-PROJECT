@@ -62,8 +62,8 @@ def _component(source: pathlib.Path, *, build: bool = True) -> provisioning.Comp
         name="fake",
         source_dir=source,
         dep_manifests=("package.json", "lock.json"),
-        install=(sys.executable, "-c", _INSTALL_CODE),
-        build=(sys.executable, "-c", _BUILD_CODE) if build else None,
+        install=((sys.executable, "-c", _INSTALL_CODE),),
+        build=((sys.executable, "-c", _BUILD_CODE),) if build else None,
         deps_marker="node_modules",
         build_marker=".next/BUILD_ID",
     )
@@ -258,8 +258,8 @@ def test_failure_is_reported_and_leaves_no_baseline(tmp_path):
         name="fake",
         source_dir=source,
         dep_manifests=("package.json",),
-        install=(sys.executable, "-c", _INSTALL_CODE),
-        build=(sys.executable, "-c", _FAIL_CODE),
+        install=((sys.executable, "-c", _INSTALL_CODE),),
+        build=((sys.executable, "-c", _FAIL_CODE),),
         deps_marker="node_modules",
         build_marker=".next/BUILD_ID",
     )
@@ -286,10 +286,63 @@ def test_missing_tool_is_reported_as_actionable(tmp_path):
         name="fake",
         source_dir=source,
         dep_manifests=("package.json",),
-        install=("definitely-not-a-real-binary-xyz",),
+        install=(("definitely-not-a-real-binary-xyz",),),
         build=None,
         deps_marker="does-not-exist",
     )
     result = provisioning.ensure_provisioned(component)
     assert result.ok is False
     assert "not found on PATH" in result.message
+
+
+# --- the other source-shipped sidecars ----------------------------------------
+
+
+def test_discord_bot_component_creates_its_own_interpreter_first():
+    """The bot's deps belong in its venv, never in the ATLAS runtime venv."""
+    component = provisioning.discord_bot_component()
+    assert component.name == "discord-bot"
+    assert component.dep_manifests == ("requirements.txt",)
+    assert len(component.install) == 2
+    assert component.install[0][:2] == (sys.executable, "-m")
+    assert component.install[0][2] == "venv"
+    assert component.install[1][-2:] == ("-r", "requirements.txt")
+    # The second step runs the interpreter the first step just created, which no
+    # PATH lookup could resolve.
+    assert ".venv" in component.install[1][0]
+    assert component.deps_marker == component.install[1][0]
+    assert component.build is None
+
+
+def test_atlas_terminal_component_installs_without_a_build_step():
+    component = provisioning.atlas_terminal_component()
+    assert component.name == "atlas-terminal"
+    assert component.dep_manifests == ("package.json", "bun.lock")
+    assert component.install == (("bun", "install"),)
+    assert component.deps_marker == "node_modules"
+    # `bun run dev` executes from source; compiling is packaging, not a
+    # prerequisite for launching.
+    assert component.build is None
+
+
+def test_both_sidecars_point_at_their_shipped_source_trees():
+    for component in (
+        provisioning.discord_bot_component(),
+        provisioning.atlas_terminal_component(),
+    ):
+        assert component.source_dir.name == component.name.replace("-bot", "-bot")
+        assert component.source_dir.parent.name == "services"
+
+
+def test_a_workspace_relative_executable_resolves_against_the_workspace(tmp_path):
+    """The venv interpreter exists only inside the workspace being provisioned."""
+    exe = tmp_path / "tool.py"
+    exe.write_text("", encoding="utf-8")
+    argv = provisioning._argv(("tool.py/../tool.py", "--flag"), tmp_path)
+    assert argv[0].endswith("tool.py")
+    assert argv[1] == "--flag"
+
+
+def test_a_missing_workspace_relative_executable_is_a_named_failure(tmp_path):
+    with pytest.raises(provisioning.ProvisionError, match="not found at"):
+        provisioning._argv((".venv/bin/python", "-V"), tmp_path)

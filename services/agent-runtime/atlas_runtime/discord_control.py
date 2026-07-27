@@ -42,20 +42,26 @@ def _write_state(state: dict) -> None:
     STATE_FILE.write_text(json.dumps(state), encoding="utf-8")
 
 
-def bot_python() -> str:
+def bot_python(work_dir=None) -> str:
     """Resolve the interpreter for the vendored bot.
 
     Order: ATLAS_DISCORD_PYTHON override -> the bot's own .venv -> bare `python`.
     The bot needs discord.py/langchain/chromadb, which live in its venv, not the
     ATLAS runtime venv.
+
+    `work_dir` is the provisioned workspace, which in a release install is under
+    <ATLAS home>/sidecars rather than the shipped source directory. It defaults
+    to the source directory so a checkout (and every existing caller) is
+    unaffected.
     """
     env = os.environ.get("ATLAS_DISCORD_PYTHON", "").strip()
     if env:
         return env
+    root = pathlib.Path(work_dir) if work_dir is not None else DISCORD_DIR
     if os.name == "nt":
-        venv = DISCORD_DIR / ".venv" / "Scripts" / "python.exe"
+        venv = root / ".venv" / "Scripts" / "python.exe"
     else:
-        venv = DISCORD_DIR / ".venv" / "bin" / "python"
+        venv = root / ".venv" / "bin" / "python"
     return str(venv) if venv.exists() else "python"
 
 
@@ -159,7 +165,18 @@ def start(poll_seconds: float = 0.0) -> tuple[bool, str]:
     if not (DISCORD_DIR / "bot" / "main.py").exists():
         return False, f"discord bot entry missing: {DISCORD_DIR / 'bot' / 'main.py'}"
 
-    python = bot_python()
+    # The bot ships as source (infra/release/payload.manifest), so a release
+    # install has no .venv and every start failed with instructions to build it
+    # by hand — pointing at the immutable release directory, which the next
+    # update deletes. Provision into <ATLAS home>/sidecars instead and run from
+    # there. In a checkout with an existing .venv this is a fingerprint scan.
+    from atlas_runtime import provisioning  # noqa: PLC0415
+
+    result = provisioning.ensure_provisioned(provisioning.discord_bot_component())
+    if not result.ok:
+        return False, f"discord bot provisioning failed: {result.message}"
+    work_dir = result.workspace
+    python = bot_python(work_dir)
     kwargs: dict = {}
     if os.name == "nt":
         kwargs["creationflags"] = (
@@ -169,7 +186,7 @@ def start(poll_seconds: float = 0.0) -> tuple[bool, str]:
         kwargs["start_new_session"] = True
     proc = subprocess.Popen(
         [python, "-m", "bot.main"],
-        cwd=str(DISCORD_DIR),
+        cwd=str(work_dir),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         env=os.environ.copy(),

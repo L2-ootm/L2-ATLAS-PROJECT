@@ -56,10 +56,20 @@ def launch(gateway_url: str | None = None, work_dir: str | None = None) -> int:
     chdirs back before the TUI reads process.cwd().
     """
     terminal_dir = resolve_terminal_dir()
-    if not (terminal_dir / "node_modules").is_dir():
-        raise TerminalLaunchError(
-            "atlas-terminal is not built. Run: cd services/atlas-terminal && bun install"
-        )
+    # Ships as source (infra/release/payload.manifest), so a release install has
+    # no node_modules until something creates them. Telling the operator to go
+    # run `bun install` themselves also pointed them at the immutable release
+    # directory, where the next update would delete whatever they built; the
+    # provisioner installs into <ATLAS home>/sidecars instead and returns the
+    # workspace to actually run from. In a checkout this is a fingerprint scan
+    # and returns the checkout unchanged.
+    from atlas_runtime import provisioning  # noqa: PLC0415 — CLI-time import
+
+    component = provisioning.atlas_terminal_component()
+    result = provisioning.ensure_provisioned(component)
+    if not result.ok:
+        raise TerminalLaunchError(f"atlas-terminal provisioning failed: {result.message}")
+    terminal_dir = result.workspace
     bun = shutil.which("bun")
     if not bun:
         raise TerminalLaunchError(

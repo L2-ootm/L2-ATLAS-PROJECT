@@ -43,6 +43,7 @@ import os
 import pathlib
 import shutil
 import subprocess
+import sys
 from typing import Callable, Iterator, Sequence
 
 from . import db as db_module
@@ -83,11 +84,14 @@ class Component:
     name: str
     source_dir: pathlib.Path
     dep_manifests: tuple[str, ...]
-    install: tuple[str, ...]
-    build: tuple[str, ...] | None = None
+    # A sequence of commands, not one command: the discord bot needs its own
+    # interpreter created before anything can be installed into it, and a
+    # single-command field forced that kind of component to stay unprovisioned.
+    install: tuple[tuple[str, ...], ...]
+    build: tuple[tuple[str, ...], ...] | None = None
     # `npm ci` refuses to run when the lockfile disagrees with package.json.
     # Falling back to `npm install` keeps a stale checkout installable.
-    install_fallback: tuple[str, ...] | None = None
+    install_fallback: tuple[tuple[str, ...], ...] | None = None
     deps_marker: str = "node_modules"
     build_marker: str | None = None
 
@@ -219,8 +223,20 @@ def _mirror(source: pathlib.Path, workspace: pathlib.Path, log: Logger) -> None:
     )
 
 
-def _argv(command: Sequence[str]) -> list[str]:
-    exe = shutil.which(command[0])
+def _argv(command: Sequence[str], cwd: pathlib.Path | None = None) -> list[str]:
+    # A command may name an executable inside the workspace that no PATH lookup
+    # will ever find — the interpreter of a venv this same install sequence just
+    # created. Anything containing a separator is treated as a path, resolved
+    # against the workspace, and used verbatim.
+    head = command[0]
+    if "/" in head or "\\" in head:
+        candidate = pathlib.Path(head)
+        if not candidate.is_absolute() and cwd is not None:
+            candidate = cwd / candidate
+        if candidate.is_file():
+            return [str(candidate), *command[1:]]
+        raise ProvisionError(f"{head!r} not found at {candidate}")
+    exe = shutil.which(head)
     if exe is None:
         raise ProvisionError(
             f"{command[0]!r} not found on PATH; install it and retry"
@@ -255,7 +271,7 @@ def _run(
     log(f"$ {printable}")
     try:
         proc = subprocess.run(
-            _argv(command),
+            _argv(command, cwd),
             cwd=str(cwd),
             capture_output=True,
             text=True,
@@ -404,19 +420,19 @@ def ensure_provisioned(
         if need_install:
             emit(f"installing {component.name} dependencies (first run takes a while)")
             try:
-                _run(component.install, workspace, emit, timeout)
+                for step in component.install:
+                    _run(step, workspace, emit, timeout)
             except ProvisionError:
                 if not component.install_fallback:
                     raise
-                emit(
-                    f"{' '.join(component.install)} failed; retrying with "
-                    f"{' '.join(component.install_fallback)}"
-                )
-                _run(component.install_fallback, workspace, emit, timeout)
+                emit("install failed; retrying with the fallback command sequence")
+                for step in component.install_fallback:
+                    _run(step, workspace, emit, timeout)
             installed = True
         if need_build and component.build is not None:
             emit(f"building {component.name}")
-            _run(component.build, workspace, emit, timeout)
+            for step in component.build:
+                _run(step, workspace, emit, timeout)
             built = True
     except ProvisionError as exc:
         # Record nothing on failure: the next call must retry from scratch
@@ -453,9 +469,9 @@ def cashflow_component() -> Component:
         name="cashflow",
         source_dir=pathlib.Path(__file__).resolve().parents[2] / "cashflow",
         dep_manifests=("package.json", "package-lock.json"),
-        install=("npm", "ci"),
-        install_fallback=("npm", "install"),
-        build=("npm", "run", "build"),
+        install=(("npm", "ci"),),
+        install_fallback=(("npm", "install"),),
+        build=(("npm", "run", "build"),),
         deps_marker="node_modules",
         # `.next` alone is not proof of a production build — `next dev` creates
         # it too (Next 16 writes .next/dev/). Only `next build` writes BUILD_ID,
@@ -464,9 +480,63 @@ def cashflow_component() -> Component:
     )
 
 
+def _venv_python(relative: bool = True) -> str:
+    """Path to a venv's interpreter, as the platform lays it out."""
+    tail = ".venv/Scripts/python.exe" if os.name == "nt" else ".venv/bin/python"
+    return tail if relative else str(pathlib.Path(tail).resolve())
+
+
+def discord_bot_component() -> Component:
+    """The vendored Discord bot sidecar.
+
+    It runs on its OWN interpreter, not the ATLAS runtime venv: discord.py,
+    langchain and chromadb are its dependencies, not ATLAS's, and installing
+    them into the runtime venv would couple every ATLAS install to a bot nobody
+    may be using. So the install sequence creates that venv first and then
+    installs into it — the case a single-command Component could not express,
+    which is why this component did not exist and `atlas discord start` told the
+    operator to go build it by hand.
+
+    `deps_marker` is the venv itself: its absence is what "not installed" means
+    here, exactly as `node_modules` is for the Node components.
+    """
+    return Component(
+        name="discord-bot",
+        source_dir=pathlib.Path(__file__).resolve().parents[2] / "discord-bot",
+        dep_manifests=("requirements.txt",),
+        install=(
+            # sys.executable, not "python": provisioning may run from a launcher
+            # whose PATH python is a different (or missing) interpreter.
+            (sys.executable, "-m", "venv", ".venv"),
+            (_venv_python(), "-m", "pip", "install", "-r", "requirements.txt"),
+        ),
+        deps_marker=_venv_python(),
+    )
+
+
+def atlas_terminal_component() -> Component:
+    """The vendored Bun/OpenTUI terminal surface.
+
+    Install only, no build step: the launcher runs `bun run dev`, which executes
+    from source and needs `node_modules` present. `bun build --compile` produces
+    a standalone binary and is a packaging concern, not a prerequisite for
+    running the TUI — provisioning a compiled binary on first launch would add
+    minutes to it for no functional gain.
+    """
+    return Component(
+        name="atlas-terminal",
+        source_dir=pathlib.Path(__file__).resolve().parents[2] / "atlas-terminal",
+        dep_manifests=("package.json", "bun.lock"),
+        install=(("bun", "install"),),
+        deps_marker="node_modules",
+    )
+
+
 __all__ = [
     "Component",
     "DEFAULT_TIMEOUT",
+    "atlas_terminal_component",
+    "discord_bot_component",
     "ProvisionError",
     "ProvisionPlan",
     "ProvisionResult",
