@@ -136,6 +136,43 @@ def test_doctor_db_schema_reports_applied_and_pending_counts(monkeypatch):
     assert "db_schema:" in result.output
 
 
+def _fake_migrations(monkeypatch, tmp_path, names):
+    for name in names:
+        (tmp_path / name).write_text("-- noop\n", encoding="utf-8")
+    monkeypatch.setattr(db, "MIGRATIONS_DIR", tmp_path)
+
+
+def test_doctor_db_schema_tolerates_db_ahead_of_release(monkeypatch, tmp_path):
+    """A DB migrated by a newer release is a superset, not a missing migration.
+
+    Regression: counting tracker rows against shipped files printed `pending=-1`
+    on a bundle built before the newest migration became tracked.
+    """
+    _patch_all_healthy(monkeypatch)
+    _fake_migrations(monkeypatch, tmp_path, ["0001_core.sql", "0002_x.sql"])
+    monkeypatch.setattr(
+        db, "applied_versions", lambda conn: {"0001_core.sql", "0002_x.sql", "0003_future.sql"}
+    )
+    result = runner.invoke(app, ["doctor", "--json"])
+    assert result.exit_code == 0, result.output
+    status = json.loads(result.output)["db_schema"]
+    assert status["ok"] is True
+    assert status["status"] == (
+        "2/2 applied, latest=0002_x.sql; db ahead of release by 1 (0003_future.sql)"
+    )
+    assert "pending=-" not in status["status"]
+
+
+def test_doctor_db_schema_names_pending_migrations(monkeypatch, tmp_path):
+    _patch_all_healthy(monkeypatch)
+    _fake_migrations(monkeypatch, tmp_path, ["0001_core.sql", "0002_x.sql", "0003_y.sql"])
+    monkeypatch.setattr(db, "applied_versions", lambda conn: {"0001_core.sql"})
+    result = runner.invoke(app, ["doctor", "--json"])
+    status = json.loads(result.output)["db_schema"]
+    assert status["ok"] is False
+    assert status["status"] == "1/3 applied, pending=2 (0002_x.sql, 0003_y.sql)"
+
+
 def test_doctor_config_schema_reports_no_file_when_absent(monkeypatch, tmp_path):
     _patch_all_healthy(monkeypatch)
     monkeypatch.setattr(config_service, "default_config_path", lambda: tmp_path / "missing-config.yaml")

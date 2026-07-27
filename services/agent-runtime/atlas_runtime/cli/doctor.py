@@ -185,23 +185,33 @@ def _doctor_cmd(json_output: bool = typer.Option(False, "--json", help="Emit the
 
     # 9. DB schema — detailed migration state (supplements check #1 with counts
     # and the latest version; never double-fails all_ok, check #1 already does).
+    #
+    # "Applied" is counted against the migrations shipped in *this* build, never
+    # against the tracker row count. A DB migrated by a newer release carries
+    # versions this bundle has no file for: the schema is a superset, nothing is
+    # missing, and only an update is out of order. Subtracting the two counts
+    # conflated that with a missing migration and printed a nonsense
+    # `pending=-1` (30 tracker rows against a 29-migration bundle). Ahead-of-
+    # release versions are now named on their own and do not fail the check.
     try:
         conn2 = db.connect()
         applied2 = db.applied_versions(conn2)
-        migration_files = sorted(db.MIGRATIONS_DIR.glob("*.sql"))
-        total = len(migration_files)
-        applied_count = len(applied2)
-        latest = migration_files[-1].name if migration_files else None
-        pending_count = total - applied_count
-        if pending_count == 0:
-            echo("db_schema", f"{applied_count}/{total} applied, latest={latest}", ok=True)
-        else:
-            pending_names = [f.name for f in migration_files if f.name not in applied2]
-            echo(
-                "db_schema",
-                f"{applied_count}/{total} applied, pending={pending_count} ({', '.join(pending_names)})",
-                ok=False,
+        shipped = [p.name for p in sorted(db.MIGRATIONS_DIR.glob("*.sql"))]
+        total = len(shipped)
+        pending_names = [name for name in shipped if name not in applied2]
+        ahead_names = sorted(applied2 - set(shipped))
+        applied_count = total - len(pending_names)
+        latest = shipped[-1] if shipped else None
+        if pending_names:
+            status = (
+                f"{applied_count}/{total} applied, "
+                f"pending={len(pending_names)} ({', '.join(pending_names)})"
             )
+        else:
+            status = f"{applied_count}/{total} applied, latest={latest}"
+        if ahead_names:
+            status += f"; db ahead of release by {len(ahead_names)} ({', '.join(ahead_names)})"
+        echo("db_schema", status, ok=not pending_names)
     except Exception as exc:  # noqa: BLE001
         echo("db_schema", f"error - {exc}", ok=False)
 
