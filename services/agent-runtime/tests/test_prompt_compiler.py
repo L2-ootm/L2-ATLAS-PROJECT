@@ -190,3 +190,42 @@ def test_secret_in_dynamic_context_is_redacted():
 def test_stable_prompt_stays_within_token_budget():
     result = compile_prompt(bootstrap=_bootstrap(), context=_context())
     assert result.estimated_stable_tokens <= 4000
+
+
+def test_declared_atlas_tools_match_what_the_bridges_register():
+    """The prompt must name exactly the ATLAS tools the harness registers.
+
+    L3 previously declared the host tool_catalog (workspace, github, web_fetch,
+    …) under "use only capabilities declared below". Those are reachable only
+    via tool_service from the CLI and are never handed to the model, while
+    atlas_actor and atlas_graph — the tools it can actually call — went
+    undeclared. A compliant model had to violate the instruction to do anything.
+    """
+    import re
+
+    from atlas_runtime.prompt_compiler import AGENT_FACING_TOOLS
+
+    registered = set()
+    for module in ("actor_bridge", "graph_bridge"):
+        source = (
+            Path(__file__).parent.parent / "atlas_runtime" / f"{module}.py"
+        ).read_text(encoding="utf-8")
+        registered.update(re.findall(r'ctx\.register_tool\(\s*name="([^"]+)"', source))
+
+    assert registered == set(AGENT_FACING_TOOLS), (
+        "prompt_compiler.AGENT_FACING_TOOLS drifted from the bridges: "
+        f"registered={sorted(registered)} declared={sorted(AGENT_FACING_TOOLS)}"
+    )
+
+
+def test_l3_tells_the_model_how_to_read_a_failed_tool_result():
+    """atlas_core.md never mentions failure, yet both bridges return ok:false."""
+    source, texts = _instruction("Inspect before editing. Verify before completion.")
+    compilation = compile_prompt(
+        bootstrap=_bootstrap(instructions=(source,)),
+        context=_context(),
+        workspace_instructions=texts,
+    )
+    prompt = compilation.stable_prompt.decode("utf-8")
+    assert '{"ok": false, ...}' in prompt
+    assert "do not repeat the identical call" in prompt

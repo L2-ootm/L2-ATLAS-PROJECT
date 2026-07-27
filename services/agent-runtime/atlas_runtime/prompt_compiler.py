@@ -18,9 +18,21 @@ _L0_PLATFORM = (
     "declared by this prompt. Lower layers may refine but never override higher layers."
 )
 _L3_WORKFLOW = (
-    "Use only capabilities declared below. Inspect before mutation, request approval "
-    "when permission mode requires it, and verify observable outcomes before completion."
+    "Inspect before mutation, request approval when permission mode requires it, and "
+    "verify observable outcomes before completion.\n"
+    "A tool result shaped {\"ok\": false, ...} is a FAILURE: read its error, adapt, and "
+    "do not repeat the identical call. Two consecutive identical failures mean the "
+    "approach is wrong, not the arguments.\n"
+    "If a capability you need is not available, say so plainly instead of simulating it "
+    "or reporting unverified success."
 )
+
+# Tools ATLAS registers directly onto the agent harness (ctx.register_tool,
+# toolset="atlas"). These are the ATLAS tools the model can actually call.
+# Kept here rather than imported from the bridges to avoid an import cycle in
+# contract compilation; test_prompt_compiler asserts it matches what the
+# bridges register, so the two cannot drift apart silently.
+AGENT_FACING_TOOLS = ("atlas_actor", "atlas_graph")
 _PROVIDER_ADAPTERS = {
     "generic": "Use standard role and tool-call semantics supplied by the active transport.",
     "openai-compatible": (
@@ -97,7 +109,14 @@ def compile_prompt(
         raise ValueError("context policy does not match the session bootstrap")
 
     core = _CORE_PATH.read_text(encoding="utf-8").replace("\r\n", "\n").strip()
+    # Two distinct planes, previously conflated. bootstrap.capabilities is the
+    # host tool_catalog (workspace, github, web_fetch, …) reachable only via
+    # tool_service from the CLI — it is never handed to the LLM. Declaring it
+    # under "use only capabilities declared below" told the model to use tools
+    # it cannot call while omitting the ones it can, so a compliant model had to
+    # violate the instruction to do anything.
     capabilities = "\n".join(f"- {name}" for name in sorted(bootstrap.capabilities))
+    atlas_tools = "\n".join(f"- {name}" for name in AGENT_FACING_TOOLS)
     workspace_layer = _workspace_layer(bootstrap, workspace_instructions)
     layers = [
         f"[L0 PLATFORM]\n{_L0_PLATFORM}",
@@ -108,7 +127,12 @@ def compile_prompt(
             f"tool_catalog_version={bootstrap.tool_catalog.version}\n"
             f"tool_catalog_sha256={bootstrap.tool_catalog.sha256}\n"
             f"{_L3_WORKFLOW}\n"
-            f"Capabilities:\n{capabilities or '- none'}"
+            "ATLAS tools you can call:\n"
+            f"{atlas_tools}\n"
+            "Your harness also exposes its own standard tools; use them normally.\n"
+            "ATLAS host capabilities (operator-invoked through the CLI — you cannot "
+            "call these directly):\n"
+            f"{capabilities or '- none'}"
         ),
     ]
     if workspace_layer:
