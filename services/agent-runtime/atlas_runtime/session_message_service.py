@@ -48,9 +48,26 @@ _SEQ_RETRIES = 5
 _DEFAULT_LIMIT = 50
 _MAX_LIMIT = 500
 
+# SQLite 3's bundled FTS5 parser reports malformed MATCH expressions through
+# SQLITE_ERROR. Keep this allowlist intentionally narrow: other SQLITE_ERROR
+# messages include missing tables and ordinary SQL/schema failures, which must
+# remain observable to callers.
+_MALFORMED_FTS_EXACT_MESSAGES = frozenset({"unterminated string"})
+_MALFORMED_FTS_MESSAGE_PREFIX = 'fts5: syntax error near "'
+
 
 def _now_iso() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+
+def _is_malformed_fts_query_error(exc: sqlite3.OperationalError) -> bool:
+    """Whether *exc* is a bundled-SQLite FTS5 query-parser rejection."""
+    if getattr(exc, "sqlite_errorcode", None) != sqlite3.SQLITE_ERROR:
+        return False
+    message = str(exc)
+    return message in _MALFORMED_FTS_EXACT_MESSAGES or (
+        message.startswith(_MALFORMED_FTS_MESSAGE_PREFIX) and message.endswith('"')
+    )
 
 
 def _row_to_message(row: sqlite3.Row | tuple) -> dict[str, Any]:
@@ -273,7 +290,8 @@ def search_messages(
     never do. A malformed FTS query (an unbalanced quote from an operator's
     search box) raises sqlite3.OperationalError inside FTS5; that is returned as
     an empty result rather than a 500, since a typo in a search box is not an
-    error condition worth failing a request over.
+    error condition worth failing a request over. All other database failures
+    propagate so infrastructure faults cannot masquerade as valid empty results.
     """
     limit = max(1, min(int(limit), _MAX_LIMIT))
     if not (query or "").strip():
@@ -292,8 +310,10 @@ def search_messages(
     params.append(limit)
     try:
         rows = conn.execute(sql, params).fetchall()
-    except sqlite3.OperationalError:
-        return []
+    except sqlite3.OperationalError as exc:
+        if _is_malformed_fts_query_error(exc):
+            return []
+        raise
     return [_row_to_message(r) for r in rows]
 
 

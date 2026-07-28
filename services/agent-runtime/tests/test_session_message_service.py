@@ -145,9 +145,62 @@ def test_search_index_drops_deleted_rows(db, lock, surface_session):
     assert svc.search_messages(db, "ephemeral") == []
 
 
-def test_malformed_search_query_returns_empty_not_an_error(db, lock, surface_session):
+@pytest.mark.parametrize(
+    "query",
+    [
+        'unbalanced "quote',  # bundled SQLite: "unterminated string"
+        "dangling OR",  # bundled SQLite: 'fts5: syntax error near ""'
+        ")",  # bundled SQLite: 'fts5: syntax error near ")"'
+    ],
+)
+def test_malformed_search_query_returns_empty_not_an_error(
+    db, lock, surface_session, query
+):
     _append(db, lock, surface_session, "user", "anything")
-    assert svc.search_messages(db, 'unbalanced "quote') == []
+    assert svc.search_messages(db, query) == []
+
+
+class _FailingSearchConnection:
+    def __init__(self, error: sqlite3.OperationalError):
+        self.error = error
+
+    def execute(self, _sql, _params):
+        raise self.error
+
+
+def _operational_error(message: str, code: int) -> sqlite3.OperationalError:
+    error = sqlite3.OperationalError(message)
+    error.sqlite_errorcode = code
+    return error
+
+
+@pytest.mark.parametrize(
+    ("message", "code"),
+    [
+        ("database is locked", sqlite3.SQLITE_BUSY),
+        ("database table is locked", sqlite3.SQLITE_LOCKED),
+        ("no such table: session_messages_fts", sqlite3.SQLITE_ERROR),
+        ('near "SELECT": syntax error', sqlite3.SQLITE_ERROR),
+        ("disk I/O error", sqlite3.SQLITE_IOERR),
+        ("database disk image is malformed", sqlite3.SQLITE_CORRUPT),
+    ],
+)
+def test_search_propagates_non_fts_operational_errors(message, code):
+    error = _operational_error(message, code)
+
+    with pytest.raises(sqlite3.OperationalError) as raised:
+        svc.search_messages(_FailingSearchConnection(error), "anything")
+
+    assert raised.value is error
+
+
+def test_search_requires_sqlite_error_code_before_downgrading_fts_message():
+    error = _operational_error("unterminated string", sqlite3.SQLITE_BUSY)
+
+    with pytest.raises(sqlite3.OperationalError) as raised:
+        svc.search_messages(_FailingSearchConnection(error), "anything")
+
+    assert raised.value is error
 
 
 def test_session_token_total_sums_stored_counts(db, lock, surface_session):
