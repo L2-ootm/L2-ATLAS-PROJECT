@@ -1,5 +1,4 @@
 """Tests for atlas_runtime.retention_service — data lifecycle management."""
-import json
 import sqlite3
 import threading
 import pytest

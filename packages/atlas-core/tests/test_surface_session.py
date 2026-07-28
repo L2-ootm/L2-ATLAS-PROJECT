@@ -31,7 +31,7 @@ MIGRATION_0016 = MIGRATIONS_DIR / "0016_surface_sessions.sql"
 # ---------------------------------------------------------------------------
 
 
-def _session(**overrides) -> SurfaceSession:
+def _session(**overrides: object) -> SurfaceSession:
     defaults = dict(
         surface=SurfaceIdentity(kind="cli", session_id="surf-1"),
         workspace=WorkspaceIdentity(kind="global", root="/tmp/atlas"),

@@ -23,7 +23,7 @@ def _valid_manifest_dict() -> dict:
     }
 
 
-def test_tool_manifest_accepts_valid_dict():
+def test_tool_manifest_accepts_valid_dict() -> None:
     from atlas_core.schemas.tool import ToolManifest
 
     m = ToolManifest(**_valid_manifest_dict())
@@ -32,7 +32,7 @@ def test_tool_manifest_accepts_valid_dict():
     assert m.inputs[0].name == "path"
 
 
-def test_tool_manifest_rejects_unknown_risk_level():
+def test_tool_manifest_rejects_unknown_risk_level() -> None:
     from atlas_core.schemas.tool import ToolManifest
 
     bad = _valid_manifest_dict()
@@ -41,7 +41,7 @@ def test_tool_manifest_rejects_unknown_risk_level():
         ToolManifest(**bad)
 
 
-def test_tool_manifest_rejects_missing_name():
+def test_tool_manifest_rejects_missing_name() -> None:
     from atlas_core.schemas.tool import ToolManifest
 
     bad = _valid_manifest_dict()
@@ -50,7 +50,7 @@ def test_tool_manifest_rejects_missing_name():
         ToolManifest(**bad)
 
 
-def test_tool_manifest_rejects_missing_risk_level():
+def test_tool_manifest_rejects_missing_risk_level() -> None:
     from atlas_core.schemas.tool import ToolManifest
 
     bad = _valid_manifest_dict()
@@ -59,7 +59,7 @@ def test_tool_manifest_rejects_missing_risk_level():
         ToolManifest(**bad)
 
 
-def test_tool_manifest_is_frozen():
+def test_tool_manifest_is_frozen() -> None:
     from atlas_core.schemas.tool import ToolManifest
 
     m = ToolManifest(**_valid_manifest_dict())

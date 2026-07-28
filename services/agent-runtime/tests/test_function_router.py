@@ -298,7 +298,9 @@ def test_default_factory_threads_subagent_progress_callback(monkeypatch) -> None
     fake = types.ModuleType("run_agent")
     fake.AIAgent = _FakeAgent
     monkeypatch.setitem(sys.modules, "run_agent", fake)
-    callback = lambda *_args, **_kwargs: None
+
+    def callback(*_args: object, **_kwargs: object) -> None:
+        pass
 
     _REAL_DEFAULT_FACTORY("session-actor", 5, tool_progress_callback=callback)
 

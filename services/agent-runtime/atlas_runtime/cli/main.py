@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import pathlib
 import sqlite3
+import subprocess
 import threading
 import json
 from typing import Optional
@@ -302,7 +303,7 @@ def _rtk_cmd(
                     probe = subprocess.run(["rtk", "--version"], capture_output=True, text=True, timeout=5)
                     version_str = probe.stdout.strip().split("\n")[0] if probe.returncode == 0 else "found"
                     typer.echo(f"rtk: {version_str} — 60-90% token savings")
-                except Exception:
+                except (OSError, subprocess.SubprocessError):
                     typer.echo("rtk: available (version unknown) — 60-90% token savings")
             else:
                 typer.echo("rtk: not installed — install for 60-90% token savings")

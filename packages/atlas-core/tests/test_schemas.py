@@ -1,4 +1,4 @@
-"""Tests for atlas_core.schemas.core — SCHEMA-01 (import, instantiation, serialization) and SCHEMA-03 (model_json_schema)."""
+"""Tests for the SCHEMA-01 core models and SCHEMA-03 JSON schemas."""
 
 import json
 
@@ -53,7 +53,7 @@ def test_model_instantiation_audit_event() -> None:
 @pytest.mark.parametrize(
     "verb", ["tool_requested", "tool_completed", "tool_failed"]
 )
-def test_audit_event_accepts_tool_verbs(verb):
+def test_audit_event_accepts_tool_verbs(verb: str) -> None:
     """Phase 10.0.4 SC4: the audit bus accepts the three tool lifecycle verbs.
 
     RED until Plan 01 extends the AuditEvent.event_type Literal. The SC's dotted
@@ -152,7 +152,7 @@ def test_json_schema_status_enum() -> None:
 
 
 def test_json_schema_all_models() -> None:
-    """SCHEMA-03: model_json_schema() on each of the 7 models must return a dict with 'properties'."""
+    """SCHEMA-03: every core model JSON schema exposes a properties mapping."""
     from atlas_core.schemas.core import (
         Artifact,
         AuditEvent,

@@ -45,7 +45,7 @@ class RunSummary:
         return json.dumps(asdict(self), sort_keys=True)
 
     @staticmethod
-    def from_json(text: str | None) -> "RunSummary | None":
+    def from_json(text: str | None) -> RunSummary | None:
         """Parse a `runs.summary` value as a structured RunSummary.
 
         Returns None for anything that is not a JSON object produced by this

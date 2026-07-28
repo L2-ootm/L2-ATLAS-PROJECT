@@ -2,11 +2,56 @@
 from __future__ import annotations
 
 import subprocess
-from unittest.mock import patch
 
 import pytest
+from typer.testing import CliRunner
 
+from atlas_runtime.cli.main import app
 from atlas_runtime.rtk_bridge import available, compress_output, rewrite_command
+
+runner = CliRunner()
+
+
+def test_status_reports_installed_rtk_version(monkeypatch):
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/rtk")
+    monkeypatch.setattr(
+        "atlas_runtime.cli.main.subprocess.run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args[0], 0, stdout="rtk 0.20.0\n", stderr=""
+        ),
+    )
+
+    result = runner.invoke(app, ["rtk", "status"])
+
+    assert result.exit_code == 0
+    assert "rtk: rtk 0.20.0" in result.output
+    assert "version unknown" not in result.output
+
+
+def test_status_downgrades_expected_process_failure(monkeypatch):
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/rtk")
+
+    def fail_to_start(*_args, **_kwargs):
+        raise OSError("cannot execute")
+
+    monkeypatch.setattr("atlas_runtime.cli.main.subprocess.run", fail_to_start)
+
+    result = runner.invoke(app, ["rtk", "status"])
+
+    assert result.exit_code == 0
+    assert "version unknown" in result.output
+
+
+def test_status_propagates_unexpected_programmer_error(monkeypatch):
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/rtk")
+
+    def fail_unexpectedly(*_args, **_kwargs):
+        raise RuntimeError("programmer error")
+
+    monkeypatch.setattr("atlas_runtime.cli.main.subprocess.run", fail_unexpectedly)
+
+    with pytest.raises(RuntimeError, match="programmer error"):
+        runner.invoke(app, ["rtk", "status"], catch_exceptions=False)
 
 
 def test_available_when_rtk_on_path(monkeypatch):

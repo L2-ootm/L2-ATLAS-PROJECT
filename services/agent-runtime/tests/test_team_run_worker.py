@@ -9,8 +9,6 @@ from __future__ import annotations
 import sqlite3
 import threading
 
-import pytest
-
 from atlas_runtime import actor_service, team_run_service, team_service, team_run_worker
 
 

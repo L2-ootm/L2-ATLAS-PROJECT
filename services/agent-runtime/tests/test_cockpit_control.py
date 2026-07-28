@@ -61,7 +61,6 @@ def test_start_on_windows_sets_console_flash_guard_flags(tmp_path, monkeypatch):
     health_calls = iter([False, True])
     monkeypatch.setattr(cockpit_control, "health_ok", lambda timeout=1.0: next(health_calls))
     monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
-    pid_file = tmp_path / "cockpit.pid"
 
     mock_proc = MagicMock()
     mock_proc.pid = 4242

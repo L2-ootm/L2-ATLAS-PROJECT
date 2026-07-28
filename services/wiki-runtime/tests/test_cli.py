@@ -11,7 +11,6 @@ Fixtures from conftest.py (injected by name — do NOT import):
 """
 import pathlib
 
-import pytest
 from typer.testing import CliRunner
 
 from atlas_wiki.cli.main import wiki_app
@@ -246,8 +245,6 @@ def test_update_error_path_exits_nonzero(db, lock, wiki_dir, monkeypatch):
 
 def test_factory_functions_return_expected_types():
     """_get_lock and _get_wiki_dir return the expected types without monkeypatching."""
-    import threading
-    import pathlib
     from atlas_wiki.cli.main import _get_lock, _get_wiki_dir
 
     lock_instance = _get_lock()

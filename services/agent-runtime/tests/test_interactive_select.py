@@ -8,8 +8,6 @@ un-patched code path already exercises the non-interactive fallback).
 """
 from __future__ import annotations
 
-import io
-
 import pytest
 
 from atlas_runtime.cli.interactive_select import (

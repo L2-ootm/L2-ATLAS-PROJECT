@@ -70,7 +70,6 @@ def test_start_never_provisions_inline(tmp_path, monkeypatch) -> None:
         raise AssertionError("start() must not provision synchronously")
 
     monkeypatch.setattr(cc.provisioning, "ensure_provisioned", _fail_if_called)
-    spawned: list[str] = []
     monkeypatch.setattr(
         cc, "_spawn_bootstrap", lambda backend: (True, f"bootstrapping {backend}")
     )

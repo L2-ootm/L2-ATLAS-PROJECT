@@ -1,4 +1,7 @@
-"""Tests for infra/migrations/0001_core.sql — SCHEMA-02 (apply, tables, columns, FTS5, FK enforcement)."""
+"""Tests for the SCHEMA-02 core migration contract.
+
+Covers applying the migration, tables, columns, FTS5, and FK enforcement.
+"""
 
 import pathlib
 import sqlite3
@@ -43,7 +46,15 @@ def test_all_tables_created(db: sqlite3.Connection) -> None:
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
     ).fetchall()
     table_names = {row[0] for row in rows}
-    expected = {"missions", "runs", "audit_events", "tool_calls", "artifacts", "sources", "wiki_pages"}
+    expected = {
+        "missions",
+        "runs",
+        "audit_events",
+        "tool_calls",
+        "artifacts",
+        "sources",
+        "wiki_pages",
+    }
     assert expected.issubset(table_names), f"Missing tables: {expected - table_names}"
 
 
@@ -147,7 +158,8 @@ def test_fk_enforcement(db: sqlite3.Connection) -> None:
     fake_mission_id = str(uuid.uuid4())
     with pytest.raises(sqlite3.IntegrityError):
         db.execute(
-            "INSERT INTO runs (id, mission_id, status, started_at) VALUES (?, ?, 'running', '2026-01-01T00:00:00')",
+            "INSERT INTO runs (id, mission_id, status, started_at) "
+            "VALUES (?, ?, 'running', '2026-01-01T00:00:00')",
             (str(uuid.uuid4()), fake_mission_id),
         )
         db.commit()
