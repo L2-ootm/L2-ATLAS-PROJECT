@@ -5,6 +5,7 @@
 name: ATLAS CI
 
 on:
+  workflow_call:
   push:
     branches: [main]
   pull_request:
@@ -34,6 +35,8 @@ jobs:
           pip install -e services/wiki-runtime
       - name: Test
         run: python -m pytest services/agent-runtime/tests -q
+      - name: Lint
+        run: python -m ruff check services/agent-runtime
 
   atlas-core:
     name: atlas-core (pytest)
@@ -49,6 +52,27 @@ jobs:
           pip install -e "packages/atlas-core[dev]"
       - name: Test
         run: python -m pytest packages/atlas-core/tests -q
+      - name: Lint
+        run: python -m ruff check packages/atlas-core
+
+  wiki-runtime:
+    name: wiki-runtime (pytest + ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: |
+          pip install -e packages/atlas-core
+          pip install -e "services/agent-runtime[dev]"
+          pip install -e services/wiki-runtime
+      - name: Test
+        run: python -m pytest services/wiki-runtime/tests -q
+      - name: Lint
+        run: python -m ruff check services/wiki-runtime
 
   atlas-cli:
     name: atlas-cli (node, ubuntu + windows + macos)
@@ -106,9 +130,12 @@ jobs:
       - name: Test
         working-directory: native/atlas-core-rs
         run: cargo test --workspace
+      - name: Clippy
+        working-directory: native/atlas-core-rs
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
   web-ui-react:
-    name: cockpit (build + bundle budget)
+    name: cockpit (lint + typecheck + test + build)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -120,6 +147,35 @@ jobs:
       - name: Install
         working-directory: services/web-ui-react
         run: npm ci
+      - name: Lint
+        working-directory: services/web-ui-react
+        run: npm run lint
+      - name: Typecheck
+        working-directory: services/web-ui-react
+        run: npm run check
+      - name: Test
+        working-directory: services/web-ui-react
+        run: npm test -- --run
       - name: Build
         working-directory: services/web-ui-react
         run: npm run build
+
+  repository-hygiene:
+    name: repository hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject diff errors and tracked scratch
+        shell: bash
+        run: |
+          git diff --check
+          if git ls-files | grep -E '(^|/)(\.pytest-cache/|test_localsystem\.txt$)'; then
+            echo "tracked local scratch artifact detected" >&2
+            exit 1
+          fi
+      - name: Validate shell scripts
+        shell: bash
+        run: |
+          while IFS= read -r script; do
+            bash -n "$script"
+          done < <(git ls-files '*.sh')

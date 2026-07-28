@@ -8,8 +8,12 @@ permissions:
   packages: write
 
 jobs:
+  quality:
+    uses: ./.github/workflows/atlas-ci.yml
+
   publish:
     name: publish @l2-ootm/atlas mirror
+    needs: quality
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

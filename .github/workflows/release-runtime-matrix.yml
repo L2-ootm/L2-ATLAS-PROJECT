@@ -59,8 +59,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  quality:
+    uses: ./.github/workflows/atlas-ci.yml
+
   build:
     name: build (${{ matrix.platform }})
+    needs: quality
     strategy:
       fail-fast: false
       matrix:

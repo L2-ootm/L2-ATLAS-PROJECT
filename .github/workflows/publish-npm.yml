@@ -28,8 +28,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  quality:
+    uses: ./.github/workflows/atlas-ci.yml
+
   publish:
     name: build + publish windows runtime
+    needs: quality
     runs-on: windows-latest
     timeout-minutes: 90
     steps:
