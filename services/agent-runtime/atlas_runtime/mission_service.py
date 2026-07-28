@@ -247,6 +247,7 @@ def create_mission(
     project: str = "",
     project_id: Optional[str] = None,
     origin: str = "operator",
+    mission_id: Optional[str] = None,
 ) -> Mission:
     """Insert a new Mission row and return the constructed Mission.
 
@@ -260,13 +261,37 @@ def create_mission(
     per-prompt wrappers, 'system' for machine-created internals (0024).
     """
     # Pydantic-first: construct and validate before any SQL
-    mission = Mission(
-        title=title, intent=intent, project=project, project_id=project_id, origin=origin
-    )
+    mission_kwargs = {
+        "title": title,
+        "intent": intent,
+        "project": project,
+        "project_id": project_id,
+        "origin": origin,
+    }
+    if mission_id is not None:
+        mission_kwargs["id"] = mission_id
+    mission = Mission(**mission_kwargs)
     row = mission.model_dump()
 
     with lock:
         with conn:
+            existing_cur = conn.execute(
+                "SELECT * FROM missions WHERE id=?", (mission.id,)
+            )
+            existing_row = existing_cur.fetchone()
+            if existing_row is not None:
+                existing = Mission(
+                    **dict(zip((d[0] for d in existing_cur.description), existing_row))
+                )
+                if mission_id is None or (
+                    existing.title != mission.title
+                    or existing.intent != mission.intent
+                    or existing.project != mission.project
+                    or existing.project_id != mission.project_id
+                    or existing.origin != mission.origin
+                ):
+                    raise ValueError(f"Mission id collision for {mission.id!r}")
+                return existing
             if mission.project_id is not None:
                 exists = conn.execute(
                     "SELECT 1 FROM projects WHERE id=?", (mission.project_id,)

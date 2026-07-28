@@ -618,6 +618,172 @@ def actor_logs(
 # ---------------------------------------------------------------------------
 
 
+def _emit_delivery_transition(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    *,
+    actor_id: str,
+    transition: str,
+    followup_run_id: Optional[str] = None,
+) -> None:
+    """Audit a delivery transition without ever exposing its payload."""
+    actor = _fetch_actor(conn, actor_id)
+    if actor is None:
+        return
+    try:
+        emit(
+            conn,
+            lock,
+            run_id=actor["parent_run_id"],
+            task_id=actor_id,
+            session_id=actor.get("session_id"),
+            event_type="subagent_run",
+            data={
+                "transition": transition,
+                "actor_id": actor_id,
+                "followup_run_id": followup_run_id,
+            },
+        )
+    except Exception as exc:  # noqa: BLE001 — delivery correctness is primary
+        logger.warning("actor delivery audit emit failed: %s", exc)
+
+
+def claim_delivery(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    actor_id: str,
+    *,
+    claim_token: str,
+    lease_seconds: float = 60.0,
+) -> Optional[dict[str, Any]]:
+    """CAS-claim one actor delivery, reclaiming an expired lease.
+
+    The actor-specific API is used by proactive parent wakeups so two workers
+    cannot both create follow-up work for the same completion.
+    """
+    now_dt = datetime.datetime.now(datetime.timezone.utc)
+    now = now_dt.isoformat()
+    stale_before = (
+        now_dt - datetime.timedelta(seconds=max(0.0, lease_seconds))
+    ).isoformat()
+    payload: Optional[str] = None
+    with lock:
+        with conn:
+            row = conn.execute(
+                "SELECT payload FROM actor_deliveries WHERE actor_id=? AND "
+                "(status='pending' OR "
+                "(status='claimed' AND claimed_at<?))",
+                (actor_id, stale_before),
+            ).fetchone()
+            if row is not None:
+                cur = conn.execute(
+                    "UPDATE actor_deliveries SET status='claimed', claim_token=?, "
+                    "claimed_at=?, updated_at=? WHERE actor_id=? AND "
+                    "(status='pending' OR "
+                    "(status='claimed' AND claimed_at<?))",
+                    (claim_token, now, now, actor_id, stale_before),
+                )
+                if cur.rowcount == 1:
+                    payload = row[0]
+    if payload is None:
+        return None
+    _emit_delivery_transition(
+        conn,
+        lock,
+        actor_id=actor_id,
+        transition="claimed",
+    )
+    try:
+        return json.loads(payload)
+    except json.JSONDecodeError:
+        return {"actor_id": actor_id, "payload": payload}
+
+
+def renew_delivery_claim(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    actor_id: str,
+    *,
+    claim_token: str,
+) -> bool:
+    """Refresh a claim lease only while the caller still owns it."""
+    now = _now()
+    with lock:
+        with conn:
+            cur = conn.execute(
+                "UPDATE actor_deliveries SET claimed_at=?, updated_at=? "
+                "WHERE actor_id=? AND status='claimed' AND claim_token=?",
+                (now, now, actor_id, claim_token),
+            )
+            changed = cur.rowcount == 1
+    if changed:
+        _emit_delivery_transition(
+            conn,
+            lock,
+            actor_id=actor_id,
+            transition="lease_renewed",
+        )
+    return changed
+
+
+def release_delivery_claim(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    actor_id: str,
+    *,
+    claim_token: str,
+) -> bool:
+    """Return a caller-owned claim to pending after a retryable failure."""
+    now = _now()
+    with lock:
+        with conn:
+            cur = conn.execute(
+                "UPDATE actor_deliveries SET status='pending', claim_token=NULL, "
+                "claimed_at=NULL, updated_at=? WHERE actor_id=? "
+                "AND status='claimed' AND claim_token=?",
+                (now, actor_id, claim_token),
+            )
+            changed = cur.rowcount == 1
+    if changed:
+        _emit_delivery_transition(
+            conn,
+            lock,
+            actor_id=actor_id,
+            transition="released",
+        )
+    return changed
+
+
+def consume_claimed_delivery(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    actor_id: str,
+    *,
+    claim_token: str,
+    followup_run_id: Optional[str] = None,
+) -> bool:
+    """Consume one delivery only when the caller still owns its live claim."""
+    now = _now()
+    with lock:
+        with conn:
+            cur = conn.execute(
+                "UPDATE actor_deliveries SET status='consumed', delivered_at=?, "
+                "updated_at=? WHERE actor_id=? AND status='claimed' "
+                "AND claim_token=?",
+                (now, now, actor_id, claim_token),
+            )
+            changed = cur.rowcount == 1
+    if changed:
+        _emit_delivery_transition(
+            conn,
+            lock,
+            actor_id=actor_id,
+            transition="consumed",
+            followup_run_id=followup_run_id,
+        )
+    return changed
+
+
 def claim_deliveries(
     conn: sqlite3.Connection,
     lock: threading.Lock,
@@ -696,13 +862,15 @@ def consume_delivery(
             if row is None:
                 return None
             payload, status = row
-            if status == "consumed":
+            if status in ("claimed", "consumed"):
                 return None
-            conn.execute(
+            cur = conn.execute(
                 "UPDATE actor_deliveries SET status='consumed', updated_at=?"
-                " WHERE actor_id=?",
+                " WHERE actor_id=? AND status IN ('pending','delivered')",
                 (now, actor_id),
             )
+            if cur.rowcount != 1:
+                return None
     try:
         return json.loads(payload)
     except json.JSONDecodeError:

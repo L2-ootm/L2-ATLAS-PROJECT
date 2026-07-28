@@ -11,10 +11,12 @@ import datetime
 import json
 import sqlite3
 import threading
+import time
 
 import pytest
 
 from atlas_runtime import actor_service
+from atlas_runtime import actor_worker
 from atlas_runtime.actor_worker import run_actor
 from atlas_runtime.agents.base import RunOutcome
 from atlas_runtime.audit_service import get_events_for_run
@@ -224,6 +226,80 @@ def test_expired_claim_is_reclaimable(db, lock, run_id) -> None:
         db, lock, parent_run_id=run_id, claim_token="alive", lease_seconds=60
     )
     assert len(reclaimed) == 1
+
+
+def test_single_delivery_claim_is_cas_and_stale_lease_recovers(db, lock, run_id) -> None:
+    actor, _ = _spawn(db, lock, run_id, mode="detached")
+    actor_service.mark_running(db, lock, actor["id"])
+    actor_service.complete_actor(db, lock, actor["id"], result_preview="x")
+
+    first = actor_service.claim_delivery(
+        db, lock, actor["id"], claim_token="first", lease_seconds=60
+    )
+    assert first is not None
+    assert (
+        actor_service.claim_delivery(
+            db, lock, actor["id"], claim_token="second", lease_seconds=60
+        )
+        is None
+    )
+    past = (
+        datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=120)
+    ).isoformat()
+    with db:
+        db.execute(
+            "UPDATE actor_deliveries SET claimed_at=? WHERE actor_id=?",
+            (past, actor["id"]),
+        )
+    recovered = actor_service.claim_delivery(
+        db, lock, actor["id"], claim_token="second", lease_seconds=60
+    )
+    assert recovered is not None
+    assert not actor_service.release_delivery_claim(
+        db, lock, actor["id"], claim_token="first"
+    )
+    assert actor_service.release_delivery_claim(
+        db, lock, actor["id"], claim_token="second"
+    )
+
+
+def test_explicit_wait_cannot_steal_a_live_delivery_claim(db, lock, run_id) -> None:
+    actor, _ = _spawn(db, lock, run_id, mode="detached")
+    actor_service.mark_running(db, lock, actor["id"])
+    actor_service.complete_actor(db, lock, actor["id"], result_preview="x")
+    assert actor_service.claim_delivery(
+        db, lock, actor["id"], claim_token="wakeup"
+    )
+    assert actor_service.consume_delivery(db, lock, actor["id"]) is None
+    assert db.execute(
+        "SELECT status, claim_token FROM actor_deliveries WHERE actor_id=?",
+        (actor["id"],),
+    ).fetchone() == ("claimed", "wakeup")
+
+
+def test_two_workers_racing_single_delivery_have_one_winner(db, lock, run_id) -> None:
+    actor, _ = _spawn(db, lock, run_id, mode="detached")
+    actor_service.mark_running(db, lock, actor["id"])
+    actor_service.complete_actor(db, lock, actor["id"], result_preview="x")
+    barrier = threading.Barrier(2)
+    results: list[bool] = []
+
+    def _race(token: str) -> None:
+        barrier.wait()
+        claimed = actor_service.claim_delivery(
+            db, lock, actor["id"], claim_token=token
+        )
+        results.append(claimed is not None)
+
+    threads = [
+        threading.Thread(target=_race, args=("one",)),
+        threading.Thread(target=_race, args=("two",)),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert sorted(results) == [False, True]
 
 
 # --- orphan recovery ---------------------------------------------------------
@@ -462,3 +538,207 @@ def test_no_wakeup_leaves_the_delivery_pending_for_the_inbox(
         "SELECT status FROM actor_deliveries WHERE actor_id=?", (actor["id"],)
     ).fetchone()[0]
     assert status == "pending"
+
+
+def _completed_wakeup_actor(db, lock, run_id, surface_session):
+    db.execute(
+        "UPDATE surface_sessions SET state='active' WHERE id=?", (surface_session,)
+    )
+    db.commit()
+    actor, _ = _spawn(
+        db,
+        lock,
+        run_id,
+        mode="detached",
+        session_id=surface_session,
+        wakeup_parent=True,
+    )
+    actor_service.mark_running(db, lock, actor["id"])
+    actor_service.complete_actor(db, lock, actor["id"], result_preview="ready")
+    return actor
+
+
+@pytest.mark.parametrize("failure_point", ["mission", "run", "resolution", "model", "finalize"])
+def test_wakeup_failure_releases_delivery_for_retry(
+    db, lock, run_id, surface_session, monkeypatch, failure_point
+) -> None:
+    monkeypatch.delenv("ATLAS_WAKEUP_RUN", raising=False)
+    actor = _completed_wakeup_actor(db, lock, run_id, surface_session)
+
+    if failure_point == "mission":
+        monkeypatch.setattr(
+            actor_worker,
+            "create_mission",
+            lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("mission")),
+        )
+        factory = lambda name: _FakeRuntime(  # noqa: E731
+            RunOutcome(status="succeeded", summary="ok")
+        )
+    elif failure_point == "run":
+        monkeypatch.setattr(
+            actor_worker,
+            "start_run",
+            lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("run")),
+        )
+        factory = lambda name: _FakeRuntime(  # noqa: E731
+            RunOutcome(status="succeeded", summary="ok")
+        )
+    elif failure_point == "resolution":
+        def factory(name):
+            raise RuntimeError("resolution")
+    elif failure_point == "model":
+        class _ExplodingRuntime:
+            def execute(self, *args, **kwargs):
+                raise RuntimeError("model")
+
+        factory = lambda name: _ExplodingRuntime()  # noqa: E731
+    else:
+        monkeypatch.setattr(
+            actor_worker,
+            "complete_run",
+            lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("finalize")),
+        )
+        factory = lambda name: _FakeRuntime(  # noqa: E731
+            RunOutcome(status="succeeded", summary="ok")
+        )
+
+    assert actor_worker._wake_parent(
+        db, lock, actor["id"], agent_factory=factory
+    ) is None
+    delivery = db.execute(
+        "SELECT status, claim_token, claimed_at FROM actor_deliveries WHERE actor_id=?",
+        (actor["id"],),
+    ).fetchone()
+    assert delivery == ("pending", None, None)
+
+
+def test_wakeup_terminal_and_delivery_consume_are_one_transaction(
+    db, lock, run_id, surface_session, monkeypatch
+) -> None:
+    monkeypatch.delenv("ATLAS_WAKEUP_RUN", raising=False)
+    actor = _completed_wakeup_actor(db, lock, run_id, surface_session)
+    db.execute(
+        "CREATE TRIGGER reject_actor_delivery_consume "
+        "BEFORE UPDATE OF status ON actor_deliveries "
+        "WHEN NEW.status='consumed' "
+        "BEGIN SELECT RAISE(ABORT, 'injected finalization failure'); END"
+    )
+    db.commit()
+
+    result = actor_worker._wake_parent(
+        db,
+        lock,
+        actor["id"],
+        agent_factory=lambda name: _FakeRuntime(
+            RunOutcome(status="succeeded", summary="ok")
+        ),
+    )
+    assert result is None
+    run_status, mission_id = db.execute(
+        "SELECT status, mission_id FROM runs "
+        "WHERE id!=? ORDER BY started_at DESC LIMIT 1",
+        (run_id,),
+    ).fetchone()
+    mission_status = db.execute(
+        "SELECT status FROM missions WHERE id=?", (mission_id,)
+    ).fetchone()[0]
+    delivery_status = db.execute(
+        "SELECT status FROM actor_deliveries WHERE actor_id=?", (actor["id"],)
+    ).fetchone()[0]
+    assert (run_status, mission_status, delivery_status) == (
+        "running",
+        "running",
+        "pending",
+    )
+
+
+def test_wakeup_renews_lease_while_model_is_active(
+    db, lock, run_id, surface_session, monkeypatch
+) -> None:
+    monkeypatch.delenv("ATLAS_WAKEUP_RUN", raising=False)
+    actor = _completed_wakeup_actor(db, lock, run_id, surface_session)
+    competing_claims: list[object] = []
+
+    class _SlowRuntime:
+        def execute(self, *args, **kwargs):
+            def _compete() -> None:
+                time.sleep(0.07)
+                competing_claims.append(
+                    actor_service.claim_delivery(
+                        db,
+                        lock,
+                        actor["id"],
+                        claim_token="competitor",
+                        lease_seconds=0.03,
+                    )
+                )
+
+            contender = threading.Thread(target=_compete)
+            contender.start()
+            time.sleep(0.12)
+            contender.join()
+            return RunOutcome(status="succeeded", summary="ok")
+
+    result = actor_worker._wake_parent(
+        db,
+        lock,
+        actor["id"],
+        agent_factory=lambda name: _SlowRuntime(),
+        delivery_lease_seconds=0.03,
+    )
+    assert result is not None
+    assert competing_claims == [None]
+
+
+def test_repeated_wakeup_after_success_reuses_no_work(
+    db, lock, run_id, surface_session, monkeypatch
+) -> None:
+    monkeypatch.delenv("ATLAS_WAKEUP_RUN", raising=False)
+    actor = _completed_wakeup_actor(db, lock, run_id, surface_session)
+    runtime = _FakeRuntime(RunOutcome(status="succeeded", summary="ok"))
+    first = actor_worker._wake_parent(
+        db, lock, actor["id"], agent_factory=lambda name: runtime
+    )
+    second = actor_worker._wake_parent(
+        db, lock, actor["id"], agent_factory=lambda name: runtime
+    )
+    assert first is not None
+    assert second is None
+    assert len(runtime.prompts) == 1
+    assert db.execute(
+        "SELECT COUNT(*) FROM missions WHERE title LIKE 'actor wakeup:%'"
+    ).fetchone()[0] == 1
+
+
+def test_failed_model_retry_reuses_correlated_mission_and_run(
+    db, lock, run_id, surface_session, monkeypatch
+) -> None:
+    monkeypatch.delenv("ATLAS_WAKEUP_RUN", raising=False)
+    actor = _completed_wakeup_actor(db, lock, run_id, surface_session)
+
+    class _ExplodingRuntime:
+        def execute(self, *args, **kwargs):
+            raise RuntimeError("model interrupted")
+
+    assert actor_worker._wake_parent(
+        db, lock, actor["id"], agent_factory=lambda name: _ExplodingRuntime()
+    ) is None
+    correlated_before = db.execute(
+        "SELECT id, mission_id FROM runs WHERE id!=?", (run_id,)
+    ).fetchone()
+
+    recovered = actor_worker._wake_parent(
+        db,
+        lock,
+        actor["id"],
+        agent_factory=lambda name: _FakeRuntime(
+            RunOutcome(status="succeeded", summary="recovered")
+        ),
+    )
+    assert recovered == correlated_before[0]
+    assert db.execute(
+        "SELECT COUNT(*) FROM runs WHERE mission_id=?", (correlated_before[1],)
+    ).fetchone()[0] == 1
+    assert db.execute(
+        "SELECT status FROM actor_deliveries WHERE actor_id=?", (actor["id"],)
+    ).fetchone()[0] == "consumed"

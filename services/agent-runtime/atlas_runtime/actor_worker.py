@@ -126,6 +126,7 @@ def _wake_parent(
     actor_id: str,
     *,
     agent_factory: Optional[Callable[[str], Any]] = None,
+    delivery_lease_seconds: float = 60.0,
 ) -> Optional[str]:
     """Start a follow-up run in the parent's session announcing this completion.
 
@@ -155,23 +156,57 @@ def _wake_parent(
         logger.info("actor %s: wakeup skipped, session not live", actor_id)
         return None
 
-    # Deliver the completion as the prompt and consume the inbox record, so the
-    # parent is not told the same thing twice by two different mechanisms.
-    delivery = actor_service.consume_delivery(conn, lock, actor_id) or {}
-    status = delivery.get("status") or actor["status"]
-    detail = delivery.get("result_preview") or delivery.get("error") or ""
-    prompt = (
-        f"A background actor you started has finished.\n\n"
-        f"- actor: {actor_id}\n"
-        f"- status: {status}\n"
-        f"- goal: {actor.get('goal') or ''}\n"
-        f"- result: {detail}\n\n"
-        "Continue the work this result unblocks. If it failed, decide whether to "
-        "retry differently or report the blocker; do not silently repeat it."
+    claim_token = str(uuid.uuid4())
+    delivery = actor_service.claim_delivery(
+        conn,
+        lock,
+        actor_id,
+        claim_token=claim_token,
+        lease_seconds=delivery_lease_seconds,
     )
+    if delivery is None:
+        return None
 
+    # Stable IDs are the correlation contract. A retry after mission/run
+    # creation observes these same rows instead of manufacturing a duplicate.
+    mission_id = str(
+        uuid.uuid5(uuid.NAMESPACE_URL, f"atlas:actor-wakeup:{actor_id}:mission")
+    )
+    run_id = str(
+        uuid.uuid5(uuid.NAMESPACE_URL, f"atlas:actor-wakeup:{actor_id}:run")
+    )
+    renew_stop = threading.Event()
+
+    def _renew_claim() -> None:
+        interval = max(0.01, delivery_lease_seconds / 3.0)
+        while not renew_stop.wait(interval):
+            try:
+                if not actor_service.renew_delivery_claim(
+                    conn, lock, actor_id, claim_token=claim_token
+                ):
+                    return
+            except Exception as exc:  # noqa: BLE001 — main path owns recovery
+                logger.debug("actor %s delivery lease renewal failed: %s", actor_id, exc)
+
+    renewer = threading.Thread(
+        target=_renew_claim,
+        name=f"actor-delivery-{actor_id[:12]}",
+        daemon=True,
+    )
+    renewer.start()
     os.environ[WAKEUP_ENV_FLAG] = "1"
     try:
+        status = delivery.get("status") or actor["status"]
+        detail = delivery.get("result_preview") or delivery.get("error") or ""
+        prompt = (
+            f"A background actor you started has finished.\n\n"
+            f"- actor: {actor_id}\n"
+            f"- status: {status}\n"
+            f"- goal: {actor.get('goal') or ''}\n"
+            f"- result: {detail}\n\n"
+            "Continue the work this result unblocks. If it failed, decide whether to "
+            "retry differently or report the blocker; do not silently repeat it."
+        )
         if agent_factory is None:
             from atlas_runtime.agents import get_agent as agent_factory  # noqa: PLC0415
 
@@ -180,13 +215,25 @@ def _wake_parent(
             title=f"actor wakeup: {str(actor.get('goal') or '')[:48]}",
             intent=prompt,
             origin="system",
+            mission_id=mission_id,
         )
         run = start_run(
             conn, lock,
             mission_id=mission.id,
             session_id=session_id,
             agent_runtime="native",
+            run_id=run_id,
         )
+        if run.status in ("succeeded", "failed", "cancelled"):
+            # Recovery from an older terminal/correlated run: no model replay.
+            consumed = actor_service.consume_claimed_delivery(
+                conn,
+                lock,
+                actor_id,
+                claim_token=claim_token,
+                followup_run_id=run.id,
+            )
+            return run.id if consumed else None
         outcome = agent_factory("native").execute(
             conn, lock, mission_id=mission.id, run_id=run.id, prompt=prompt
         )
@@ -194,12 +241,22 @@ def _wake_parent(
             conn, lock,
             run_id=run.id, mission_id=mission.id,
             status=outcome.status, summary=outcome.summary,
+            delivery_actor_id=actor_id,
+            delivery_claim_token=claim_token,
         )
+        renew_stop.set()
+        renewer.join(timeout=max(0.05, delivery_lease_seconds))
         return run.id
     except Exception as exc:  # noqa: BLE001 — the actor already finished cleanly
         logger.warning("actor %s wakeup run failed: %s", actor_id, exc)
+        renew_stop.set()
+        renewer.join(timeout=max(0.05, delivery_lease_seconds))
+        actor_service.release_delivery_claim(
+            conn, lock, actor_id, claim_token=claim_token
+        )
         return None
     finally:
+        renew_stop.set()
         os.environ.pop(WAKEUP_ENV_FLAG, None)
 
 

@@ -42,6 +42,7 @@ def start_run(
     mission_id: str,
     session_id: Optional[str] = None,
     agent_runtime: Literal["native", "claude_code", "codex"] = "native",
+    run_id: Optional[str] = None,
 ) -> Run:
     """Create a Run row, update mission to running, emit tool_call AuditEvent.
 
@@ -56,13 +57,33 @@ def start_run(
     if session_id is None:
         session_id = f"cli-{uuid.uuid4().hex[:12]}"
     # Pydantic-first: construct Run model before any SQL
-    run = Run(mission_id=mission_id, session_id=session_id, agent_runtime=agent_runtime)
+    run_kwargs = {
+        "mission_id": mission_id,
+        "session_id": session_id,
+        "agent_runtime": agent_runtime,
+    }
+    if run_id is not None:
+        run_kwargs["id"] = run_id
+    run = Run(**run_kwargs)
     run_row = run.model_dump()
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
     # Atomic: SELECT + INSERT + UPDATE in same lock+conn block (prevents TOCTOU)
     with lock:
         with conn:
+            existing_cur = conn.execute("SELECT * FROM runs WHERE id=?", (run.id,))
+            existing_row = existing_cur.fetchone()
+            if existing_row is not None:
+                existing = Run(
+                    **dict(zip((d[0] for d in existing_cur.description), existing_row))
+                )
+                if run_id is None or (
+                    existing.mission_id != run.mission_id
+                    or existing.session_id != run.session_id
+                    or existing.agent_runtime != run.agent_runtime
+                ):
+                    raise ValueError(f"Run id collision for {run.id!r}")
+                return existing
             row = conn.execute(
                 "SELECT status FROM missions WHERE id=?", (mission_id,)
             ).fetchone()
@@ -133,6 +154,8 @@ def complete_run(
     status: Literal["succeeded", "failed"],
     summary: str = "",
     generate_summary: bool = True,
+    delivery_actor_id: Optional[str] = None,
+    delivery_claim_token: Optional[str] = None,
 ) -> None:
     """Transition run to terminal state (succeeded or failed) and emit AuditEvent.
 
@@ -152,6 +175,10 @@ def complete_run(
         ValueError: If the run does not exist or is not in running state.
     """
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    if (delivery_actor_id is None) != (delivery_claim_token is None):
+        raise ValueError(
+            "delivery_actor_id and delivery_claim_token must be provided together"
+        )
 
     stored_summary = summary
     if generate_summary:
@@ -190,6 +217,22 @@ def complete_run(
                 "UPDATE missions SET status=?, updated_at=? WHERE id=?",
                 (status, now, mission_id),
             )
+            if delivery_actor_id is not None:
+                consumed = conn.execute(
+                    "UPDATE actor_deliveries SET status='consumed', delivered_at=?, "
+                    "updated_at=? WHERE actor_id=? AND status='claimed' "
+                    "AND claim_token=?",
+                    (
+                        now,
+                        now,
+                        delivery_actor_id,
+                        delivery_claim_token,
+                    ),
+                )
+                if consumed.rowcount != 1:
+                    raise ValueError(
+                        f"Delivery claim for actor {delivery_actor_id!r} is not owned"
+                    )
     # Lock released — now safe to emit
 
     emit(
@@ -199,6 +242,19 @@ def complete_run(
         event_type="tool_call",
         data={"transition": status, "summary": stored_summary},
     )
+    if delivery_actor_id is not None and delivery_claim_token is not None:
+        # Import lazily to keep the ordinary run-service dependency surface
+        # unchanged. The terminal run/mission write and delivery consume above
+        # are already durable in one transaction; this audit is fail-open.
+        from atlas_runtime import actor_service  # noqa: PLC0415
+
+        actor_service._emit_delivery_transition(
+            conn,
+            lock,
+            actor_id=delivery_actor_id,
+            transition="consumed",
+            followup_run_id=run_id,
+        )
 
 
 def fail_run(
