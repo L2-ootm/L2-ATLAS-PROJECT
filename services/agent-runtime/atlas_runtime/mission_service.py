@@ -19,6 +19,162 @@ from atlas_core.schemas.core import Mission
 
 OPERATOR_RUN_ID = "operator"
 
+# Retention ownership is deliberately centralized here. Any migration that adds
+# an FK into one of RETENTION_FK_ROOTS must extend this matrix and the populated
+# purge fixture before it can ship.
+RETENTION_FK_ROOTS = frozenset(
+    {"actors", "audit_events", "missions", "runs", "surface_sessions", "team_runs"}
+)
+RETENTION_FK_POLICY = {
+    ("actor_deliveries", "actor_id", "actors"): "explicit-delete",
+    ("actor_steering", "actor_id", "actors"): "explicit-delete",
+    ("actors", "parent_run_id", "runs"): "explicit-delete",
+    ("agent_contract_snapshots", "run_id", "runs"): "cascade",
+    ("artifacts", "audit_event_id", "audit_events"): "explicit-delete",
+    ("artifacts", "run_id", "runs"): "explicit-delete",
+    ("audit_events", "run_id", "runs"): "explicit-delete",
+    ("compaction_artifacts", "surface_session_id", "surface_sessions"): "retained",
+    ("memory_provenance", "audit_event_id", "audit_events"): "set-null",
+    ("mission_archive", "mission_id", "missions"): "cascade",
+    ("mission_compressions", "mission_id", "missions"): "explicit-delete",
+    ("mission_loops", "mission_id", "missions"): "explicit-delete",
+    ("run_judgements", "mission_id", "missions"): "explicit-delete",
+    ("run_judgements", "run_id", "runs"): "explicit-delete",
+    ("runs", "mission_id", "missions"): "explicit-delete",
+    ("session_messages", "run_id", "runs"): "set-null",
+    ("session_messages", "surface_session_id", "surface_sessions"): "retained",
+    ("team_chat_messages", "team_run_id", "team_runs"): "explicit-delete",
+    ("team_runs", "mission_id", "missions"): "explicit-delete",
+    ("team_runs", "parent_run_id", "runs"): "explicit-delete",
+    ("tool_calls", "audit_event_id", "audit_events"): "explicit-delete",
+    ("tool_calls", "run_id", "runs"): "explicit-delete",
+}
+
+
+def _delete_retention_owned_mission_graph(
+    conn: sqlite3.Connection, mission_id: str
+) -> None:
+    """Apply the child-first mission retention policy inside the caller's transaction.
+
+    Conversation messages and compaction artifacts are durable history. Their
+    surface session survives and message run ownership is detached. Empty
+    sessions that have no remaining run or history ownership are removed.
+    """
+    run_rows = conn.execute(
+        "SELECT id, session_id FROM runs WHERE mission_id=?", (mission_id,)
+    ).fetchall()
+    run_ids = [row[0] for row in run_rows]
+    session_ids = {row[1] for row in run_rows if row[1]}
+    session_ids.update(
+        row[0]
+        for row in conn.execute(
+            "SELECT id FROM surface_sessions WHERE mission_id=? "
+            "OR run_id IN (SELECT id FROM runs WHERE mission_id=?)",
+            (mission_id, mission_id),
+        ).fetchall()
+    )
+
+    # Team and actor execution graphs must be removed child-first.
+    team_run_ids = [
+        row[0]
+        for row in conn.execute(
+            "SELECT id FROM team_runs WHERE mission_id=? "
+            "OR parent_run_id IN (SELECT id FROM runs WHERE mission_id=?)",
+            (mission_id, mission_id),
+        ).fetchall()
+    ]
+    for team_run_id in team_run_ids:
+        conn.execute(
+            "DELETE FROM team_chat_messages WHERE team_run_id=?", (team_run_id,)
+        )
+    conn.execute(
+        "DELETE FROM team_runs WHERE mission_id=? "
+        "OR parent_run_id IN (SELECT id FROM runs WHERE mission_id=?)",
+        (mission_id, mission_id),
+    )
+
+    for run_id in run_ids:
+        session_ids.update(
+            row[0]
+            for row in conn.execute(
+                "SELECT DISTINCT surface_session_id FROM session_messages WHERE run_id=?",
+                (run_id,),
+            ).fetchall()
+        )
+        actor_ids = [
+            row[0]
+            for row in conn.execute(
+                "SELECT id FROM actors WHERE parent_run_id=?", (run_id,)
+            ).fetchall()
+        ]
+        for actor_id in actor_ids:
+            conn.execute("DELETE FROM actor_deliveries WHERE actor_id=?", (actor_id,))
+            conn.execute("DELETE FROM actor_steering WHERE actor_id=?", (actor_id,))
+        conn.execute("DELETE FROM actors WHERE parent_run_id=?", (run_id,))
+
+        # Preserve transcript/compiled knowledge while removing references to
+        # raw execution history that is about to disappear.
+        conn.execute("UPDATE session_messages SET run_id=NULL WHERE run_id=?", (run_id,))
+        conn.execute("UPDATE observations SET run_id=NULL WHERE run_id=?", (run_id,))
+        conn.execute(
+            "UPDATE sources SET ingested_by_run_id=NULL WHERE ingested_by_run_id=?",
+            (run_id,),
+        )
+        conn.execute(
+            "UPDATE memory_provenance SET run_id=NULL, audit_event_id=NULL "
+            "WHERE run_id=? OR audit_event_id IN "
+            "(SELECT id FROM audit_events WHERE run_id=?)",
+            (run_id, run_id),
+        )
+
+        # Delete raw execution dependencies before audit events and runs.
+        conn.execute("DELETE FROM tool_approvals WHERE run_id=?", (run_id,))
+        conn.execute("DELETE FROM discord_approvals WHERE run_id=?", (run_id,))
+        conn.execute("DELETE FROM tool_calls WHERE run_id=?", (run_id,))
+        conn.execute("DELETE FROM artifacts WHERE run_id=?", (run_id,))
+        conn.execute("DELETE FROM run_judgements WHERE run_id=?", (run_id,))
+        conn.execute("DELETE FROM agent_contract_snapshots WHERE run_id=?", (run_id,))
+        conn.execute("DELETE FROM audit_events WHERE run_id=?", (run_id,))
+
+    conn.execute("DELETE FROM mission_compressions WHERE mission_id=?", (mission_id,))
+    conn.execute("DELETE FROM mission_loops WHERE mission_id=?", (mission_id,))
+    conn.execute("DELETE FROM run_judgements WHERE mission_id=?", (mission_id,))
+    conn.execute("DELETE FROM runs WHERE mission_id=?", (mission_id,))
+
+    # A retained session owns messages/compaction history. A session with no
+    # remaining run or history ownership is disposable, together with its
+    # soft-referenced permission state.
+    for session_id in session_ids:
+        is_owned = conn.execute(
+            "SELECT "
+            "EXISTS(SELECT 1 FROM runs WHERE session_id=?), "
+            "EXISTS(SELECT 1 FROM session_messages WHERE surface_session_id=?), "
+            "EXISTS(SELECT 1 FROM compaction_artifacts WHERE surface_session_id=?)",
+            (session_id, session_id, session_id),
+        ).fetchone()
+        if is_owned and not any(is_owned):
+            conn.execute(
+                "DELETE FROM tool_approvals WHERE surface_session_id=?", (session_id,)
+            )
+            conn.execute(
+                "DELETE FROM approval_channels WHERE surface_session_id=?", (session_id,)
+            )
+            conn.execute(
+                "DELETE FROM session_allow_rules WHERE surface_session_id=?", (session_id,)
+            )
+            conn.execute("DELETE FROM surface_sessions WHERE id=?", (session_id,))
+
+    conn.execute("DELETE FROM mission_archive WHERE mission_id=?", (mission_id,))
+    conn.execute("DELETE FROM missions WHERE id=?", (mission_id,))
+
+
+def _assert_retention_fk_integrity(conn: sqlite3.Connection) -> None:
+    violations = conn.execute("PRAGMA foreign_key_check").fetchall()
+    if violations:
+        raise sqlite3.IntegrityError(
+            f"retention purge left foreign-key violations: {violations!r}"
+        )
+
 
 def ensure_operator_run(conn: sqlite3.Connection, lock: threading.Lock) -> str:
     """Idempotently create the synthetic operator mission/run pair; return its id.
@@ -350,59 +506,6 @@ def purge_expired_archives(
             ).fetchall()
             mission_ids = [row[0] for row in rows]
             for mission_id in mission_ids:
-                run_ids = [
-                    row[0]
-                    for row in conn.execute(
-                        "SELECT id FROM runs WHERE mission_id=?", (mission_id,)
-                    ).fetchall()
-                ]
-                for run_id in run_ids:
-                    # Preserve compiled knowledge while removing soft references
-                    # to history that is about to disappear.
-                    conn.execute("UPDATE observations SET run_id=NULL WHERE run_id=?", (run_id,))
-                    conn.execute(
-                        "UPDATE sources SET ingested_by_run_id=NULL WHERE ingested_by_run_id=?",
-                        (run_id,),
-                    )
-                    conn.execute(
-                        "UPDATE memory_provenance SET run_id=NULL, audit_event_id=NULL "
-                        "WHERE run_id=? OR audit_event_id IN "
-                        "(SELECT id FROM audit_events WHERE run_id=?)",
-                        (run_id, run_id),
-                    )
-                    conn.execute("DELETE FROM tool_approvals WHERE run_id=?", (run_id,))
-                    conn.execute("DELETE FROM discord_approvals WHERE run_id=?", (run_id,))
-                    conn.execute("DELETE FROM tool_calls WHERE run_id=?", (run_id,))
-                    conn.execute("DELETE FROM artifacts WHERE run_id=?", (run_id,))
-                    conn.execute("DELETE FROM run_judgements WHERE run_id=?", (run_id,))
-                    # Migration 0020 permits retention deletion while retaining
-                    # the no-UPDATE immutability guarantee for live snapshots.
-                    conn.execute("DELETE FROM agent_contract_snapshots WHERE run_id=?", (run_id,))
-                    conn.execute("DELETE FROM audit_events WHERE run_id=?", (run_id,))
-
-                    session_row = conn.execute(
-                        "SELECT session_id FROM runs WHERE id=?", (run_id,)
-                    ).fetchone()
-                    session_id = session_row[0] if session_row else None
-                    if session_id:
-                        has_other_runs = conn.execute(
-                            "SELECT 1 FROM runs WHERE session_id=? AND id<>? LIMIT 1",
-                            (session_id, run_id),
-                        ).fetchone()
-                        if has_other_runs is None:
-                            conn.execute(
-                                "DELETE FROM approval_channels WHERE surface_session_id=?",
-                                (session_id,),
-                            )
-                            conn.execute(
-                                "DELETE FROM session_allow_rules WHERE surface_session_id=?",
-                                (session_id,),
-                            )
-                            conn.execute("DELETE FROM surface_sessions WHERE id=?", (session_id,))
-                conn.execute("DELETE FROM runs WHERE mission_id=?", (mission_id,))
-                conn.execute("DELETE FROM mission_loops WHERE mission_id=?", (mission_id,))
-                conn.execute(
-                    "DELETE FROM mission_archive WHERE mission_id=?", (mission_id,)
-                )
-                conn.execute("DELETE FROM missions WHERE id=?", (mission_id,))
+                _delete_retention_owned_mission_graph(conn, mission_id)
+            _assert_retention_fk_integrity(conn)
     return len(mission_ids)

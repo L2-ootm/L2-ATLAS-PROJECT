@@ -4,7 +4,57 @@ Fixtures from conftest.py (injected by name — do NOT import):
   db   — in-memory SQLite, WAL + FK ON + 0001_core.sql applied
   lock — threading.Lock()
 """
+import sqlite3
+
 import pytest
+
+
+NOW = "2026-01-01T00:00:00+00:00"
+
+
+def _insert_surface_session(db, session_id, *, mission_id, run_id):
+    db.execute(
+        "INSERT INTO surface_sessions"
+        "(id, surface_kind, surface_session_id, workspace_kind, workspace_root, "
+        "mission_id, run_id, agent, model_provider, model_id, permission_mode, "
+        "prompt_version, tool_catalog_version, context_policy_version, state, "
+        "heartbeat_at, created_at, updated_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            session_id,
+            "cli",
+            f"surface-{session_id}",
+            "global",
+            "/tmp/atlas",
+            mission_id,
+            run_id,
+            "atlas",
+            "test",
+            "test-model",
+            "ask",
+            "1",
+            "1",
+            "1",
+            "active",
+            NOW,
+            NOW,
+            NOW,
+        ),
+    )
+
+
+def _expire_mission(db, lock, mission_id):
+    from atlas_runtime.mission_service import archive_mission
+
+    db.execute("UPDATE missions SET status='succeeded' WHERE id=?", (mission_id,))
+    db.commit()
+    archive_mission(db, lock, mission_id=mission_id, delete_after_days=1)
+    db.execute(
+        "UPDATE mission_archive SET delete_after='2000-01-01T00:00:00+00:00' "
+        "WHERE mission_id=?",
+        (mission_id,),
+    )
+    db.commit()
 
 
 def test_create_mission_persists_row(db, lock):
@@ -180,6 +230,326 @@ def test_purge_expired_archives_deletes_dependents(db, lock):
     assert db.execute(
         "SELECT run_id FROM memory_provenance WHERE id='prov-purge'"
     ).fetchone()[0] is None
+
+
+def test_purge_expired_archives_handles_full_graph_and_preserves_history(db, lock):
+    from atlas_runtime.mission_service import create_mission, purge_expired_archives
+
+    mission = create_mission(db, lock, title="Full retention graph")
+    retained_session = "session-retained"
+    compacted_session = "session-compacted"
+    empty_session = "session-empty"
+    run_id = "run-retained"
+    compacted_run_id = "run-compacted"
+    empty_run_id = "run-empty"
+    _insert_surface_session(
+        db, retained_session, mission_id=mission.id, run_id=run_id
+    )
+    _insert_surface_session(
+        db, compacted_session, mission_id=mission.id, run_id=compacted_run_id
+    )
+    _insert_surface_session(
+        db, empty_session, mission_id=mission.id, run_id=empty_run_id
+    )
+    db.executemany(
+        "INSERT INTO runs(id,mission_id,session_id,status,started_at,summary) "
+        "VALUES (?,?,?,?,?,?)",
+        [
+            (run_id, mission.id, retained_session, "completed", NOW, ""),
+            (
+                compacted_run_id,
+                mission.id,
+                compacted_session,
+                "completed",
+                NOW,
+                "",
+            ),
+            (empty_run_id, mission.id, empty_session, "completed", NOW, ""),
+        ],
+    )
+
+    db.execute(
+        "INSERT INTO session_messages"
+        "(id,surface_session_id,run_id,role,content,created_at,seq) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (
+            "message-retained",
+            retained_session,
+            run_id,
+            "assistant",
+            "retentionneedle durable transcript",
+            NOW,
+            1,
+        ),
+    )
+    db.execute(
+        "INSERT INTO compaction_artifacts"
+        "(id,surface_session_id,compacted_message_start,compacted_message_end,"
+        "original_message_count,original_token_count,summary_token_count,"
+        "summary_content,model_used,compacted_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (
+            "compaction-retained",
+            retained_session,
+            1,
+            1,
+            1,
+            10,
+            3,
+            "durable summary",
+            "test-model",
+            NOW,
+        ),
+    )
+    db.execute(
+        "INSERT INTO compaction_artifacts"
+        "(id,surface_session_id,compacted_message_start,compacted_message_end,"
+        "original_message_count,original_token_count,summary_token_count,"
+        "summary_content,model_used,compacted_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (
+            "compaction-only",
+            compacted_session,
+            1,
+            2,
+            2,
+            20,
+            4,
+            "history without live messages",
+            "test-model",
+            NOW,
+        ),
+    )
+    db.execute(
+        "INSERT INTO approval_channels"
+        "(surface_session_id,surface_kind,registered_at) VALUES (?,?,?)",
+        (empty_session, "cli", NOW),
+    )
+    db.execute(
+        "INSERT INTO session_allow_rules"
+        "(id,surface_session_id,workspace_root,surface_kind,tool_name,arg_pattern,"
+        "rule_kind,created_at) VALUES (?,?,?,?,?,?,?,?)",
+        (
+            "rule-empty",
+            empty_session,
+            "/tmp/atlas",
+            "cli",
+            "read",
+            "*",
+            "allow_session",
+            NOW,
+        ),
+    )
+
+    db.execute(
+        "INSERT INTO audit_events(id,run_id,event_type,timestamp,data) "
+        "VALUES (?,?,?,?,?)",
+        ("audit-retention", run_id, "tool_call", NOW, "{}"),
+    )
+    db.execute(
+        "INSERT INTO tool_calls(id,audit_event_id,run_id,tool_name,timestamp) "
+        "VALUES (?,?,?,?,?)",
+        ("call-retention", "audit-retention", run_id, "workspace_read", NOW),
+    )
+    db.execute(
+        "INSERT INTO artifacts(id,run_id,audit_event_id,path,artifact_type,created_at) "
+        "VALUES (?,?,?,?,?,?)",
+        ("artifact-retention", run_id, "audit-retention", "output.txt", "text", NOW),
+    )
+    db.execute(
+        "INSERT INTO agent_contract_snapshots"
+        "(id,run_id,contract_sha256,snapshot_json,created_at) VALUES (?,?,?,?,?)",
+        ("contract-retention", run_id, "abc", "{}", NOW),
+    )
+    db.execute(
+        "INSERT INTO run_judgements(id,mission_id,run_id,verdict,created_at) "
+        "VALUES (?,?,?,?,?)",
+        ("judgement-retention", mission.id, run_id, "continue", NOW),
+    )
+    db.execute(
+        "INSERT INTO tool_approvals"
+        "(id,tool_name,risk_level,run_id,requested_at,surface_session_id) "
+        "VALUES (?,?,?,?,?,?)",
+        ("tool-approval-retention", "workspace_write", "write", run_id, NOW, retained_session),
+    )
+    db.execute(
+        "INSERT INTO discord_approvals(id,action,guild_id,run_id,requested_at) "
+        "VALUES (?,?,?,?,?)",
+        ("discord-retention", "send_message", "guild", run_id, NOW),
+    )
+
+    db.execute(
+        "INSERT INTO actors"
+        "(id,parent_run_id,idempotency_key,goal,created_at,updated_at) "
+        "VALUES (?,?,?,?,?,?)",
+        ("actor-retention", run_id, "actor-key-retention", "work", NOW, NOW),
+    )
+    db.execute(
+        "INSERT INTO actor_deliveries"
+        "(actor_id,parent_run_id,payload,created_at,updated_at) VALUES (?,?,?,?,?)",
+        ("actor-retention", run_id, "{}", NOW, NOW),
+    )
+    db.execute(
+        "INSERT INTO actor_steering(id,actor_id,seq,message,created_at) "
+        "VALUES (?,?,?,?,?)",
+        ("steering-retention", "actor-retention", 1, "adjust", NOW),
+    )
+
+    db.execute(
+        "INSERT INTO teams(id,name,created_at,updated_at) VALUES (?,?,?,?)",
+        ("team-retention", "Retention Team", NOW, NOW),
+    )
+    db.execute(
+        "INSERT INTO team_runs"
+        "(id,team_id,parent_run_id,mission_id,created_at,updated_at) "
+        "VALUES (?,?,?,?,?,?)",
+        ("team-run-retention", "team-retention", run_id, mission.id, NOW, NOW),
+    )
+    db.execute(
+        "INSERT INTO team_chat_messages"
+        "(id,team_run_id,seq,content,created_at) VALUES (?,?,?,?,?)",
+        ("team-chat-retention", "team-run-retention", 1, "runtime chat", NOW),
+    )
+    db.execute(
+        "INSERT INTO mission_loops"
+        "(mission_id,objective,created_at,updated_at) VALUES (?,?,?,?)",
+        (mission.id, "finish", NOW, NOW),
+    )
+    db.execute(
+        "INSERT INTO mission_compressions(mission_id,compressed_at,summary_json) "
+        "VALUES (?,?,?)",
+        (mission.id, NOW, "{}"),
+    )
+    db.execute(
+        "INSERT INTO observations(id,run_id,body,source,created_at) "
+        "VALUES (?,?,?,?,?)",
+        ("observation-retention", run_id, "compiled", "test", NOW),
+    )
+    db.execute(
+        "INSERT INTO sources"
+        "(id,path,sha256,size_bytes,ingested_at,ingested_by_run_id) "
+        "VALUES (?,?,?,?,?,?)",
+        ("source-retention", "input.txt", "def", 1, NOW, run_id),
+    )
+    db.execute(
+        "INSERT INTO memory_provenance"
+        "(id,layer,item_id,run_id,source_id,audit_event_id,written_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (
+            "provenance-retention",
+            "session",
+            "observation-retention",
+            run_id,
+            "source-retention",
+            "audit-retention",
+            NOW,
+        ),
+    )
+    _expire_mission(db, lock, mission.id)
+
+    assert purge_expired_archives(db, lock, now="2026-01-01T00:00:00+00:00") == 1
+
+    assert (
+        db.execute("SELECT 1 FROM missions WHERE id=?", (mission.id,)).fetchone()
+        is None
+    )
+    assert db.execute(
+        "SELECT 1 FROM runs WHERE mission_id=?", (mission.id,)
+    ).fetchone() is None
+    for table in (
+        "actor_deliveries",
+        "actor_steering",
+        "actors",
+        "team_chat_messages",
+        "team_runs",
+        "mission_compressions",
+        "mission_loops",
+        "run_judgements",
+        "tool_calls",
+        "artifacts",
+        "audit_events",
+        "tool_approvals",
+        "discord_approvals",
+        "agent_contract_snapshots",
+    ):
+        assert db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0
+
+    assert db.execute(
+        "SELECT 1 FROM surface_sessions WHERE id=?", (retained_session,)
+    ).fetchone() == (1,)
+    assert db.execute(
+        "SELECT 1 FROM surface_sessions WHERE id=?", (compacted_session,)
+    ).fetchone() == (1,)
+    assert db.execute(
+        "SELECT 1 FROM surface_sessions WHERE id=?", (empty_session,)
+    ).fetchone() is None
+    assert db.execute(
+        "SELECT run_id FROM session_messages WHERE id='message-retained'"
+    ).fetchone() == (None,)
+    assert db.execute(
+        "SELECT 1 FROM compaction_artifacts WHERE id='compaction-retained'"
+    ).fetchone() == (1,)
+    assert db.execute(
+        "SELECT 1 FROM compaction_artifacts WHERE id='compaction-only'"
+    ).fetchone() == (1,)
+    assert db.execute(
+        "SELECT rowid FROM session_messages_fts "
+        "WHERE session_messages_fts MATCH 'retentionneedle'"
+    ).fetchone() is not None
+    db.execute(
+        "INSERT INTO session_messages_fts(session_messages_fts) "
+        "VALUES ('integrity-check')"
+    )
+    assert db.execute("PRAGMA foreign_key_check").fetchall() == []
+    assert db.execute(
+        "SELECT run_id FROM observations WHERE id='observation-retention'"
+    ).fetchone() == (None,)
+    assert db.execute(
+        "SELECT ingested_by_run_id FROM sources WHERE id='source-retention'"
+    ).fetchone() == (None,)
+    assert db.execute(
+        "SELECT run_id,audit_event_id FROM memory_provenance "
+        "WHERE id='provenance-retention'"
+    ).fetchone() == (None, None)
+
+
+def test_purge_expired_archives_rolls_back_on_mid_graph_failure(db, lock):
+    from atlas_runtime.mission_service import create_mission, purge_expired_archives
+
+    mission = create_mission(db, lock, title="Atomic retention")
+    session_id = "session-rollback"
+    run_id = "run-rollback"
+    _insert_surface_session(db, session_id, mission_id=mission.id, run_id=run_id)
+    db.execute(
+        "INSERT INTO runs(id,mission_id,session_id,status,started_at,summary) "
+        "VALUES (?,?,?,?,?,?)",
+        (run_id, mission.id, session_id, "completed", NOW, ""),
+    )
+    db.execute(
+        "INSERT INTO session_messages"
+        "(id,surface_session_id,run_id,role,content,created_at,seq) "
+        "VALUES (?,?,?,?,?,?,?)",
+        ("message-rollback", session_id, run_id, "user", "keep ownership", NOW, 1),
+    )
+    _expire_mission(db, lock, mission.id)
+    db.execute(
+        "CREATE TRIGGER inject_retention_failure BEFORE DELETE ON runs "
+        "BEGIN SELECT RAISE(ABORT, 'injected retention failure'); END"
+    )
+    db.commit()
+
+    with pytest.raises(sqlite3.IntegrityError, match="injected retention failure"):
+        purge_expired_archives(db, lock, now="2026-01-01T00:00:00+00:00")
+
+    assert db.execute(
+        "SELECT status FROM missions WHERE id=?", (mission.id,)
+    ).fetchone() == ("archived",)
+    assert db.execute(
+        "SELECT 1 FROM mission_archive WHERE mission_id=?", (mission.id,)
+    ).fetchone() == (1,)
+    assert db.execute("SELECT 1 FROM runs WHERE id=?", (run_id,)).fetchone() == (1,)
+    assert db.execute(
+        "SELECT run_id FROM session_messages WHERE id='message-rollback'"
+    ).fetchone() == (run_id,)
+    assert db.execute("PRAGMA foreign_key_check").fetchall() == []
 
 
 def test_create_mission_origin_defaults_to_operator(db, lock):

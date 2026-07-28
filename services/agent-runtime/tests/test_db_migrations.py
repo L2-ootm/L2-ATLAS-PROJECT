@@ -112,6 +112,36 @@ def test_discord_approvals_table_created(db_path) -> None:
     conn.close()
 
 
+def test_retention_policy_classifies_every_live_owned_foreign_key(db_path) -> None:
+    """New retention-owned FKs must declare preservation/deletion semantics."""
+    from atlas_runtime.mission_service import (
+        RETENTION_FK_POLICY,
+        RETENTION_FK_ROOTS,
+    )
+
+    conn = db.connect(db_path)
+    db.apply_migrations(conn)
+    live_edges = set()
+    tables = conn.execute(
+        "SELECT name FROM sqlite_master "
+        "WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+    ).fetchall()
+    for (table,) in tables:
+        for fk in conn.execute(f'PRAGMA foreign_key_list("{table}")'):
+            parent_table = fk[2]
+            if parent_table in RETENTION_FK_ROOTS:
+                live_edges.add((table, fk[3], parent_table))
+
+    assert live_edges == set(RETENTION_FK_POLICY)
+    assert set(RETENTION_FK_POLICY.values()) == {
+        "cascade",
+        "explicit-delete",
+        "retained",
+        "set-null",
+    }
+    conn.close()
+
+
 def test_migration_status_reflects_applied_and_pending(db_path) -> None:
     conn = db.connect(db_path)
     before = db.migration_status(conn)
