@@ -49,17 +49,36 @@ RETENTION_FK_POLICY = {
     ("tool_calls", "audit_event_id", "audit_events"): "explicit-delete",
     ("tool_calls", "run_id", "runs"): "explicit-delete",
 }
+RETENTION_SOFT_OWNERSHIP_POLICY = {
+    # Actor work executes as its own mission/run graph. This intentionally soft
+    # link must be traversed before the actor row (the only ownership evidence)
+    # is deleted.
+    ("actors", "child_run_id", "runs"): "recursive-delete",
+}
+
+
+class RetentionBlockedError(RuntimeError):
+    """A retention candidate still owns live work and cannot be deleted safely."""
 
 
 def _delete_retention_owned_mission_graph(
-    conn: sqlite3.Connection, mission_id: str
+    conn: sqlite3.Connection,
+    mission_id: str,
+    *,
+    visited_mission_ids: set[str],
 ) -> None:
     """Apply the child-first mission retention policy inside the caller's transaction.
 
     Conversation messages and compaction artifacts are durable history. Their
     surface session survives and message run ownership is detached. Empty
     sessions that have no remaining run or history ownership are removed.
+    Terminal actors transfer retention ownership to their soft-linked child
+    mission/run graph. A queued/running actor blocks the whole purge transaction.
     """
+    if mission_id in visited_mission_ids:
+        return
+    visited_mission_ids.add(mission_id)
+
     run_rows = conn.execute(
         "SELECT id, session_id FROM runs WHERE mission_id=?", (mission_id,)
     ).fetchall()
@@ -101,13 +120,38 @@ def _delete_retention_owned_mission_graph(
                 (run_id,),
             ).fetchall()
         )
-        actor_ids = [
-            row[0]
-            for row in conn.execute(
-                "SELECT id FROM actors WHERE parent_run_id=?", (run_id,)
-            ).fetchall()
+        actor_rows = conn.execute(
+            "SELECT id, status, child_run_id FROM actors WHERE parent_run_id=?",
+            (run_id,),
+        ).fetchall()
+        live_actor_ids = [
+            actor_id
+            for actor_id, status, _child_run_id in actor_rows
+            if status in {"queued", "running"}
         ]
-        for actor_id in actor_ids:
+        if live_actor_ids:
+            raise RetentionBlockedError(
+                f"mission {mission_id!r} still owns live actors: "
+                f"{', '.join(sorted(live_actor_ids))}"
+            )
+
+        child_mission_ids: list[str] = []
+        for _actor_id, _status, child_run_id in actor_rows:
+            if not child_run_id:
+                continue
+            child = conn.execute(
+                "SELECT mission_id FROM runs WHERE id=?", (child_run_id,)
+            ).fetchone()
+            if child is not None:
+                child_mission_ids.append(child[0])
+        for child_mission_id in child_mission_ids:
+            _delete_retention_owned_mission_graph(
+                conn,
+                child_mission_id,
+                visited_mission_ids=visited_mission_ids,
+            )
+
+        for actor_id, _status, _child_run_id in actor_rows:
             conn.execute("DELETE FROM actor_deliveries WHERE actor_id=?", (actor_id,))
             conn.execute("DELETE FROM actor_steering WHERE actor_id=?", (actor_id,))
         conn.execute("DELETE FROM actors WHERE parent_run_id=?", (run_id,))
@@ -530,7 +574,12 @@ def purge_expired_archives(
                 (now_iso,),
             ).fetchall()
             mission_ids = [row[0] for row in rows]
+            visited_mission_ids: set[str] = set()
             for mission_id in mission_ids:
-                _delete_retention_owned_mission_graph(conn, mission_id)
+                _delete_retention_owned_mission_graph(
+                    conn,
+                    mission_id,
+                    visited_mission_ids=visited_mission_ids,
+                )
             _assert_retention_fk_integrity(conn)
     return len(mission_ids)

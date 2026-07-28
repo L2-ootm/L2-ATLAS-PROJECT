@@ -236,6 +236,7 @@ def test_purge_expired_archives_handles_full_graph_and_preserves_history(db, loc
     from atlas_runtime.mission_service import create_mission, purge_expired_archives
 
     mission = create_mission(db, lock, title="Full retention graph")
+    actor_child_mission = create_mission(db, lock, title="Actor child retention graph")
     retained_session = "session-retained"
     compacted_session = "session-compacted"
     empty_session = "session-empty"
@@ -378,9 +379,18 @@ def test_purge_expired_archives_handles_full_graph_and_preserves_history(db, loc
 
     db.execute(
         "INSERT INTO actors"
-        "(id,parent_run_id,idempotency_key,goal,created_at,updated_at) "
-        "VALUES (?,?,?,?,?,?)",
-        ("actor-retention", run_id, "actor-key-retention", "work", NOW, NOW),
+        "(id,parent_run_id,idempotency_key,goal,status,child_run_id,"
+        "created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)",
+        (
+            "actor-retention",
+            run_id,
+            "actor-key-retention",
+            "work",
+            "completed",
+            "actor-child-run-retention",
+            NOW,
+            NOW,
+        ),
     )
     db.execute(
         "INSERT INTO actor_deliveries"
@@ -391,6 +401,47 @@ def test_purge_expired_archives_handles_full_graph_and_preserves_history(db, loc
         "INSERT INTO actor_steering(id,actor_id,seq,message,created_at) "
         "VALUES (?,?,?,?,?)",
         ("steering-retention", "actor-retention", 1, "adjust", NOW),
+    )
+    db.execute(
+        "INSERT INTO runs(id,mission_id,status,started_at,finished_at,summary) "
+        "VALUES (?,?,?,?,?,?)",
+        (
+            "actor-child-run-retention",
+            actor_child_mission.id,
+            "succeeded",
+            NOW,
+            NOW,
+            "child result",
+        ),
+    )
+    db.execute(
+        "INSERT INTO audit_events(id,run_id,event_type,timestamp,data) "
+        "VALUES (?,?,?,?,?)",
+        (
+            "actor-child-audit-retention",
+            "actor-child-run-retention",
+            "tool_call",
+            NOW,
+            "{}",
+        ),
+    )
+    # Deliberate soft-link cycle: the actor child run owns another terminal
+    # actor whose child_run_id points back to the parent run. Retention must
+    # visit each mission once, not recurse forever or double-delete either graph.
+    db.execute(
+        "INSERT INTO actors"
+        "(id,parent_run_id,idempotency_key,goal,status,child_run_id,"
+        "created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)",
+        (
+            "actor-retention-cycle",
+            "actor-child-run-retention",
+            "actor-key-retention-cycle",
+            "cycle back to parent",
+            "completed",
+            run_id,
+            NOW,
+            NOW,
+        ),
     )
 
     db.execute(
@@ -453,6 +504,15 @@ def test_purge_expired_archives_handles_full_graph_and_preserves_history(db, loc
     )
     assert db.execute(
         "SELECT 1 FROM runs WHERE mission_id=?", (mission.id,)
+    ).fetchone() is None
+    assert db.execute(
+        "SELECT 1 FROM missions WHERE id=?", (actor_child_mission.id,)
+    ).fetchone() is None
+    assert db.execute(
+        "SELECT 1 FROM runs WHERE id='actor-child-run-retention'"
+    ).fetchone() is None
+    assert db.execute(
+        "SELECT 1 FROM audit_events WHERE id='actor-child-audit-retention'"
     ).fetchone() is None
     for table in (
         "actor_deliveries",
@@ -550,6 +610,62 @@ def test_purge_expired_archives_rolls_back_on_mid_graph_failure(db, lock):
         "SELECT run_id FROM session_messages WHERE id='message-rollback'"
     ).fetchone() == (run_id,)
     assert db.execute("PRAGMA foreign_key_check").fetchall() == []
+
+
+@pytest.mark.parametrize("actor_status", ["queued", "running"])
+def test_purge_expired_archives_refuses_live_actor_without_partial_deletion(
+    db, lock, actor_status
+):
+    from atlas_runtime.mission_service import (
+        RetentionBlockedError,
+        create_mission,
+        purge_expired_archives,
+    )
+
+    mission = create_mission(db, lock, title=f"Live {actor_status} actor")
+    run_id = f"run-live-{actor_status}"
+    db.execute(
+        "INSERT INTO runs(id,mission_id,status,started_at,summary) "
+        "VALUES (?,?,?,?,?)",
+        (run_id, mission.id, "completed", NOW, ""),
+    )
+    db.execute(
+        "INSERT INTO actors"
+        "(id,parent_run_id,idempotency_key,goal,status,created_at,updated_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (
+            f"actor-live-{actor_status}",
+            run_id,
+            f"actor-key-live-{actor_status}",
+            "still working",
+            actor_status,
+            NOW,
+            NOW,
+        ),
+    )
+    db.execute(
+        "INSERT INTO audit_events(id,run_id,event_type,timestamp,data) "
+        "VALUES (?,?,?,?,?)",
+        (f"audit-live-{actor_status}", run_id, "tool_call", NOW, "{}"),
+    )
+    _expire_mission(db, lock, mission.id)
+
+    with pytest.raises(RetentionBlockedError, match="still owns live actors"):
+        purge_expired_archives(db, lock, now="2026-01-01T00:00:00+00:00")
+
+    assert db.execute(
+        "SELECT status FROM missions WHERE id=?", (mission.id,)
+    ).fetchone() == ("archived",)
+    assert db.execute(
+        "SELECT 1 FROM mission_archive WHERE mission_id=?", (mission.id,)
+    ).fetchone() == (1,)
+    assert db.execute("SELECT 1 FROM runs WHERE id=?", (run_id,)).fetchone() == (1,)
+    assert db.execute(
+        "SELECT status FROM actors WHERE id=?", (f"actor-live-{actor_status}",)
+    ).fetchone() == (actor_status,)
+    assert db.execute(
+        "SELECT 1 FROM audit_events WHERE id=?", (f"audit-live-{actor_status}",)
+    ).fetchone() == (1,)
 
 
 def test_create_mission_origin_defaults_to_operator(db, lock):
