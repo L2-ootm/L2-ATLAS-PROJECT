@@ -3238,42 +3238,55 @@ async fn surface_messages_returns_a_history_window() {
 }
 
 #[tokio::test]
-async fn surface_messages_requires_owner_token() {
+async fn transcript_routes_follow_authority_classification() {
     let dir = tempfile::tempdir().unwrap();
     let stub_dir = tempfile::tempdir().unwrap();
     let router = test_app_with_stub(seeded_db(&dir), r#"{"messages":[]}"#, &stub_dir);
-    let response = router
-        .oneshot(
-            Request::builder()
-                .uri("/v1/surface-sessions/surface-1/messages")
-                .header("x-atlas-surface-owner", "wrong-owner")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::FORBIDDEN);
-}
 
-#[tokio::test]
-async fn session_message_search_spans_sessions() {
-    let dir = tempfile::tempdir().unwrap();
-    let stub_dir = tempfile::tempdir().unwrap();
-    let router = test_app_with_stub(
-        seeded_db(&dir),
-        r#"{"query":"wedge","session_id":null,"messages":[{"surface_session_id":"surface-1","seq":4,"role":"user","content":"why did it wedge"}]}"#,
-        &stub_dir,
-    );
-    let (status, body) = get_json(&router, "/v1/session-messages/search?q=wedge").await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["messages"][0]["surface_session_id"], "surface-1");
-}
+    // Keep the transcript surface's authority model explicit. The unscoped
+    // route is intentionally absent until ATLAS has a real operator-global
+    // capability; a session owner token must not revive it.
+    let cases = [
+        (
+            "removed operator-global route without authority",
+            "/v1/session-messages/search?q=wedge",
+            None,
+            StatusCode::NOT_FOUND,
+        ),
+        (
+            "removed operator-global route with session authority",
+            "/v1/session-messages/search?q=wedge",
+            Some("owner-1"),
+            StatusCode::NOT_FOUND,
+        ),
+        (
+            "session-owner route without authority",
+            "/v1/surface-sessions/surface-1/messages",
+            None,
+            StatusCode::FORBIDDEN,
+        ),
+        (
+            "session-owner route with wrong authority",
+            "/v1/surface-sessions/surface-1/messages",
+            Some("wrong-owner"),
+            StatusCode::FORBIDDEN,
+        ),
+    ];
 
-#[tokio::test]
-async fn session_message_search_rejects_an_empty_query() {
-    let dir = tempfile::tempdir().unwrap();
-    let stub_dir = tempfile::tempdir().unwrap();
-    let router = test_app_with_stub(seeded_db(&dir), r#"{"messages":[]}"#, &stub_dir);
-    let (status, _body) = get_json(&router, "/v1/session-messages/search?q=").await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
+    for (classification, uri, owner_token, expected) in cases {
+        let mut request = Request::builder().uri(uri);
+        if let Some(owner_token) = owner_token {
+            request = request.header("x-atlas-surface-owner", owner_token);
+        }
+        let response = router
+            .clone()
+            .oneshot(request.body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            expected,
+            "transcript authority classification failed: {classification}"
+        );
+    }
 }
