@@ -9,7 +9,7 @@ const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 
 const cmds = require('../src/commands');
-const { hashFile } = require('../src/manifest');
+const { buildManifest, hashFile } = require('../src/manifest');
 const { buildReleaseIndex } = require('../src/buildReleaseIndex');
 const { createTarGz } = require('../src/tarball');
 const { verifyCleanInstall } = require('../src/verifyCleanInstall');
@@ -18,10 +18,14 @@ const { resolveRollbackTarget } = require('../src/rollbackHistory');
 
 const packageJson = require('../package.json');
 
-/** A throwaway staged "release bundle" directory with a couple of files. */
-function stageBundle(dir, contents) {
+/** A throwaway staged release with a migration-capable runtime by default. */
+function stageBundle(dir, contents, opts = {}) {
 	fs.mkdirSync(dir, { recursive: true });
-	for (const [rel, text] of Object.entries(contents)) {
+	const runtime = opts.runtime === false ? {} : {
+		'runtime.json': JSON.stringify({ entrypoint: 'bin/atlas.js' }),
+		'bin/atlas.js': "'use strict';\nprocess.exit(0);\n"
+	};
+	for (const [rel, text] of Object.entries({ ...runtime, ...contents })) {
 		const abs = path.join(dir, rel);
 		fs.mkdirSync(path.dirname(abs), { recursive: true });
 		fs.writeFileSync(abs, text, 'utf8');
@@ -441,6 +445,7 @@ test('release-index builder emits a consumable platform artifact and index', asy
 		outDir: releases,
 		version: '0.1.0',
 		platform: 'win32-x64',
+		entrypoint: 'bin/atlas.js',
 		channel: 'stable',
 		baseUrl: 'file://' + path.resolve(releases).replace(/\\/g, '/') + '/'
 	});
@@ -650,33 +655,148 @@ test('install reports "already up to date" when no migrations are pending', () =
 	assert.equal(result.migrations.note, 'already up to date');
 });
 
-test('migration failure is reported but does not block install', () => {
+test('migration failure blocks install before pointer/state activation', () => {
 	const home = tempDir('home');
 	const bundle = tempDir('bundle');
 	const entrypoint = writeMigrationStub(bundle, 'fail');
 
-	const result = cmds.install(home, { from: bundle, version: '0.1.0', entrypoint });
+	assert.throws(
+		() => cmds.install(home, { from: bundle, version: '0.1.0', entrypoint }),
+		/activation of 0\.1\.0 failed.*duplicate column/
+	);
+	assert.equal(cmds.readCurrent(home), null);
+	assert.equal(fs.existsSync(path.join(home, 'install.json')), false);
+	assert.equal(fs.existsSync(path.join(home, 'current')), false);
+	assert.equal(fs.existsSync(path.join(home, 'versions', '0.1.0')), true, 'verified target remains for diagnosis/retry');
+});
 
-	assert.equal(result.migrations.ok, false);
-	assert.match(result.migrations.error, /duplicate column/);
-	// the install itself still succeeded — migration failure only warns
-	assert.equal(result.version, '0.1.0');
+test('a bundle with no runtime entrypoint fails activation instead of committing skipped migrations', () => {
+	const home = tempDir('home');
+	const bundle = tempDir('bundle');
+	stageBundle(bundle, { 'README.txt': 'no runtime here' }, { runtime: false });
+
+	assert.throws(
+		() => cmds.install(home, { from: bundle, version: '0.1.0' }),
+		/migrations did not run/
+	);
+	assert.equal(cmds.readCurrent(home), null);
+});
+
+test('failed update, use, and rollback migrations preserve the old pointer and rollback history', () => {
+	const home = tempDir('home');
+	const goodV1 = tempDir('good-v1');
+	const badV2 = tempDir('bad-v2');
+	const goodEntrypoint = writeMigrationStub(goodV1, 'up-to-date');
+	const badEntrypoint = writeMigrationStub(badV2, 'fail');
+	cmds.install(home, { from: goodV1, version: '0.1.0', entrypoint: goodEntrypoint });
+	const beforeUpdate = fs.readFileSync(path.join(home, 'install.json'), 'utf8');
+
+	assert.throws(
+		() => cmds.update(home, { from: badV2, version: '0.2.0', entrypoint: badEntrypoint }),
+		/required migrations/
+	);
+	assert.equal(cmds.readCurrent(home), '0.1.0');
+	assert.equal(fs.readFileSync(path.join(home, 'install.json'), 'utf8'), beforeUpdate);
+	assert.throws(() => cmds.use(home, '0.2.0'), /required migrations/);
+	assert.equal(cmds.readCurrent(home), '0.1.0');
+	assert.equal(fs.readFileSync(path.join(home, 'install.json'), 'utf8'), beforeUpdate);
+
+	// Make the retained target migration-capable, activate it, then poison each
+	// target before use/rollback to prove those pointer entrypoints share the gate.
+	fs.writeFileSync(path.join(home, 'versions', '0.2.0', badEntrypoint), "'use strict';\nprocess.exit(0);\n");
+	const manifestV2 = path.join(home, 'versions', '0.2.0', 'manifest.json');
+	fs.rmSync(manifestV2);
+	fs.writeFileSync(manifestV2, JSON.stringify(buildManifest(
+		path.join(home, 'versions', '0.2.0'),
+		'0.2.0',
+		{ entrypoint: badEntrypoint }
+	), null, 2));
+	cmds.use(home, '0.2.0');
+	const beforeRollback = fs.readFileSync(path.join(home, 'install.json'), 'utf8');
+	fs.writeFileSync(path.join(home, 'versions', '0.1.0', goodEntrypoint), "'use strict';\nprocess.stderr.write('rollback migration failed\\n');\nprocess.exit(1);\n");
+	const manifestV1 = path.join(home, 'versions', '0.1.0', 'manifest.json');
+	fs.rmSync(manifestV1);
+	fs.writeFileSync(manifestV1, JSON.stringify(buildManifest(
+		path.join(home, 'versions', '0.1.0'),
+		'0.1.0',
+		{ entrypoint: goodEntrypoint }
+	), null, 2));
+
+	assert.throws(() => cmds.rollback(home, {}), /rollback migration failed/);
+	assert.equal(cmds.readCurrent(home), '0.2.0');
+	assert.equal(fs.readFileSync(path.join(home, 'install.json'), 'utf8'), beforeRollback);
+});
+
+test('bin install exits 1 on migration failure in text and JSON modes', () => {
+	const bundle = tempDir('bundle');
+	const entrypoint = writeMigrationStub(bundle, 'fail');
+	fs.writeFileSync(path.join(bundle, 'runtime.json'), JSON.stringify({ entrypoint }));
+	const cli = path.join(__dirname, '..', 'bin', 'atlas.js');
+
+	for (const json of [false, true]) {
+		const home = tempDir(json ? 'json-home' : 'text-home');
+		const args = [cli, 'install', '--from', bundle, '--version', '0.1.0'];
+		if (json) args.push('--json');
+		const result = spawnSync(process.execPath, args, {
+			encoding: 'utf8',
+			env: { ...process.env, ATLAS_INSTALL_ROOT: home }
+		});
+		assert.equal(result.status, 1);
+		if (json) {
+			assert.match(JSON.parse(result.stdout).error.message, /required migrations/);
+		} else {
+			assert.match(result.stderr, /required migrations/);
+		}
+		assert.equal(fs.existsSync(path.join(home, 'install.json')), false);
+	}
+});
+
+test('same-version platform retry reruns required migrations after a prior failure', () => {
+	const home = tempDir('home');
+	const bundle = tempDir('bundle');
+	const sentinel = path.join(tempDir('sentinel'), 'attempted');
+	const entrypoint = 'bin/runtime.js';
+	fs.mkdirSync(path.join(bundle, 'bin'), { recursive: true });
+	fs.writeFileSync(
+		path.join(bundle, entrypoint),
+		`'use strict';\nconst fs = require('node:fs');\nconst sentinel = ${JSON.stringify(sentinel)};\n`
+			+ "if (!fs.existsSync(sentinel)) { fs.writeFileSync(sentinel, '1'); process.stderr.write('first migration failed\\n'); process.exit(1); }\n"
+			+ "console.log('already up to date');\n",
+		'utf8'
+	);
+
+	assert.throws(
+		() => cmds.installBundledPlatform(home, { from: bundle, version: '0.1.0', entrypoint }),
+		/first migration failed/
+	);
+	assert.equal(cmds.readCurrent(home), null);
+
+	const retried = cmds.installBundledPlatform(home, { from: bundle, version: '0.1.0', entrypoint });
+	assert.equal(retried.reused, true);
+	assert.equal(retried.migrations.ok, true);
 	assert.equal(cmds.readCurrent(home), '0.1.0');
 });
 
-test('a bundle with no runtime entrypoint reports migrations as FAILED, not skipped', () => {
-	const home = tempDir('home');
-	const bundle = tempDir('bundle');
-	stageBundle(bundle, { 'README.txt': 'no runtime here' });
-
-	const result = cmds.install(home, { from: bundle, version: '0.1.0' });
-
-	// This used to return ok:true with a note, so `atlas update` printed a clean
-	// success over a version whose schema was never migrated. Not running is a
-	// failure to report, not an outcome to congratulate.
-	assert.equal(result.migrations.ok, false);
-	assert.deepEqual(result.migrations.applied, []);
-	assert.match(result.migrations.error, /migrations did not run/);
+test('clean install verifier rejects a lifecycle result whose migrations are not green', async () => {
+	const originalInstall = cmds.installFromRelease;
+	const originalDoctor = cmds.doctor;
+	try {
+		cmds.installFromRelease = async () => ({
+			version: '0.1.0',
+			migrations: { ok: false, applied: [], error: 'injected failure' }
+		});
+		cmds.doctor = () => ({ ok: true, checks: [] });
+		const report = await verifyCleanInstall({ home: tempDir('verify-home'), manifest: 'unused' });
+		assert.equal(report.ok, false);
+		assert.deepEqual(report.steps, [{
+			name: 'install',
+			ok: false,
+			detail: 'required migrations failed: injected failure'
+		}]);
+	} finally {
+		cmds.installFromRelease = originalInstall;
+		cmds.doctor = originalDoctor;
+	}
 });
 
 test('install --from adopts the entrypoint the bundle declares in runtime.json', () => {

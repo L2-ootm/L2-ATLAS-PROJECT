@@ -8,7 +8,7 @@ name`. This module fixes that with a versioned `schema_migrations` tracker and a
 drift-tolerant apply path, exposed via `atlas db init` / `atlas db status`.
 
 Backend seam (Supabase/Postgres later): all SQLite specifics (`executescript`,
-`sqlite3.OperationalError`, the duplicate-column string, the WAL pragma) are
+schema preconditions for bare ADD COLUMN statements, the WAL pragma) are
 confined to this module behind the function surface below. A Postgres backend
 swaps `connect()` for a psycopg connection and `executescript` for `execute`,
 resolving dialect via per-backend migration dirs; the `schema_migrations(version,
@@ -19,6 +19,7 @@ from __future__ import annotations
 import datetime
 import os
 import pathlib
+import re
 import sqlite3
 
 # db.py lives at services/agent-runtime/atlas_runtime/db.py -> parents[3] = repo root.
@@ -79,25 +80,58 @@ def pending_migrations(
     return [p for p in _migration_files(migrations_dir) if p.name not in done]
 
 
-def _apply_sql_tolerant(conn: sqlite3.Connection, sql: str) -> None:
-    """Apply one migration script via `executescript`.
+_ADD_COLUMN = re.compile(
+    r"(?im)^(?P<statement>\s*ALTER\s+TABLE\s+(?P<table>[A-Za-z_][A-Za-z0-9_]*)"
+    r"\s+ADD\s+COLUMN\s+(?P<column>[A-Za-z_][A-Za-z0-9_]*)\b[^;]*;\s*)$"
+)
 
-    The only non-idempotent statements across our migrations are bare
-    `ALTER TABLE ... ADD COLUMN` (0005/0006); everything else is
-    CREATE ... IF NOT EXISTS (re-run safe, including the 0001 FTS triggers).
 
-    On a drifted/hand-patched DB that already has the added column,
-    `executescript` raises 'duplicate column name'. We swallow that and stamp the
-    file as applied: in the only situation it occurs the additive IF-NOT-EXISTS
-    statements are already satisfied, so nothing is lost. We deliberately do NOT
-    re-split-and-rerun the script — naive ';' splitting would corrupt files that
-    contain trigger bodies (BEGIN ... END). Any other OperationalError re-raises.
+def _prepare_migration_sql(conn: sqlite3.Connection, sql: str) -> str:
+    """Make legacy bare ADD COLUMN statements explicitly idempotent.
+
+    SQLite has no ``ADD COLUMN IF NOT EXISTS``. Inspecting the named table and
+    removing only an already-satisfied whole ALTER statement is safer than
+    swallowing a duplicate-column exception for the entire file: later
+    statements in that file still run and the file is stamped only on success.
     """
+
+    def replace_existing(match: re.Match[str]) -> str:
+        table = match.group("table")
+        column = match.group("column")
+        columns = {row[1] for row in conn.execute(f'PRAGMA table_info("{table}")')}
+        if column in columns:
+            return f"-- already applied: {table}.{column}\n"
+        return match.group("statement")
+
+    return _ADD_COLUMN.sub(replace_existing, sql)
+
+
+def _sql_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _apply_and_stamp_migration(
+    conn: sqlite3.Connection, path: pathlib.Path, applied_at: str
+) -> None:
+    """Commit one migration file and its tracker row as one transaction."""
+    # Migration files repeat this pragma, but SQLite ignores attempts to change
+    # it inside a transaction. Set it before BEGIN so externally supplied
+    # connections retain the same FK contract as db.connect().
+    conn.execute("PRAGMA foreign_keys = ON")
+    sql = _prepare_migration_sql(conn, path.read_text(encoding="utf-8"))
+    script = (
+        "BEGIN IMMEDIATE;\n"
+        f"{sql}\n"
+        "INSERT INTO schema_migrations(version, applied_at) VALUES "
+        f"({_sql_literal(path.name)}, {_sql_literal(applied_at)});\n"
+        "COMMIT;\n"
+    )
     try:
-        conn.executescript(sql)
-    except sqlite3.OperationalError as exc:
-        if "duplicate column name" not in str(exc).lower():
-            raise
+        conn.executescript(script)
+    except Exception:
+        if conn.in_transaction:
+            conn.rollback()
+        raise
 
 
 def apply_migrations(
@@ -117,12 +151,7 @@ def apply_migrations(
     for path in _migration_files(migrations_dir):
         if path.name in done:
             continue
-        _apply_sql_tolerant(conn, path.read_text(encoding="utf-8"))
-        conn.execute(
-            "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
-            (path.name, now),
-        )
-        conn.commit()
+        _apply_and_stamp_migration(conn, path, now)
         applied_now.append(path.name)
     return applied_now
 

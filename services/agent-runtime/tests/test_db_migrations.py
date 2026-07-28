@@ -121,3 +121,56 @@ def test_migration_status_reflects_applied_and_pending(db_path) -> None:
     after = db.migration_status(conn)
     assert after and all(applied is True for _, applied in after)
     conn.close()
+
+
+def test_failed_migration_file_rolls_back_schema_and_tracker_together(db_path, tmp_path) -> None:
+    migrations = tmp_path / "migrations"
+    migrations.mkdir()
+    (migrations / "0001_broken.sql").write_text(
+        "CREATE TABLE must_not_survive (id TEXT PRIMARY KEY);\n"
+        "INSERT INTO table_that_does_not_exist(value) VALUES ('boom');\n",
+        encoding="utf-8",
+    )
+    conn = db.connect(db_path)
+
+    with pytest.raises(sqlite3.OperationalError):
+        db.apply_migrations(conn, migrations)
+
+    assert (
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'must_not_survive'"
+        ).fetchone()
+        is None
+    )
+    assert conn.execute("SELECT version FROM schema_migrations").fetchall() == []
+    assert conn.in_transaction is False
+    conn.close()
+
+
+def test_existing_add_column_does_not_skip_later_statements_or_stamp_early(
+    db_path, tmp_path
+) -> None:
+    migrations = tmp_path / "migrations"
+    migrations.mkdir()
+    (migrations / "0001_base.sql").write_text(
+        "CREATE TABLE sample (id TEXT PRIMARY KEY, adopted TEXT);\n",
+        encoding="utf-8",
+    )
+    (migrations / "0002_adopt.sql").write_text(
+        "ALTER TABLE sample ADD COLUMN adopted TEXT;\n"
+        "CREATE INDEX sample_adopted_idx ON sample(adopted);\n",
+        encoding="utf-8",
+    )
+    conn = db.connect(db_path)
+
+    assert db.apply_migrations(conn, migrations) == ["0001_base.sql", "0002_adopt.sql"]
+    assert (
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'sample_adopted_idx'"
+        ).fetchone()
+        == (1,)
+    )
+    assert conn.execute(
+        "SELECT version FROM schema_migrations ORDER BY version"
+    ).fetchall() == [("0001_base.sql",), ("0002_adopt.sql",)]
+    conn.close()

@@ -243,11 +243,23 @@ function _bundleEntrypoint(source) {
  * (as opposed to launcher.js's resolveRuntimeEntrypoint, which always
  * resolves the *current* version — migrations must run against the version
  * just installed/updated/rolled back to, which may not be current yet). */
-function _resolveRuntimeEntrypointFor(home, version) {
+function _resolveRuntimeEntrypointFor(home, version, targetEntrypoint) {
 	if (!version) return null;
 	const root = path.resolve(versionDir(home, version));
 	const state = readInstallState(home);
-	const candidates = state?.runtimeEntrypoint ? [state.runtimeEntrypoint] : _candidateRuntimeEntrypoints();
+	let manifestEntrypoint;
+	try {
+		const targetManifest = manifestFile(root);
+		manifestEntrypoint = fs.existsSync(targetManifest) ? readManifest(targetManifest).entrypoint : undefined;
+	} catch {
+		manifestEntrypoint = undefined;
+	}
+	const candidates = [
+		targetEntrypoint,
+		manifestEntrypoint,
+		state?.runtimeEntrypoint,
+		..._candidateRuntimeEntrypoints()
+	].filter(Boolean);
 	for (const relative of candidates) {
 		const absolute = path.resolve(root, relative);
 		if (!absolute.startsWith(`${root}${path.sep}`)) continue;
@@ -275,13 +287,10 @@ function _spawnRuntime(entrypoint, args, home) {
  * Apply pending DB migrations by shelling out to the installed runtime's
  * `db init` (services/agent-runtime/atlas_runtime/db.py owns the migration
  * table and is the single source of truth — this never reimplements it).
- * Never blocks the caller: a missing runtime entrypoint or a failed
- * migration is reported in the result, not thrown, because the version
- * files are already on disk and the user can retry with `atlas db init`.
  * Returns `{ ok, applied: string[], error?, note? }`.
  */
-function runMigrations(home, version) {
-	const entrypoint = _resolveRuntimeEntrypointFor(home, version);
+function runMigrations(home, version, opts = {}) {
+	const entrypoint = _resolveRuntimeEntrypointFor(home, version, opts.entrypoint);
 	if (!entrypoint) {
 		// NOT ok: the schema was not migrated, so the runtime that just got
 		// installed may not be able to open the database. This returned ok:true,
@@ -314,6 +323,20 @@ function runMigrations(home, version) {
 }
 
 /**
+ * Migrations are a required pre-commit activation phase. Version files may
+ * remain staged for diagnosis/retry, but install.json/current/history must not
+ * move until the target runtime has successfully converged the database.
+ */
+function activateVersion(home, version, state, opts = {}) {
+	const migrations = runMigrations(home, version, { entrypoint: opts.entrypoint });
+	if (!migrations.ok) {
+		throw new CliError(`activation of ${version} failed during required migrations: ${migrations.error}`);
+	}
+	commitVersionState(home, version, state);
+	return migrations;
+}
+
+/**
  * `atlas-cli install --from <bundleDir> [--version X]`
  *
  * Stages a version from a local directory (docs/plans/2026-07-03-wsb-
@@ -329,6 +352,7 @@ function install(home, opts) {
 	if (!fs.existsSync(source)) throw new CliError(`staged bundle not found: ${source}`);
 
 	const version = opts.version || path.basename(source);
+	const entrypoint = opts.entrypoint || _bundleEntrypoint(source);
 	const dest = versionDir(home, version);
 	if (fs.existsSync(dest)) {
 		if (!isOrphanedVersionDir(home, version)) {
@@ -342,22 +366,19 @@ function install(home, opts) {
 		copyDir(source, staging);
 		const manifestPath = manifestFile(staging);
 		if (!fs.existsSync(manifestPath)) {
-			const manifest = buildManifest(staging, version);
+			const manifest = buildManifest(staging, version, { entrypoint });
 			fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
 		}
 	});
 
-	const entrypoint = opts.entrypoint || _bundleEntrypoint(source);
-	commitVersionState(home, version, {
+	const migrations = activateVersion(home, version, {
 		installMethod: 'local-staged',
 		lastUpdateCheck: new Date().toISOString(),
 		// Omit (not `undefined`) when neither the flag nor the bundle names
 		// one, so a previously recorded entrypoint is preserved rather than
 		// cleared by the merge.
 		...(entrypoint ? { runtimeEntrypoint: entrypoint } : {})
-	});
-
-	const migrations = runMigrations(home, version);
+	}, { entrypoint });
 	return { version, path: dest, migrations };
 }
 
@@ -374,6 +395,7 @@ function update(home, opts) {
 	if (!fs.existsSync(source)) throw new CliError(`staged bundle not found: ${source}`);
 
 	const previous = readCurrent(home);
+	const entrypoint = opts.entrypoint || _bundleEntrypoint(source);
 	const dest = versionDir(home, opts.version);
 	if (fs.existsSync(dest)) {
 		if (!isOrphanedVersionDir(home, opts.version)) {
@@ -387,13 +409,12 @@ function update(home, opts) {
 		copyDir(source, staging);
 		const manifestPath = manifestFile(staging);
 		if (!fs.existsSync(manifestPath)) {
-			const manifest = buildManifest(staging, opts.version);
+			const manifest = buildManifest(staging, opts.version, { entrypoint });
 			fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
 		}
 	});
 
-	const entrypoint = opts.entrypoint || _bundleEntrypoint(source);
-	commitVersionState(home, opts.version, {
+	const migrations = activateVersion(home, opts.version, {
 		installMethod: 'local-staged',
 		lastUpdateCheck: new Date().toISOString(),
 		previousVersion: previous || undefined,
@@ -401,9 +422,7 @@ function update(home, opts) {
 		// one, so a previously recorded entrypoint is preserved rather than
 		// cleared by the merge.
 		...(entrypoint ? { runtimeEntrypoint: entrypoint } : {})
-	});
-
-	const migrations = runMigrations(home, opts.version);
+	}, { entrypoint });
 	return { version: opts.version, previous, path: dest, migrations };
 }
 
@@ -435,14 +454,13 @@ function installBundledPlatform(home, opts) {
 			fs.writeFileSync(manifestFile(staging), JSON.stringify(manifest, null, 2) + '\n', 'utf8');
 		});
 	}
-	commitVersionState(home, opts.version, {
+	const migrations = activateVersion(home, opts.version, {
 		installMethod: 'npm-platform-package',
 		packageName: opts.packageName,
 		lastUpdateCheck: new Date().toISOString(),
 		runtimeEntrypoint: opts.entrypoint,
 		previousVersion: previous && previous !== opts.version ? previous : undefined
-	});
-	const migrations = runMigrations(home, opts.version);
+	}, { entrypoint: opts.entrypoint });
 	return { version: opts.version, previous, path: dest, reused, migrations };
 }
 
@@ -467,16 +485,16 @@ async function stageRelease(home, opts, mode) {
 		const existingManifest = manifestFile(dest);
 		const verified = fs.existsSync(existingManifest) && verifyManifest(dest, readManifest(existingManifest)).ok;
 		if (verified) {
-			commitVersionState(home, selected.version, {
+			const entrypoint = selected.artifact.entrypoint || _bundleEntrypoint(dest);
+			const migrations = activateVersion(home, selected.version, {
 				installMethod: 'release-manifest',
 				lastUpdateCheck: new Date().toISOString(),
 				channel: opts.channel || 'stable',
 				platform: selected.platform,
 				releaseManifest: opts.manifest,
-				runtimeEntrypoint: selected.artifact.entrypoint || undefined,
+				runtimeEntrypoint: entrypoint,
 				previousVersion: mode === 'update' && previous !== selected.version ? previous || undefined : undefined
-			});
-			const migrations = runMigrations(home, selected.version);
+			}, { entrypoint });
 			return { version: selected.version, previous, path: dest, platform: selected.platform, reused: true, migrations };
 		}
 		if (!isOrphanedVersionDir(home, selected.version)) {
@@ -493,9 +511,10 @@ async function stageRelease(home, opts, mode) {
 			extractArchive(archive, staging);
 			const manifestPath = manifestFile(staging);
 			if (!fs.existsSync(manifestPath)) {
+				const entrypoint = selected.artifact.entrypoint || _bundleEntrypoint(staging);
 				const manifest = buildManifest(staging, selected.version, {
 					commit: selected.artifact.commit || index.commit || null,
-					entrypoint: selected.artifact.entrypoint || null
+					entrypoint
 				});
 				fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
 			}
@@ -512,17 +531,16 @@ async function stageRelease(home, opts, mode) {
 		fs.rmSync(workDir, { recursive: true, force: true });
 	}
 
-	commitVersionState(home, selected.version, {
+	const entrypoint = selected.artifact.entrypoint || _bundleEntrypoint(dest);
+	const migrations = activateVersion(home, selected.version, {
 		installMethod: 'release-manifest',
 		lastUpdateCheck: new Date().toISOString(),
 		channel: opts.channel || 'stable',
 		platform: selected.platform,
 		releaseManifest: opts.manifest,
-		runtimeEntrypoint: selected.artifact.entrypoint || undefined,
+		runtimeEntrypoint: entrypoint,
 		previousVersion: mode === 'update' ? previous || undefined : undefined
-	});
-
-	const migrations = runMigrations(home, selected.version);
+	}, { entrypoint });
 	return { version: selected.version, previous, path: dest, platform: selected.platform, migrations };
 }
 
@@ -615,9 +633,9 @@ function rollback(home, opts) {
 	};
 	newState = appendRollbackHistory(newState, current, target, 'explicit');
 
-	commitVersionState(home, target, newState);
-
-	const migrations = runMigrations(home, target);
+	const migrations = activateVersion(home, target, newState, {
+		entrypoint: targetManifest?.entrypoint || state?.runtimeEntrypoint
+	});
 
 	let postCheck;
 	try {
@@ -1152,20 +1170,19 @@ function use(home, version, opts = {}) {
 	const targetManifestPath = manifestFile(dest);
 	const targetManifest = fs.existsSync(targetManifestPath) ? readManifest(targetManifestPath) : null;
 
-	commitVersionState(home, version, {
+	const targetEntrypoint = targetManifest?.entrypoint || state?.runtimeEntrypoint;
+	const migrations = activateVersion(home, version, {
 		installMethod: state?.installMethod || 'local-staged',
 		lastUpdateCheck: new Date().toISOString(),
 		previousVersion: current || undefined,
 		channel: state?.channel,
 		platform: state?.platform,
 		releaseManifest: state?.releaseManifest,
-		runtimeEntrypoint: targetManifest?.entrypoint || state?.runtimeEntrypoint,
+		runtimeEntrypoint: targetEntrypoint,
 		packageName: state?.packageName,
 		// rollbackHistory intentionally carried forward untouched, not appended to.
 		rollbackHistory: state?.rollbackHistory
-	});
-
-	const migrations = runMigrations(home, version);
+	}, { entrypoint: targetEntrypoint });
 	return { version, activatedFrom: current, manifestVerified: !opts.noVerify, migrations };
 }
 

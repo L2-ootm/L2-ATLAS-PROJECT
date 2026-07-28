@@ -6,6 +6,17 @@ function pushStep(steps, name, ok, detail = '') {
 	steps.push({ name, ok, detail });
 }
 
+function pushActivationStep(steps, name, result, detail) {
+	const migrationsOk = result?.migrations?.ok === true;
+	pushStep(
+		steps,
+		name,
+		migrationsOk,
+		migrationsOk ? detail : `required migrations failed: ${result?.migrations?.error || 'missing migration result'}`
+	);
+	return migrationsOk;
+}
+
 async function verifyCleanInstall(opts) {
 	const home = opts.home || cmds.atlasHome();
 	const channel = opts.channel || 'stable';
@@ -18,7 +29,9 @@ async function verifyCleanInstall(opts) {
 		platform,
 		version: opts.version
 	});
-	pushStep(steps, 'install', true, installResult.version);
+	if (!pushActivationStep(steps, 'install', installResult, installResult.version)) {
+		return { ok: false, steps };
+	}
 
 	let doctor = cmds.doctor(home);
 	pushStep(steps, 'doctor-after-install', doctor.ok, doctor.ok ? 'healthy' : 'unhealthy');
@@ -30,14 +43,28 @@ async function verifyCleanInstall(opts) {
 		platform,
 		version: opts.updateVersion
 	});
-	pushStep(steps, 'update', true, `${updateResult.previous ?? '(none)'} -> ${updateResult.version}`);
+	if (!pushActivationStep(
+		steps,
+		'update',
+		updateResult,
+		`${updateResult.previous ?? '(none)'} -> ${updateResult.version}`
+	)) {
+		return { ok: false, steps };
+	}
 
 	doctor = cmds.doctor(home);
 	pushStep(steps, 'doctor-after-update', doctor.ok, doctor.ok ? 'healthy' : 'unhealthy');
 	if (!doctor.ok) return { ok: false, steps };
 
 	const rollbackResult = cmds.rollback(home, {});
-	pushStep(steps, 'rollback', true, `${rollbackResult.rolledBackFrom ?? '(unknown)'} -> ${rollbackResult.version}`);
+	if (!pushActivationStep(
+		steps,
+		'rollback',
+		rollbackResult,
+		`${rollbackResult.rolledBackFrom ?? '(unknown)'} -> ${rollbackResult.version}`
+	)) {
+		return { ok: false, steps };
+	}
 
 	doctor = cmds.doctor(home);
 	pushStep(steps, 'doctor-after-rollback', doctor.ok, doctor.ok ? 'healthy' : 'unhealthy');
