@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
 import time
@@ -374,6 +375,46 @@ def test_process_crash_releases_component_lock(tmp_path):
     )
 
     assert result.ok, result.message
+
+
+def test_next_provision_restores_unique_backup_after_pre_activation_crash(tmp_path):
+    bundle = _release_bundle(tmp_path)
+    source = _write_source(bundle / "services" / "fake")
+    component = _component(source)
+    first = provisioning.ensure_provisioned(component)
+    assert first.ok, first.message
+    workspace = first.workspace
+    backup = workspace.parent / ".fake.backup-crashed"
+    staging = workspace.parent / ".fake.staging-crashed"
+    staging.mkdir()
+    (staging / "incomplete.txt").write_text("candidate", encoding="utf-8")
+    os.replace(workspace, backup)
+
+    recovered = provisioning.ensure_provisioned(component)
+
+    assert recovered.ok, recovered.message
+    assert workspace.is_dir()
+    assert (workspace / "app" / "page.txt").read_text(encoding="utf-8") == "v1"
+    assert not backup.exists()
+
+
+def test_next_provision_cleans_stale_backup_after_post_activation_crash(tmp_path):
+    bundle = _release_bundle(tmp_path)
+    source = _write_source(bundle / "services" / "fake")
+    component = _component(source)
+    first = provisioning.ensure_provisioned(component)
+    assert first.ok, first.message
+    workspace = first.workspace
+    backup = workspace.parent / ".fake.backup-crashed"
+    shutil.copytree(workspace, backup)
+    old = time.time() - provisioning.STALE_BACKUP_SECONDS - 1
+    os.utime(backup, (old, old))
+
+    recovered = provisioning.ensure_provisioned(component)
+
+    assert recovered.ok, recovered.message
+    assert workspace.is_dir()
+    assert not backup.exists()
 
 
 def test_state_commit_uses_a_unique_temporary_file(tmp_path, monkeypatch):

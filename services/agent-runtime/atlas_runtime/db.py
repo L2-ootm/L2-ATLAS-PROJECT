@@ -21,6 +21,7 @@ import os
 import pathlib
 import re
 import sqlite3
+from collections.abc import Iterator
 
 # db.py lives at services/agent-runtime/atlas_runtime/db.py -> parents[3] = repo root.
 MIGRATIONS_DIR = pathlib.Path(__file__).resolve().parents[3] / "infra" / "migrations"
@@ -115,29 +116,54 @@ def _prepare_migration_sql(conn: sqlite3.Connection, sql: str) -> str:
     return _ADD_COLUMN.sub(replace_existing, sql)
 
 
-def _sql_literal(value: str) -> str:
-    return "'" + value.replace("'", "''") + "'"
+def _iter_sql_statements(sql: str) -> Iterator[str]:
+    """Yield complete SQLite statements without splitting trigger bodies."""
+    buffer: list[str] = []
+    for char in sql:
+        buffer.append(char)
+        if char == ";" and sqlite3.complete_statement("".join(buffer)):
+            statement = "".join(buffer).strip()
+            if statement:
+                yield statement
+            buffer.clear()
+    tail = "".join(buffer).strip()
+    if tail:
+        yield tail
 
 
 def _apply_and_stamp_migration(
     conn: sqlite3.Connection, path: pathlib.Path, applied_at: str
-) -> None:
-    """Commit one migration file and its tracker row as one transaction."""
+) -> bool:
+    """Commit one pending migration and its tracker row as one transaction.
+
+    The writer transaction is acquired before checking the tracker or inspecting
+    schema state. A concurrent runner that waited for this transaction therefore
+    observes the winner's commit and returns a no-op instead of executing stale
+    prepared SQL.
+    """
     # Migration files repeat this pragma, but SQLite ignores attempts to change
     # it inside a transaction. Set it before BEGIN so externally supplied
     # connections retain the same FK contract as db.connect().
     conn.execute("PRAGMA foreign_keys = ON")
-    sql = _prepare_migration_sql(conn, path.read_text(encoding="utf-8"))
-    script = (
-        "BEGIN IMMEDIATE;\n"
-        f"{sql}\n"
-        "INSERT INTO schema_migrations(version, applied_at) VALUES "
-        f"({_sql_literal(path.name)}, {_sql_literal(applied_at)});\n"
-        "COMMIT;\n"
-    )
     try:
-        conn.executescript(script)
-    except Exception:
+        conn.execute("BEGIN IMMEDIATE")
+        already_applied = conn.execute(
+            "SELECT 1 FROM schema_migrations WHERE version=?",
+            (path.name,),
+        ).fetchone()
+        if already_applied is not None:
+            conn.rollback()
+            return False
+        sql = _prepare_migration_sql(conn, path.read_text(encoding="utf-8"))
+        for statement in _iter_sql_statements(sql):
+            conn.execute(statement)
+        conn.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+            (path.name, applied_at),
+        )
+        conn.commit()
+        return True
+    except BaseException:
         if conn.in_transaction:
             conn.rollback()
         raise
@@ -149,9 +175,9 @@ def apply_migrations(
     """Apply every not-yet-tracked migration in order. Returns the versions newly applied.
 
     Idempotent: a second call is a no-op. Drift-tolerant: a legacy/hand-patched DB
-    with an empty tracker is adopted (duplicate-column swallowed) and stamped, so
-    it converges without data loss. Non-destructive: migrations are additive
-    (CREATE ... IF NOT EXISTS / ADD COLUMN); the runner never drops or truncates.
+    with an empty tracker is adopted by skipping only already-satisfied ADD COLUMN
+    statements, then stamped so it converges without data loss. Non-destructive:
+    migrations are additive; the runner never drops or truncates application data.
     """
     ensure_migrations_table(conn)
     done = applied_versions(conn)
@@ -160,8 +186,10 @@ def apply_migrations(
     for path in _migration_files(migrations_dir):
         if path.name in done:
             continue
-        _apply_and_stamp_migration(conn, path, now)
-        applied_now.append(path.name)
+        if _apply_and_stamp_migration(conn, path, now):
+            applied_now.append(path.name)
+        else:
+            done.add(path.name)
     return applied_now
 
 

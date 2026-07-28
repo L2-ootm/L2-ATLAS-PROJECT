@@ -75,6 +75,7 @@ _EXCLUDED_DIRS = frozenset(
 DEFAULT_TIMEOUT = 1800.0
 DEFAULT_LOCK_TIMEOUT = 30.0
 STALE_STAGING_SECONDS = 24 * 60 * 60
+STALE_BACKUP_SECONDS = 24 * 60 * 60
 
 Logger = Callable[[str], None]
 
@@ -267,6 +268,35 @@ def _prepare_staging(workspace: pathlib.Path) -> pathlib.Path:
     return staging
 
 
+def _recover_activation_artifacts(workspace: pathlib.Path) -> None:
+    """Recover a crash-interrupted workspace swap under the component lock."""
+    backups = sorted(
+        candidate
+        for candidate in workspace.parent.glob(f".{workspace.name}.backup-*")
+        if candidate.is_dir() and not candidate.is_symlink()
+    )
+    if not workspace.exists():
+        if len(backups) == 1:
+            os.replace(backups[0], workspace)
+            backups = []
+        elif len(backups) > 1:
+            names = ", ".join(candidate.name for candidate in backups)
+            raise OSError(f"multiple activation backups require operator review: {names}")
+
+    if not workspace.exists():
+        return
+
+    cutoff = time.time() - STALE_BACKUP_SECONDS
+    for candidate in backups:
+        try:
+            if candidate.stat().st_mtime < cutoff:
+                shutil.rmtree(candidate)
+        except OSError:
+            # An active workspace exists, so an undeletable old backup is cache
+            # debris rather than a reason to make the active component fail.
+            continue
+
+
 def _activate_staging(staging: pathlib.Path, workspace: pathlib.Path) -> None:
     """Activate a validated candidate, rolling back if its rename fails."""
     backup = workspace.parent / f".{workspace.name}.backup-{uuid.uuid4().hex}"
@@ -440,6 +470,16 @@ def ensure_provisioned(
     lock_path = provisioning_lock_path(component.name)
     try:
         with file_lock(lock_path, timeout_seconds=lock_timeout):
+            workspace, mirrored = resolve_workspace(component)
+            if mirrored:
+                try:
+                    _recover_activation_artifacts(workspace)
+                except OSError as exc:
+                    return ProvisionResult(
+                        False,
+                        f"could not recover {component.name} workspace: {exc}",
+                        workspace,
+                    )
             # This is the authoritative plan. A contender may have completed
             # provisioning while this process waited for the component lock.
             plan = plan_provisioning(component, force=force)

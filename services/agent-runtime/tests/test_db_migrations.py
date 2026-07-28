@@ -7,6 +7,8 @@ drifted DB, and a fully hand-patched DB with an empty tracker. Uses a temp FILE
 from __future__ import annotations
 
 import sqlite3
+import threading
+import time
 
 import pytest
 
@@ -117,6 +119,7 @@ def test_retention_policy_classifies_every_live_owned_foreign_key(db_path) -> No
     from atlas_runtime.mission_service import (
         RETENTION_FK_POLICY,
         RETENTION_FK_ROOTS,
+        RETENTION_SOFT_OWNERSHIP_POLICY,
     )
 
     conn = db.connect(db_path)
@@ -138,6 +141,9 @@ def test_retention_policy_classifies_every_live_owned_foreign_key(db_path) -> No
         "explicit-delete",
         "retained",
         "set-null",
+    }
+    assert RETENTION_SOFT_OWNERSHIP_POLICY == {
+        ("actors", "child_run_id", "runs"): "recursive-delete"
     }
     conn.close()
 
@@ -204,3 +210,73 @@ def test_existing_add_column_does_not_skip_later_statements_or_stamp_early(
         "SELECT version FROM schema_migrations ORDER BY version"
     ).fetchall() == [("0001_base.sql",), ("0002_adopt.sql",)]
     conn.close()
+
+
+def test_concurrent_connections_recheck_tracker_after_writer_lock(
+    db_path, tmp_path, monkeypatch
+) -> None:
+    migrations = tmp_path / "concurrent-migrations"
+    migrations.mkdir()
+    (migrations / "0001_concurrent.sql").write_text(
+        "CREATE TABLE concurrent_value (id TEXT PRIMARY KEY);\n"
+        "CREATE TRIGGER concurrent_value_audit AFTER INSERT ON concurrent_value\n"
+        "BEGIN\n"
+        "  UPDATE concurrent_value SET id = NEW.id WHERE id = NEW.id;\n"
+        "END;\n",
+        encoding="utf-8",
+    )
+    connections = [db.connect(db_path), db.connect(db_path)]
+    first_has_writer_lock = threading.Event()
+    release_first = threading.Event()
+    prepare_lock = threading.Lock()
+    original_prepare = db._prepare_migration_sql
+    first_prepare = True
+
+    def hold_first_writer(conn, sql):
+        nonlocal first_prepare
+        prepared = original_prepare(conn, sql)
+        with prepare_lock:
+            should_hold = first_prepare
+            first_prepare = False
+        if should_hold:
+            first_has_writer_lock.set()
+            assert release_first.wait(timeout=5)
+        return prepared
+
+    monkeypatch.setattr(db, "_prepare_migration_sql", hold_first_writer)
+    barrier = threading.Barrier(2)
+    results: list[list[str]] = []
+    failures: list[BaseException] = []
+
+    def apply(conn):
+        try:
+            barrier.wait(timeout=5)
+            results.append(db.apply_migrations(conn, migrations))
+        except BaseException as exc:  # noqa: BLE001 — surfaced below
+            failures.append(exc)
+
+    workers = [threading.Thread(target=apply, args=(conn,)) for conn in connections]
+    for worker in workers:
+        worker.start()
+    assert first_has_writer_lock.wait(timeout=5)
+    time.sleep(0.05)
+    assert any(worker.is_alive() for worker in workers)
+    release_first.set()
+    for worker in workers:
+        worker.join(timeout=5)
+    for conn in connections:
+        conn.close()
+
+    assert not failures, failures
+    assert sorted(results, key=len) == [[], ["0001_concurrent.sql"]]
+    verifier = db.connect(db_path)
+    try:
+        assert verifier.execute(
+            "SELECT version FROM schema_migrations"
+        ).fetchall() == [("0001_concurrent.sql",)]
+        assert verifier.execute(
+            "SELECT name FROM sqlite_master WHERE type='trigger' "
+            "AND name='concurrent_value_audit'"
+        ).fetchone() == ("concurrent_value_audit",)
+    finally:
+        verifier.close()
