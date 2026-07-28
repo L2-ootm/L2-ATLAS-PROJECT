@@ -7,9 +7,9 @@ FTS triggers actually work end to end).
 """
 from __future__ import annotations
 
-import multiprocessing
-import queue
 import sqlite3
+import subprocess
+import sys
 import threading
 import time
 
@@ -31,24 +31,6 @@ def _file_backed_copy(db, tmp_path):
     db.backup(target)
     target.close()
     return path
-
-
-def _process_writer(db_path, session_id, writer_id, count, start, failures):
-    conn = atlas_db.connect(db_path)
-    try:
-        start.wait(timeout=10)
-        for index in range(count):
-            svc.append_message(
-                conn,
-                threading.Lock(),
-                surface_session_id=session_id,
-                role="user",
-                content=f"p{writer_id}-{index}",
-            )
-    except BaseException as exc:  # noqa: BLE001 — reported to the parent process
-        failures.put(repr(exc))
-    finally:
-        conn.close()
 
 
 def test_seq_is_monotonic_per_session(db, lock, surface_session):
@@ -326,39 +308,34 @@ def test_independent_connections_allocate_contiguous_sequences(
 
 def test_independent_processes_append_without_loss(db, surface_session, tmp_path):
     path = _file_backed_copy(db, tmp_path)
-    context = multiprocessing.get_context("spawn")
-    start = context.Event()
-    failures = context.Queue()
+    start = tmp_path / "start-writers"
     process_count = 3
     messages_per_process = 8
+    code = (
+        "import pathlib,sys,threading,time;"
+        "from atlas_runtime import db,session_message_service as svc;"
+        "path,session,writer,start=sys.argv[1:];"
+        "\nwhile not pathlib.Path(start).exists(): time.sleep(0.01)"
+        "\nconn=db.connect(path)"
+        "\ntry:"
+        f"\n for index in range({messages_per_process}):"
+        "\n  svc.append_message(conn,threading.Lock(),surface_session_id=session,"
+        "role='user',content=f'p{writer}-{index}')"
+        "\nfinally: conn.close()"
+    )
     processes = [
-        context.Process(
-            target=_process_writer,
-            args=(
-                str(path),
-                surface_session,
-                writer,
-                messages_per_process,
-                start,
-                failures,
-            ),
+        subprocess.Popen(
+            [sys.executable, "-c", code, str(path), surface_session, str(writer), str(start)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
         )
         for writer in range(process_count)
     ]
+    start.write_text("start", encoding="utf-8")
     for process in processes:
-        process.start()
-    start.set()
-    for process in processes:
-        process.join(timeout=15)
-        assert process.exitcode == 0
-
-    process_failures = []
-    while True:
-        try:
-            process_failures.append(failures.get_nowait())
-        except queue.Empty:
-            break
-    assert not process_failures
+        stdout, stderr = process.communicate(timeout=15.0)
+        assert process.returncode == 0, (stdout, stderr)
 
     reader = atlas_db.connect(path)
     try:

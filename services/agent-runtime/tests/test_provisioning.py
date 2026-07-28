@@ -15,9 +15,9 @@ makes install/build observable and fast while exercising the identical code path
 from __future__ import annotations
 
 import json
-import multiprocessing
 import os
 import pathlib
+import subprocess
 import sys
 import time
 
@@ -25,8 +25,6 @@ import pytest
 
 from atlas_runtime import provisioning
 from atlas_runtime.secure_store import file_lock
-
-
 # `next build` writes .next/BUILD_ID; the fake build mirrors that shape so the
 # nested-marker logic is covered too.
 _INSTALL_CODE = "import pathlib; pathlib.Path('node_modules').mkdir(exist_ok=True)"
@@ -37,39 +35,27 @@ _BUILD_CODE = (
 _FAIL_CODE = "raise SystemExit(3)"
 
 
-def _provision_in_process(
-    source: str,
-    counter: str,
-    result_queue,
-) -> None:
-    """Spawn-safe provisioning contender used by the process race test."""
-    install_code = (
-        "import pathlib,time; time.sleep(0.35); "
-        f"p=pathlib.Path({counter!r}); "
-        "h=p.open('a', encoding='utf-8'); h.write('install\\n'); h.close(); "
-        "pathlib.Path('node_modules').mkdir(exist_ok=True)"
-    )
-    component = provisioning.Component(
-        name="process-race",
-        source_dir=pathlib.Path(source),
-        dep_manifests=("package.json", "lock.json"),
-        install=((sys.executable, "-c", install_code),),
-        build=None,
-        deps_marker="node_modules",
-    )
-    result = provisioning.ensure_provisioned(
-        component,
-        timeout=10.0,
-        lock_timeout=10.0,
-    )
-    result_queue.put((result.ok, result.installed, result.message))
+def _wait_for_path(path: pathlib.Path, timeout: float = 5.0) -> None:
+    deadline = time.monotonic() + timeout
+    while not path.exists() and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert path.exists(), f"timed out waiting for {path}"
 
 
-def _hold_process_lock(lock_path: str, ready, release) -> None:
-    """Hold a real OS lock until released or the process is terminated."""
-    with file_lock(pathlib.Path(lock_path), timeout_seconds=5.0):
-        ready.set()
-        release.wait(10.0)
+def _start_lock_holder(lock_path: pathlib.Path, tmp_path: pathlib.Path):
+    ready = tmp_path / f"{lock_path.stem}.ready"
+    release = tmp_path / f"{lock_path.stem}.release"
+    code = (
+        "import pathlib,sys,time;"
+        "from atlas_runtime.secure_store import file_lock;"
+        "lock,ready,release=map(pathlib.Path,sys.argv[1:]);"
+        "\nwith file_lock(lock,timeout_seconds=5.0):"
+        "\n ready.write_text('ready',encoding='utf-8')"
+        "\n while not release.exists(): time.sleep(0.02)"
+    )
+    process = subprocess.Popen([sys.executable, "-c", code, str(lock_path), str(ready), str(release)])
+    _wait_for_path(ready)
+    return process, release
 
 
 @pytest.fixture(autouse=True)
@@ -305,23 +291,33 @@ def test_two_processes_install_the_same_component_only_once(tmp_path):
     bundle = _release_bundle(tmp_path)
     source = _write_source(bundle / "services" / "process-race")
     counter = tmp_path / "install-count.txt"
-    context = multiprocessing.get_context("spawn")
-    result_queue = context.Queue()
+    code = (
+        "import json,pathlib,sys,time;"
+        "from atlas_runtime import provisioning;"
+        "source,counter,result=map(pathlib.Path,sys.argv[1:]);"
+        "install=\"import pathlib,time;time.sleep(0.35);"
+        "p=pathlib.Path(__import__('os').environ['ATLAS_TEST_COUNTER']);"
+        "h=p.open('a',encoding='utf-8');h.write('install\\\\n');h.close();"
+        "pathlib.Path('node_modules').mkdir(exist_ok=True)\";"
+        "component=provisioning.Component(name='process-race',source_dir=source,"
+        "dep_manifests=('package.json','lock.json'),"
+        "install=((sys.executable,'-c',install),),build=None,deps_marker='node_modules');"
+        "out=provisioning.ensure_provisioned(component,timeout=10.0,lock_timeout=10.0);"
+        "result.write_text(json.dumps([out.ok,out.installed,out.message]),encoding='utf-8')"
+    )
+    result_paths = [tmp_path / f"result-{index}.json" for index in range(2)]
+    child_env = {**os.environ, "ATLAS_TEST_COUNTER": str(counter)}
     contenders = [
-        context.Process(
-            target=_provision_in_process,
-            args=(str(source), str(counter), result_queue),
+        subprocess.Popen(
+            [sys.executable, "-c", code, str(source), str(counter), str(result)],
+            env=child_env,
         )
-        for _ in range(2)
+        for result in result_paths
     ]
+    exit_codes = [contender.wait(timeout=15.0) for contender in contenders]
 
-    for contender in contenders:
-        contender.start()
-    for contender in contenders:
-        contender.join(15.0)
-
-    assert [contender.exitcode for contender in contenders] == [0, 0]
-    results = [result_queue.get(timeout=2.0) for _ in contenders]
+    assert exit_codes == [0, 0]
+    results = [json.loads(result.read_text(encoding="utf-8")) for result in result_paths]
     assert all(result[0] for result in results), results
     assert sorted(result[1] for result in results) == [False, True]
     assert counter.read_text(encoding="utf-8").splitlines() == ["install"]
@@ -330,15 +326,7 @@ def test_two_processes_install_the_same_component_only_once(tmp_path):
 def test_lock_timeout_returns_bounded_failure(tmp_path):
     source = _write_source(tmp_path / "checkout" / "services" / "fake")
     lock_path = provisioning.provisioning_lock_path("fake")
-    context = multiprocessing.get_context("spawn")
-    ready = context.Event()
-    release = context.Event()
-    holder = context.Process(
-        target=_hold_process_lock,
-        args=(str(lock_path), ready, release),
-    )
-    holder.start()
-    assert ready.wait(5.0)
+    holder, release = _start_lock_holder(lock_path, tmp_path)
 
     started = time.monotonic()
     result = provisioning.ensure_provisioned(
@@ -346,10 +334,10 @@ def test_lock_timeout_returns_bounded_failure(tmp_path):
         lock_timeout=0.05,
     )
     elapsed = time.monotonic() - started
-    release.set()
-    holder.join(5.0)
+    release.write_text("release", encoding="utf-8")
+    holder.wait(timeout=5.0)
 
-    assert holder.exitcode == 0
+    assert holder.returncode == 0
     assert result.ok is False
     assert "lock unavailable" in result.message
     assert elapsed < 1.0
@@ -357,42 +345,28 @@ def test_lock_timeout_returns_bounded_failure(tmp_path):
 
 def test_different_component_is_not_blocked_by_held_lock(tmp_path):
     source = _write_source(tmp_path / "checkout" / "services" / "fake")
-    context = multiprocessing.get_context("spawn")
-    ready = context.Event()
-    release = context.Event()
-    holder = context.Process(
-        target=_hold_process_lock,
-        args=(str(provisioning.provisioning_lock_path("fake")), ready, release),
+    holder, release = _start_lock_holder(
+        provisioning.provisioning_lock_path("fake"), tmp_path
     )
-    holder.start()
-    assert ready.wait(5.0)
 
     result = provisioning.ensure_provisioned(
         _component(source, name="other"),
         lock_timeout=0.05,
     )
-    release.set()
-    holder.join(5.0)
+    release.write_text("release", encoding="utf-8")
+    holder.wait(timeout=5.0)
 
-    assert holder.exitcode == 0
+    assert holder.returncode == 0
     assert result.ok, result.message
 
 
 def test_process_crash_releases_component_lock(tmp_path):
     source = _write_source(tmp_path / "checkout" / "services" / "fake")
     lock_path = provisioning.provisioning_lock_path("fake")
-    context = multiprocessing.get_context("spawn")
-    ready = context.Event()
-    release = context.Event()
-    holder = context.Process(
-        target=_hold_process_lock,
-        args=(str(lock_path), ready, release),
-    )
-    holder.start()
-    assert ready.wait(5.0)
+    holder, _release = _start_lock_holder(lock_path, tmp_path)
     holder.terminate()
-    holder.join(5.0)
-    assert holder.exitcode is not None
+    holder.wait(timeout=5.0)
+    assert holder.returncode is not None
 
     result = provisioning.ensure_provisioned(
         _component(source),
