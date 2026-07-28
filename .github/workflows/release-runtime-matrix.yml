@@ -23,15 +23,12 @@
 #   win32-x64    windows-latest  — existing, unmodified build-windows-runtime.ps1
 #   linux-x64    ubuntu-latest   — new build-linux-runtime.sh (x64 only; linux
 #                                  aarch64 is a v2 TODO, see that script)
-#   darwin-x64   macos-13        — new build-darwin-runtime.sh (Intel runner)
+#   darwin-x64   macos-15-intel  — build-darwin-runtime.sh (Intel runner)
 #   darwin-arm64 macos-14        — new build-darwin-runtime.sh (Apple Silicon
 #                                  runner; GitHub-hosted macos-14 is arm64)
 #
-# macos-13/macos-14 runner labels reflect GitHub's hosted-runner catalog at
-# the time this workflow was written (macos-13 = Intel, macos-14+ = Apple
-# Silicon). Confirm these labels are still valid for this account's GitHub
-# plan before relying on this workflow — hosted runner images/labels do get
-# retired over time.
+# macos-15-intel is GitHub's standard Intel replacement for the retired
+# macos-13 image; macos-14 remains the standard Apple Silicon runner.
 #
 # No code-signing/notarization: unsigned binaries only, per the Track B1
 # brief (deferred).
@@ -76,7 +73,7 @@ jobs:
             os: ubuntu-latest
             entrypoint: bin/atlas
           - platform: darwin-x64
-            os: macos-13
+            os: macos-15-intel
             entrypoint: bin/atlas
           - platform: darwin-arm64
             os: macos-14
@@ -104,8 +101,10 @@ jobs:
       - name: Resolve build version
         id: version
         shell: bash
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
         run: |
-          version="${{ inputs.version }}"
+          version="$REQUESTED_VERSION"
           if [ -z "$version" ]; then
             if [ "${{ github.ref_type }}" = "tag" ]; then
               version="${GITHUB_REF_NAME#v}"
@@ -113,17 +112,21 @@ jobs:
               version="$(node -p "require('./packages/atlas-cli/package.json').version")"
             fi
           fi
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "invalid release version: $version" >&2
+            exit 1
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Building version $version"
 
       - name: Guard tag/source version agreement
-        if: github.ref_type == 'tag'
         shell: bash
+        env:
+          TARGET_VERSION: ${{ steps.version.outputs.version }}
         run: |
           source_version="$(node -p "require('./packages/atlas-cli/package.json').version")"
-          target_version="${{ steps.version.outputs.version }}"
-          if [ "$source_version" != "$target_version" ]; then
-            echo "source is versioned $source_version but the release asks for $target_version; commit the version bump first" >&2
+          if [ "$source_version" != "$TARGET_VERSION" ]; then
+            echo "source is versioned $source_version but the release asks for $TARGET_VERSION; commit the version bump first" >&2
             exit 1
           fi
 
@@ -191,8 +194,10 @@ jobs:
       - name: Resolve release version
         id: version
         shell: bash
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
         run: |
-          version="${{ inputs.version }}"
+          version="$REQUESTED_VERSION"
           if [ -z "$version" ]; then
             if [ "${{ github.ref_type }}" = "tag" ]; then
               version="${GITHUB_REF_NAME#v}"
@@ -200,7 +205,22 @@ jobs:
               version="$(node -p "require('./packages/atlas-cli/package.json').version")"
             fi
           fi
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "invalid release version: $version" >&2
+            exit 1
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Guard release/source version agreement
+        shell: bash
+        env:
+          TARGET_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          source_version="$(node -p "require('./packages/atlas-cli/package.json').version")"
+          if [ "$source_version" != "$TARGET_VERSION" ]; then
+            echo "source is versioned $source_version but release creation asks for $TARGET_VERSION; commit the version bump first" >&2
+            exit 1
+          fi
 
       - uses: actions/download-artifact@v4
         with:
