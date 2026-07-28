@@ -77,6 +77,8 @@ coverage.json
 coverage_branch.json
 htmlcov/
 .pytest_cache/
+.pytest-cache/
+test_localsystem.txt
 
 # Playwright CLI session logs (console/page snapshots, audit jsonl) — local only
 .playwright-cli/

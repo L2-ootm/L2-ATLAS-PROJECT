@@ -13,12 +13,13 @@ function hashFile(filePath) {
 /** Directories to skip during file listing (ephemeral, generated, or irrelevant). */
 const SKIP_DIRS = new Set([
 	'__pycache__', '.git', '.svn', '.hg', 'node_modules', '.mypy_cache',
-	'.pytest_cache', '.ruff_cache', '.tox', '.eggs', '*.egg-info',
+	'.pytest_cache', '.pytest-cache', '.ruff_cache', '.tox', '.eggs', '*.egg-info',
 	'build', 'dist', '.next', '.vercel', '.svelte-kit', 'target',
 ]);
 
 /** File extensions to skip (ephemeral artifacts). */
 const SKIP_EXTS = new Set(['.pyc', '.pyo', '.pyd', '.DS_Store', '.swp', '.swo']);
+const SKIP_FILES = new Set(['test_localsystem.txt']);
 
 /** Recursively list every file under dir, relative paths, POSIX-separated. */
 function listFiles(dir) {
@@ -26,6 +27,7 @@ function listFiles(dir) {
 	const walk = (current, rel) => {
 		for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
 			if (SKIP_DIRS.has(entry.name)) continue;
+			if (SKIP_FILES.has(entry.name)) continue;
 			const abs = path.join(current, entry.name);
 			const relPath = rel ? `${rel}/${entry.name}` : entry.name;
 			if (entry.isDirectory()) {
