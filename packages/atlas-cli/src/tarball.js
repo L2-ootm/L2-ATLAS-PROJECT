@@ -43,9 +43,12 @@ function splitUstarName(name) {
 	return { prefix: name.slice(0, splitAt), name: name.slice(splitAt + 1) };
 }
 
-function header(entryName, size, mode, typeflag, mtimeSeconds) {
+function header(entryName, size, mode, typeflag, mtimeSeconds, linkName = '') {
 	const buf = Buffer.alloc(BLOCK);
 	const { name, prefix } = splitUstarName(entryName);
+	if (Buffer.byteLength(linkName) > 100) {
+		throw new Error(`link target too long for ustar: ${entryName} -> ${linkName}`);
+	}
 	buf.write(name, 0, 100, 'utf8');
 	writeOctal(buf, 100, 8, mode & 0o7777);
 	writeOctal(buf, 108, 8, 0); // uid
@@ -54,6 +57,7 @@ function header(entryName, size, mode, typeflag, mtimeSeconds) {
 	writeOctal(buf, 136, 12, mtimeSeconds);
 	buf.fill(0x20, 148, 156); // checksum field: spaces while summing
 	buf.write(typeflag, 156, 1, 'ascii');
+	buf.write(linkName, 157, 100, 'utf8');
 	buf.write('ustar', 257, 'ascii'); // magic "ustar\0", version "00"
 	buf[262] = 0;
 	buf.write('00', 263, 'ascii');
@@ -64,6 +68,30 @@ function header(entryName, size, mode, typeflag, mtimeSeconds) {
 	buf[154] = 0;
 	buf[155] = 0x20;
 	return buf;
+}
+
+function archivePathInside(root, candidate) {
+	const resolvedRoot = path.resolve(root);
+	const resolvedCandidate = path.resolve(candidate);
+	return resolvedCandidate === resolvedRoot || resolvedCandidate.startsWith(resolvedRoot + path.sep);
+}
+
+function safeRelativeLinkTarget(entryName, linkName) {
+	const normalizedEntry = entryName.replace(/\\/g, '/');
+	const normalizedLink = linkName.replace(/\\/g, '/');
+	if (
+		!normalizedLink ||
+		path.posix.isAbsolute(normalizedLink) ||
+		path.win32.isAbsolute(linkName)
+	) {
+		throw new Error(`unsafe symlink target in archive: ${entryName} -> ${linkName}`);
+	}
+	const archiveRoot = '/__atlas_archive_root__';
+	const resolved = path.posix.resolve(archiveRoot, path.posix.dirname(normalizedEntry), normalizedLink);
+	if (resolved !== archiveRoot && !resolved.startsWith(`${archiveRoot}/`)) {
+		throw new Error(`unsafe symlink target in archive: ${entryName} -> ${linkName}`);
+	}
+	return normalizedLink;
 }
 
 function collectEntries(dir, base, entries) {
@@ -84,8 +112,32 @@ function collectEntries(dir, base, entries) {
 				mtime: st.mtimeMs,
 				full,
 			});
+		} else if (st.isSymbolicLink()) {
+			const rawTarget = fs.readlinkSync(full);
+			const linkName = safeRelativeLinkTarget(rel, toPosix(rawTarget));
+			const resolvedTarget = path.resolve(path.dirname(full), rawTarget);
+			if (!archivePathInside(base, resolvedTarget)) {
+				throw new Error(`unsafe symlink target in source: ${rel} -> ${rawTarget}`);
+			}
+			let canonicalTarget;
+			try {
+				canonicalTarget = fs.realpathSync(full);
+			} catch {
+				throw new Error(`broken symlink in source: ${rel} -> ${rawTarget}`);
+			}
+			if (!archivePathInside(base, canonicalTarget)) {
+				throw new Error(`unsafe symlink target in source: ${rel} -> ${rawTarget}`);
+			}
+			entries.push({
+				typeflag: '2',
+				rel,
+				linkName,
+				mode: 0o777,
+				size: 0,
+				mtime: st.mtimeMs,
+			});
 		}
-		// symlinks/other types are not part of release bundles; skipped.
+		// Device nodes and other special filesystem entries are not release content.
 	}
 }
 
@@ -97,7 +149,7 @@ function createTarGz(sourceDir, outFile) {
 	const chunks = [];
 	for (const entry of entries) {
 		const mtime = Math.max(0, Math.floor(entry.mtime / 1000));
-		chunks.push(header(entry.rel, entry.size, entry.mode, entry.typeflag, mtime));
+		chunks.push(header(entry.rel, entry.size, entry.mode, entry.typeflag, mtime, entry.linkName));
 		if (entry.typeflag === '0' && entry.size > 0) {
 			const content = fs.readFileSync(entry.full);
 			chunks.push(content);
@@ -147,11 +199,28 @@ function safeTarget(dest, name) {
 	return target;
 }
 
+function assertSafeParents(dest, target) {
+	const destRoot = path.resolve(dest);
+	let cursor = path.dirname(target);
+	while (cursor !== destRoot) {
+		if (!archivePathInside(destRoot, cursor)) {
+			throw new Error(`unsafe extraction parent: ${target}`);
+		}
+		if (fs.existsSync(cursor) && fs.lstatSync(cursor).isSymbolicLink()) {
+			throw new Error(`refusing to extract through symlink parent: ${cursor}`);
+		}
+		const parent = path.dirname(cursor);
+		if (parent === cursor) break;
+		cursor = parent;
+	}
+}
+
 function extractTarGz(archive, dest) {
 	fs.mkdirSync(dest, { recursive: true });
 	const data = zlib.gunzipSync(fs.readFileSync(archive));
 	let offset = 0;
 	let overrideName = null;
+	const createdSymlinks = [];
 	while (offset + BLOCK <= data.length) {
 		const block = data.subarray(offset, offset + BLOCK);
 		offset += BLOCK;
@@ -177,6 +246,7 @@ function extractTarGz(archive, dest) {
 		overrideName = null;
 		const target = safeTarget(dest, name);
 		if (target === null) continue;
+		assertSafeParents(dest, target);
 		if (typeflag === '5' || name.endsWith('/')) {
 			fs.mkdirSync(target, { recursive: true });
 		} else if (typeflag === '0' || typeflag === '\0') {
@@ -190,8 +260,25 @@ function extractTarGz(archive, dest) {
 					// chmod is advisory on Windows
 				}
 			}
+		} else if (typeflag === '2') {
+			const linkName = readCString(block, 157, 100);
+			const safeLinkName = safeRelativeLinkTarget(name, linkName);
+			fs.mkdirSync(path.dirname(target), { recursive: true });
+			fs.symlinkSync(safeLinkName.split('/').join(path.sep), target);
+			createdSymlinks.push(target);
 		}
-		// hard/symlinks and device nodes are not extracted (not release content).
+		// Hard links and device nodes are not release content.
+	}
+	for (const linkPath of createdSymlinks) {
+		let resolved;
+		try {
+			resolved = fs.realpathSync(linkPath);
+		} catch {
+			throw new Error(`broken symlink in archive: ${path.relative(dest, linkPath)}`);
+		}
+		if (!archivePathInside(dest, resolved)) {
+			throw new Error(`unsafe resolved symlink target in archive: ${path.relative(dest, linkPath)}`);
+		}
 	}
 }
 
