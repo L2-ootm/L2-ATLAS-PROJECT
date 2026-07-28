@@ -3,9 +3,19 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
+const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 
-const { atlasInstallRoot, atlasStateHome, versionsDir, versionDir, currentPointerFile, manifestFile } = require('./paths');
+const {
+	atlasInstallRoot,
+	atlasStateHome,
+	STATE_ROOT_MARKER,
+	stateRootMarkerFile,
+	versionsDir,
+	versionDir,
+	currentPointerFile,
+	manifestFile
+} = require('./paths');
 const { buildManifest, readManifest, verifyManifest } = require('./manifest');
 const { readInstallState, writeInstallState } = require('./installState');
 const {
@@ -643,19 +653,173 @@ function rollbackHistory(home) {
 	};
 }
 
+const STATE_ROOT_KIND = 'atlas-state-root';
+const STATE_ROOT_SCHEMA = 1;
+const STATE_LAYOUT_ENTRIES = new Set([
+	'atlas.db',
+	'atlas.db-shm',
+	'atlas.db-wal',
+	'auth.json',
+	'config.yaml',
+	'logs',
+	'modules',
+	'sidecars',
+	'wiki'
+]);
+
+function samePath(left, right) {
+	const a = path.resolve(left);
+	const b = path.resolve(right);
+	return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+
+function isPathAtOrAbove(candidate, protectedPath) {
+	const relative = path.relative(path.resolve(candidate), path.resolve(protectedPath));
+	return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative));
+}
+
+function findRepositoryRoot(start = process.cwd()) {
+	let cursor = path.resolve(start);
+	for (;;) {
+		if (fs.existsSync(path.join(cursor, '.git'))) return cursor;
+		const parent = path.dirname(cursor);
+		if (parent === cursor) return null;
+		cursor = parent;
+	}
+}
+
+function reject(reason, target, detail) {
+	return { ok: false, reason, target: path.resolve(target), detail };
+}
+
+function broadPathReason(resolved, opts = {}) {
+	const protectedPaths = [
+		['user-home', opts.homeDir || os.homedir()],
+		['desktop', path.join(opts.homeDir || os.homedir(), 'Desktop')],
+		['documents', path.join(opts.homeDir || os.homedir(), 'Documents')],
+		['install-root', opts.installRoot || atlasInstallRoot()],
+		['current-working-directory', opts.cwd || process.cwd()],
+		['repository-root', opts.repositoryRoot === undefined ? findRepositoryRoot() : opts.repositoryRoot]
+	].filter(([, value]) => value);
+	for (const [name, protectedPath] of protectedPaths) {
+		if (isPathAtOrAbove(resolved, protectedPath)) return `broad-path:${name}`;
+	}
+	return null;
+}
+
 /**
- * Refuse to recursively delete a path that is obviously not an ATLAS state
- * directory. `--purge` is the one destructive flag in this CLI, and its target
- * comes from an environment variable (ATLAS_HOME) an operator can typo or
- * export empty — `ATLAS_HOME=` resolving to the home directory and then being
- * rm -rf'd is not a recoverable mistake. A filesystem root or the user's own
- * home directory is never a legitimate ATLAS state home.
+ * Positive proof for recursive state deletion. A marker is authorization; the
+ * layout check only narrows that authorization and can never replace it.
  */
-function isSafePurgeTarget(target) {
+function validatePurgeTarget(target, opts = {}) {
 	const resolved = path.resolve(target);
-	if (path.dirname(resolved) === resolved) return false; // filesystem root
-	if (resolved === path.resolve(os.homedir())) return false;
-	return true;
+	if (path.dirname(resolved) === resolved) return reject('filesystem-root', resolved);
+
+	const broadReason = broadPathReason(resolved, opts);
+	if (broadReason) return reject(broadReason, resolved);
+
+	if (!fs.existsSync(resolved)) return reject('target-missing', resolved);
+	let targetStat;
+	try {
+		targetStat = fs.lstatSync(resolved);
+	} catch (err) {
+		return reject('target-unreadable', resolved, err.message);
+	}
+	if (targetStat.isSymbolicLink()) return reject('target-symlink', resolved);
+	if (!targetStat.isDirectory()) return reject('target-not-directory', resolved);
+
+	let canonical;
+	try {
+		canonical = fs.realpathSync.native(resolved);
+	} catch (err) {
+		return reject('target-unresolvable', resolved, err.message);
+	}
+	if (!samePath(canonical, resolved)) return reject('target-reparse-point', resolved);
+
+	const markerPath = stateRootMarkerFile(canonical);
+	if (!fs.existsSync(markerPath)) return reject('marker-missing', canonical);
+	let markerText;
+	let marker;
+	try {
+		const markerStat = fs.lstatSync(markerPath);
+		if (markerStat.isSymbolicLink() || !markerStat.isFile()) return reject('marker-not-file', canonical);
+		markerText = fs.readFileSync(markerPath, 'utf8');
+		marker = JSON.parse(markerText);
+	} catch (err) {
+		return reject('marker-malformed', canonical, err.message);
+	}
+	if (marker.kind !== STATE_ROOT_KIND) return reject('marker-wrong-kind', canonical);
+	if (marker.schema !== STATE_ROOT_SCHEMA) return reject('marker-wrong-schema', canonical);
+	if (typeof marker.id !== 'string' ||
+		!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(marker.id)) {
+		return reject('marker-invalid-id', canonical);
+	}
+	if (typeof marker.canonicalPath !== 'string' || !samePath(marker.canonicalPath, canonical)) {
+		return reject('marker-path-mismatch', canonical);
+	}
+
+	const entries = fs.readdirSync(canonical);
+	const unexpected = entries.filter((entry) => entry !== STATE_ROOT_MARKER && !STATE_LAYOUT_ENTRIES.has(entry));
+	if (unexpected.length) return reject('unexpected-top-level-content', canonical, unexpected.sort().join(', '));
+	const evidence = entries.filter((entry) => STATE_LAYOUT_ENTRIES.has(entry));
+	if (!evidence.length) return reject('layout-evidence-missing', canonical);
+
+	return {
+		ok: true,
+		target: canonical,
+		markerId: marker.id,
+		markerFingerprint: crypto.createHash('sha256').update(markerText).digest('hex'),
+		evidence: evidence.sort()
+	};
+}
+
+function isSafePurgeTarget(target, opts = {}) {
+	return validatePurgeTarget(target, opts).ok;
+}
+
+function initializeStateRoot(target, opts = {}) {
+	const resolved = path.resolve(target);
+	if (path.dirname(resolved) === resolved) {
+		throw new CliError(`refusing to initialize unsafe state root (filesystem-root): ${resolved}`);
+	}
+	const broadReason = broadPathReason(resolved, opts);
+	if (broadReason) {
+		throw new CliError(`refusing to initialize unsafe state root (${broadReason}): ${resolved}`);
+	}
+	const existed = fs.existsSync(resolved);
+	if (existed) {
+		const stat = fs.lstatSync(resolved);
+		if (stat.isSymbolicLink() || !stat.isDirectory()) {
+			throw new CliError(`refusing to initialize unsafe state root: ${resolved}`);
+		}
+		const entries = fs.readdirSync(resolved);
+		const unexpected = entries.filter((entry) => !STATE_LAYOUT_ENTRIES.has(entry) && entry !== STATE_ROOT_MARKER);
+		if (unexpected.length) {
+			throw new CliError(`refusing to adopt state root with unexpected content: ${unexpected.sort().join(', ')}`);
+		}
+		if (entries.length > 0 && !opts.adopt) {
+			throw new CliError(`legacy state root requires explicit adoption: atlas state adopt --path ${resolved}`);
+		}
+	} else {
+		fs.mkdirSync(resolved, { recursive: true });
+	}
+
+	const markerPath = stateRootMarkerFile(resolved);
+	if (fs.existsSync(markerPath)) {
+		const validation = validatePurgeTarget(resolved, opts);
+		if (!validation.ok && validation.reason !== 'layout-evidence-missing') {
+			throw new CliError(`invalid state-root marker (${validation.reason}): ${resolved}`);
+		}
+		return validation.markerId || JSON.parse(fs.readFileSync(markerPath, 'utf8')).id;
+	}
+	const marker = {
+		kind: STATE_ROOT_KIND,
+		schema: STATE_ROOT_SCHEMA,
+		id: crypto.randomUUID(),
+		canonicalPath: fs.realpathSync.native(resolved)
+	};
+	atomicWriteFileSync(markerPath, `${JSON.stringify(marker, null, 2)}\n`);
+	return marker.id;
 }
 
 /**
@@ -675,40 +839,65 @@ function isSafePurgeTarget(target) {
  * writes outside `home`.
  */
 function uninstall(home, opts) {
+	opts = opts || {};
+	let purgePlan = null;
+	if (opts.purge) {
+		const target = opts._stateHome || atlasStateHome();
+		const validationOpts = { ...opts._validation, installRoot: home };
+		const validation = validatePurgeTarget(target, validationOpts);
+		if (!validation.ok) {
+			throw new CliError(`refusing to purge state root (${validation.reason}): ${validation.target}`);
+		}
+		if (!opts.dryRun && opts.confirmPurge !== validation.target) {
+			throw new CliError(`purge confirmation must exactly match canonical target: --confirm-purge ${validation.target}`);
+		}
+		purgePlan = validation;
+	}
+
 	const removed = [];
-	const skipped = [];
 	const versions = versionsDir(home);
+	const current = currentPointerFile(home);
+	const installFile = path.join(home, 'install.json');
+	const plannedRemovals = [versions, current, installFile].filter((entry) => fs.existsSync(entry));
+	if (purgePlan) plannedRemovals.push(purgePlan.target);
+	if (opts.dryRun) {
+		return {
+			dryRun: true,
+			purged: false,
+			target: purgePlan?.target || null,
+			markerId: purgePlan?.markerId || null,
+			plannedRemovals,
+			removed
+		};
+	}
+
+	if (purgePlan) {
+		if (typeof opts._beforePurge === 'function') opts._beforePurge(purgePlan);
+		const revalidated = validatePurgeTarget(purgePlan.target, { ...opts._validation, installRoot: home });
+		if (!revalidated.ok ||
+			revalidated.markerId !== purgePlan.markerId ||
+			revalidated.markerFingerprint !== purgePlan.markerFingerprint) {
+			throw new CliError(`state-root identity changed after preflight: ${purgePlan.target}`);
+		}
+	}
+
 	if (fs.existsSync(versions)) {
 		fs.rmSync(versions, { recursive: true, force: true });
 		removed.push(versions);
 	}
-	const current = currentPointerFile(home);
 	if (fs.existsSync(current)) {
 		fs.rmSync(current, { force: true });
 		removed.push(current);
 	}
-	const installFile = path.join(home, 'install.json');
 	if (fs.existsSync(installFile)) {
 		fs.rmSync(installFile, { force: true });
 		removed.push(installFile);
 	}
-	if (opts.purge) {
-		const targets = Array.isArray(opts.purgePaths) && opts.purgePaths.length
-			? opts.purgePaths
-			: [atlasStateHome()];
-		for (const p of targets) {
-			const target = path.resolve(p);
-			if (!isSafePurgeTarget(target)) {
-				skipped.push(target);
-				continue;
-			}
-			if (fs.existsSync(target)) {
-				fs.rmSync(target, { recursive: true, force: true });
-				removed.push(target);
-			}
-		}
+	if (purgePlan) {
+		fs.rmSync(purgePlan.target, { recursive: true, force: true });
+		removed.push(purgePlan.target);
 	}
-	return { removed, purged: !!opts.purge, skipped };
+	return { dryRun: false, removed, purged: !!purgePlan, plannedRemovals };
 }
 
 /**
@@ -1005,6 +1194,8 @@ module.exports = {
 	runMigrations,
 	verifyVersionIntegrity,
 	isOrphanedVersionDir,
+	initializeStateRoot,
+	validatePurgeTarget,
 	isSafePurgeTarget,
 	// F18 Option C internals — exported so tests can compute/inspect the
 	// exact staging path without duplicating the suffix as a magic string.

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
+const path = require('node:path');
 const cmds = require('../src/commands');
 const { readInstallState } = require('../src/installState');
 const { releaseManifest } = require('../src/config');
@@ -21,6 +22,8 @@ function parseArgs(argv) {
 		else if (arg === '--to') opts.to = argv[++i];
 		else if (arg === '--keep') opts.keep = Number(argv[++i]);
 		else if (arg === '--purge') opts.purge = true;
+		else if (arg === '--confirm-purge') opts.confirmPurge = argv[++i];
+		else if (arg === '--path') opts.path = argv[++i];
 		else if (arg === '--json') opts.json = true;
 		else if (arg === '--install-only') opts.installOnly = true;
 		else if (arg === '--no-launcher-update') opts.noLauncherUpdate = true;
@@ -166,21 +169,28 @@ async function main() {
 				break;
 			}
 			case 'uninstall': {
-				// --purge deletes the operator's ATLAS_HOME. Resolve and announce
-				// the exact target before touching anything: the old code parsed
-				// the flag, purged nothing, and still printed a success list.
-				if (opts.purge && !opts.json) {
-					console.log(`purging operator state: ${cmds.atlasStateHome()}`);
-				}
-				const r = cmds.uninstall(home, opts);
+				const r = cmds.uninstall(home, { ...opts, _stateHome: cmds.atlasStateHome() });
 				if (opts.json) {
 					printJson(r);
 					break;
 				}
-				console.log(r.removed.length ? `removed:\n  ${r.removed.join('\n  ')}` : 'nothing to remove');
-				for (const s of r.skipped) {
-					console.error(`refused to purge unsafe path: ${s}`);
+				if (r.dryRun && r.target) {
+					console.log(`dry run: purge target ${r.target}`);
+					console.log(`state-root marker: ${r.markerId}`);
+					console.log(`would remove:\n  ${r.plannedRemovals.join('\n  ')}`);
+					break;
 				}
+				console.log(r.removed.length ? `removed:\n  ${r.removed.join('\n  ')}` : 'nothing to remove');
+				break;
+			}
+			case 'state': {
+				if (opts._[0] !== 'adopt' || !opts.path) {
+					throw new cmds.CliError('usage: atlas state adopt --path <state-root>');
+				}
+				const id = cmds.initializeStateRoot(opts.path, { adopt: true, installRoot: home });
+				const r = { adopted: path.resolve(opts.path), markerId: id };
+				if (opts.json) printJson(r);
+				else console.log(`adopted ATLAS state root ${r.adopted} (${r.markerId})`);
 				break;
 			}
 			case 'doctor': {
@@ -258,10 +268,11 @@ async function main() {
 			default: {
 				if (!cmds.readCurrent(home)) materialize();
 				if (cmds.readCurrent(home)) {
+					cmds.initializeStateRoot(cmds.atlasStateHome());
 					process.exitCode = launchRuntime(home, command ? [command, ...rest] : []);
 					break;
 				}
-				console.log('usage: atlas <install|update|check|upgrade|rollback|rollback-history|use|uninstall|doctor|versions|versions prune|versions repair|runtime-command> [--manifest url] [--channel stable] [--version x] [--keep n] [--dry-run] [--no-verify] [--purge]');
+				console.log('usage: atlas <install|update|check|upgrade|rollback|rollback-history|use|uninstall|state adopt|doctor|versions|versions prune|versions repair|runtime-command> [--manifest url] [--channel stable] [--version x] [--keep n] [--dry-run] [--no-verify] [--purge] [--confirm-purge path]');
 				console.log('No ATLAS runtime is installed. Run `atlas install`.');
 				if (command) process.exitCode = 1;
 				break;

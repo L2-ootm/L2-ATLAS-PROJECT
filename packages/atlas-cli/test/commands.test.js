@@ -1384,29 +1384,225 @@ test('a corrupt install.json fails loudly instead of being read as "nothing inst
 	assert.equal(fs.existsSync(path.join(home, 'versions', '0.1.0')), true, 'the installed release is not destroyed by a corrupt state file');
 });
 
-test('uninstall --purge removes operator state, and refuses unsafe targets', () => {
+function markStateRoot(stateHome) {
+	return cmds.initializeStateRoot(stateHome, { adopt: true });
+}
+
+function installFixture() {
 	const home = tempDir('home');
-	const stateHome = tempDir('state');
 	const bundle = tempDir('bundle');
 	stageBundle(bundle, { 'bin/atlas-gateway': 'v1' });
 	cmds.install(home, { from: bundle, version: '0.1.0' });
-	fs.writeFileSync(path.join(stateHome, 'atlas.db'), 'missions', 'utf8');
+	return { home, bundle };
+}
 
-	const r = cmds.uninstall(home, { purge: true, purgePaths: [stateHome] });
+test('uninstall --purge requires a bound marker and exact canonical confirmation', () => {
+	const { home } = installFixture();
+	const stateHome = tempDir('state');
+	fs.writeFileSync(path.join(stateHome, 'atlas.db'), 'missions', 'utf8');
+	const markerId = markStateRoot(stateHome);
+	const canonical = fs.realpathSync.native(stateHome);
+
+	const decision = cmds.validatePurgeTarget(stateHome, { installRoot: home });
+	assert.equal(decision.ok, true);
+	assert.equal(decision.target, canonical);
+	assert.equal(decision.markerId, markerId);
+
+	assert.throws(
+		() => cmds.uninstall(home, { purge: true, _stateHome: stateHome }),
+		/purge confirmation must exactly match canonical target/
+	);
+	assert.throws(
+		() => cmds.uninstall(home, { purge: true, _stateHome: stateHome, confirmPurge: `${canonical}-typo` }),
+		/purge confirmation must exactly match canonical target/
+	);
+	assert.equal(cmds.readCurrent(home), '0.1.0', 'confirmation refusal happens before install mutation');
+	assert.equal(fs.readFileSync(path.join(stateHome, 'atlas.db'), 'utf8'), 'missions');
+
+	const r = cmds.uninstall(home, { purge: true, _stateHome: stateHome, confirmPurge: canonical });
 	assert.equal(r.purged, true);
 	assert.equal(fs.existsSync(stateHome), false, '--purge must actually delete operator state');
-	assert.ok(r.removed.includes(path.resolve(stateHome)));
+	assert.ok(r.removed.includes(canonical));
+});
 
-	// The guard: ATLAS_HOME typo'd to the user's home or a filesystem root.
+test('purge validator rejects broad, missing, unmarked, malformed, copied, and unexpected targets', () => {
+	const { home } = installFixture();
+	const cwd = process.cwd();
+	const repoParent = path.dirname(cwd);
+	const missing = path.join(tempDir('missing-parent'), 'missing');
+	const unmarked = tempDir('unmarked');
+	fs.writeFileSync(path.join(unmarked, 'atlas.db'), 'missions');
+
+	for (const target of [
+		path.parse(cwd).root,
+		os.homedir(),
+		path.join(os.homedir(), 'Desktop'),
+		path.join(os.homedir(), 'Documents'),
+		cwd,
+		repoParent,
+		home,
+		missing
+	]) {
+		assert.equal(cmds.validatePurgeTarget(target, { installRoot: home }).ok, false, target);
+	}
+	assert.equal(cmds.validatePurgeTarget(unmarked, { installRoot: home }).reason, 'marker-missing');
+
+	const malformed = tempDir('malformed');
+	fs.writeFileSync(path.join(malformed, 'atlas.db'), 'missions');
+	fs.writeFileSync(path.join(malformed, '.atlas-state-root.json'), '{bad');
+	assert.equal(cmds.validatePurgeTarget(malformed, { installRoot: home }).reason, 'marker-malformed');
+
+	const original = tempDir('original');
+	fs.writeFileSync(path.join(original, 'atlas.db'), 'missions');
+	markStateRoot(original);
+	const copied = tempDir('copied');
+	fs.writeFileSync(path.join(copied, 'atlas.db'), 'missions');
+	fs.copyFileSync(path.join(original, '.atlas-state-root.json'), path.join(copied, '.atlas-state-root.json'));
+	assert.equal(cmds.validatePurgeTarget(copied, { installRoot: home }).reason, 'marker-path-mismatch');
+
+	const unexpected = tempDir('unexpected');
+	fs.writeFileSync(path.join(unexpected, 'atlas.db'), 'missions');
+	markStateRoot(unexpected);
+	fs.writeFileSync(path.join(unexpected, 'family-photos.zip'), 'not atlas');
+	assert.equal(cmds.validatePurgeTarget(unexpected, { installRoot: home }).reason, 'unexpected-top-level-content');
+
+	const wrongMarker = tempDir('wrong-marker');
+	fs.writeFileSync(path.join(wrongMarker, 'atlas.db'), 'missions');
+	markStateRoot(wrongMarker);
+	const wrongMarkerPath = path.join(wrongMarker, '.atlas-state-root.json');
+	const marker = JSON.parse(fs.readFileSync(wrongMarkerPath, 'utf8'));
+	fs.writeFileSync(wrongMarkerPath, JSON.stringify({ ...marker, kind: 'not-atlas' }));
+	assert.equal(cmds.validatePurgeTarget(wrongMarker, { installRoot: home }).reason, 'marker-wrong-kind');
+	fs.writeFileSync(wrongMarkerPath, JSON.stringify({ ...marker, schema: 999 }));
+	assert.equal(cmds.validatePurgeTarget(wrongMarker, { installRoot: home }).reason, 'marker-wrong-schema');
+	fs.writeFileSync(wrongMarkerPath, JSON.stringify({ ...marker, id: '------------------------------------' }));
+	assert.equal(cmds.validatePurgeTarget(wrongMarker, { installRoot: home }).reason, 'marker-invalid-id');
+
+	const relativeTarget = path.relative(process.cwd(), original);
+	assert.equal(cmds.validatePurgeTarget(relativeTarget, { installRoot: home }).ok, true);
+	assert.equal(cmds.validatePurgeTarget(path.join(relativeTarget, '..'), { installRoot: home }).ok, false);
+
 	assert.equal(cmds.isSafePurgeTarget(os.homedir()), false);
 	assert.equal(cmds.isSafePurgeTarget(path.parse(process.cwd()).root), false);
-	assert.equal(cmds.isSafePurgeTarget(path.join(os.homedir(), '.atlas')), true);
+});
 
-	const home2 = tempDir('home2');
-	cmds.install(home2, { from: bundle, version: '0.1.0' });
-	const guarded = cmds.uninstall(home2, { purge: true, purgePaths: [os.homedir()] });
-	assert.deepEqual(guarded.skipped, [path.resolve(os.homedir())]);
-	assert.equal(fs.existsSync(os.homedir()), true, 'refused target is left untouched');
+test('purge dry-run is mutation-free and identity swaps abort the entire uninstall', () => {
+	const { home } = installFixture();
+	const stateHome = tempDir('state');
+	fs.writeFileSync(path.join(stateHome, 'atlas.db'), 'missions');
+	const markerId = markStateRoot(stateHome);
+	const canonical = fs.realpathSync.native(stateHome);
+
+	const beforeInstall = fs.readFileSync(path.join(home, 'install.json'));
+	const beforeCurrent = fs.readFileSync(path.join(home, 'current'));
+	const beforeDb = fs.readFileSync(path.join(stateHome, 'atlas.db'));
+	const dry = cmds.uninstall(home, {
+		purge: true,
+		dryRun: true,
+		_stateHome: stateHome
+	});
+	assert.equal(dry.dryRun, true);
+	assert.equal(dry.target, canonical);
+	assert.equal(dry.markerId, markerId);
+	assert.ok(dry.plannedRemovals.includes(canonical));
+	assert.deepEqual(fs.readFileSync(path.join(home, 'install.json')), beforeInstall);
+	assert.deepEqual(fs.readFileSync(path.join(home, 'current')), beforeCurrent);
+	assert.deepEqual(fs.readFileSync(path.join(stateHome, 'atlas.db')), beforeDb);
+
+	assert.throws(
+		() => cmds.uninstall(home, {
+			purge: true,
+			_stateHome: stateHome,
+			confirmPurge: canonical,
+			_beforePurge: () => {
+				const marker = JSON.parse(fs.readFileSync(path.join(stateHome, '.atlas-state-root.json'), 'utf8'));
+				marker.id = '00000000-0000-4000-8000-000000000000';
+				fs.writeFileSync(path.join(stateHome, '.atlas-state-root.json'), JSON.stringify(marker));
+			}
+		}),
+		/state-root identity changed after preflight/
+	);
+	assert.deepEqual(fs.readFileSync(path.join(home, 'install.json')), beforeInstall);
+	assert.deepEqual(fs.readFileSync(path.join(home, 'current')), beforeCurrent);
+	assert.deepEqual(fs.readFileSync(path.join(stateHome, 'atlas.db')), beforeDb);
+});
+
+test('plain uninstall preserves marked state', () => {
+	const { home } = installFixture();
+	const stateHome = tempDir('state');
+	fs.writeFileSync(path.join(stateHome, 'atlas.db'), 'missions');
+	markStateRoot(stateHome);
+
+	const result = cmds.uninstall(home, { _stateHome: stateHome });
+	assert.equal(result.purged, false);
+	assert.equal(fs.readFileSync(path.join(stateHome, 'atlas.db'), 'utf8'), 'missions');
+	assert.equal(fs.existsSync(path.join(stateHome, '.atlas-state-root.json')), true);
+});
+
+test('bin uninstall --purge refuses nonzero before mutation and dry-run reports canonical identity', () => {
+	const { home } = installFixture();
+	const stateHome = tempDir('state');
+	fs.writeFileSync(path.join(stateHome, 'atlas.db'), 'missions');
+	const markerId = markStateRoot(stateHome);
+	const canonical = fs.realpathSync.native(stateHome);
+	const cli = path.join(__dirname, '..', 'bin', 'atlas.js');
+	const env = { ...process.env, ATLAS_INSTALL_ROOT: home, ATLAS_HOME: stateHome };
+
+	const refused = spawnSync(process.execPath, [cli, 'uninstall', '--purge', '--json'], {
+		encoding: 'utf8',
+		env
+	});
+	assert.equal(refused.status, 1);
+	assert.match(JSON.parse(refused.stdout).error.message, /purge confirmation must exactly match canonical target/);
+	assert.equal(cmds.readCurrent(home), '0.1.0');
+	assert.equal(fs.existsSync(stateHome), true);
+
+	const preview = spawnSync(
+		process.execPath,
+		[cli, 'uninstall', '--purge', '--dry-run', '--json'],
+		{ encoding: 'utf8', env }
+	);
+	assert.equal(preview.status, 0, preview.stderr);
+	const plan = JSON.parse(preview.stdout);
+	assert.equal(plan.dryRun, true);
+	assert.equal(plan.target, canonical);
+	assert.equal(plan.markerId, markerId);
+	assert.ok(plan.plannedRemovals.includes(canonical));
+	assert.equal(cmds.readCurrent(home), '0.1.0');
+	assert.equal(fs.readFileSync(path.join(stateHome, 'atlas.db'), 'utf8'), 'missions');
+});
+
+test('state adoption writes a path-bound marker without deleting legacy state', () => {
+	const { home } = installFixture();
+	const stateHome = tempDir('legacy-state');
+	fs.writeFileSync(path.join(stateHome, 'config.yaml'), 'operator: atlas\n');
+	const cli = path.join(__dirname, '..', 'bin', 'atlas.js');
+	const adopted = spawnSync(
+		process.execPath,
+		[cli, 'state', 'adopt', '--path', stateHome, '--json'],
+		{ encoding: 'utf8', env: { ...process.env, ATLAS_INSTALL_ROOT: home } }
+	);
+	assert.equal(adopted.status, 0, adopted.stderr);
+	const result = JSON.parse(adopted.stdout);
+	assert.equal(result.adopted, path.resolve(stateHome));
+	assert.equal(fs.readFileSync(path.join(stateHome, 'config.yaml'), 'utf8'), 'operator: atlas\n');
+	assert.equal(cmds.validatePurgeTarget(stateHome, { installRoot: home }).markerId, result.markerId);
+	assert.throws(() => cmds.initializeStateRoot(os.homedir(), { adopt: true, installRoot: home }), /broad-path:user-home/);
+});
+
+test('purge validator rejects symlink targets when supported', (t) => {
+	const { home } = installFixture();
+	const stateHome = tempDir('state');
+	fs.writeFileSync(path.join(stateHome, 'atlas.db'), 'missions');
+	markStateRoot(stateHome);
+	const link = path.join(tempDir('link-parent'), 'state-link');
+	try {
+		fs.symlinkSync(stateHome, link, process.platform === 'win32' ? 'junction' : 'dir');
+	} catch (err) {
+		t.skip(`symlink/junction creation unavailable: ${err.code}`);
+		return;
+	}
+	assert.equal(cmds.validatePurgeTarget(link, { installRoot: home }).reason, 'target-symlink');
 });
 
 test('versions repair reclaims junk but keeps every referenced, verifiable release', () => {

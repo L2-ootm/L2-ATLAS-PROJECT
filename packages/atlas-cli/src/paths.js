@@ -3,6 +3,8 @@
 const os = require('node:os');
 const path = require('node:path');
 
+const STATE_ROOT_MARKER = '.atlas-state-root.json';
+
 /**
  * Application install layout (state remains separately owned by ATLAS_HOME):
  *   <install-root>/versions/<version>/ — one immutable release
@@ -28,6 +30,10 @@ function atlasStateHome(env = process.env) {
 	return path.resolve(env.ATLAS_HOME || path.join(os.homedir(), '.atlas'));
 }
 
+function stateRootMarkerFile(home) {
+	return path.join(home, STATE_ROOT_MARKER);
+}
+
 function versionsDir(home) {
 	return path.join(home, 'versions');
 }
@@ -51,6 +57,8 @@ function manifestFile(versionPath) {
 module.exports = {
 	atlasInstallRoot,
 	atlasStateHome,
+	STATE_ROOT_MARKER,
+	stateRootMarkerFile,
 	versionsDir,
 	versionDir,
 	currentPointerFile,
