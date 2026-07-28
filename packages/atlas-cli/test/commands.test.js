@@ -1647,6 +1647,30 @@ test('purge dry-run is mutation-free and identity swaps abort the entire uninsta
 	assert.deepEqual(fs.readFileSync(path.join(stateHome, 'atlas.db')), beforeDb);
 });
 
+test('purge quarantines the validated identity before recursive deletion', () => {
+	const { home } = installFixture();
+	const stateHome = tempDir('state');
+	fs.writeFileSync(path.join(stateHome, 'atlas.db'), 'missions');
+	markStateRoot(stateHome);
+	const canonical = fs.realpathSync.native(stateHome);
+	const victimFile = path.join(stateHome, 'unrelated-after-quarantine.txt');
+
+	const result = cmds.uninstall(home, {
+		purge: true,
+		_stateHome: stateHome,
+		confirmPurge: canonical,
+		_afterPurgeQuarantine: (quarantine) => {
+			assert.equal(fs.existsSync(quarantine), true);
+			assert.equal(fs.existsSync(stateHome), false);
+			fs.mkdirSync(stateHome);
+			fs.writeFileSync(victimFile, 'do not delete');
+		}
+	});
+
+	assert.equal(result.purged, true);
+	assert.equal(fs.readFileSync(victimFile, 'utf8'), 'do not delete');
+});
+
 test('plain uninstall preserves marked state', () => {
 	const { home } = installFixture();
 	const stateHome = tempDir('state');

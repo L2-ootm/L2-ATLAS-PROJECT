@@ -772,7 +772,8 @@ function validatePurgeTarget(target, opts = {}) {
 		!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(marker.id)) {
 		return reject('marker-invalid-id', canonical);
 	}
-	if (typeof marker.canonicalPath !== 'string' || !samePath(marker.canonicalPath, canonical)) {
+	const expectedMarkerPath = opts.expectedMarkerPath || canonical;
+	if (typeof marker.canonicalPath !== 'string' || !samePath(marker.canonicalPath, expectedMarkerPath)) {
 		return reject('marker-path-mismatch', canonical);
 	}
 
@@ -793,6 +794,42 @@ function validatePurgeTarget(target, opts = {}) {
 
 function isSafePurgeTarget(target, opts = {}) {
 	return validatePurgeTarget(target, opts).ok;
+}
+
+function samePurgeIdentity(left, right) {
+	return left.ok && right.ok &&
+		left.markerId === right.markerId &&
+		left.markerFingerprint === right.markerFingerprint;
+}
+
+/**
+ * Atomically detach the validated directory from its operator-controlled name,
+ * then prove that the object moved was the marked state root. Recursive removal
+ * operates on the unpredictable quarantine name, so a replacement planted at
+ * the original path can never become the deletion target.
+ */
+function quarantinePurgeTarget(plan, validationOpts) {
+	const finalCheck = validatePurgeTarget(plan.target, validationOpts);
+	if (!samePurgeIdentity(plan, finalCheck)) {
+		throw new CliError(`state-root identity changed before quarantine: ${plan.target}`);
+	}
+
+	const quarantine = path.join(
+		path.dirname(plan.target),
+		`.${path.basename(plan.target)}.atlas-purge-${crypto.randomUUID()}`
+	);
+	fs.renameSync(plan.target, quarantine);
+	const quarantined = validatePurgeTarget(quarantine, {
+		...validationOpts,
+		expectedMarkerPath: plan.target
+	});
+	if (!samePurgeIdentity(plan, quarantined)) {
+		if (!fs.existsSync(plan.target) && fs.existsSync(quarantine)) {
+			fs.renameSync(quarantine, plan.target);
+		}
+		throw new CliError(`state-root identity changed during quarantine: ${plan.target}`);
+	}
+	return quarantine;
 }
 
 function initializeStateRoot(target, opts = {}) {
@@ -899,21 +936,38 @@ function uninstall(home, opts) {
 		}
 	}
 
-	if (fs.existsSync(versions)) {
-		fs.rmSync(versions, { recursive: true, force: true });
-		removed.push(versions);
-	}
-	if (fs.existsSync(current)) {
-		fs.rmSync(current, { force: true });
-		removed.push(current);
-	}
-	if (fs.existsSync(installFile)) {
-		fs.rmSync(installFile, { force: true });
-		removed.push(installFile);
-	}
+	let quarantine = null;
 	if (purgePlan) {
-		fs.rmSync(purgePlan.target, { recursive: true, force: true });
-		removed.push(purgePlan.target);
+		quarantine = quarantinePurgeTarget(
+			purgePlan,
+			{ ...opts._validation, installRoot: home }
+		);
+		if (typeof opts._afterPurgeQuarantine === 'function') {
+			opts._afterPurgeQuarantine(quarantine);
+		}
+	}
+	try {
+		if (fs.existsSync(versions)) {
+			fs.rmSync(versions, { recursive: true, force: true });
+			removed.push(versions);
+		}
+		if (fs.existsSync(current)) {
+			fs.rmSync(current, { force: true });
+			removed.push(current);
+		}
+		if (fs.existsSync(installFile)) {
+			fs.rmSync(installFile, { force: true });
+			removed.push(installFile);
+		}
+		if (quarantine) {
+			fs.rmSync(quarantine, { recursive: true, force: true });
+			removed.push(purgePlan.target);
+		}
+	} catch (err) {
+		if (quarantine && !fs.existsSync(purgePlan.target) && fs.existsSync(quarantine)) {
+			fs.renameSync(quarantine, purgePlan.target);
+		}
+		throw err;
 	}
 	return { dryRun: false, removed, purged: !!purgePlan, plannedRemovals };
 }
@@ -1213,6 +1267,7 @@ module.exports = {
 	isOrphanedVersionDir,
 	initializeStateRoot,
 	validatePurgeTarget,
+	quarantinePurgeTarget,
 	isSafePurgeTarget,
 	// F18 Option C internals — exported so tests can compute/inspect the
 	// exact staging path without duplicating the suffix as a magic string.
