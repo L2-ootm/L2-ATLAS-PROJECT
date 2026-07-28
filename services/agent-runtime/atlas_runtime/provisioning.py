@@ -33,6 +33,7 @@ source tree, so a checkout is never dirtied by a build.
 To onboard another source-shipped component, add a `Component` factory and call
 `ensure_provisioned()` from that component's control module.
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -44,9 +45,12 @@ import pathlib
 import shutil
 import subprocess
 import sys
+import time
+import uuid
 from typing import Callable, Iterator, Sequence
 
 from . import db as db_module
+from .secure_store import SecureStoreError, file_lock
 
 # Never mirrored and never fingerprinted: these are dependency trees and build
 # outputs, i.e. precisely what provisioning regenerates. Fingerprinting them
@@ -69,6 +73,8 @@ _EXCLUDED_DIRS = frozenset(
 
 # `next build` on a cold cache is minutes, not seconds.
 DEFAULT_TIMEOUT = 1800.0
+DEFAULT_LOCK_TIMEOUT = 30.0
+STALE_STAGING_SECONDS = 24 * 60 * 60
 
 Logger = Callable[[str], None]
 
@@ -147,6 +153,17 @@ def state_path(name: str) -> pathlib.Path:
     return sidecars_home() / f"{name}.provision.json"
 
 
+def provisioning_lock_path(name: str) -> pathlib.Path:
+    """Return the stable, owner-local lock path for one component identity."""
+    atlas_home = pathlib.Path(db_module.default_db_path()).parent
+    readable = "".join(
+        char if char.isalnum() or char in "-_." else "-" for char in name
+    )
+    readable = readable.strip(".-")[:48] or "component"
+    identity = hashlib.sha256(name.encode("utf-8")).hexdigest()[:16]
+    return atlas_home / "locks" / "provisioning" / f"{readable}-{identity}.lock"
+
+
 def _read_state(name: str) -> dict:
     try:
         data = json.loads(state_path(name).read_text(encoding="utf-8"))
@@ -158,9 +175,16 @@ def _read_state(name: str) -> dict:
 def _write_state(name: str, state: dict) -> None:
     path = state_path(name)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
-    os.replace(tmp, path)
+    tmp = path.parent / f".{path.name}.{uuid.uuid4().hex}.tmp"
+    try:
+        with tmp.open("x", encoding="utf-8", newline="\n") as handle:
+            json.dump(state, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def _iter_source_files(root: pathlib.Path) -> Iterator[pathlib.Path]:
@@ -223,6 +247,44 @@ def _mirror(source: pathlib.Path, workspace: pathlib.Path, log: Logger) -> None:
     )
 
 
+def _prepare_staging(workspace: pathlib.Path) -> pathlib.Path:
+    """Create a unique candidate workspace without disturbing the active one."""
+    cutoff = time.time() - STALE_STAGING_SECONDS
+    for candidate in workspace.parent.glob(f".{workspace.name}.staging-*"):
+        try:
+            if candidate.is_dir() and candidate.stat().st_mtime < cutoff:
+                shutil.rmtree(candidate)
+        except OSError:
+            # A stale candidate is only cache debris. Failure to remove it must
+            # not make a healthy, uniquely named provisioning attempt fail.
+            continue
+    staging = workspace.parent / f".{workspace.name}.staging-{uuid.uuid4().hex}"
+    workspace.parent.mkdir(parents=True, exist_ok=True)
+    if workspace.is_dir():
+        shutil.copytree(workspace, staging, symlinks=True)
+    else:
+        staging.mkdir()
+    return staging
+
+
+def _activate_staging(staging: pathlib.Path, workspace: pathlib.Path) -> None:
+    """Activate a validated candidate, rolling back if its rename fails."""
+    backup = workspace.parent / f".{workspace.name}.backup-{uuid.uuid4().hex}"
+    had_workspace = workspace.exists()
+    if had_workspace:
+        os.replace(workspace, backup)
+    try:
+        os.replace(staging, workspace)
+    except OSError:
+        if had_workspace and backup.exists() and not workspace.exists():
+            os.replace(backup, workspace)
+        raise
+    if backup.is_dir():
+        shutil.rmtree(backup, ignore_errors=True)
+    else:
+        backup.unlink(missing_ok=True)
+
+
 def _argv(command: Sequence[str], cwd: pathlib.Path | None = None) -> list[str]:
     # A command may name an executable inside the workspace that no PATH lookup
     # will ever find — the interpreter of a venv this same install sequence just
@@ -238,9 +300,7 @@ def _argv(command: Sequence[str], cwd: pathlib.Path | None = None) -> list[str]:
         raise ProvisionError(f"{head!r} not found at {candidate}")
     exe = shutil.which(head)
     if exe is None:
-        raise ProvisionError(
-            f"{command[0]!r} not found on PATH; install it and retry"
-        )
+        raise ProvisionError(f"{command[0]!r} not found on PATH; install it and retry")
     if os.name == "nt" and exe.lower().endswith((".cmd", ".bat")):
         # CreateProcess cannot execute a shim script directly, and npm ships as
         # npm.cmd on Windows. Invoke it through cmd.exe with a fixed argv rather
@@ -333,8 +393,10 @@ def plan_provisioning(component: Component, *, force: bool = False) -> Provision
     # discard 885 MB of working node_modules. Drift is still caught afterwards,
     # because from then on a recorded fingerprint exists to compare against.
     # `--force` remains the escape hatch.
-    need_install = force or not (workspace / component.deps_marker).exists() or (
-        "deps_fingerprint" in state and state.get("deps_fingerprint") != deps_fp
+    need_install = (
+        force
+        or not (workspace / component.deps_marker).exists()
+        or ("deps_fingerprint" in state and state.get("deps_fingerprint") != deps_fp)
     )
     need_build = component.build is not None and (
         force
@@ -361,6 +423,7 @@ def ensure_provisioned(
     force: bool = False,
     log: Logger | None = None,
     timeout: float = DEFAULT_TIMEOUT,
+    lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
 ) -> ProvisionResult:
     """Install dependencies and build `component` if content changed.
 
@@ -374,21 +437,62 @@ def ensure_provisioned(
             False, f"{component.name} source not found at {source}", source
         )
 
-    plan = plan_provisioning(component, force=force)
+    lock_path = provisioning_lock_path(component.name)
+    try:
+        with file_lock(lock_path, timeout_seconds=lock_timeout):
+            # This is the authoritative plan. A contender may have completed
+            # provisioning while this process waited for the component lock.
+            plan = plan_provisioning(component, force=force)
+            return _execute_plan(component, plan, emit=emit, timeout=timeout)
+    except SecureStoreError as exc:
+        workspace, _mirrored = resolve_workspace(component)
+        return ProvisionResult(
+            False,
+            f"{component.name} provisioning lock unavailable: {exc.message}",
+            workspace,
+        )
+
+
+def _execute_plan(
+    component: Component,
+    plan: ProvisionPlan,
+    *,
+    emit: Logger,
+    timeout: float,
+) -> ProvisionResult:
+    """Execute an authoritative plan while the caller holds its component lock."""
+    source = component.source_dir
     workspace = plan.workspace
+    execution_workspace = workspace
+    staging: pathlib.Path | None = None
     src_fp = plan.source_fingerprint
+
+    if plan.mirrored and not plan.is_noop:
+        try:
+            staging = _prepare_staging(workspace)
+        except OSError as exc:
+            return ProvisionResult(
+                False,
+                f"could not stage {component.name} at {workspace}: {exc}",
+                workspace,
+            )
+        execution_workspace = staging
 
     if plan.need_mirror:
         try:
-            _mirror(source, workspace, emit)
+            _mirror(source, execution_workspace, emit)
         except OSError as exc:
+            if staging is not None:
+                shutil.rmtree(staging, ignore_errors=True)
             return ProvisionResult(
-                False, f"could not mirror {component.name} to {workspace}: {exc}", workspace
+                False,
+                f"could not mirror {component.name} to {execution_workspace}: {exc}",
+                workspace,
             )
 
     # Recompute after mirroring: the workspace manifests are only authoritative
     # once the mirror has actually landed.
-    deps_fp = deps_fingerprint(workspace, component)
+    deps_fp = deps_fingerprint(execution_workspace, component)
     state = _read_state(component.name)
     need_install = plan.need_install or (
         "deps_fingerprint" in state and state.get("deps_fingerprint") != deps_fp
@@ -396,21 +500,43 @@ def ensure_provisioned(
     need_build = plan.need_build
 
     if not need_install and not need_build:
+        if staging is not None:
+            try:
+                _activate_staging(staging, workspace)
+            except OSError as exc:
+                shutil.rmtree(staging, ignore_errors=True)
+                return ProvisionResult(
+                    False,
+                    f"could not activate {component.name} workspace: {exc}",
+                    workspace,
+                )
         # Record the baseline when adopting pre-existing artifacts, so the next
         # source or lockfile change is actually detected as drift.
-        if state.get("source_fingerprint") != src_fp or state.get("deps_fingerprint") != deps_fp:
-            _write_state(
-                component.name,
-                {
-                    "source_fingerprint": src_fp,
-                    "deps_fingerprint": deps_fp,
-                    "workspace": str(workspace),
-                    "mirrored": plan.mirrored,
-                    "adopted_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
-                },
-            )
+        if (
+            state.get("source_fingerprint") != src_fp
+            or state.get("deps_fingerprint") != deps_fp
+        ):
+            try:
+                _write_state(
+                    component.name,
+                    {
+                        "source_fingerprint": src_fp,
+                        "deps_fingerprint": deps_fp,
+                        "workspace": str(workspace),
+                        "mirrored": plan.mirrored,
+                        "adopted_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+                    },
+                )
+            except OSError as exc:
+                return ProvisionResult(
+                    False,
+                    f"could not record {component.name} provisioning state: {exc}",
+                    workspace,
+                )
             return ProvisionResult(
-                True, f"{component.name} adopted existing build at {workspace}", workspace
+                True,
+                f"{component.name} adopted existing build at {workspace}",
+                workspace,
             )
         return ProvisionResult(True, f"{component.name} already provisioned", workspace)
 
@@ -421,34 +547,82 @@ def ensure_provisioned(
             emit(f"installing {component.name} dependencies (first run takes a while)")
             try:
                 for step in component.install:
-                    _run(step, workspace, emit, timeout)
+                    _run(step, execution_workspace, emit, timeout)
             except ProvisionError:
                 if not component.install_fallback:
                     raise
                 emit("install failed; retrying with the fallback command sequence")
                 for step in component.install_fallback:
-                    _run(step, workspace, emit, timeout)
+                    _run(step, execution_workspace, emit, timeout)
             installed = True
         if need_build and component.build is not None:
             emit(f"building {component.name}")
             for step in component.build:
-                _run(step, workspace, emit, timeout)
+                _run(step, execution_workspace, emit, timeout)
             built = True
     except ProvisionError as exc:
         # Record nothing on failure: the next call must retry from scratch
         # rather than trust a half-finished workspace.
+        if staging is not None:
+            shutil.rmtree(staging, ignore_errors=True)
         return ProvisionResult(False, str(exc), workspace, installed, built)
 
-    _write_state(
-        component.name,
-        {
-            "source_fingerprint": src_fp,
-            "deps_fingerprint": deps_fp,
-            "workspace": str(workspace),
-            "mirrored": plan.mirrored,
-            "provisioned_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
-        },
-    )
+    if not (execution_workspace / component.deps_marker).exists():
+        if staging is not None:
+            shutil.rmtree(staging, ignore_errors=True)
+        return ProvisionResult(
+            False,
+            f"{component.name} install completed without {component.deps_marker}",
+            workspace,
+            installed,
+            built,
+        )
+    if (
+        component.build_marker is not None
+        and not (execution_workspace / component.build_marker).exists()
+    ):
+        if staging is not None:
+            shutil.rmtree(staging, ignore_errors=True)
+        return ProvisionResult(
+            False,
+            f"{component.name} build completed without {component.build_marker}",
+            workspace,
+            installed,
+            built,
+        )
+
+    if staging is not None:
+        try:
+            _activate_staging(staging, workspace)
+        except OSError as exc:
+            shutil.rmtree(staging, ignore_errors=True)
+            return ProvisionResult(
+                False,
+                f"could not activate {component.name} workspace: {exc}",
+                workspace,
+                installed,
+                built,
+            )
+
+    try:
+        _write_state(
+            component.name,
+            {
+                "source_fingerprint": src_fp,
+                "deps_fingerprint": deps_fp,
+                "workspace": str(workspace),
+                "mirrored": plan.mirrored,
+                "provisioned_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+            },
+        )
+    except OSError as exc:
+        return ProvisionResult(
+            False,
+            f"could not record {component.name} provisioning state: {exc}",
+            workspace,
+            installed,
+            built,
+        )
     steps = [s for s, done in (("installed", installed), ("built", built)) if done]
     return ProvisionResult(
         True,

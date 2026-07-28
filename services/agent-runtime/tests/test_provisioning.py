@@ -11,15 +11,20 @@ these tests pin the two invariants that make that safe:
 No real npm runs here: components are driven with the test interpreter, which
 makes install/build observable and fast while exercising the identical code path.
 """
+
 from __future__ import annotations
 
 import json
+import multiprocessing
+import os
 import pathlib
 import sys
+import time
 
 import pytest
 
 from atlas_runtime import provisioning
+from atlas_runtime.secure_store import file_lock
 
 
 # `next build` writes .next/BUILD_ID; the fake build mirrors that shape so the
@@ -30,6 +35,41 @@ _BUILD_CODE = (
     "(p / 'BUILD_ID').write_text('built')"
 )
 _FAIL_CODE = "raise SystemExit(3)"
+
+
+def _provision_in_process(
+    source: str,
+    counter: str,
+    result_queue,
+) -> None:
+    """Spawn-safe provisioning contender used by the process race test."""
+    install_code = (
+        "import pathlib,time; time.sleep(0.35); "
+        f"p=pathlib.Path({counter!r}); "
+        "h=p.open('a', encoding='utf-8'); h.write('install\\n'); h.close(); "
+        "pathlib.Path('node_modules').mkdir(exist_ok=True)"
+    )
+    component = provisioning.Component(
+        name="process-race",
+        source_dir=pathlib.Path(source),
+        dep_manifests=("package.json", "lock.json"),
+        install=((sys.executable, "-c", install_code),),
+        build=None,
+        deps_marker="node_modules",
+    )
+    result = provisioning.ensure_provisioned(
+        component,
+        timeout=10.0,
+        lock_timeout=10.0,
+    )
+    result_queue.put((result.ok, result.installed, result.message))
+
+
+def _hold_process_lock(lock_path: str, ready, release) -> None:
+    """Hold a real OS lock until released or the process is terminated."""
+    with file_lock(pathlib.Path(lock_path), timeout_seconds=5.0):
+        ready.set()
+        release.wait(10.0)
 
 
 @pytest.fixture(autouse=True)
@@ -57,9 +97,14 @@ def _write_source(root: pathlib.Path) -> pathlib.Path:
     return root
 
 
-def _component(source: pathlib.Path, *, build: bool = True) -> provisioning.Component:
+def _component(
+    source: pathlib.Path,
+    *,
+    build: bool = True,
+    name: str = "fake",
+) -> provisioning.Component:
     return provisioning.Component(
-        name="fake",
+        name=name,
         source_dir=source,
         dep_manifests=("package.json", "lock.json"),
         install=((sys.executable, "-c", _INSTALL_CODE),),
@@ -135,6 +180,12 @@ def test_state_never_written_into_the_source_tree(tmp_path, _isolated_atlas_home
     provisioning.ensure_provisioned(_component(source))
     assert provisioning.state_path("fake").is_relative_to(_isolated_atlas_home)
     assert not (source / ".atlas-provision.json").exists()
+
+
+def test_component_lock_lives_under_atlas_home(tmp_path, _isolated_atlas_home):
+    path = provisioning.provisioning_lock_path("fake/component")
+    assert path.parent == _isolated_atlas_home / "locks" / "provisioning"
+    assert path.name.startswith("fake-component-")
 
 
 # --- mirroring --------------------------------------------------------------
@@ -247,7 +298,187 @@ def test_force_reprovisions_even_when_current(tmp_path):
     assert (result.installed, result.built) == (True, True)
 
 
+# --- process exclusion ------------------------------------------------------
+
+
+def test_two_processes_install_the_same_component_only_once(tmp_path):
+    bundle = _release_bundle(tmp_path)
+    source = _write_source(bundle / "services" / "process-race")
+    counter = tmp_path / "install-count.txt"
+    context = multiprocessing.get_context("spawn")
+    result_queue = context.Queue()
+    contenders = [
+        context.Process(
+            target=_provision_in_process,
+            args=(str(source), str(counter), result_queue),
+        )
+        for _ in range(2)
+    ]
+
+    for contender in contenders:
+        contender.start()
+    for contender in contenders:
+        contender.join(15.0)
+
+    assert [contender.exitcode for contender in contenders] == [0, 0]
+    results = [result_queue.get(timeout=2.0) for _ in contenders]
+    assert all(result[0] for result in results), results
+    assert sorted(result[1] for result in results) == [False, True]
+    assert counter.read_text(encoding="utf-8").splitlines() == ["install"]
+
+
+def test_lock_timeout_returns_bounded_failure(tmp_path):
+    source = _write_source(tmp_path / "checkout" / "services" / "fake")
+    lock_path = provisioning.provisioning_lock_path("fake")
+    context = multiprocessing.get_context("spawn")
+    ready = context.Event()
+    release = context.Event()
+    holder = context.Process(
+        target=_hold_process_lock,
+        args=(str(lock_path), ready, release),
+    )
+    holder.start()
+    assert ready.wait(5.0)
+
+    started = time.monotonic()
+    result = provisioning.ensure_provisioned(
+        _component(source),
+        lock_timeout=0.05,
+    )
+    elapsed = time.monotonic() - started
+    release.set()
+    holder.join(5.0)
+
+    assert holder.exitcode == 0
+    assert result.ok is False
+    assert "lock unavailable" in result.message
+    assert elapsed < 1.0
+
+
+def test_different_component_is_not_blocked_by_held_lock(tmp_path):
+    source = _write_source(tmp_path / "checkout" / "services" / "fake")
+    context = multiprocessing.get_context("spawn")
+    ready = context.Event()
+    release = context.Event()
+    holder = context.Process(
+        target=_hold_process_lock,
+        args=(str(provisioning.provisioning_lock_path("fake")), ready, release),
+    )
+    holder.start()
+    assert ready.wait(5.0)
+
+    result = provisioning.ensure_provisioned(
+        _component(source, name="other"),
+        lock_timeout=0.05,
+    )
+    release.set()
+    holder.join(5.0)
+
+    assert holder.exitcode == 0
+    assert result.ok, result.message
+
+
+def test_process_crash_releases_component_lock(tmp_path):
+    source = _write_source(tmp_path / "checkout" / "services" / "fake")
+    lock_path = provisioning.provisioning_lock_path("fake")
+    context = multiprocessing.get_context("spawn")
+    ready = context.Event()
+    release = context.Event()
+    holder = context.Process(
+        target=_hold_process_lock,
+        args=(str(lock_path), ready, release),
+    )
+    holder.start()
+    assert ready.wait(5.0)
+    holder.terminate()
+    holder.join(5.0)
+    assert holder.exitcode is not None
+
+    result = provisioning.ensure_provisioned(
+        _component(source),
+        lock_timeout=1.0,
+    )
+
+    assert result.ok, result.message
+
+
+def test_state_commit_uses_a_unique_temporary_file(tmp_path, monkeypatch):
+    replaced_from: list[pathlib.Path] = []
+    real_replace = os.replace
+
+    def record_replace(source, destination):
+        replaced_from.append(pathlib.Path(source))
+        real_replace(source, destination)
+
+    monkeypatch.setattr(provisioning.os, "replace", record_replace)
+    provisioning._write_state("fake", {"version": 1})
+    provisioning._write_state("fake", {"version": 2})
+
+    assert len(replaced_from) == 2
+    assert replaced_from[0] != replaced_from[1]
+    assert all(path.name.endswith(".tmp") for path in replaced_from)
+    assert not any(path.exists() for path in replaced_from)
+    assert provisioning._read_state("fake") == {"version": 2}
+
+
+def test_state_write_failure_is_reported_and_releases_lock(tmp_path, monkeypatch):
+    source = _write_source(tmp_path / "checkout" / "services" / "fake")
+
+    def fail_state_write(_name, _state):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(provisioning, "_write_state", fail_state_write)
+    result = provisioning.ensure_provisioned(_component(source))
+
+    assert result.ok is False
+    assert "could not record" in result.message
+    assert "disk full" in result.message
+    with file_lock(provisioning.provisioning_lock_path("fake"), timeout_seconds=0.1):
+        pass
+
+
 # --- failure handling -------------------------------------------------------
+
+
+def test_failed_rebuild_preserves_active_workspace_and_cleans_staging(tmp_path):
+    bundle = _release_bundle(tmp_path)
+    source = _write_source(bundle / "services" / "fake")
+    component = _component(source)
+    first = provisioning.ensure_provisioned(component)
+    assert first.ok, first.message
+    workspace = first.workspace
+
+    (source / "app" / "page.txt").write_text("v2", encoding="utf-8")
+    failing = provisioning.Component(
+        name="fake",
+        source_dir=source,
+        dep_manifests=("package.json", "lock.json"),
+        install=((sys.executable, "-c", _INSTALL_CODE),),
+        build=((sys.executable, "-c", _FAIL_CODE),),
+        deps_marker="node_modules",
+        build_marker=".next/BUILD_ID",
+    )
+    result = provisioning.ensure_provisioned(failing)
+
+    assert result.ok is False
+    assert (workspace / "app" / "page.txt").read_text(encoding="utf-8") == "v1"
+    assert not list(workspace.parent.glob(".fake.staging-*"))
+
+
+def test_old_staging_workspace_is_cleaned_conservatively(tmp_path):
+    bundle = _release_bundle(tmp_path)
+    source = _write_source(bundle / "services" / "fake")
+    workspace, _mirrored = provisioning.resolve_workspace(_component(source))
+    workspace.parent.mkdir(parents=True)
+    stale = workspace.parent / ".fake.staging-abandoned"
+    stale.mkdir()
+    old = time.time() - provisioning.STALE_STAGING_SECONDS - 1
+    os.utime(stale, (old, old))
+
+    result = provisioning.ensure_provisioned(_component(source))
+
+    assert result.ok, result.message
+    assert not stale.exists()
 
 
 def test_failure_is_reported_and_leaves_no_baseline(tmp_path):
