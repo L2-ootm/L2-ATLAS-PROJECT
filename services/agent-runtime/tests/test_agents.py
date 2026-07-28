@@ -51,6 +51,29 @@ def _running_run(db: sqlite3.Connection, mission_id: str) -> str:
     return rid
 
 
+def test_history_busy_exhaustion_is_a_structured_warning(monkeypatch, caplog):
+    from atlas_runtime import session_message_service
+
+    def exhausted(*_args, **_kwargs):
+        raise session_message_service.DatabaseBusyExhausted(5)
+
+    monkeypatch.setattr(session_message_service, "append_message", exhausted)
+    with caplog.at_level("WARNING", logger="atlas_runtime.agents.native"):
+        NativeAtlasAgent._record_message(
+            object(),
+            threading.Lock(),
+            "surface-1",
+            run_id="run-1",
+            role="assistant",
+            content="not logged",
+        )
+
+    assert "session_message_persistence_failed" in caplog.text
+    assert '"reason":"database_busy_exhausted"' in caplog.text
+    assert '"attempts":5' in caplog.text
+    assert "not logged" not in caplog.text
+
+
 # --- max_iterations resolution (config-driven, no more hardcoded 40) -------
 
 

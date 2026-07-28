@@ -5,16 +5,14 @@ localStorage behind a 150-message cap: history died with the browser tab and
 could not be searched across sessions. `session_messages` is the durable record;
 this service is the only writer.
 
-Conventions mirror `surface_session_service`: `(conn, lock)` arguments, the
-guarded write inside `with lock: with conn:`, and no audit emission while the
-lock is held. Two rules are specific to this table:
+Conventions mirror `surface_session_service`: `(conn, lock)` arguments and no
+audit emission while the lock is held. Two rules are specific to this table:
 
-* **seq is assigned inside the write transaction** (`MAX(seq) + 1` scoped to the
+* **seq is assigned under `BEGIN IMMEDIATE`** (`MAX(seq) + 1` scoped to the
   session), not by the caller. Two processes may write to one session — the
-  gateway dispatches CLI subprocesses, so the in-process lock is not the only
-  serialization point — and `idx_session_messages_session_seq` is UNIQUE, so a
-  race surfaces as an IntegrityError rather than silent reordering. That case is
-  retried a bounded number of times against a freshly read max.
+  gateway dispatches CLI subprocesses, so the database write lock is the
+  serialization point. BUSY/LOCKED acquisition is retried with bounded jitter;
+  `idx_session_messages_session_seq` remains UNIQUE as the final invariant.
 * **Content is redacted before persistence**, the same boundary
   `audit_service.emit` enforces. A transcript is exactly where a pasted API key
   ends up, and this table outlives the audit trail (retention purges
@@ -27,8 +25,10 @@ from __future__ import annotations
 
 import datetime
 import json
+import random
 import sqlite3
 import threading
+import time
 import uuid
 from typing import Any, Optional
 
@@ -38,10 +38,12 @@ from atlas_runtime.memory_router import estimate_tokens, redact
 # with a named error instead of an opaque sqlite3.IntegrityError.
 VALID_ROLES = ("system", "user", "assistant", "tool")
 
-# Bounded retries for a seq collision (a concurrent writer took the number we
-# read). Each retry re-reads MAX(seq); the loop is bounded so a genuinely broken
-# unique index cannot spin forever.
-_SEQ_RETRIES = 5
+# BEGIN IMMEDIATE serializes sequence allocation across runtime/gateway
+# processes. Busy retries are bounded, and the sleep happens after releasing
+# the in-process connection lock so unrelated work is not blocked by backoff.
+_BUSY_RETRIES = 5
+_BUSY_BACKOFF_BASE_S = 0.01
+_BUSY_BACKOFF_CAP_S = 0.10
 
 # Windowed reads default and hard cap — the cockpit paginates, and an unbounded
 # LIMIT would let one request pull an entire multi-thousand-message session.
@@ -56,6 +58,16 @@ _MALFORMED_FTS_EXACT_MESSAGES = frozenset({"unterminated string"})
 _MALFORMED_FTS_MESSAGE_PREFIX = 'fts5: syntax error near "'
 
 
+class DatabaseBusyExhausted(sqlite3.OperationalError):
+    """Stable failure raised when durable history cannot acquire a writer lock."""
+
+    reason = "database_busy_exhausted"
+
+    def __init__(self, attempts: int) -> None:
+        self.attempts = attempts
+        super().__init__(self.reason)
+
+
 def _now_iso() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
@@ -68,6 +80,20 @@ def _is_malformed_fts_query_error(exc: sqlite3.OperationalError) -> bool:
     return message in _MALFORMED_FTS_EXACT_MESSAGES or (
         message.startswith(_MALFORMED_FTS_MESSAGE_PREFIX) and message.endswith('"')
     )
+
+
+def _is_retryable_busy_error(exc: sqlite3.OperationalError) -> bool:
+    """Classify only SQLite BUSY/LOCKED result codes, including extended codes."""
+    code = getattr(exc, "sqlite_errorcode", None)
+    return isinstance(code, int) and (code & 0xFF) in {
+        sqlite3.SQLITE_BUSY,
+        sqlite3.SQLITE_LOCKED,
+    }
+
+
+def _busy_backoff(attempt: int) -> float:
+    ceiling = min(_BUSY_BACKOFF_CAP_S, _BUSY_BACKOFF_BASE_S * (2**attempt))
+    return random.uniform(0.0, ceiling)
 
 
 def _row_to_message(row: sqlite3.Row | tuple) -> dict[str, Any]:
@@ -130,7 +156,8 @@ def append_message(
     column). Raises ValueError on an unknown role or an empty session id;
     sqlite3.IntegrityError propagates if the surface session or run does not
     exist, because a message with no session to belong to is a caller bug, not a
-    recoverable state.
+    recoverable state. Raises DatabaseBusyExhausted after the bounded writer-lock
+    retry budget.
     """
     if not surface_session_id:
         raise ValueError("surface_session_id is required")
@@ -152,18 +179,22 @@ def append_message(
         "created_at": _now_iso(),
     }
 
-    last_error: Optional[sqlite3.IntegrityError] = None
-    for _ in range(_SEQ_RETRIES):
-        with lock:
-            with conn:
-                seq = (
-                    conn.execute(
-                        "SELECT COALESCE(MAX(seq), 0) + 1 FROM session_messages "
-                        "WHERE surface_session_id=?",
-                        (surface_session_id,),
-                    ).fetchone()[0]
-                )
+    last_busy_error: Optional[sqlite3.OperationalError] = None
+    for attempt in range(_BUSY_RETRIES):
+        try:
+            with lock:
+                conn.execute("BEGIN IMMEDIATE")
                 try:
+                    # The reserved write lock is acquired before reading MAX,
+                    # so independent connections cannot allocate the same seq.
+                    # The UNIQUE index remains the final invariant.
+                    seq = (
+                        conn.execute(
+                            "SELECT COALESCE(MAX(seq), 0) + 1 FROM session_messages "
+                            "WHERE surface_session_id=?",
+                            (surface_session_id,),
+                        ).fetchone()[0]
+                    )
                     conn.execute(
                         "INSERT INTO session_messages("
                         "id, surface_session_id, run_id, role, content, token_count, "
@@ -183,14 +214,20 @@ def append_message(
                             seq,
                         ),
                     )
-                except sqlite3.IntegrityError as exc:
-                    # Only a (session, seq) collision is retryable — a concurrent
-                    # writer took the number we just read. A missing FK target
-                    # will never succeed on a retry, so it propagates.
-                    if "UNIQUE constraint failed" not in str(exc):
-                        raise
-                    last_error = exc
-                    continue
+                    conn.commit()
+                except BaseException:
+                    if conn.in_transaction:
+                        conn.rollback()
+                    raise
+        except sqlite3.OperationalError as exc:
+            if not _is_retryable_busy_error(exc):
+                raise
+            last_busy_error = exc
+            if attempt + 1 < _BUSY_RETRIES:
+                time.sleep(_busy_backoff(attempt))
+                continue
+            break
+
         row["seq"] = seq
         return _row_to_message(
             (
@@ -208,7 +245,10 @@ def append_message(
             )
         )
 
-    raise last_error if last_error else RuntimeError("seq assignment failed")
+    exhausted = DatabaseBusyExhausted(_BUSY_RETRIES)
+    if last_busy_error is not None:
+        raise exhausted from last_busy_error
+    raise exhausted
 
 
 def list_messages(
@@ -297,7 +337,7 @@ def search_messages(
     if not (query or "").strip():
         return []
     sql = (
-        f"SELECT m.id, m.surface_session_id, m.run_id, m.role, m.content, m.token_count, "  # noqa: S608
+        "SELECT m.id, m.surface_session_id, m.run_id, m.role, m.content, m.token_count, "
         "m.tool_call_id, m.tool_name, m.metadata_json, m.created_at, m.seq "
         "FROM session_messages_fts f JOIN session_messages m ON m.rowid = f.rowid "
         "WHERE session_messages_fts MATCH ?"
@@ -334,6 +374,7 @@ def session_token_total(conn: sqlite3.Connection, surface_session_id: str) -> in
 
 
 __all__ = [
+    "DatabaseBusyExhausted",
     "VALID_ROLES",
     "append_message",
     "list_messages",

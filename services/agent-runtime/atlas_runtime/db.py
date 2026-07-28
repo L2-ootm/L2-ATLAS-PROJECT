@@ -25,6 +25,10 @@ import sqlite3
 # db.py lives at services/agent-runtime/atlas_runtime/db.py -> parents[3] = repo root.
 MIGRATIONS_DIR = pathlib.Path(__file__).resolve().parents[3] / "infra" / "migrations"
 DEFAULT_DB_PATH = pathlib.Path.home() / ".atlas" / "atlas.db"
+# Keep SQLite lock waits finite. Callers that can safely retry a write do so
+# explicitly; callers that cannot receive an observable OperationalError
+# instead of hanging indefinitely behind another process.
+SQLITE_BUSY_TIMEOUT_MS = 250
 
 
 def default_db_path() -> pathlib.Path:
@@ -48,9 +52,14 @@ def connect(db_path: str | pathlib.Path | None = None) -> sqlite3.Connection:
     """File-backed SQLite connection with WAL + FK enforcement (default ~/.atlas/atlas.db)."""
     path = pathlib.Path(db_path) if db_path else default_db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(path), check_same_thread=False)
+    conn = sqlite3.connect(
+        str(path),
+        check_same_thread=False,
+        timeout=SQLITE_BUSY_TIMEOUT_MS / 1000,
+    )
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
     return conn
 
 

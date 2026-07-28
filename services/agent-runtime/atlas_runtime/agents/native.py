@@ -922,7 +922,10 @@ class NativeAtlasAgent(AgentRuntime):
             return
         try:
             from atlas_runtime import session_message_service  # noqa: PLC0415
-
+        except Exception as exc:  # noqa: BLE001 — fail-open history
+            logger.debug("session message persistence unavailable (%s): %s", role, exc)
+            return
+        try:
             session_message_service.append_message(
                 conn, lock,
                 surface_session_id=session_key,
@@ -932,6 +935,22 @@ class NativeAtlasAgent(AgentRuntime):
                 tool_call_id=tool_call_id,
                 tool_name=tool_name,
                 metadata=metadata,
+            )
+        except session_message_service.DatabaseBusyExhausted as exc:
+            logger.warning(
+                "session message persistence warning: %s",
+                json.dumps(
+                    {
+                        "event": "session_message_persistence_failed",
+                        "reason": exc.reason,
+                        "attempts": exc.attempts,
+                        "role": role,
+                        "run_id": run_id,
+                        "surface_session_id": session_key,
+                    },
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
             )
         except Exception as exc:  # noqa: BLE001 — fail-open history
             logger.debug("session message persistence failed (%s): %s", role, exc)

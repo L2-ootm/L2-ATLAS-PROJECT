@@ -7,11 +7,15 @@ FTS triggers actually work end to end).
 """
 from __future__ import annotations
 
+import multiprocessing
+import queue
 import sqlite3
 import threading
+import time
 
 import pytest
 
+from atlas_runtime import db as atlas_db
 from atlas_runtime import session_message_service as svc
 
 
@@ -19,6 +23,32 @@ def _append(db, lock, session, role, content, **kw):
     return svc.append_message(
         db, lock, surface_session_id=session, role=role, content=content, **kw
     )
+
+
+def _file_backed_copy(db, tmp_path):
+    path = tmp_path / "session-messages.db"
+    target = atlas_db.connect(path)
+    db.backup(target)
+    target.close()
+    return path
+
+
+def _process_writer(db_path, session_id, writer_id, count, start, failures):
+    conn = atlas_db.connect(db_path)
+    try:
+        start.wait(timeout=10)
+        for index in range(count):
+            svc.append_message(
+                conn,
+                threading.Lock(),
+                surface_session_id=session_id,
+                role="user",
+                content=f"p{writer_id}-{index}",
+            )
+    except BaseException as exc:  # noqa: BLE001 — reported to the parent process
+        failures.put(repr(exc))
+    finally:
+        conn.close()
 
 
 def test_seq_is_monotonic_per_session(db, lock, surface_session):
@@ -232,3 +262,230 @@ def test_concurrent_appends_never_collide_on_seq(db, lock, surface_session):
         (surface_session,),
     )]
     assert seqs == list(range(1, 21))
+
+
+def test_common_connection_has_explicit_bounded_busy_timeout(tmp_path):
+    conn = atlas_db.connect(tmp_path / "timeout.db")
+    try:
+        assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == (
+            atlas_db.SQLITE_BUSY_TIMEOUT_MS
+        )
+        assert 0 < atlas_db.SQLITE_BUSY_TIMEOUT_MS <= 1000
+    finally:
+        conn.close()
+
+
+def test_independent_connections_allocate_contiguous_sequences(
+    db, surface_session, tmp_path
+):
+    path = _file_backed_copy(db, tmp_path)
+    connections = [atlas_db.connect(path) for _ in range(4)]
+    barrier = threading.Barrier(len(connections))
+    failures: list[BaseException] = []
+
+    def writer(index, conn):
+        try:
+            barrier.wait(timeout=5)
+            for message in range(10):
+                svc.append_message(
+                    conn,
+                    threading.Lock(),
+                    surface_session_id=surface_session,
+                    role="user",
+                    content=f"c{index}-{message}",
+                )
+        except BaseException as exc:  # noqa: BLE001 — surfaced below
+            failures.append(exc)
+
+    threads = [
+        threading.Thread(target=writer, args=(index, conn))
+        for index, conn in enumerate(connections)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+    for conn in connections:
+        conn.close()
+
+    assert not failures, failures
+    reader = atlas_db.connect(path)
+    try:
+        seqs = [
+            row[0]
+            for row in reader.execute(
+                "SELECT seq FROM session_messages WHERE surface_session_id=? "
+                "ORDER BY seq",
+                (surface_session,),
+            )
+        ]
+    finally:
+        reader.close()
+    assert seqs == list(range(1, 41))
+
+
+def test_independent_processes_append_without_loss(db, surface_session, tmp_path):
+    path = _file_backed_copy(db, tmp_path)
+    context = multiprocessing.get_context("spawn")
+    start = context.Event()
+    failures = context.Queue()
+    process_count = 3
+    messages_per_process = 8
+    processes = [
+        context.Process(
+            target=_process_writer,
+            args=(
+                str(path),
+                surface_session,
+                writer,
+                messages_per_process,
+                start,
+                failures,
+            ),
+        )
+        for writer in range(process_count)
+    ]
+    for process in processes:
+        process.start()
+    start.set()
+    for process in processes:
+        process.join(timeout=15)
+        assert process.exitcode == 0
+
+    process_failures = []
+    while True:
+        try:
+            process_failures.append(failures.get_nowait())
+        except queue.Empty:
+            break
+    assert not process_failures
+
+    reader = atlas_db.connect(path)
+    try:
+        seqs = [
+            row[0]
+            for row in reader.execute(
+                "SELECT seq FROM session_messages WHERE surface_session_id=? "
+                "ORDER BY seq",
+                (surface_session,),
+            )
+        ]
+    finally:
+        reader.close()
+    assert seqs == list(range(1, process_count * messages_per_process + 1))
+
+
+def test_writer_lock_retries_then_succeeds_after_release(
+    db, surface_session, tmp_path, monkeypatch
+):
+    path = _file_backed_copy(db, tmp_path)
+    blocker = atlas_db.connect(path)
+    writer = atlas_db.connect(path)
+    writer.execute("PRAGMA busy_timeout = 1")
+    blocker.execute("BEGIN IMMEDIATE")
+    monkeypatch.setattr(svc, "_busy_backoff", lambda _attempt: 0.02)
+    started = threading.Event()
+    result = {}
+
+    def append_after_lock():
+        started.set()
+        try:
+            result["message"] = svc.append_message(
+                writer,
+                threading.Lock(),
+                surface_session_id=surface_session,
+                role="user",
+                content="eventually durable",
+            )
+        except BaseException as exc:  # noqa: BLE001 — surfaced below
+            result["error"] = exc
+
+    thread = threading.Thread(target=append_after_lock)
+    thread.start()
+    assert started.wait(timeout=2)
+    time.sleep(0.03)
+    blocker.commit()
+    thread.join(timeout=5)
+    blocker.close()
+    writer.close()
+
+    assert "error" not in result
+    assert result["message"]["seq"] == 1
+
+
+def test_writer_lock_exhaustion_has_stable_classification(
+    db, surface_session, tmp_path, monkeypatch
+):
+    path = _file_backed_copy(db, tmp_path)
+    blocker = atlas_db.connect(path)
+    writer = atlas_db.connect(path)
+    writer.execute("PRAGMA busy_timeout = 1")
+    blocker.execute("BEGIN IMMEDIATE")
+    monkeypatch.setattr(svc, "_BUSY_RETRIES", 3)
+    monkeypatch.setattr(svc, "_busy_backoff", lambda _attempt: 0)
+
+    try:
+        with pytest.raises(
+            svc.DatabaseBusyExhausted, match="^database_busy_exhausted$"
+        ) as raised:
+            svc.append_message(
+                writer,
+                threading.Lock(),
+                surface_session_id=surface_session,
+                role="user",
+                content="cannot persist yet",
+            )
+        assert raised.value.attempts == 3
+        assert isinstance(raised.value.__cause__, sqlite3.OperationalError)
+        assert svc._is_retryable_busy_error(raised.value.__cause__)
+    finally:
+        blocker.rollback()
+        blocker.close()
+        writer.close()
+
+
+class _NonBusyConnection:
+    in_transaction = False
+
+    def __init__(self, error):
+        self.error = error
+        self.calls = 0
+
+    def execute(self, _sql):
+        self.calls += 1
+        raise self.error
+
+
+def test_non_busy_operational_error_is_not_retried(monkeypatch):
+    error = _operational_error("disk I/O error", sqlite3.SQLITE_IOERR)
+    conn = _NonBusyConnection(error)
+    sleeps = []
+    monkeypatch.setattr(svc.time, "sleep", sleeps.append)
+
+    with pytest.raises(sqlite3.OperationalError) as raised:
+        svc.append_message(
+            conn,
+            threading.Lock(),
+            surface_session_id="session",
+            role="user",
+            content="message",
+        )
+
+    assert raised.value is error
+    assert conn.calls == 1
+    assert sleeps == []
+
+
+def test_unique_constraint_failure_is_not_retried(
+    db, lock, surface_session, monkeypatch
+):
+    fixed_id = "00000000-0000-0000-0000-000000000001"
+    monkeypatch.setattr(svc.uuid, "uuid4", lambda: fixed_id)
+    _append(db, lock, surface_session, "user", "first")
+    sleeps = []
+    monkeypatch.setattr(svc.time, "sleep", sleeps.append)
+
+    with pytest.raises(sqlite3.IntegrityError, match="UNIQUE constraint failed"):
+        _append(db, lock, surface_session, "user", "duplicate id")
+
+    assert sleeps == []
