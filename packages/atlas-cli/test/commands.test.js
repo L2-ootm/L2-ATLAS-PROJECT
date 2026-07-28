@@ -1606,6 +1606,24 @@ test('purge validator rejects broad, missing, unmarked, malformed, copied, and u
 	assert.equal(cmds.isSafePurgeTarget(path.parse(process.cwd()).root), false);
 });
 
+test('purge accepts every runtime-owned state-root artifact', () => {
+	const { home } = installFixture();
+	const stateHome = tempDir('runtime-layout');
+	for (const directory of ['bin', 'locks', 'logs', 'modules', 'sidecars', 'wiki']) {
+		fs.mkdirSync(path.join(stateHome, directory));
+	}
+	for (const file of [
+		'.demo_seeded', 'atlas.db', 'atlas.db-shm', 'atlas.db-wal', 'auth.json',
+		'cashflow.json', 'config.yaml', 'cockpit.pid', 'discord-bot.json',
+		'freellmapi.json', 'gateway-messaging.json', 'gateway.pid', 'skill_tiers.json'
+	]) {
+		fs.writeFileSync(path.join(stateHome, file), '');
+	}
+	markStateRoot(stateHome);
+
+	assert.equal(cmds.validatePurgeTarget(stateHome, { installRoot: home }).ok, true);
+});
+
 test('purge dry-run is mutation-free and identity swaps abort the entire uninstall', () => {
 	const { home } = installFixture();
 	const stateHome = tempDir('state');

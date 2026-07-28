@@ -674,14 +674,24 @@ function rollbackHistory(home) {
 const STATE_ROOT_KIND = 'atlas-state-root';
 const STATE_ROOT_SCHEMA = 1;
 const STATE_LAYOUT_ENTRIES = new Set([
+	'.demo_seeded',
 	'atlas.db',
 	'atlas.db-shm',
 	'atlas.db-wal',
 	'auth.json',
+	'bin',
+	'cashflow.json',
 	'config.yaml',
+	'cockpit.pid',
+	'discord-bot.json',
+	'freellmapi.json',
+	'gateway-messaging.json',
+	'gateway.pid',
+	'locks',
 	'logs',
 	'modules',
 	'sidecars',
+	'skill_tiers.json',
 	'wiki'
 ]);
 
