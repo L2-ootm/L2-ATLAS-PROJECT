@@ -85,12 +85,10 @@ export default function Missions() {
 	}
 	useEffect(() => {
 		void refresh(view);
-		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [epoch, view]);
 	useEffect(() => {
 		const id = setInterval(() => void refresh(view), MISSIONS_POLL_MS);
 		return () => clearInterval(id);
-		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [view]);
 	function toggleSession(id: string) {
 		setExpanded((current) => {

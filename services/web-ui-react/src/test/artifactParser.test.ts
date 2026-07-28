@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseArtifacts } from '../components/ArtifactOverlay';
+import { parseArtifacts } from '../lib/artifacts';
 
 describe('parseArtifacts', () => {
 	it('parses a single artifact with all metadata', () => {

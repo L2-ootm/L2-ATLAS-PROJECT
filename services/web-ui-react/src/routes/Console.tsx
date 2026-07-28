@@ -366,12 +366,13 @@ export default function Console() {
 	// Skip release on initial mount — only release when bindingKey actually changes.
 	const bindingKey = `${projectId ?? ''}|${boundCwd ?? ''}`;
 	const prevBindingKeyRef = useRef(bindingKey);
+	const releaseSurfaceSession = agentSurface.releaseSession;
 	useEffect(() => {
 		if (prevBindingKeyRef.current === bindingKey) return;
 		prevBindingKeyRef.current = bindingKey;
 		if (activeTurn) return;
-		void agentSurface.releaseSession();
-	}, [bindingKey, activeTurn, agentSurface.releaseSession]);
+		void releaseSurfaceSession();
+	}, [bindingKey, activeTurn, releaseSurfaceSession]);
 
 	// Single debounced writer for the whole console snapshot. `auditEvents` and
 	// `activeTurn` are intentionally excluded — see consolePersistence.ts.

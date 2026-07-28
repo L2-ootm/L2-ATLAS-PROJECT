@@ -1,6 +1,7 @@
 import { useMemo, useState, type CSSProperties } from 'react';
 import { Check, Copy, FileText } from 'lucide-react';
 import { ChatMarkdown } from './ChatMarkdown';
+import { looksBinary } from '../lib/fileContent';
 import { extensionOf, getHighlighter, languageForPath } from '../lib/highlightLanguages';
 
 // InlineFileViewer — renders `read`-tool output (Console.tsx's ToolCallCard)
@@ -10,24 +11,6 @@ import { extensionOf, getHighlighter, languageForPath } from '../lib/highlightLa
 // part of the same visual system rather than a bolted-on widget.
 
 const MARKDOWN_EXTENSIONS = new Set(['md', 'mdx']);
-
-/** Binary-content guard: samples the first ~1KB. A null byte anywhere in the
- * sample is a hard binary signal; otherwise a high ratio of non-printable
- * control characters (excluding tab/LF/CR) indicates binary data. Keeps the
- * viewer from attempting to highlight/render content that isn't text. */
-export function looksBinary(content: string): boolean {
-	const sample = content.slice(0, 1024);
-	if (sample.length === 0) return false;
-	let nonPrintable = 0;
-	for (let i = 0; i < sample.length; i++) {
-		const code = sample.charCodeAt(i);
-		if (code === 0) return true;
-		if (code < 32 && code !== 9 && code !== 10 && code !== 13) {
-			nonPrintable++;
-		}
-	}
-	return nonPrintable / sample.length > 0.3;
-}
 
 const wrapStyle: CSSProperties = {
 	position: 'relative',

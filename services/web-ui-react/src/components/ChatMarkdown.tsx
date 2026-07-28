@@ -13,7 +13,8 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import rehypeHighlight from 'rehype-highlight';
 import 'katex/dist/katex.min.css';
-import { ArtifactOverlay, parseArtifacts, type Artifact } from './ArtifactOverlay';
+import { ArtifactOverlay } from './ArtifactOverlay';
+import { parseArtifacts, type Artifact } from '../lib/artifacts';
 import { highlightLanguages, highlightAliases } from '../lib/highlightLanguages';
 import { Check, Copy } from 'lucide-react';
 
