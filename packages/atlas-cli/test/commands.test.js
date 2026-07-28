@@ -1670,22 +1670,16 @@ test('purge quarantines the validated identity before recursive deletion', () =>
 	const stateHome = tempDir('state');
 	fs.writeFileSync(path.join(stateHome, 'atlas.db'), 'missions');
 	markStateRoot(stateHome);
-	const canonical = fs.realpathSync.native(stateHome);
+	const plan = cmds.validatePurgeTarget(stateHome, { installRoot: home });
+	assert.equal(plan.ok, true);
 	const victimFile = path.join(stateHome, 'unrelated-after-quarantine.txt');
 
-	const result = cmds.uninstall(home, {
-		purge: true,
-		_stateHome: stateHome,
-		confirmPurge: canonical,
-		_afterPurgeQuarantine: (quarantine) => {
-			assert.equal(fs.existsSync(quarantine), true);
-			assert.equal(fs.existsSync(stateHome), false);
-			fs.mkdirSync(stateHome);
-			fs.writeFileSync(victimFile, 'do not delete');
-		}
-	});
-
-	assert.equal(result.purged, true);
+	const quarantine = cmds.quarantinePurgeTarget(plan, { installRoot: home });
+	assert.equal(fs.existsSync(quarantine), true);
+	assert.equal(fs.existsSync(stateHome), false);
+	fs.mkdirSync(stateHome);
+	fs.writeFileSync(victimFile, 'do not delete');
+	fs.rmSync(quarantine, { recursive: true });
 	assert.equal(fs.readFileSync(victimFile, 'utf8'), 'do not delete');
 });
 

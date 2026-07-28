@@ -952,11 +952,15 @@ function uninstall(home, opts) {
 			purgePlan,
 			{ ...opts._validation, installRoot: home }
 		);
-		if (typeof opts._afterPurgeQuarantine === 'function') {
-			opts._afterPurgeQuarantine(quarantine);
-		}
 	}
 	try {
+		// Keep no application callback or unrelated filesystem work between the
+		// identity-checked quarantine rename and its synchronous removal.
+		if (quarantine) {
+			fs.rmSync(quarantine, { recursive: true, force: true });
+			quarantine = null;
+			removed.push(purgePlan.target);
+		}
 		if (fs.existsSync(versions)) {
 			fs.rmSync(versions, { recursive: true, force: true });
 			removed.push(versions);
@@ -968,10 +972,6 @@ function uninstall(home, opts) {
 		if (fs.existsSync(installFile)) {
 			fs.rmSync(installFile, { force: true });
 			removed.push(installFile);
-		}
-		if (quarantine) {
-			fs.rmSync(quarantine, { recursive: true, force: true });
-			removed.push(purgePlan.target);
 		}
 	} catch (err) {
 		if (quarantine && !fs.existsSync(purgePlan.target) && fs.existsSync(quarantine)) {
