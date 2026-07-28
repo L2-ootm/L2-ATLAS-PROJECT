@@ -213,6 +213,30 @@ async fn cockpit_browser_methods_pass_real_options_preflight() {
 }
 
 #[tokio::test]
+async fn tauri_production_origins_pass_real_delete_preflight() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_app(seeded_db(&dir));
+
+    for origin in ["http://tauri.localhost", "tauri://localhost"] {
+        let response = options(&router, origin, Some("DELETE")).await;
+        assert_eq!(
+            response.status(),
+            StatusCode::NO_CONTENT,
+            "{origin} DELETE preflight should be accepted"
+        );
+        assert_eq!(
+            response.headers()[header::ACCESS_CONTROL_ALLOW_ORIGIN],
+            origin
+        );
+        assert!(response.headers()[header::ACCESS_CONTROL_ALLOW_METHODS]
+            .to_str()
+            .unwrap()
+            .split(", ")
+            .any(|allowed| allowed == "DELETE"));
+    }
+}
+
+#[tokio::test]
 async fn preflight_from_disallowed_origin_is_rejected_without_cors_grant() {
     let dir = tempfile::tempdir().unwrap();
     let router = test_app(seeded_db(&dir));

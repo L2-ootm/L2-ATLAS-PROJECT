@@ -3439,6 +3439,9 @@ fn allowed_origins() -> &'static Vec<String> {
             "http://127.0.0.1:5174",
             "http://localhost:4173",
             "http://127.0.0.1:4173",
+            // Tauri v2 production custom-protocol origins. Windows WebView2
+            // exposes the app as HTTP; macOS/Linux retain the tauri scheme.
+            "http://tauri.localhost",
             "tauri://localhost",
         ]
         .iter()
