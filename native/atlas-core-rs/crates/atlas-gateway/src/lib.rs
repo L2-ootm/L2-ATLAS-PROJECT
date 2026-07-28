@@ -244,8 +244,7 @@ async fn missions_list(
             ))
         }
     };
-    let missions =
-        blocking(move || db::list_missions(&path, limit, origin.as_deref())).await?;
+    let missions = blocking(move || db::list_missions(&path, limit, origin.as_deref())).await?;
     let count = missions.len();
     Ok(Json(json!({ "missions": missions, "count": count })))
 }
@@ -346,10 +345,7 @@ async fn mission_update(
     }
 }
 
-async fn mission_context(
-    State(state): State<AppState>,
-    AxPath(id): AxPath<String>,
-) -> ApiResult {
+async fn mission_context(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
     require_arg(&id, "mission id must be non-empty")?;
     let out = dispatch_atlas(
         &state.atlas_cmd,
@@ -1302,7 +1298,10 @@ async fn preset_create(
 ) -> ApiResult {
     require_arg(&body.name, "preset name must be non-empty")?;
     require_arg(&body.role_label, "preset role_label must be non-empty")?;
-    require_arg(&body.goal_template, "preset goal_template must be non-empty")?;
+    require_arg(
+        &body.goal_template,
+        "preset goal_template must be non-empty",
+    )?;
     let description = body.description.unwrap_or_default();
     let model = body.model.unwrap_or_default();
     let provider = body.provider.unwrap_or_default();
@@ -1310,14 +1309,23 @@ async fn preset_create(
     let out = dispatch_atlas(
         &state.atlas_cmd,
         &[
-            "team", "preset", "create",
-            "--name", &body.name,
-            "--role", &body.role_label,
-            "--goal", &body.goal_template,
-            "--description", &description,
-            "--model", &model,
-            "--provider", &provider,
-            "--mode", &mode,
+            "team",
+            "preset",
+            "create",
+            "--name",
+            &body.name,
+            "--role",
+            &body.role_label,
+            "--goal",
+            &body.goal_template,
+            "--description",
+            &description,
+            "--model",
+            &model,
+            "--provider",
+            &provider,
+            "--mode",
+            &mode,
         ],
     )
     .await?;
@@ -1351,13 +1359,27 @@ async fn preset_update(
     let provider = body.provider.unwrap_or_default();
     let mode = body.mode.unwrap_or_default();
     let mut args: Vec<&str> = vec!["team", "preset", "update"];
-    if !name.is_empty() { args.extend_from_slice(&["--name", &name]); }
-    if !role_label.is_empty() { args.extend_from_slice(&["--role", &role_label]); }
-    if !goal_template.is_empty() { args.extend_from_slice(&["--goal", &goal_template]); }
-    if !description.is_empty() { args.extend_from_slice(&["--description", &description]); }
-    if !model.is_empty() { args.extend_from_slice(&["--model", &model]); }
-    if !provider.is_empty() { args.extend_from_slice(&["--provider", &provider]); }
-    if !mode.is_empty() { args.extend_from_slice(&["--mode", &mode]); }
+    if !name.is_empty() {
+        args.extend_from_slice(&["--name", &name]);
+    }
+    if !role_label.is_empty() {
+        args.extend_from_slice(&["--role", &role_label]);
+    }
+    if !goal_template.is_empty() {
+        args.extend_from_slice(&["--goal", &goal_template]);
+    }
+    if !description.is_empty() {
+        args.extend_from_slice(&["--description", &description]);
+    }
+    if !model.is_empty() {
+        args.extend_from_slice(&["--model", &model]);
+    }
+    if !provider.is_empty() {
+        args.extend_from_slice(&["--provider", &provider]);
+    }
+    if !mode.is_empty() {
+        args.extend_from_slice(&["--mode", &mode]);
+    }
     args.extend_from_slice(&["--", &id]);
     let out = dispatch_atlas(&state.atlas_cmd, &args).await?;
     let value: Value = serde_json::from_str(&out)
@@ -1390,7 +1412,14 @@ async fn team_create(State(state): State<AppState>, Json(body): Json<CreateTeamB
     let description = body.description.unwrap_or_default();
     let out = dispatch_atlas(
         &state.atlas_cmd,
-        &["team", "create", "--name", &body.name, "--description", &description],
+        &[
+            "team",
+            "create",
+            "--name",
+            &body.name,
+            "--description",
+            &description,
+        ],
     )
     .await?;
     let value: Value = serde_json::from_str(&out)
@@ -1421,8 +1450,12 @@ async fn team_update(
     let name = body.name.unwrap_or_default();
     let description = body.description.unwrap_or_default();
     let mut args: Vec<&str> = vec!["team", "update"];
-    if !name.is_empty() { args.extend_from_slice(&["--name", &name]); }
-    if !description.is_empty() { args.extend_from_slice(&["--description", &description]); }
+    if !name.is_empty() {
+        args.extend_from_slice(&["--name", &name]);
+    }
+    if !description.is_empty() {
+        args.extend_from_slice(&["--description", &description]);
+    }
     args.extend_from_slice(&["--", &id]);
     let out = dispatch_atlas(&state.atlas_cmd, &args).await?;
     let value: Value = serde_json::from_str(&out)
@@ -1480,10 +1513,15 @@ async fn team_run_start(
     let max_rounds = body.max_rounds.unwrap_or(6).clamp(1, 20);
     let max_rounds_arg = max_rounds.to_string();
     let mut args: Vec<&str> = vec![
-        "team", "run", "start",
-        "--team", &id,
-        "--message", &body.message,
-        "--max-rounds", &max_rounds_arg,
+        "team",
+        "run",
+        "start",
+        "--team",
+        &id,
+        "--message",
+        &body.message,
+        "--max-rounds",
+        &max_rounds_arg,
     ];
     if !mission_id.is_empty() {
         args.extend_from_slice(&["--mission", &mission_id]);
@@ -1516,7 +1554,15 @@ async fn team_run_messages(
     let since_seq = params.since_seq.unwrap_or(0).max(0).to_string();
     let out = dispatch_atlas(
         &state.atlas_cmd,
-        &["team", "run", "messages", "--since-seq", &since_seq, "--", &id],
+        &[
+            "team",
+            "run",
+            "messages",
+            "--since-seq",
+            &since_seq,
+            "--",
+            &id,
+        ],
     )
     .await?;
     let value: Value = serde_json::from_str(&out)
@@ -2098,7 +2144,8 @@ struct GraphParams {
 fn is_valid_scope_slug(s: &str) -> bool {
     !s.is_empty()
         && s.len() <= 64
-        && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        && s.chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
 /// Knowledge graph for the cockpit Graphify view. `scope` selects the corpus:
@@ -2221,7 +2268,9 @@ async fn host_reveal(Json(body): Json<RevealBody>) -> ApiResult {
     // guard the spawn itself, not the child's status.
     match spawned {
         Ok(_) => Ok(Json(json!({ "revealed": true, "path": path }))),
-        Err(e) => Err(ApiError::Internal(format!("failed to open file manager: {e}"))),
+        Err(e) => Err(ApiError::Internal(format!(
+            "failed to open file manager: {e}"
+        ))),
     }
 }
 
@@ -2650,7 +2699,10 @@ async fn project_rename(
 
 /// DELETE /v1/projects/{id} — unregister only: the folder on disk is never
 /// touched, and bound missions/focus are detached (history preserved).
-async fn project_unregister(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
+async fn project_unregister(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+) -> ApiResult {
     require_arg(&id, "project id must be non-empty")?;
     let detached = dispatch_atlas(&state.atlas_cmd, &["project", "unregister", "--", &id]).await?;
     let detached_missions = detached.trim().parse::<i64>().unwrap_or(0);
@@ -3198,8 +3250,8 @@ async fn cashflow_summary() -> ApiResult {
 /// the app to accept connections, then redirects. The app URL is resolved at
 /// request time from ATLAS_CASHFLOW_URL (same knob the CLI honors).
 async fn cashflow_full() -> Html<String> {
-    let app_url = std::env::var("ATLAS_CASHFLOW_URL")
-        .unwrap_or_else(|_| "http://localhost:3000".to_string());
+    let app_url =
+        std::env::var("ATLAS_CASHFLOW_URL").unwrap_or_else(|_| "http://localhost:3000".to_string());
     Html(CASHFLOW_FULL_PAGE.replace("__CASHFLOW_URL__", app_url.trim_end_matches('/')))
 }
 
@@ -3485,7 +3537,10 @@ pub fn app(state: AppState) -> Router {
         .route("/health", get(health))
         .route("/v1/missions", get(missions_list).post(create_mission))
         .route("/v1/missions/purge-archived", post(purge_archived_missions))
-        .route("/v1/missions/{id}", get(mission_detail).patch(mission_update))
+        .route(
+            "/v1/missions/{id}",
+            get(mission_detail).patch(mission_update),
+        )
         .route("/v1/missions/{id}/context", get(mission_context))
         .route("/v1/missions/{id}/archive", post(archive_mission))
         .route("/v1/missions/{id}/run", post(start_run))
@@ -3530,10 +3585,7 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/tools/calls", post(tool_call))
         .route("/api/skills", get(skills_list))
         .route("/api/skills/tier", put(skills_set_tier))
-        .route(
-            "/v1/agent-presets",
-            get(presets_list).post(preset_create),
-        )
+        .route("/v1/agent-presets", get(presets_list).post(preset_create))
         .route(
             "/v1/agent-presets/{id}",
             patch(preset_update).delete(preset_delete),

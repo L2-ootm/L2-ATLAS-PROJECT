@@ -373,15 +373,27 @@ async fn surface_list_forwards_query_params_as_cli_flags() {
         &stub_dir,
     );
 
-    let (status, body) =
-        get_json(&router, "/v1/surface-sessions?active_only=true&limit=10&offset=5").await;
+    let (status, body) = get_json(
+        &router,
+        "/v1/surface-sessions?active_only=true&limit=10&offset=5",
+    )
+    .await;
 
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["total"], 0);
     let argv = std::fs::read_to_string(&argv_path).unwrap();
     assert_eq!(
         argv.lines().collect::<Vec<_>>(),
-        vec!["surface", "list", "--json", "--active-only", "--limit", "10", "--offset", "5"],
+        vec![
+            "surface",
+            "list",
+            "--json",
+            "--active-only",
+            "--limit",
+            "10",
+            "--offset",
+            "5"
+        ],
     );
 }
 
@@ -1988,8 +2000,11 @@ async fn commands_list_empty_for_inactive_or_pre_migration() {
     let dir2 = tempfile::tempdir().unwrap();
     let path2 = seeded_db_manifest_modules(&dir2);
     let conn = rusqlite::Connection::open(&path2).unwrap();
-    conn.execute("UPDATE modules SET status='inactive' WHERE id='demo-mod'", [])
-        .unwrap();
+    conn.execute(
+        "UPDATE modules SET status='inactive' WHERE id='demo-mod'",
+        [],
+    )
+    .unwrap();
     drop(conn);
     let router2 = test_app(path2);
     let (status2, body2) = get_json(&router2, "/v1/commands").await;
@@ -2737,7 +2752,11 @@ async fn vcs_reports_branch_from_git_head() {
     let dir = tempfile::tempdir().unwrap();
     let repo = dir.path().join("repo");
     std::fs::create_dir_all(repo.join(".git")).unwrap();
-    std::fs::write(repo.join(".git").join("HEAD"), "ref: refs/heads/feature-x\n").unwrap();
+    std::fs::write(
+        repo.join(".git").join("HEAD"),
+        "ref: refs/heads/feature-x\n",
+    )
+    .unwrap();
     let router = test_app(seeded_db(&dir));
 
     let uri = format!("/v1/vcs?path={}", encode_path(&repo));
@@ -2775,7 +2794,11 @@ async fn vcs_reports_detached_head_short_commit() {
 async fn vcs_follows_worktree_pointer_file() {
     let dir = tempfile::tempdir().unwrap();
     // Real gitdir elsewhere (as in `git worktree add`), worktree has a pointer file.
-    let gitdir = dir.path().join("main-repo-git").join("worktrees").join("wt");
+    let gitdir = dir
+        .path()
+        .join("main-repo-git")
+        .join("worktrees")
+        .join("wt");
     std::fs::create_dir_all(&gitdir).unwrap();
     std::fs::write(gitdir.join("HEAD"), "ref: refs/heads/wt-branch\n").unwrap();
     let worktree = dir.path().join("wt");
@@ -2873,12 +2896,8 @@ async fn goal_update_patch_dispatches_and_returns_goal() {
     let dir = tempfile::tempdir().unwrap();
     let stub_dir = tempfile::tempdir().unwrap();
     let router = test_app_with_stub(seeded_db_goals(&dir), "updated", &stub_dir);
-    let (status, body) = patch_json(
-        &router,
-        "/v1/goals/g-root",
-        json!({ "status": "paused" }),
-    )
-    .await;
+    let (status, body) =
+        patch_json(&router, "/v1/goals/g-root", json!({ "status": "paused" })).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["updated"], true);
     assert_eq!(body["goal"]["id"], "g-root");
@@ -3128,8 +3147,12 @@ async fn graph_scope_set_root_patch_dispatches_and_returns_scope() {
         r#"{"id": "projects", "label": "Projects", "root_path": "D:/work", "kind": "projects"}"#,
         &stub_dir,
     );
-    let (status, body) =
-        patch_json(&router, "/v1/graph/scopes/projects", json!({ "path": "D:/work" })).await;
+    let (status, body) = patch_json(
+        &router,
+        "/v1/graph/scopes/projects",
+        json!({ "path": "D:/work" }),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["scope"]["id"], "projects");
     assert_eq!(body["scope"]["root_path"], "D:/work");
@@ -3272,8 +3295,12 @@ async fn team_set_members_rejects_empty_roster() {
     let dir = tempfile::tempdir().unwrap();
     let stub_dir = tempfile::tempdir().unwrap();
     let router = test_app_with_stub(seeded_db(&dir), "{}", &stub_dir);
-    let (status, _) =
-        put_json(&router, "/v1/teams/team-1/members", json!({"preset_ids": []})).await;
+    let (status, _) = put_json(
+        &router,
+        "/v1/teams/team-1/members",
+        json!({"preset_ids": []}),
+    )
+    .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
@@ -3301,8 +3328,7 @@ async fn team_run_start_rejects_empty_message() {
     let dir = tempfile::tempdir().unwrap();
     let stub_dir = tempfile::tempdir().unwrap();
     let router = test_app_with_stub(seeded_db(&dir), "{}", &stub_dir);
-    let (status, _) =
-        post_json(&router, "/v1/teams/team-1/run", json!({"message": ""})).await;
+    let (status, _) = post_json(&router, "/v1/teams/team-1/run", json!({"message": ""})).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 

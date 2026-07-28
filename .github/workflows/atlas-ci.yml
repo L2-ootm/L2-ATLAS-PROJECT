@@ -130,6 +130,9 @@ jobs:
       - name: Test
         working-directory: native/atlas-core-rs
         run: cargo test --workspace
+      - name: Format
+        working-directory: native/atlas-core-rs
+        run: cargo fmt --all -- --check
       - name: Clippy
         working-directory: native/atlas-core-rs
         run: cargo clippy --workspace --all-targets -- -D warnings

@@ -107,8 +107,7 @@ fn module_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
     // manifest_json (0023) is parsed to a JSON object so the WebUI receives
     // structured capabilities (commands/pages); malformed/empty becomes null.
     let manifest_raw: String = row.get::<_, Option<String>>(7)?.unwrap_or_default();
-    let manifest: Value =
-        serde_json::from_str(&manifest_raw).unwrap_or(Value::Null);
+    let manifest: Value = serde_json::from_str(&manifest_raw).unwrap_or(Value::Null);
     Ok(json!({
         "id": row.get::<_, String>(0)?,
         "name": row.get::<_, String>(1)?,
@@ -177,11 +176,7 @@ fn is_schema_drift(err: &rusqlite::Error) -> bool {
 
 type RowMapper = fn(&rusqlite::Row<'_>) -> rusqlite::Result<Value>;
 
-pub fn list_missions(
-    path: &Path,
-    limit: i64,
-    origin: Option<&str>,
-) -> Result<Vec<Value>, DbError> {
+pub fn list_missions(path: &Path, limit: i64, origin: Option<&str>) -> Result<Vec<Value>, DbError> {
     let conn = open_ro(path)?;
     // Filter semantics: "operator" means everything not machine- or
     // prompt-created (pre-0024 "" rows count as operator); "chat"/"system"
@@ -386,9 +381,8 @@ pub fn list_focus(path: &Path, limit: i64, include_archived: bool) -> Result<Vec
     } else {
         " WHERE status = 'active'"
     };
-    let sql = format!(
-        "SELECT {FOCUS_COLS} FROM focus{where_status} ORDER BY created_at DESC LIMIT ?1"
-    );
+    let sql =
+        format!("SELECT {FOCUS_COLS} FROM focus{where_status} ORDER BY created_at DESC LIMIT ?1");
     let mut stmt = match conn.prepare(&sql) {
         Ok(s) => s,
         Err(rusqlite::Error::SqliteFailure(_, Some(ref msg))) if msg.contains("no such table") => {
@@ -656,7 +650,13 @@ pub fn list_modules(path: &Path) -> Result<Vec<Value>, DbError> {
 /// Built-in command names are never shadowed; first module wins a collision.
 pub fn list_module_commands(path: &Path) -> Result<Vec<Value>, DbError> {
     const RESERVED: [&str; 7] = [
-        "init", "review", "dream", "distill", "goal", "mission", "deep-research",
+        "init",
+        "review",
+        "dream",
+        "distill",
+        "goal",
+        "mission",
+        "deep-research",
     ];
     let conn = open_ro(path)?;
     let sql = "SELECT id, manifest_json FROM modules \
@@ -668,7 +668,9 @@ pub fn list_module_commands(path: &Path) -> Result<Vec<Value>, DbError> {
         return Ok(vec![]);
     };
     let rows: Vec<(String, String)> = stmt
-        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     let mut taken: std::collections::HashSet<String> =
         RESERVED.iter().map(|s| s.to_string()).collect();
