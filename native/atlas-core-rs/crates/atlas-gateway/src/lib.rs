@@ -3365,6 +3365,11 @@ async fn cancel_run(State(state): State<AppState>, AxPath(id): AxPath<String>) -
 // CORS (cockpit dev/preview + Phase 10 Tauri shell are cross-origin)
 // ---------------------------------------------------------------------------
 
+/// Browser methods intentionally exposed to the cockpit. This is the single
+/// source for both preflight validation and Access-Control-Allow-Methods.
+const BROWSER_METHODS: &str = "GET, POST, PUT, PATCH, DELETE, OPTIONS";
+const BROWSER_HEADERS: &str = "content-type, x-atlas-surface-owner";
+
 /// Allowed browser origins. The gateway binds loopback-only, but browsers on
 /// the same machine enforce the same-origin policy, so the cockpit served
 /// from the Vite dev/preview server (or the Tauri WebView in Phase 10) needs
@@ -3400,6 +3405,18 @@ fn allowed_origins() -> &'static Vec<String> {
     })
 }
 
+fn browser_method_allowed(requested: &HeaderValue) -> bool {
+    requested
+        .to_str()
+        .ok()
+        .map(|requested| {
+            BROWSER_METHODS
+                .split(", ")
+                .any(|allowed| allowed == requested)
+        })
+        .unwrap_or(false)
+}
+
 async fn cors(req: Request, next: Next) -> Response {
     let origin = req.headers().get(header::ORIGIN).cloned();
     let allowed = origin
@@ -3410,12 +3427,19 @@ async fn cors(req: Request, next: Next) -> Response {
 
     // Only short-circuit genuine CORS preflights; a plain OPTIONS request
     // (no Access-Control-Request-Method) still reaches the router.
-    let is_preflight = req.method() == Method::OPTIONS
-        && req
-            .headers()
-            .contains_key(header::ACCESS_CONTROL_REQUEST_METHOD);
+    let requested_method = (req.method() == Method::OPTIONS)
+        .then(|| req.headers().get(header::ACCESS_CONTROL_REQUEST_METHOD))
+        .flatten();
+    let is_preflight = requested_method.is_some();
+    let method_allowed = requested_method
+        .map(browser_method_allowed)
+        .unwrap_or(false);
     let mut res = if is_preflight {
-        StatusCode::NO_CONTENT.into_response()
+        match (allowed, method_allowed) {
+            (true, true) => StatusCode::NO_CONTENT.into_response(),
+            (false, _) => StatusCode::FORBIDDEN.into_response(),
+            (true, false) => StatusCode::METHOD_NOT_ALLOWED.into_response(),
+        }
     } else {
         next.run(req).await
     };
@@ -3424,18 +3448,25 @@ async fn cors(req: Request, next: Next) -> Response {
     // disallowed/absent origins must not be cacheable across origins either.
     res.headers_mut()
         .append(header::VARY, HeaderValue::from_static("Origin"));
+    if is_preflight {
+        res.headers_mut().append(
+            header::VARY,
+            HeaderValue::from_static("Access-Control-Request-Method"),
+        );
+    }
 
-    if allowed {
+    // A rejected preflight must not receive a partial CORS grant.
+    if allowed && (!is_preflight || method_allowed) {
         let headers = res.headers_mut();
         // Unwrap is safe: origin was already validated as a present header value.
         headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin.unwrap());
         headers.insert(
             header::ACCESS_CONTROL_ALLOW_METHODS,
-            HeaderValue::from_static("GET, POST, PUT, PATCH, OPTIONS"),
+            HeaderValue::from_static(BROWSER_METHODS),
         );
         headers.insert(
             header::ACCESS_CONTROL_ALLOW_HEADERS,
-            HeaderValue::from_static("content-type, x-atlas-surface-owner"),
+            HeaderValue::from_static(BROWSER_HEADERS),
         );
         headers.insert(
             header::ACCESS_CONTROL_MAX_AGE,

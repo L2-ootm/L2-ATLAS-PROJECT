@@ -4,7 +4,7 @@
 
 use atlas_gateway::{app, AppState};
 use axum::body::Body;
-use axum::http::{Request, StatusCode};
+use axum::http::{header, Request, StatusCode};
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -145,6 +145,119 @@ async fn get_json(router: &axum::Router, uri: &str) -> (StatusCode, Value) {
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();
     let body: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
     (status, body)
+}
+
+async fn options(
+    router: &axum::Router,
+    origin: &str,
+    requested_method: Option<&str>,
+) -> axum::response::Response {
+    let mut request = Request::builder()
+        .method("OPTIONS")
+        .uri("/v1/projects/example")
+        .header(header::ORIGIN, origin);
+    if let Some(requested_method) = requested_method {
+        request = request
+            .header(header::ACCESS_CONTROL_REQUEST_METHOD, requested_method)
+            .header(
+                header::ACCESS_CONTROL_REQUEST_HEADERS,
+                "content-type, x-atlas-surface-owner",
+            );
+    }
+    router
+        .clone()
+        .oneshot(request.body(Body::empty()).unwrap())
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn cockpit_browser_methods_pass_real_options_preflight() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_app(seeded_db(&dir));
+
+    // This inventory mirrors the methods used by apiFetch. Running every
+    // method through middleware protects the client and CORS contract from
+    // drifting while keeping DELETE's regression explicit.
+    for method in ["GET", "POST", "PUT", "PATCH", "DELETE"] {
+        let response = options(&router, "http://127.0.0.1:5174", Some(method)).await;
+        assert_eq!(
+            response.status(),
+            StatusCode::NO_CONTENT,
+            "{method} preflight should be accepted"
+        );
+        assert_eq!(
+            response.headers()[header::ACCESS_CONTROL_ALLOW_ORIGIN],
+            "http://127.0.0.1:5174"
+        );
+        let methods = response.headers()[header::ACCESS_CONTROL_ALLOW_METHODS]
+            .to_str()
+            .unwrap();
+        assert!(
+            methods.split(", ").any(|allowed| allowed == method),
+            "{method} missing from Access-Control-Allow-Methods: {methods}"
+        );
+        let headers = response.headers()[header::ACCESS_CONTROL_ALLOW_HEADERS]
+            .to_str()
+            .unwrap();
+        assert!(headers.split(", ").any(|allowed| allowed == "content-type"));
+        assert!(headers
+            .split(", ")
+            .any(|allowed| allowed == "x-atlas-surface-owner"));
+        let vary = response.headers().get_all(header::VARY);
+        assert!(vary.iter().any(|value| value == "Origin"));
+        assert!(vary
+            .iter()
+            .any(|value| value == "Access-Control-Request-Method"));
+    }
+}
+
+#[tokio::test]
+async fn preflight_from_disallowed_origin_is_rejected_without_cors_grant() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_app(seeded_db(&dir));
+
+    let response = options(&router, "https://attacker.example", Some("DELETE")).await;
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert!(!response
+        .headers()
+        .contains_key(header::ACCESS_CONTROL_ALLOW_ORIGIN));
+    assert!(!response
+        .headers()
+        .contains_key(header::ACCESS_CONTROL_ALLOW_METHODS));
+    assert!(response
+        .headers()
+        .get_all(header::VARY)
+        .iter()
+        .any(|value| value == "Origin"));
+}
+
+#[tokio::test]
+async fn unsupported_preflight_method_is_rejected_without_cors_grant() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_app(seeded_db(&dir));
+
+    let response = options(&router, "http://127.0.0.1:5174", Some("CONNECT")).await;
+    assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+    assert!(!response
+        .headers()
+        .contains_key(header::ACCESS_CONTROL_ALLOW_ORIGIN));
+    assert!(!response
+        .headers()
+        .contains_key(header::ACCESS_CONTROL_ALLOW_METHODS));
+}
+
+#[tokio::test]
+async fn ordinary_options_without_requested_method_reaches_router() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_app(seeded_db(&dir));
+
+    let response = options(&router, "http://127.0.0.1:5174", None).await;
+    assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+    assert_eq!(
+        response.headers()[header::ACCESS_CONTROL_ALLOW_ORIGIN],
+        "http://127.0.0.1:5174"
+    );
 }
 
 #[tokio::test]
