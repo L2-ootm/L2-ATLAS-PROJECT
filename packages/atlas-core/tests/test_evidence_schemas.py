@@ -148,3 +148,64 @@ def test_evidence_migration_is_idempotent_and_indexed() -> None:
         "idx_evidence_full_results_owner_cursor",
     } <= indexes
     assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+
+
+def test_every_evidence_cursor_query_uses_its_declared_index() -> None:
+    root = pathlib.Path(__file__).parents[3]
+    conn = sqlite3.connect(":memory:")
+    conn.execute("PRAGMA foreign_keys=ON")
+    for migration in sorted((root / "infra/migrations").glob("*.sql")):
+        conn.executescript(migration.read_text(encoding="utf-8"))
+    # Second application proves the additive evidence migration itself remains
+    # safe after a fully upgraded database has converged.
+    conn.executescript(
+        (root / "infra/migrations/0033_evidence_plane.sql").read_text(
+            encoding="utf-8"
+        )
+    )
+    assertions = [
+        (
+            "idx_evidence_change_sets_run_cursor",
+            "SELECT id FROM evidence_change_sets"
+            " WHERE run_id=? ORDER BY created_at,id LIMIT 10",
+            ("run-1",),
+        ),
+        (
+            "idx_evidence_change_sets_session_cursor",
+            "SELECT id FROM evidence_change_sets"
+            " WHERE session_id=? ORDER BY created_at,id LIMIT 10",
+            ("session-1",),
+        ),
+        (
+            "idx_evidence_change_sets_team_cursor",
+            "SELECT id FROM evidence_change_sets"
+            " WHERE team_run_id=? ORDER BY created_at,id LIMIT 10",
+            ("team-1",),
+        ),
+        (
+            "idx_evidence_file_changes_set_cursor",
+            "SELECT id FROM evidence_file_changes"
+            " WHERE change_set_id=? ORDER BY id LIMIT 10",
+            ("change-1",),
+        ),
+        (
+            "idx_evidence_hunks_file_cursor",
+            "SELECT id FROM evidence_hunks"
+            " WHERE file_change_id=? ORDER BY hunk_index LIMIT 10",
+            ("file-1",),
+        ),
+        (
+            "idx_evidence_full_results_owner_cursor",
+            "SELECT id FROM evidence_full_results"
+            " WHERE owner_kind=? AND owner_id=? ORDER BY created_at,id LIMIT 10",
+            ("run", "run-1"),
+        ),
+    ]
+    for index, query, params in assertions:
+        plan = " ".join(
+            str(column)
+            for row in conn.execute(f"EXPLAIN QUERY PLAN {query}", params)
+            for column in row
+        )
+        assert index in plan, f"{index} missing from query plan: {plan}"
+    assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
