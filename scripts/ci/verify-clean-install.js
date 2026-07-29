@@ -130,7 +130,8 @@ function verifyLocalInstall(opts) {
 	const platform = opts.platform || `${process.platform}-${process.arch}`;
 	const selected = resolvedArtifact(index, opts.version, platform, indexPath);
 	const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-resolved-probe-'));
-	const installRoot = path.resolve(opts.home);
+	const probeRoot = fs.mkdtempSync(path.join(path.resolve(opts.home), 'probe-'));
+	const installRoot = path.join(probeRoot, 'install');
 	const stateRoot = `${installRoot}-state`;
 	const steps = [];
 	let launcher;
@@ -218,6 +219,7 @@ function verifyLocalInstall(opts) {
 		return { ok: true, steps };
 	} finally {
 		fs.rmSync(workspace, { recursive: true, force: true });
+		fs.rmSync(probeRoot, { recursive: true, force: true });
 	}
 }
 
@@ -225,6 +227,7 @@ async function main() {
 	const opts = parseArgs(process.argv.slice(2));
 	if (opts.localIndex) {
 		opts.home = opts.home || fs.mkdtempSync(path.join(os.tmpdir(), 'atlas-clean-install-'));
+		fs.mkdirSync(opts.home, { recursive: true });
 		const report = verifyLocalInstall(opts);
 		for (const step of report.steps) console.log(`OK ${step.name}: ${step.detail}`);
 		return;
