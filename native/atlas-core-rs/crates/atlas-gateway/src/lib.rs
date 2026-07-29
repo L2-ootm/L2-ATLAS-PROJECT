@@ -2005,6 +2005,7 @@ surface_action_handler!(surface_close, "close");
 
 #[derive(Deserialize)]
 struct SelectFolderBody {
+    #[cfg_attr(not(windows), allow(dead_code))]
     title: Option<String>,
 }
 
