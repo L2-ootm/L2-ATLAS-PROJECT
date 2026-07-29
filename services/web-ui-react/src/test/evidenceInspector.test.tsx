@@ -1,8 +1,10 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 import { EvidenceInspector } from '../components/evidence/EvidenceInspector';
 import { FileChangeReceipt } from '../components/evidence/FileChangeReceipt';
+import Ledger from '../routes/Ledger';
 import * as api from '../lib/api';
 import type { EvidenceFileChange } from '../lib/api';
 
@@ -11,9 +13,22 @@ vi.mock('../lib/api', async () => {
 	return {
 		...actual,
 		listFileChangeHunks: vi.fn(),
-		getFileChangePatch: vi.fn()
+		getFileChangePatch: vi.fn(),
+		listAuditEvidence: vi.fn(),
+		listRuns: vi.fn(),
+		getRunEvents: vi.fn()
 	};
 });
+
+vi.mock('../context/AgentSurfaceContext', () => ({
+	useAgentSurface: () => ({
+		session: { id: 'surface-1', owner_token: 'owner-1' }
+	})
+}));
+
+vi.mock('../lib/useGatewayHealth', () => ({
+	useGatewayHealth: () => ({ online: true, epoch: 1 })
+}));
 
 const file: EvidenceFileChange = {
 	id: 'file-1',
@@ -61,6 +76,31 @@ beforeEach(() => {
 		content: Array.from({ length: 1_000 }, (_, index) =>
 			index % 3 === 0 ? `+added ${index}` : index % 3 === 1 ? `-removed ${index}` : ` context ${index}`
 		).join('\n')
+	});
+	vi.mocked(api.listAuditEvidence).mockResolvedValue({
+		events: [
+			{
+				id: 'event-1',
+				cursor: 'opaque-1',
+				run_id: 'run-1',
+				session_id: 'surface-1',
+				event_type: 'tool_completed',
+				tool_name: 'write_file',
+				timestamp: '2026-07-29T12:00:00Z',
+				duration_ms: 42,
+				data: {
+					evidence: {
+						change_set_id: 'change-1',
+						coverage: 'partial',
+						status: 'unavailable'
+					}
+				},
+				policy_result: null,
+				task_id: null,
+				tool_call_id: 'call-1'
+			}
+		],
+		next_cursor: 'opaque-2'
 	});
 });
 
@@ -135,5 +175,29 @@ describe('Evidence inspector 100k scale and accessibility', () => {
 		expect(close).toHaveBeenCalled();
 		await waitFor(() => expect(before).toHaveFocus());
 		before.remove();
+	});
+});
+
+describe('Ledger global evidence cursor', () => {
+	it('issues one ordered cursor request per page and never fans out across recent runs', async () => {
+		render(
+			<MemoryRouter>
+				<Ledger />
+			</MemoryRouter>
+		);
+
+		expect(await screen.findByText('tool_completed')).toBeInTheDocument();
+		expect(api.listAuditEvidence).toHaveBeenCalledTimes(1);
+		expect(api.listRuns).not.toHaveBeenCalled();
+		expect(api.getRunEvents).not.toHaveBeenCalled();
+		expect(screen.getByRole('alert')).toHaveTextContent(/partial|unavailable/i);
+
+		await userEvent.click(screen.getByRole('button', { name: /load more audit events/i }));
+		await waitFor(() => expect(api.listAuditEvidence).toHaveBeenCalledTimes(2));
+		expect(vi.mocked(api.listAuditEvidence).mock.calls[1][2]).toMatchObject({
+			after: 'opaque-2'
+		});
+		expect(api.listRuns).not.toHaveBeenCalled();
+		expect(api.getRunEvents).not.toHaveBeenCalled();
 	});
 });
