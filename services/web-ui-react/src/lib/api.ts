@@ -104,6 +104,82 @@ export interface AuditEvent {
 	policy_result: string | null;
 }
 
+export type EvidenceAvailability =
+	| 'available'
+	| 'redacted'
+	| 'partial'
+	| 'binary'
+	| 'too_large'
+	| 'corrupt'
+	| 'unavailable';
+
+export interface EvidenceProvenance {
+	run_id: string;
+	session_id: string;
+	team_run_id: string | null;
+	turn_id: string | null;
+	actor_id: string | null;
+	parent_actor_id: string | null;
+	tool_call_id: string | null;
+}
+
+export interface EvidenceChangeSet {
+	id: string;
+	provenance: EvidenceProvenance;
+	coverage: string;
+	status: string;
+	redaction_count: number;
+	created_at: string;
+	file_count: number;
+	additions: number;
+	deletions: number;
+}
+
+export interface EvidenceFileChange {
+	id: string;
+	change_set_id: string;
+	path: string;
+	old_path: string | null;
+	operation: string;
+	availability: EvidenceAvailability;
+	before_sha256: string | null;
+	after_sha256: string | null;
+	before_bytes: number;
+	after_bytes: number;
+	additions: number;
+	deletions: number;
+	binary: boolean;
+	generated: boolean;
+	mode_before: string | null;
+	mode_after: string | null;
+	redaction_count: number;
+}
+
+export interface EvidenceHunk {
+	id: string;
+	file_change_id: string;
+	hunk_index: number;
+	old_start: number;
+	old_lines: number;
+	new_start: number;
+	new_lines: number;
+	patch_start_byte: number;
+	patch_bytes: number;
+	redacted: boolean;
+}
+
+export interface EvidenceContentPage {
+	availability: EvidenceAvailability;
+	media_type: string;
+	sha256: string | null;
+	range: { start: number; end: number; total_bytes: number };
+	content?: string;
+}
+
+export interface EvidenceAuditEvent extends Omit<AuditEvent, 'cursor'> {
+	cursor: string;
+}
+
 export interface WikiPage {
 	slug: string;
 	title: string;
@@ -1174,6 +1250,139 @@ export async function getRunEvents(
 	return apiFetch(`/v1/runs/${encodeURIComponent(id)}/events${query}`);
 }
 
+interface EvidenceRequestOptions {
+	signal?: AbortSignal;
+}
+
+function evidenceRequestInit(ownerToken: string, options?: EvidenceRequestOptions): RequestInit {
+	return {
+		headers: surfaceOwnerHeaders(ownerToken),
+		signal: options?.signal
+	};
+}
+
+export async function listAuditEvidence(
+	sessionId: string,
+	ownerToken: string,
+	options?: {
+		after?: string;
+		limit?: number;
+		runId?: string;
+		actorId?: string;
+		eventType?: string;
+		tool?: string;
+		signal?: AbortSignal;
+	}
+): Promise<{ events: EvidenceAuditEvent[]; next_cursor: string | null }> {
+	const params = new URLSearchParams({ session_id: sessionId });
+	if (options?.after) params.set('after', options.after);
+	if (options?.limit !== undefined) params.set('limit', String(options.limit));
+	if (options?.runId) params.set('run_id', options.runId);
+	if (options?.actorId) params.set('actor_id', options.actorId);
+	if (options?.eventType) params.set('type', options.eventType);
+	if (options?.tool) params.set('tool', options.tool);
+	return apiFetch(
+		`/v1/audit/events?${params.toString()}`,
+		evidenceRequestInit(ownerToken, options)
+	);
+}
+
+export async function listRunChangeSets(
+	runId: string,
+	ownerToken: string,
+	options?: { after?: string; limit?: number; signal?: AbortSignal }
+): Promise<{ change_sets: EvidenceChangeSet[]; next_cursor: string | null }> {
+	const params = new URLSearchParams();
+	if (options?.after) params.set('after', options.after);
+	if (options?.limit !== undefined) params.set('limit', String(options.limit));
+	const query = params.size ? `?${params.toString()}` : '';
+	return apiFetch(
+		`/v1/runs/${encodeURIComponent(runId)}/change-sets${query}`,
+		evidenceRequestInit(ownerToken, options)
+	);
+}
+
+export async function listChangeSetFiles(
+	changeSetId: string,
+	ownerToken: string,
+	options?: { after?: string; limit?: number; signal?: AbortSignal }
+): Promise<{ files: EvidenceFileChange[]; next_cursor: string | null }> {
+	const params = new URLSearchParams();
+	if (options?.after) params.set('after', options.after);
+	if (options?.limit !== undefined) params.set('limit', String(options.limit));
+	const query = params.size ? `?${params.toString()}` : '';
+	return apiFetch(
+		`/v1/change-sets/${encodeURIComponent(changeSetId)}/files${query}`,
+		evidenceRequestInit(ownerToken, options)
+	);
+}
+
+export async function listFileChangeHunks(
+	fileChangeId: string,
+	ownerToken: string,
+	options?: {
+		after?: string;
+		limit?: number;
+		context?: number;
+		ignoreWhitespace?: boolean;
+		signal?: AbortSignal;
+	}
+): Promise<{
+	hunks: EvidenceHunk[];
+	next_cursor: string | null;
+	context: number;
+	ignore_whitespace: boolean;
+}> {
+	const params = new URLSearchParams();
+	if (options?.after) params.set('after', options.after);
+	if (options?.limit !== undefined) params.set('limit', String(options.limit));
+	if (options?.context !== undefined) params.set('context', String(options.context));
+	if (options?.ignoreWhitespace !== undefined) {
+		params.set('ignore_whitespace', String(options.ignoreWhitespace));
+	}
+	const query = params.size ? `?${params.toString()}` : '';
+	return apiFetch(
+		`/v1/file-changes/${encodeURIComponent(fileChangeId)}/hunks${query}`,
+		evidenceRequestInit(ownerToken, options)
+	);
+}
+
+async function getEvidenceContent(
+	path: string,
+	ownerToken: string,
+	options?: { offset?: number; limit?: number; signal?: AbortSignal }
+): Promise<EvidenceContentPage> {
+	const params = new URLSearchParams();
+	if (options?.offset !== undefined) params.set('offset', String(options.offset));
+	if (options?.limit !== undefined) params.set('limit', String(options.limit));
+	const query = params.size ? `?${params.toString()}` : '';
+	return apiFetch(`${path}${query}`, evidenceRequestInit(ownerToken, options));
+}
+
+export function getFileChangePatch(
+	fileChangeId: string,
+	ownerToken: string,
+	options?: { offset?: number; limit?: number; signal?: AbortSignal }
+): Promise<EvidenceContentPage> {
+	return getEvidenceContent(
+		`/v1/file-changes/${encodeURIComponent(fileChangeId)}/patch`,
+		ownerToken,
+		options
+	);
+}
+
+export function getEvidenceResult(
+	evidenceId: string,
+	ownerToken: string,
+	options?: { offset?: number; limit?: number; signal?: AbortSignal }
+): Promise<EvidenceContentPage> {
+	return getEvidenceContent(
+		`/v1/evidence/results/${encodeURIComponent(evidenceId)}`,
+		ownerToken,
+		options
+	);
+}
+
 /**
  * Cancel a mission's active runs.
  * Note: the gateway dispatches `atlas mission cancel`, which halts EVERY
@@ -1680,6 +1889,10 @@ export interface ToolManifest {
 	inputs: ToolManifestInput[];
 	outputs: string[];
 	audit_events: string[];
+	renderer?: string;
+	ui?: {
+		kind: string;
+	};
 }
 
 export type ToolApproval = SurfaceToolApproval;

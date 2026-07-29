@@ -9,9 +9,18 @@ import GlowBorder from '../components/GlowBorder';
 import GlassTopo from '../components/GlassTopo';
 import SseEventRow, { ROW_GRID } from '../components/SseEventRow';
 import { useRunStream } from '../lib/useRunStream';
-import { getRun, getRunEvents, cancelRun, type Run } from '../lib/api';
+import {
+	getRun,
+	getRunEvents,
+	cancelRun,
+	listChangeSetFiles,
+	listRunChangeSets,
+	type EvidenceFileChange,
+	type Run
+} from '../lib/api';
 import { projectAuditEvents } from '../lib/logProjection';
 import { createTopoField, type TopoFieldAPI } from '../topo/topoEngine';
+import { useAgentSurface } from '../context/AgentSurfaceContext';
 
 function isActive(status: string): boolean {
 	const s = status.toUpperCase();
@@ -37,6 +46,8 @@ export default function RunDetail() {
 	// null = idle; a number = the export's current page, so the button can show
 	// progress instead of freezing for seconds on a long run.
 	const [exportPage, setExportPage] = useState<number | null>(null);
+	const [selectedEvidence, setSelectedEvidence] = useState<EvidenceFileChange | null>(null);
+	const agentSurface = useAgentSurface();
 
 	const stream = useRunStream(id, run);
 	const active = isActive(stream.status);
@@ -294,6 +305,27 @@ export default function RunDetail() {
 				</GlassPanel>
 			)}
 
+			{run && agentSurface.session?.id === run.session_id && (
+				<RunEvidenceReceipts
+					runId={run.id}
+					ownerToken={agentSurface.session.owner_token}
+					onInspect={setSelectedEvidence}
+				/>
+			)}
+
+			{selectedEvidence && (
+				<div role="dialog" aria-label="Evidence inspector">
+					<GlassPanel glow="info" style={{ padding: 14, marginBottom: 12 }}>
+						<div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+							<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 12 }}>
+								EVIDENCE INSPECTOR · {selectedEvidence.path}
+							</span>
+							<button type="button" onClick={() => setSelectedEvidence(null)}>CLOSE</button>
+						</div>
+					</GlassPanel>
+				</div>
+			)}
+
 			{/* controls */}
 			<div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
 				<HudLabel>AUDIT STREAM</HudLabel>
@@ -419,6 +451,82 @@ export default function RunDetail() {
 				<span style={{ textAlign: 'right' }}>POLICY</span>
 			</div>
 		</Page>
+	);
+}
+
+export function RunEvidenceReceipts({
+	runId,
+	ownerToken,
+	onInspect
+}: {
+	runId: string;
+	ownerToken: string;
+	onInspect: (file: EvidenceFileChange) => void;
+}) {
+	const [files, setFiles] = useState<Array<EvidenceFileChange & { actor_id: string | null }>>([]);
+	const [error, setError] = useState(false);
+
+	useEffect(() => {
+		const controller = new AbortController();
+		setError(false);
+		listRunChangeSets(runId, ownerToken, { limit: 100, signal: controller.signal })
+			.then(async ({ change_sets }) => {
+				const pages = await Promise.all(
+					change_sets.map(async (changeSet) => {
+						const page = await listChangeSetFiles(changeSet.id, ownerToken, {
+							limit: 100,
+							signal: controller.signal
+						});
+						return page.files.map((file) => ({
+							...file,
+							actor_id: changeSet.provenance.actor_id
+						}));
+					})
+				);
+				setFiles(pages.flat());
+			})
+			.catch((reason: unknown) => {
+				if (!(reason instanceof DOMException && reason.name === 'AbortError')) setError(true);
+			});
+		return () => controller.abort();
+	}, [ownerToken, runId]);
+
+	if (error) {
+		return <div role="alert">EVIDENCE UNAVAILABLE</div>;
+	}
+	if (files.length === 0) return null;
+	return (
+		<GlassPanel glow="info" style={{ padding: 12, marginBottom: 12 }}>
+			<HudLabel>CHANGE EVIDENCE</HudLabel>
+			<div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
+				{files.map((file) => (
+					<button
+						key={file.id}
+						type="button"
+						aria-label={`Inspect ${file.path}`}
+						onClick={() => onInspect(file)}
+						style={{
+							display: 'grid',
+							gridTemplateColumns: '90px minmax(0, 1fr) auto auto auto',
+							gap: 10,
+							textAlign: 'left',
+							padding: '8px 10px',
+							border: '1px solid var(--l2-hairline)',
+							background: 'rgba(8,10,15,0.5)',
+							color: 'var(--l2-fg-2)',
+							fontFamily: 'var(--l2-font-mono)',
+							cursor: 'pointer'
+						}}
+					>
+						<span>{file.operation.toUpperCase()}</span>
+						<span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{file.path}</span>
+						<span style={{ color: 'var(--l2-good)' }}>+{file.additions}</span>
+						<span style={{ color: 'var(--l2-error)' }}>−{file.deletions}</span>
+						<span>{file.actor_id ?? 'operator'}</span>
+					</button>
+				))}
+			</div>
+		</GlassPanel>
 	);
 }
 

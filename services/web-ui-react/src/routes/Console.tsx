@@ -49,8 +49,10 @@ import {
 	registerProject,
 	type AgentRuntime,
 	type ConsoleChatEvent,
+	type ToolManifest,
 	type Project
 } from '../lib/api';
+import { resolveToolPresentation } from '../lib/toolPresentation';
 import {
 	finalGoalJudgementState,
 	isRunTerminalEvent,
@@ -1762,26 +1764,6 @@ function asRecord(value: unknown): Record<string, unknown> {
 	return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
 }
 
-function summarizeToolInput(name: string | null | undefined, input: unknown): string {
-	const o = asRecord(input);
-	const n = (name ?? '').toLowerCase();
-	const str = (k: string) => (typeof o[k] === 'string' ? (o[k] as string) : undefined);
-	if (n === 'read') return str('file_path') ?? str('path') ?? '';
-	if (n === 'grep') {
-		const pat = str('pattern') ?? '';
-		const path = str('path') ?? str('glob');
-		return path ? `${pat}  ·  ${path}` : pat;
-	}
-	if (n === 'glob') return str('pattern') ?? '';
-	if (n === 'ls') return str('path') ?? '';
-	if (n === 'edit' || n === 'multiedit' || n === 'write') return str('file_path') ?? str('path') ?? '';
-	if (n === 'bash') return str('command') ?? '';
-	const keys = Object.keys(o);
-	if (keys.length === 0) return '';
-	const first = o[keys[0]];
-	return typeof first === 'string' ? first : JSON.stringify(o).slice(0, 120);
-}
-
 function resultToText(content: unknown): string {
 	if (content == null) return '';
 	if (typeof content === 'string') return content;
@@ -1820,44 +1802,28 @@ function looksLikeProse(text: string): boolean {
 	return /(^|\n)#{1,6} |(^|\n)```|(^|\n)[-*] |(^|\n)\d+\. |\*\*[^*\n]+\*\*|(^|\n)\|.+\|/.test(trimmed);
 }
 
-function DiffView({ oldStr, newStr }: { oldStr: string; newStr: string }) {
-	const oldLines = oldStr ? oldStr.split('\n') : [];
-	const newLines = newStr ? newStr.split('\n') : [];
-	return (
-		<div style={diffWrapStyle}>
-			{oldLines.map((line, i) => (
-				<div key={`o-${i}`} style={{ ...diffLineStyle, background: 'rgba(255,77,125,0.10)', color: '#ffb3c6' }}>
-					<span style={diffSignStyle}>-</span>
-					{line || ' '}
-				</div>
-			))}
-			{newLines.map((line, i) => (
-				<div key={`n-${i}`} style={{ ...diffLineStyle, background: 'rgba(70,240,160,0.10)', color: '#9bf3c9' }}>
-					<span style={diffSignStyle}>+</span>
-					{line || ' '}
-				</div>
-			))}
-		</div>
-	);
-}
-
-export function ToolCallCard({ event, result }: { event: ConsoleChatEvent; result?: ConsoleChatEvent }) {
+export function ToolCallCard({
+	event,
+	result,
+	manifest
+}: {
+	event: ConsoleChatEvent;
+	result?: ConsoleChatEvent;
+	manifest?: ToolManifest;
+}) {
 	const [open, setOpen] = useState(false);
 	const Icon = toolIcon(event.tool_name);
 	const name = (event.tool_name ?? 'tool').toUpperCase();
-	const summary = summarizeToolInput(event.tool_name, event.input);
+	const presentation = resolveToolPresentation({
+		toolName: event.tool_name,
+		manifest,
+		input: event.input
+	});
+	const summary = presentation.summary;
 	const failed = result?.type === 'failure' || result?.is_error === true;
 	const done = !!result && !failed;
-	const isEdit = ['edit', 'multiedit', 'write'].includes((event.tool_name ?? '').toLowerCase());
-	const editInput = asRecord(event.input);
-	const oldStr = typeof editInput.old_string === 'string' ? editInput.old_string : '';
-	const newStr =
-		typeof editInput.new_string === 'string'
-			? editInput.new_string
-			: typeof editInput.content === 'string'
-				? editInput.content
-				: '';
-	const isRead = (event.tool_name ?? '').toLowerCase() === 'read';
+	const isEdit = presentation.kind === 'file.change';
+	const isRead = presentation.kind === 'file.read';
 	// `read`-tool output skips clip()'s hard 4000-char cut on the success path
 	// — InlineFileViewer gets the full content so its own collapse/expand can
 	// handle length instead of a mid-file truncation. Failed reads (done is
@@ -1883,14 +1849,8 @@ export function ToolCallCard({ event, result }: { event: ConsoleChatEvent; resul
 			</button>
 			{open && (
 				<div style={toolCardBodyStyle}>
-					{isEdit && (oldStr || newStr) ? (
-						<DiffView oldStr={oldStr} newStr={newStr} />
-					) : (
-						<>
-							<div style={toolFieldLabelStyle}>INPUT</div>
-							<pre style={toolPreStyle}>{JSON.stringify(event.input ?? {}, null, 2)}</pre>
-						</>
-					)}
+					<div style={toolFieldLabelStyle}>INPUT</div>
+					<div style={toolPreStyle}>{presentation.renderDetail(event.input)}</div>
 					{resultText && (
 						<>
 							<div style={toolFieldLabelStyle}>OUTPUT</div>
@@ -2755,31 +2715,6 @@ const reasoningBodyStyle: React.CSSProperties = {
 	padding: '9px 10px',
 	maxHeight: 320,
 	overflow: 'auto'
-};
-
-const diffWrapStyle: React.CSSProperties = {
-	fontFamily: 'var(--l2-font-mono)',
-	fontSize: 11.5,
-	lineHeight: 1.5,
-	maxHeight: 320,
-	overflow: 'auto',
-	border: '1px solid rgba(237,234,224,0.06)',
-	borderRadius: 2,
-	background: 'rgba(5,6,10,0.5)'
-};
-
-const diffLineStyle: React.CSSProperties = {
-	display: 'flex',
-	gap: 8,
-	padding: '1px 9px',
-	whiteSpace: 'pre-wrap',
-	overflowWrap: 'anywhere'
-};
-
-const diffSignStyle: React.CSSProperties = {
-	flex: '0 0 auto',
-	opacity: 0.7,
-	userSelect: 'none'
 };
 
 const turnErrorStyle: React.CSSProperties = {
