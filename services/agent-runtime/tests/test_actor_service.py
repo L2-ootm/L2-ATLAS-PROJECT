@@ -413,6 +413,146 @@ def test_run_actor_success_completes_actor_and_child_run(db, lock, run_id) -> No
     assert child[0] == "succeeded"
 
 
+def test_read_only_actor_mutation_records_incident_before_blocked_completion(
+    db, lock, run_id, surface_session
+) -> None:
+    db.execute(
+        "UPDATE surface_sessions SET permission_mode='read_only', state='active'"
+        " WHERE id=?",
+        (surface_session,),
+    )
+    actor, _ = _spawn(
+        db,
+        lock,
+        run_id,
+        goal="inspect without changes",
+        session_id=surface_session,
+    )
+
+    class _MutatingRuntime:
+        def execute(
+            self,
+            conn,
+            lock_,
+            *,
+            mission_id,
+            run_id,
+            prompt,
+            cancel_token=None,
+        ):  # noqa: ANN001
+            now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            conn.execute(
+                "INSERT INTO evidence_change_sets"
+                "(id,run_id,session_id,actor_id,coverage,status,redaction_count,created_at)"
+                " VALUES (?,?,?,?,?,?,?,?)",
+                (
+                    "read-only-change",
+                    run_id,
+                    surface_session,
+                    actor["id"],
+                    "complete",
+                    "captured",
+                    0,
+                    now,
+                ),
+            )
+            conn.execute(
+                "INSERT INTO evidence_file_changes"
+                "(id,change_set_id,path,operation,availability,before_bytes,after_bytes,"
+                " additions,deletions,binary,generated,redaction_count)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    "read-only-file",
+                    "read-only-change",
+                    "mutated.txt",
+                    "create",
+                    "available",
+                    0,
+                    1,
+                    1,
+                    0,
+                    0,
+                    0,
+                    0,
+                ),
+            )
+            conn.commit()
+            return RunOutcome(status="succeeded", summary="claimed success")
+
+    assert run_actor(
+        db,
+        lock,
+        actor["id"],
+        agent_factory=lambda _name: _MutatingRuntime(),
+    )
+    final = actor_service.get_actor(db, actor["id"])
+    assert final["status"] == "failed"
+    assert "read-only mutation" in final["error"]
+    child = db.execute(
+        "SELECT status FROM runs WHERE id=?", (final["child_run_id"],)
+    ).fetchone()
+    assert child[0] == "failed"
+    events = db.execute(
+        "SELECT event_type, policy_result, data FROM audit_events"
+        " WHERE task_id=? ORDER BY rowid",
+        (actor["id"],),
+    ).fetchall()
+    incident_index = next(
+        index
+        for index, event in enumerate(events)
+        if event[0] == "failure" and event[1] == "denied"
+    )
+    assert all(
+        json.loads(event[2]).get("status") != "succeeded"
+        for event in events[: incident_index + 1]
+    )
+
+
+def test_parent_actor_aggregate_references_each_child_change_set_once(
+    db, lock, run_id, monkeypatch
+) -> None:
+    parent, _ = _spawn(db, lock, run_id, idempotency_key="aggregate-parent")
+    child, _ = _spawn(
+        db,
+        lock,
+        run_id,
+        idempotency_key="aggregate-child",
+        parent_actor_id=parent["id"],
+        depth=2,
+    )
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    db.execute(
+        "INSERT INTO evidence_change_sets"
+        "(id,run_id,actor_id,coverage,status,redaction_count,created_at)"
+        " VALUES (?,?,?,?,?,?,?)",
+        ("child-change", run_id, child["id"], "complete", "captured", 0, now),
+    )
+    observed = {}
+
+    def aggregate(**kwargs):
+        observed.update(kwargs)
+        from atlas_runtime.evidence_bridge import AggregationReceipt
+
+        return AggregationReceipt(
+            change_set_id="aggregate-parent",
+            coverage="complete",
+            status="captured",
+            child_count=1,
+            file_count=1,
+            additions=1,
+            deletions=0,
+            redaction_count=0,
+        )
+
+    monkeypatch.setattr(
+        actor_service.change_reconciliation,
+        "persist_reference_aggregation",
+        aggregate,
+    )
+    assert actor_service.complete_actor(db, lock, parent["id"], result_preview="done")
+    assert observed["child_change_set_ids"] == ["child-change"]
+
+
 def test_run_actor_failure_is_durable(db, lock, run_id) -> None:
     actor, _ = _spawn(db, lock, run_id)
     runtime = _FakeRuntime(RunOutcome(status="failed", summary="boom"))

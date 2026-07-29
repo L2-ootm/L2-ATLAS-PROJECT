@@ -5,8 +5,10 @@ import subprocess
 
 from atlas_runtime.change_reconciliation import (
     capture_git_baseline,
+    persist_reference_aggregation,
     reconcile_git_changes,
 )
+from atlas_runtime.evidence_bridge import AggregationReceipt
 
 
 def _git(root, *args):
@@ -126,3 +128,33 @@ def test_non_git_workspace_reports_tool_only_coverage(tmp_path):
     assert result.coverage == "tool_only"
     assert result.files == []
     assert result.matched_change_set_ids == []
+
+
+def test_aggregate_deduplicates_child_ids_before_rust_boundary(monkeypatch, tmp_path):
+    observed = {}
+
+    def persist_change_aggregation(**kwargs):
+        observed.update(kwargs)
+        return AggregationReceipt(
+            change_set_id="aggregate-1",
+            coverage="complete",
+            status="captured",
+            child_count=2,
+            file_count=3,
+            additions=4,
+            deletions=1,
+            redaction_count=0,
+        )
+
+    monkeypatch.setattr(
+        "atlas_runtime.change_reconciliation.evidence_bridge.persist_change_aggregation",
+        persist_change_aggregation,
+    )
+    receipt = persist_reference_aggregation(
+        db_path=tmp_path / "atlas.db",
+        provenance={"run_id": "run-1", "actor_id": "actor-parent"},
+        child_change_set_ids=["child-b", "child-a", "child-b"],
+    )
+
+    assert observed["child_change_set_ids"] == ["child-a", "child-b"]
+    assert receipt.child_count == 2

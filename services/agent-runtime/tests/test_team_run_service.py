@@ -89,6 +89,74 @@ def test_mark_running_then_finish_is_monotonic(db: sqlite3.Connection, lock: thr
     assert refreshed["status"] == "completed"
 
 
+def test_team_aggregate_references_member_changes_once(
+    db: sqlite3.Connection,
+    lock: threading.Lock,
+    run_id: str,
+    monkeypatch,
+) -> None:
+    import datetime
+
+    team = _make_team(db, lock)
+    run = team_run_service.create_team_run(
+        db,
+        lock,
+        team_id=team["id"],
+        kickoff_message="hi",
+        parent_run_id=run_id,
+    )
+    assert team_run_service.mark_team_run_running(db, lock, run["id"])
+    actor, _ = __import__(
+        "atlas_runtime.actor_service", fromlist=["spawn_actor"]
+    ).spawn_actor(
+        db,
+        lock,
+        parent_run_id=run_id,
+        goal="member work",
+        idempotency_key=f"{run['id']}:1:member",
+    )
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    db.execute(
+        "INSERT INTO evidence_change_sets"
+        "(id,run_id,team_run_id,actor_id,coverage,status,redaction_count,created_at)"
+        " VALUES (?,?,?,?,?,?,?,?)",
+        (
+            "team-child-change",
+            run_id,
+            run["id"],
+            actor["id"],
+            "complete",
+            "captured",
+            0,
+            now,
+        ),
+    )
+    observed = {}
+
+    def aggregate(**kwargs):
+        observed.update(kwargs)
+        from atlas_runtime.evidence_bridge import AggregationReceipt
+
+        return AggregationReceipt(
+            change_set_id="team-aggregate",
+            coverage="complete",
+            status="captured",
+            child_count=1,
+            file_count=1,
+            additions=1,
+            deletions=0,
+            redaction_count=0,
+        )
+
+    monkeypatch.setattr(
+        team_run_service.change_reconciliation,
+        "persist_reference_aggregation",
+        aggregate,
+    )
+    assert team_run_service.finish_team_run(db, lock, run["id"], status="completed")
+    assert observed["child_change_set_ids"] == ["team-child-change"]
+
+
 def test_cancel_is_idempotent_and_records_verified_cleanup(
     db: sqlite3.Connection, lock: threading.Lock, monkeypatch
 ) -> None:

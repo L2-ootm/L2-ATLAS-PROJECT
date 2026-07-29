@@ -1,5 +1,6 @@
 use atlas_gateway::evidence::{
-    persist_change_set, CaptureFileRequest, ChangeSetRequest, EvidenceProvenance, PROTOCOL_VERSION,
+    persist_change_set, persist_change_set_aggregation, AggregateChangeSetsRequest,
+    CaptureFileRequest, ChangeSetRequest, EvidenceProvenance, PROTOCOL_VERSION,
 };
 use rusqlite::Connection;
 
@@ -128,4 +129,72 @@ fn capture_failure_rolls_back_every_linked_row() {
             .expect("count");
         assert_eq!(count, 0, "{table} leaked a partial row");
     }
+}
+
+#[test]
+fn aggregate_flattens_overlapping_ancestry_without_copying_blobs() {
+    let (_dir, db_path) = evidence_db();
+    let first = persist_change_set(&request(db_path.clone())).expect("first");
+    let mut second_request = request(db_path.clone());
+    second_request.provenance.tool_call_id = Some("call-2".to_string());
+    second_request.files[0].path = "src/second.txt".to_string();
+    second_request.files[0].before = String::new();
+    second_request.files[0].after = "second\n".to_string();
+    second_request.files[0].operation = "create".to_string();
+    let second = persist_change_set(&second_request).expect("second");
+
+    let nested = persist_change_set_aggregation(&AggregateChangeSetsRequest {
+        protocol: PROTOCOL_VERSION.to_string(),
+        db_path: db_path.clone(),
+        kind: "aggregate_change_sets".to_string(),
+        provenance: EvidenceProvenance {
+            run_id: "run-1".to_string(),
+            session_id: Some("session-1".to_string()),
+            team_run_id: None,
+            turn_id: None,
+            actor_id: Some("actor-parent".to_string()),
+            parent_actor_id: None,
+            tool_call_id: None,
+        },
+        child_change_set_ids: vec![first.change_set_id.clone(), second.change_set_id.clone()],
+    })
+    .expect("nested");
+    let conn = Connection::open(&db_path).expect("open");
+    let blobs_before: i64 = conn
+        .query_row("SELECT COUNT(*) FROM evidence_blobs", [], |row| row.get(0))
+        .unwrap();
+    drop(conn);
+
+    let aggregate = persist_change_set_aggregation(&AggregateChangeSetsRequest {
+        protocol: PROTOCOL_VERSION.to_string(),
+        db_path: db_path.clone(),
+        kind: "aggregate_change_sets".to_string(),
+        provenance: EvidenceProvenance {
+            run_id: "run-1".to_string(),
+            session_id: Some("session-1".to_string()),
+            team_run_id: Some("team-1".to_string()),
+            turn_id: None,
+            actor_id: None,
+            parent_actor_id: None,
+            tool_call_id: None,
+        },
+        child_change_set_ids: vec![first.change_set_id, nested.change_set_id],
+    })
+    .expect("aggregate");
+
+    assert_eq!(aggregate.child_count, 2);
+    assert_eq!(aggregate.file_count, 2);
+    let conn = Connection::open(db_path).expect("open");
+    let refs: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM evidence_child_refs WHERE parent_change_set_id=?1",
+            [&aggregate.change_set_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(refs, 2);
+    let blobs_after: i64 = conn
+        .query_row("SELECT COUNT(*) FROM evidence_blobs", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(blobs_after, blobs_before);
 }
