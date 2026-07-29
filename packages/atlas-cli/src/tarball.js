@@ -221,6 +221,10 @@ function assertSafeParents(dest, target) {
 
 function extractTarGz(archive, dest) {
 	fs.mkdirSync(dest, { recursive: true });
+	// Use one canonical root for extraction and for resolved-link validation.
+	// macOS exposes /var through /private/var, so mixing those forms makes a
+	// safe in-bundle symlink look as if it escaped the destination.
+	const destRoot = fs.realpathSync(dest);
 	const data = zlib.gunzipSync(fs.readFileSync(archive));
 	let offset = 0;
 	let overrideName = null;
@@ -248,9 +252,9 @@ function extractTarGz(archive, dest) {
 		const base = readCString(block, 0, 100);
 		const name = overrideName || (prefix ? `${prefix}/${base}` : base);
 		overrideName = null;
-		const target = safeTarget(dest, name);
+		const target = safeTarget(destRoot, name);
 		if (target === null) continue;
-		assertSafeParents(dest, target);
+		assertSafeParents(destRoot, target);
 		if (typeflag === '5' || name.endsWith('/')) {
 			fs.mkdirSync(target, { recursive: true });
 		} else if (typeflag === '0' || typeflag === '\0') {
@@ -278,10 +282,10 @@ function extractTarGz(archive, dest) {
 		try {
 			resolved = fs.realpathSync(linkPath);
 		} catch {
-			throw new Error(`broken symlink in archive: ${path.relative(dest, linkPath)}`);
+			throw new Error(`broken symlink in archive: ${path.relative(destRoot, linkPath)}`);
 		}
-		if (!archivePathInside(dest, resolved)) {
-			throw new Error(`unsafe resolved symlink target in archive: ${path.relative(dest, linkPath)}`);
+		if (!archivePathInside(destRoot, resolved)) {
+			throw new Error(`unsafe resolved symlink target in archive: ${path.relative(destRoot, linkPath)}`);
 		}
 	}
 }

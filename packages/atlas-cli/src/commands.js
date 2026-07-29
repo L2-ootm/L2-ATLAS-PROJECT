@@ -762,7 +762,23 @@ function validatePurgeTarget(target, opts = {}) {
 	} catch (err) {
 		return reject('target-unresolvable', resolved, err.message);
 	}
-	if (!samePath(canonical, resolved)) return reject('target-reparse-point', resolved);
+	// Compare the target with the canonical location of its parent. On macOS,
+	// temporary directories are commonly reached through /var even though
+	// realpath reports /private/var. That ancestor alias is safe; a reparse
+	// point at the target itself is not.
+	let expectedCanonical;
+	try {
+		expectedCanonical = path.join(
+			fs.realpathSync.native(path.dirname(resolved)),
+			path.basename(resolved)
+		);
+	} catch (err) {
+		return reject('target-parent-unresolvable', resolved, err.message);
+	}
+	if (!samePath(canonical, expectedCanonical)) return reject('target-reparse-point', resolved);
+
+	const canonicalBroadReason = broadPathReason(canonical, opts);
+	if (canonicalBroadReason) return reject(canonicalBroadReason, canonical);
 
 	const markerPath = stateRootMarkerFile(canonical);
 	if (!fs.existsSync(markerPath)) return reject('marker-missing', canonical);
