@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, PanelRightOpen, Radio, Waypoints, X } from 'lucide-react';
 import { surfaceConsoleEvent } from '../../lib/consoleEvents';
 import type { SurfaceEvent } from '../../lib/surfaceContracts';
+import { listSurfaceSessionsDashboard } from '../../lib/api';
+import type { ActorBrief } from '../../lib/surfaceContracts';
 import {
 	shortActorId,
 	subagentLifecycleFromSurfaceEvents,
@@ -55,6 +57,41 @@ function dispatchGoals(input: unknown): string[] {
 
 function normalizedGoal(value: string): string {
 	return value.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function restoredActor(actor: ActorBrief): SubagentActivity {
+	return {
+		id: actor.id,
+		parentId: actor.parent_id,
+		phase: actor.status === 'running' ? 'working' : actor.status,
+		goal: actor.goal,
+		model: actor.model ?? '',
+		tool: actor.status === 'orphaned' ? 'Supervisor reconciled orphan' : 'Restored from SQLite',
+		toolCount: 0,
+		depth: actor.depth,
+		background: actor.mode === 'detached',
+		durationSeconds: null,
+		childRunId: null
+	};
+}
+
+function mergeActorHistory(
+	history: SubagentActivity[],
+	live: SubagentActivity[]
+): SubagentActivity[] {
+	const actors = new Map(history.map((actor) => [actor.id, actor]));
+	for (const actor of live) {
+		const persisted = actors.get(actor.id);
+		actors.set(actor.id, persisted
+			? {
+				...persisted,
+				...actor,
+				parentId: actor.parentId ?? persisted.parentId,
+				childRunId: actor.childRunId ?? persisted.childRunId
+			}
+			: actor);
+	}
+	return [...actors.values()];
 }
 
 /**
@@ -185,10 +222,33 @@ export function ChatActorWorkspace({
 	provider?: string | null;
 	modelId?: string | null;
 }) {
+	const sessionId = events[0]?.session_id ?? null;
+	const [history, setHistory] = useState<SubagentActivity[]>([]);
+	useEffect(() => {
+		let active = true;
+		if (!sessionId) {
+			setHistory([]);
+			return () => {
+				active = false;
+			};
+		}
+		void listSurfaceSessionsDashboard({ limit: 200 })
+			.then((page) => {
+				if (!active) return;
+				const session = page.sessions.find((candidate) => candidate.id === sessionId);
+				setHistory((session?.actors ?? []).map(restoredActor));
+			})
+			.catch(() => {
+				if (active) setHistory([]);
+			});
+		return () => {
+			active = false;
+		};
+	}, [sessionId]);
 	const actors = useMemo(() => {
-		const durable = subagentsFromSurfaceEvents(events);
+		const durable = mergeActorHistory(history, subagentsFromSurfaceEvents(events));
 		return [...durable, ...provisionalActors(events, durable)];
-	}, [events]);
+	}, [events, history]);
 	const active = actors.filter((actor) => !TERMINAL.has(actor.phase));
 	const completed = actors.filter((actor) => TERMINAL.has(actor.phase));
 	const [selectedId, setSelectedId] = useState<string | null>(null);

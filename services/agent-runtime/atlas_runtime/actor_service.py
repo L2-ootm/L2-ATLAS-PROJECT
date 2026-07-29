@@ -397,6 +397,43 @@ def list_actors(
     return [_row_to_dict(cur, row) for row in cur.fetchall()]
 
 
+def load_actor_history(
+    conn: sqlite3.Connection,
+    *,
+    session_id: Optional[str] = None,
+    parent_run_id: Optional[str] = None,
+    limit: int = 500,
+) -> list[dict[str, Any]]:
+    """Restore a stable actor topology from SQLite after process restart.
+
+    At least one durable scope is required so callers cannot accidentally turn
+    actor history into an unbounded cross-session disclosure. Rows are ordered
+    oldest-first, which guarantees parents precede descendants and lets a UI
+    hydrate the persisted topology before applying last-write-wins live events.
+
+    This read deliberately preserves terminal and ``orphaned`` statuses exactly
+    as stored. Startup reconciliation remains owned by
+    :func:`reconcile_orphan_actors`; history loading never invents a new state.
+    """
+    if not session_id and not parent_run_id:
+        raise ValueError("actor history requires session_id or parent_run_id")
+    clauses: list[str] = []
+    params: list[Any] = []
+    if session_id:
+        clauses.append("session_id=?")
+        params.append(session_id)
+    if parent_run_id:
+        clauses.append("parent_run_id=?")
+        params.append(parent_run_id)
+    where = " AND ".join(clauses)
+    cur = conn.execute(
+        f"SELECT * FROM actors WHERE {where}"  # noqa: S608
+        " ORDER BY created_at ASC, id ASC LIMIT ?",
+        (*params, max(1, min(int(limit), 500))),
+    )
+    return [_row_to_dict(cur, row) for row in cur.fetchall()]
+
+
 def wait_for_actor(
     conn: sqlite3.Connection,
     lock: threading.Lock,
@@ -965,6 +1002,7 @@ __all__ = [
     "cancel_actor",
     "get_actor",
     "list_actors",
+    "load_actor_history",
     "wait_for_actor",
     "claim_deliveries",
     "acknowledge_deliveries",
