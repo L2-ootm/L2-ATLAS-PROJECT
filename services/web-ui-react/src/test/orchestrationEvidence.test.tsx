@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OrchestrationCallCard } from '../components/chat/OrchestrationCallCard';
 import { AgentSurfaceContext, type AgentSurfaceValue } from '../context/AgentSurfaceContext';
 import * as api from '../lib/api';
@@ -56,6 +56,10 @@ function renderCard(evidence: Record<string, unknown>, actor = restoredActor) {
 }
 
 describe('orchestration Evidence Plane receipts', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
 	it('deduplicates referenced sets, preserves totals, and opens the shared inspector', async () => {
 		vi.mocked(api.listChangeSetFiles)
 			.mockResolvedValueOnce({
@@ -81,7 +85,12 @@ describe('orchestration Evidence Plane receipts', () => {
 				next_cursor: null
 			})
 			.mockResolvedValueOnce({ files: [], next_cursor: null });
-		vi.mocked(api.listFileChangeHunks).mockResolvedValue({ hunks: [], next_cursor: null });
+		vi.mocked(api.listFileChangeHunks).mockResolvedValue({
+			hunks: [],
+			next_cursor: null,
+			context: 3,
+			ignore_whitespace: false
+		});
 		vi.mocked(api.getFileChangePatch).mockResolvedValue({
 			availability: 'available',
 			media_type: 'text/x-diff',
