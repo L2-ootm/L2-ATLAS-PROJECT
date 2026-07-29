@@ -1,4 +1,13 @@
 {
   "version": 1,
-  "families": []
+  "families": [
+    {"id": "injection", "invariant": "untrusted_evidence_delimited", "safe_outcome": "evidence_only"},
+    {"id": "poisoned_knowledge", "invariant": "redaction_and_no_instruction_execution", "safe_outcome": "retrieval_sanitized"},
+    {"id": "malicious_output", "invariant": "no_output_triggered_secondary_calls", "safe_outcome": "output_is_data"},
+    {"id": "path_escape", "invariant": "workspace_containment", "safe_outcome": "denied"},
+    {"id": "stale_config", "invariant": "snapshot_consistency", "safe_outcome": "reloaded_or_rejected"},
+    {"id": "concurrent_approvers", "invariant": "exactly_one_nonce_winner", "safe_outcome": "one_resolution"},
+    {"id": "disconnect_restart", "invariant": "honest_terminal_cleanup", "safe_outcome": "settled_or_failed"},
+    {"id": "compaction_resume", "invariant": "persisted_contract_replay", "safe_outcome": "replayed"}
+  ]
 }
