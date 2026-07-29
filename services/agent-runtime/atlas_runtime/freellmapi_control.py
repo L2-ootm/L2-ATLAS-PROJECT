@@ -117,7 +117,9 @@ def status() -> dict:
         "base_url": BASE_URL,
         "dir": str(d) if d else None,
         "installed": d is not None,
-        "api_key": get_api_key(),
+        # Status is routinely printed, logged, and proxied through the gateway.
+        # Expose readiness without leaking the sidecar's bearer credential.
+        "api_key_configured": bool(get_api_key()),
         "remediation": None if d else f"not installed — {CLONE_HINT}",
     }
 

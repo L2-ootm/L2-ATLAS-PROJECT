@@ -22,7 +22,14 @@ def test_status_shape(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(fc, "STATE_FILE", tmp_path / "freellmapi.json")
     _offline(monkeypatch)
     st = fc.status()
-    assert set(st) == {"running", "base_url", "dir", "installed", "api_key", "remediation"}
+    assert set(st) == {
+        "running",
+        "base_url",
+        "dir",
+        "installed",
+        "api_key_configured",
+        "remediation",
+    }
     assert st["running"] is False
     assert st["base_url"].startswith("http")
 
@@ -82,10 +89,13 @@ def test_stop_without_pid_fails_cleanly(tmp_path, monkeypatch) -> None:
 
 def test_cli_status_json(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(fc, "STATE_FILE", tmp_path / "freellmapi.json")
+    monkeypatch.setattr(fc, "get_api_key", lambda: "fk-secret-value")
     _offline(monkeypatch)
     result = runner.invoke(app, ["freellmapi", "status", "--json"])
     assert result.exit_code == 0
     assert '"running": false' in result.output
+    assert '"api_key_configured": true' in result.output
+    assert "fk-secret-value" not in result.output
 
 
 def test_cli_start_not_installed_exits_nonzero(tmp_path, monkeypatch) -> None:
