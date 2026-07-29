@@ -37,6 +37,90 @@ export interface RunEvent {
 	data: Record<string, unknown>;
 }
 
+export type EvidenceAvailability =
+	| 'available'
+	| 'redacted'
+	| 'partial'
+	| 'binary'
+	| 'too_large'
+	| 'corrupt'
+	| 'unavailable';
+
+export interface EvidenceProvenance {
+	run_id: string;
+	session_id: string;
+	team_run_id: string | null;
+	turn_id: string | null;
+	actor_id: string | null;
+	parent_actor_id: string | null;
+	tool_call_id: string | null;
+}
+
+export interface EvidenceChangeSet {
+	id: string;
+	provenance: EvidenceProvenance;
+	coverage: string;
+	status: string;
+	redaction_count: number;
+	created_at: string;
+	file_count: number;
+	additions: number;
+	deletions: number;
+}
+
+export interface EvidenceFileChange {
+	id: string;
+	change_set_id: string;
+	path: string;
+	old_path: string | null;
+	operation: string;
+	availability: EvidenceAvailability;
+	before_sha256: string | null;
+	after_sha256: string | null;
+	before_bytes: number;
+	after_bytes: number;
+	additions: number;
+	deletions: number;
+	binary: boolean;
+	generated: boolean;
+	mode_before: string | null;
+	mode_after: string | null;
+	redaction_count: number;
+}
+
+export interface EvidenceHunk {
+	id: string;
+	file_change_id: string;
+	hunk_index: number;
+	old_start: number;
+	old_lines: number;
+	new_start: number;
+	new_lines: number;
+	patch_start_byte: number;
+	patch_bytes: number;
+	redacted: boolean;
+}
+
+export interface EvidenceContentPage {
+	availability: EvidenceAvailability;
+	media_type: string;
+	sha256: string | null;
+	range: { start: number; end: number; total_bytes: number };
+	content?: string;
+}
+
+export interface EvidenceReceipt {
+	ui_kind: string;
+	operation: string;
+	path: string;
+	additions: number;
+	deletions: number;
+	actor: string;
+	duration_ms: number;
+	evidence_id: string;
+	availability: EvidenceAvailability;
+}
+
 export class GatewayError extends Error {
 	constructor(
 		public readonly status: number,
@@ -49,6 +133,8 @@ export class GatewayError extends Error {
 
 /** Per-request deadline — a hung gateway must not block the caller forever. */
 const REQUEST_TIMEOUT_MS = 15_000;
+const EVIDENCE_RANGE_PAGE_SIZE = 64 * 1024;
+const MAX_EVIDENCE_EXPORT_BYTES = 256 * 1024 * 1024;
 /**
  * Run-stream inactivity deadline. The gateway keepalives every few seconds
  * while a run streams, so a minute of total silence means the stream is dead
@@ -170,6 +256,127 @@ export class GatewayClient {
 			session.owner_token
 		);
 		return env.approvals ?? [];
+	}
+
+	runChangeSets(
+		session: SurfaceSession,
+		runID: string,
+		options: { after?: string; limit?: number } = {}
+	): Promise<{ change_sets: EvidenceChangeSet[]; next_cursor: string | null }> {
+		const query = new URLSearchParams();
+		if (options.after) query.set('after', options.after);
+		if (options.limit !== undefined) query.set('limit', String(options.limit));
+		const suffix = query.size ? `?${query.toString()}` : '';
+		return this.request(
+			'GET',
+			`/v1/runs/${encodeURIComponent(runID)}/change-sets${suffix}`,
+			undefined,
+			session.owner_token
+		);
+	}
+
+	changeSetFiles(
+		session: SurfaceSession,
+		changeSetID: string,
+		options: { after?: string; limit?: number } = {}
+	): Promise<{ files: EvidenceFileChange[]; next_cursor: string | null }> {
+		const query = new URLSearchParams();
+		if (options.after) query.set('after', options.after);
+		if (options.limit !== undefined) query.set('limit', String(options.limit));
+		const suffix = query.size ? `?${query.toString()}` : '';
+		return this.request(
+			'GET',
+			`/v1/change-sets/${encodeURIComponent(changeSetID)}/files${suffix}`,
+			undefined,
+			session.owner_token
+		);
+	}
+
+	fileChangeHunks(
+		session: SurfaceSession,
+		fileChangeID: string,
+		options: { after?: string; limit?: number; context?: number; ignoreWhitespace?: boolean } = {}
+	): Promise<{
+		hunks: EvidenceHunk[];
+		next_cursor: string | null;
+		context: number;
+		ignore_whitespace: boolean;
+	}> {
+		const query = new URLSearchParams();
+		if (options.after) query.set('after', options.after);
+		if (options.limit !== undefined) query.set('limit', String(options.limit));
+		if (options.context !== undefined) query.set('context', String(options.context));
+		if (options.ignoreWhitespace !== undefined) {
+			query.set('ignore_whitespace', String(options.ignoreWhitespace));
+		}
+		const suffix = query.size ? `?${query.toString()}` : '';
+		return this.request(
+			'GET',
+			`/v1/file-changes/${encodeURIComponent(fileChangeID)}/hunks${suffix}`,
+			undefined,
+			session.owner_token
+		);
+	}
+
+	private async streamEvidenceContent(
+		session: SurfaceSession,
+		path: string,
+		onChunk: (chunk: string) => void,
+		maxBytes: number
+	): Promise<EvidenceAvailability> {
+		let offset = 0;
+		for (;;) {
+			const query = new URLSearchParams({
+				offset: String(offset),
+				limit: String(Math.min(EVIDENCE_RANGE_PAGE_SIZE, maxBytes - offset))
+			});
+			if (Number(query.get('limit')) <= 0) return 'too_large';
+			const page = await this.request<EvidenceContentPage>(
+				'GET',
+				`${path}?${query.toString()}`,
+				undefined,
+				session.owner_token
+			);
+			if (page.availability !== 'available') return page.availability;
+			const { start, end, total_bytes: total } = page.range;
+			if (start !== offset || end < start || end > total) {
+				return 'corrupt';
+			}
+			if (total > MAX_EVIDENCE_EXPORT_BYTES) return 'too_large';
+			if (page.content) onChunk(page.content);
+			if (end >= total) return page.availability;
+			if (end === offset) return 'corrupt';
+			if (end >= maxBytes) return 'too_large';
+			offset = end;
+		}
+	}
+
+	streamFileChangePatch(
+		session: SurfaceSession,
+		fileChangeID: string,
+		onChunk: (chunk: string) => void,
+		maxBytes = MAX_EVIDENCE_EXPORT_BYTES
+	): Promise<EvidenceAvailability> {
+		return this.streamEvidenceContent(
+			session,
+			`/v1/file-changes/${encodeURIComponent(fileChangeID)}/patch`,
+			onChunk,
+			maxBytes
+		);
+	}
+
+	streamEvidenceResult(
+		session: SurfaceSession,
+		evidenceID: string,
+		onChunk: (chunk: string) => void,
+		maxBytes = MAX_EVIDENCE_EXPORT_BYTES
+	): Promise<EvidenceAvailability> {
+		return this.streamEvidenceContent(
+			session,
+			`/v1/evidence/results/${encodeURIComponent(evidenceID)}`,
+			onChunk,
+			maxBytes
+		);
 	}
 
 	decideApproval(

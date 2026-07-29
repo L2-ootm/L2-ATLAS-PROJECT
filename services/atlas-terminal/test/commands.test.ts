@@ -243,7 +243,7 @@ describe('Evidence Plane terminal commands', () => {
 				media_type: 'text/plain',
 				sha256: null,
 				range: { start: 0, end: 0, total_bytes: 0 }
-			})) as typeof fetch;
+			})) as unknown as typeof fetch;
 		const chunks: string[] = [];
 		const result = await executeEvidenceCommand(
 			new GatewayClient(GW, fetchImpl),
