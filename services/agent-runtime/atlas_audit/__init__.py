@@ -18,11 +18,13 @@ Design:
 from __future__ import annotations
 
 import logging
+import pathlib
 import sqlite3
 import threading
 from typing import Any
 
 from atlas_runtime.audit_service import emit
+from atlas_runtime import evidence_bridge
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +160,7 @@ def on_post_tool_call(
     session_id: str = "",
     tool_call_id: str = "",
     duration_ms: int = 0,
+    capture_metadata: Any = None,
     **_: Any,
 ) -> None:
     """Emit an AuditEvent (and ToolCall) for every tool invocation.
@@ -185,6 +188,16 @@ def on_post_tool_call(
             return
 
         event_type = "artifact" if tool_name in _ARTIFACT_TOOLS else "tool_call"
+        evidence_data: dict[str, object] | None = None
+        if event_type == "artifact":
+            evidence_data = _capture_file_evidence(
+                conn_snapshot,
+                run_id=run_id,
+                session_id=session_id,
+                tool_call_id=tool_call_id,
+                duration_ms=duration_ms,
+                capture_metadata=capture_metadata,
+            )
 
         # Pass raw args/result — emit() handles dict/str/None serialization (D-013)
         emit(
@@ -197,6 +210,7 @@ def on_post_tool_call(
             tool_call_id=tool_call_id,
             tool_name=tool_name,
             duration_ms=duration_ms,
+            data={"evidence": evidence_data} if evidence_data is not None else {},
             tool_call_kwargs={
                 "tool_name": tool_name,
                 "args": args,
@@ -205,6 +219,98 @@ def on_post_tool_call(
         )
     except Exception as exc:
         logger.warning("atlas_audit: on_post_tool_call failed: %s", exc)
+
+
+def _database_path(conn: sqlite3.Connection) -> pathlib.Path | None:
+    rows = conn.execute("PRAGMA database_list").fetchall()
+    value = next((row[2] for row in rows if row[1] == "main" and row[2]), "")
+    return pathlib.Path(value) if value else None
+
+
+def _capture_file_evidence(
+    conn: sqlite3.Connection,
+    *,
+    run_id: str,
+    session_id: str,
+    tool_call_id: str,
+    duration_ms: int,
+    capture_metadata: Any,
+) -> dict[str, object]:
+    if not isinstance(capture_metadata, dict):
+        receipt = evidence_bridge.unavailable_receipt("missing_capture_metadata")
+        return _capture_audit_projection(receipt, duration_ms)
+
+    try:
+        root_value = str(capture_metadata["workspace_root"])
+        path_value = str(capture_metadata["path"])
+        workspace_root = pathlib.Path(root_value).resolve(strict=False)
+        candidate = pathlib.Path(path_value)
+        if not candidate.is_absolute():
+            candidate = workspace_root / candidate
+        target = candidate.resolve(strict=False)
+        relative_path = target.relative_to(workspace_root).as_posix()
+        old_path_value = capture_metadata.get("old_path")
+        old_relative: str | None = None
+        if old_path_value:
+            old_candidate = pathlib.Path(str(old_path_value))
+            if not old_candidate.is_absolute():
+                old_candidate = workspace_root / old_candidate
+            old_relative = (
+                old_candidate.resolve(strict=False)
+                .relative_to(workspace_root)
+                .as_posix()
+            )
+    except (KeyError, OSError, RuntimeError, ValueError):
+        receipt = evidence_bridge.unavailable_receipt("outside_workspace")
+        return _capture_audit_projection(receipt, duration_ms)
+
+    outcome = str(capture_metadata.get("outcome", "succeeded"))
+    complete = outcome == "succeeded"
+    capture: dict[str, object] = {
+        "run_id": run_id,
+        "session_id": session_id,
+        "team_run_id": capture_metadata.get("team_run_id"),
+        "turn_id": capture_metadata.get("turn_id"),
+        "actor_id": capture_metadata.get("actor_id"),
+        "parent_actor_id": capture_metadata.get("parent_actor_id"),
+        "tool_call_id": tool_call_id,
+        "coverage": "complete" if complete else "partial",
+        "status": "captured" if complete else "partial",
+        "files": [
+            {
+                "path": relative_path,
+                "old_path": old_relative,
+                "operation": str(capture_metadata.get("operation", "edit")),
+                "before": str(capture_metadata.get("before", "")),
+                "after": str(capture_metadata.get("after", "")),
+                "generated": bool(capture_metadata.get("generated", False)),
+                "mode_before": capture_metadata.get("mode_before"),
+                "mode_after": capture_metadata.get("mode_after"),
+            }
+        ],
+    }
+    receipt = evidence_bridge.persist_change_capture(
+        db_path=_database_path(conn),
+        capture=capture,
+    )
+    return _capture_audit_projection(receipt, duration_ms)
+
+
+def _capture_audit_projection(
+    receipt: evidence_bridge.CaptureReceipt,
+    duration_ms: int,
+) -> dict[str, object]:
+    return {
+        "change_set_id": receipt.change_set_id,
+        "capture_status": receipt.status,
+        "coverage": receipt.coverage,
+        "file_count": receipt.file_count,
+        "additions": receipt.additions,
+        "deletions": receipt.deletions,
+        "redaction_count": receipt.redaction_count,
+        "error_code": receipt.error_code,
+        "duration_ms": max(0, duration_ms),
+    }
 
 
 def on_post_api_request(

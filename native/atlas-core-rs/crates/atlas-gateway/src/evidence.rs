@@ -6,8 +6,10 @@
 
 use rusqlite::{params, Connection, TransactionBehavior};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Component, Path};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::diff::{diff_file, DiffInput};
 
 pub const PROTOCOL_VERSION: &str = "atlas-evidence/v1";
 pub const CHUNK_SIZE: usize = 64 * 1024;
@@ -71,6 +73,8 @@ pub struct ProtocolResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reference: Option<FullResultReceipt>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub change_set: Option<ChangeSetReceipt>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<ProtocolError>,
 }
 
@@ -78,6 +82,360 @@ pub struct ProtocolResponse {
 pub struct ProtocolError {
     pub code: String,
     pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EvidenceProvenance {
+    pub run_id: String,
+    #[serde(default)]
+    pub session_id: Option<String>,
+    #[serde(default)]
+    pub team_run_id: Option<String>,
+    #[serde(default)]
+    pub turn_id: Option<String>,
+    #[serde(default)]
+    pub actor_id: Option<String>,
+    #[serde(default)]
+    pub parent_actor_id: Option<String>,
+    #[serde(default)]
+    pub tool_call_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CaptureFileRequest {
+    pub path: String,
+    #[serde(default)]
+    pub old_path: Option<String>,
+    pub operation: String,
+    pub before: String,
+    pub after: String,
+    #[serde(default)]
+    pub generated: bool,
+    #[serde(default)]
+    pub mode_before: Option<String>,
+    #[serde(default)]
+    pub mode_after: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChangeSetRequest {
+    pub protocol: String,
+    pub db_path: String,
+    pub kind: String,
+    pub provenance: EvidenceProvenance,
+    pub coverage: String,
+    pub status: String,
+    pub files: Vec<CaptureFileRequest>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChangeSetReceipt {
+    pub change_set_id: String,
+    pub coverage: String,
+    pub status: String,
+    pub file_count: usize,
+    pub additions: usize,
+    pub deletions: usize,
+    pub redaction_count: usize,
+}
+
+pub fn persist_change_set(request: &ChangeSetRequest) -> Result<ChangeSetReceipt, String> {
+    validate_change_set_request(request)?;
+
+    let mut conn = Connection::open(Path::new(&request.db_path)).map_err(|e| e.to_string())?;
+    conn.pragma_update(None, "foreign_keys", "ON")
+        .map_err(|e| e.to_string())?;
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|e| e.to_string())?;
+
+    let now = unix_nanos();
+    let fingerprint = sha256_hex(
+        format!(
+            "{}:{}:{}:{}",
+            request.provenance.run_id,
+            request.provenance.tool_call_id.as_deref().unwrap_or(""),
+            request.files.len(),
+            now
+        )
+        .as_bytes(),
+    );
+    let change_set_id = format!("change-{}-{now}", &fingerprint[..16]);
+    let mut additions = 0usize;
+    let mut deletions = 0usize;
+    let mut redaction_count = 0usize;
+    let mut any_too_large = false;
+
+    tx.execute(
+        "INSERT INTO evidence_change_sets
+         (id,run_id,session_id,team_run_id,turn_id,actor_id,parent_actor_id,
+          tool_call_id,coverage,status,redaction_count,created_at)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,0,?11)",
+        params![
+            change_set_id,
+            request.provenance.run_id,
+            request.provenance.session_id,
+            request.provenance.team_run_id,
+            request.provenance.turn_id,
+            request.provenance.actor_id,
+            request.provenance.parent_actor_id,
+            request.provenance.tool_call_id,
+            request.coverage,
+            request.status,
+            now.to_string(),
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
+    for (index, file) in request.files.iter().enumerate() {
+        let (before, before_redactions) = redact_text(&file.before);
+        let (after, after_redactions) = redact_text(&file.after);
+        let file_redactions = before_redactions + after_redactions;
+        redaction_count += file_redactions;
+        let before_sha = sha256_hex(before.as_bytes());
+        let after_sha = sha256_hex(after.as_bytes());
+        let too_large = before.len() > FILE_RETAINED_CAP || after.len() > FILE_RETAINED_CAP;
+        any_too_large |= too_large;
+
+        let result = diff_file(&DiffInput {
+            path: file.path.clone(),
+            old_path: file.old_path.clone(),
+            operation: file.operation.clone(),
+            before: before.clone(),
+            after: after.clone(),
+            generated: file.generated,
+        });
+        if !too_large {
+            additions += result.additions;
+            deletions += result.deletions;
+        }
+        let file_id = format!("file-{}-{now}-{index}", &after_sha[..16]);
+        let availability = if too_large {
+            "too_large"
+        } else if file_redactions > 0 {
+            "redacted"
+        } else {
+            "available"
+        };
+        let before_blob_id = if too_large {
+            None
+        } else {
+            Some(persist_blob(
+                &tx,
+                before.as_bytes(),
+                "text/plain",
+                before_redactions,
+                now,
+            )?)
+        };
+        let after_blob_id = if too_large {
+            None
+        } else {
+            Some(persist_blob(
+                &tx,
+                after.as_bytes(),
+                "text/plain",
+                after_redactions,
+                now,
+            )?)
+        };
+        let patch_blob_id = if too_large {
+            None
+        } else {
+            Some(persist_blob(
+                &tx,
+                result.patch.as_bytes(),
+                "text/x-diff",
+                file_redactions,
+                now,
+            )?)
+        };
+        tx.execute(
+            "INSERT INTO evidence_file_changes
+             (id,change_set_id,path,old_path,operation,availability,before_sha256,
+              after_sha256,before_bytes,after_bytes,additions,deletions,binary,
+              generated,mode_before,mode_after,redaction_count,before_blob_id,
+              after_blob_id,patch_blob_id)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,
+                     ?16,?17,?18,?19,?20)",
+            params![
+                file_id,
+                change_set_id,
+                file.path,
+                file.old_path,
+                file.operation,
+                availability,
+                before_sha,
+                after_sha,
+                before.len() as i64,
+                after.len() as i64,
+                if too_large {
+                    0
+                } else {
+                    result.additions as i64
+                },
+                if too_large {
+                    0
+                } else {
+                    result.deletions as i64
+                },
+                result.binary as i64,
+                file.generated as i64,
+                file.mode_before,
+                file.mode_after,
+                file_redactions as i64,
+                before_blob_id,
+                after_blob_id,
+                patch_blob_id,
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+
+        if !too_large {
+            for hunk in &result.hunks {
+                let hunk_id = format!("hunk-{now}-{index}-{}", hunk.index);
+                tx.execute(
+                    "INSERT INTO evidence_hunks
+                     (id,file_change_id,hunk_index,old_start,old_lines,new_start,
+                      new_lines,patch_start_byte,patch_bytes,redacted)
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+                    params![
+                        hunk_id,
+                        file_id,
+                        hunk.index as i64,
+                        hunk.old_start as i64,
+                        hunk.old_lines as i64,
+                        hunk.new_start as i64,
+                        hunk.new_lines as i64,
+                        hunk.patch_start_byte as i64,
+                        hunk.patch_bytes as i64,
+                        (file_redactions > 0) as i64,
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+        }
+    }
+
+    let final_status = if any_too_large {
+        "too_large"
+    } else {
+        request.status.as_str()
+    };
+    tx.execute(
+        "UPDATE evidence_change_sets SET status=?1, redaction_count=?2 WHERE id=?3",
+        params![final_status, redaction_count as i64, change_set_id],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
+
+    Ok(ChangeSetReceipt {
+        change_set_id,
+        coverage: request.coverage.clone(),
+        status: final_status.to_string(),
+        file_count: request.files.len(),
+        additions,
+        deletions,
+        redaction_count,
+    })
+}
+
+fn validate_change_set_request(request: &ChangeSetRequest) -> Result<(), String> {
+    if request.protocol != PROTOCOL_VERSION {
+        return Err(format!("unsupported protocol {:?}", request.protocol));
+    }
+    if request.kind != "change_set" {
+        return Err("kind must be change_set".to_string());
+    }
+    if request.provenance.run_id.trim().is_empty() {
+        return Err("run_id must be non-empty".to_string());
+    }
+    if !matches!(
+        request.coverage.as_str(),
+        "complete" | "tool_only" | "partial" | "unavailable"
+    ) {
+        return Err("invalid coverage".to_string());
+    }
+    if !matches!(
+        request.status.as_str(),
+        "captured" | "partial" | "unavailable" | "too_large"
+    ) {
+        return Err("invalid status".to_string());
+    }
+    if request.files.is_empty() {
+        return Err("capture must contain at least one file".to_string());
+    }
+    for file in &request.files {
+        validate_relative_path(&file.path)?;
+        if let Some(old_path) = file.old_path.as_deref() {
+            validate_relative_path(old_path)?;
+        }
+        if !matches!(
+            file.operation.as_str(),
+            "create" | "edit" | "delete" | "rename" | "mode" | "binary"
+        ) {
+            return Err(format!("invalid operation {:?}", file.operation));
+        }
+    }
+    Ok(())
+}
+
+fn validate_relative_path(value: &str) -> Result<(), String> {
+    if value.trim().is_empty() || value.contains('\\') || value.contains(':') {
+        return Err("path must be canonical workspace-relative POSIX form".to_string());
+    }
+    let path = Path::new(value);
+    if path.is_absolute()
+        || path
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err("path must be canonical workspace-relative POSIX form".to_string());
+    }
+    Ok(())
+}
+
+fn persist_blob(
+    tx: &rusqlite::Transaction<'_>,
+    bytes: &[u8],
+    media_type: &str,
+    redaction_count: usize,
+    now: u128,
+) -> Result<String, String> {
+    let sha = sha256_hex(bytes);
+    let blob_id = format!("blob-{sha}");
+    let availability = if redaction_count > 0 {
+        "redacted"
+    } else {
+        "available"
+    };
+    let chunk_count = bytes.len().div_ceil(CHUNK_SIZE);
+    tx.execute(
+        "INSERT OR IGNORE INTO evidence_blobs
+         (id,sha256,media_type,size_bytes,chunk_size,chunk_count,availability,
+          redaction_count,created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+        params![
+            blob_id,
+            sha,
+            media_type,
+            bytes.len() as i64,
+            CHUNK_SIZE as i64,
+            chunk_count as i64,
+            availability,
+            redaction_count as i64,
+            now.to_string(),
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    for (index, chunk) in bytes.chunks(CHUNK_SIZE).enumerate() {
+        tx.execute(
+            "INSERT OR IGNORE INTO evidence_blob_chunks(blob_id,chunk_index,content)
+             VALUES (?1,?2,?3)",
+            params![blob_id, index as i64, chunk],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(blob_id)
 }
 
 pub fn persist_full_result(request: &FullResultRequest) -> Result<FullResultReceipt, String> {

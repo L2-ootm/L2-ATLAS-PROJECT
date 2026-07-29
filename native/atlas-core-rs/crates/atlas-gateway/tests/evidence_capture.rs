@@ -1,6 +1,5 @@
 use atlas_gateway::evidence::{
-    persist_change_set, CaptureFileRequest, ChangeSetRequest, EvidenceProvenance,
-    PROTOCOL_VERSION,
+    persist_change_set, CaptureFileRequest, ChangeSetRequest, EvidenceProvenance, PROTOCOL_VERSION,
 };
 use rusqlite::Connection;
 
@@ -72,14 +71,18 @@ fn capture_persists_redacted_hashes_diff_hunks_and_one_receipt() {
     let conn = Connection::open(db_path).expect("open");
     assert_eq!(
         conn.query_row("SELECT COUNT(*) FROM evidence_change_sets", [], |row| row
-            .get::<_, i64>(0))
-            .unwrap(),
+            .get::<_, i64>(
+            0
+        ))
+        .unwrap(),
         1
     );
     assert_eq!(
         conn.query_row("SELECT COUNT(*) FROM evidence_file_changes", [], |row| row
-            .get::<_, i64>(0))
-            .unwrap(),
+            .get::<_, i64>(
+            0
+        ))
+        .unwrap(),
         1
     );
     assert_eq!(

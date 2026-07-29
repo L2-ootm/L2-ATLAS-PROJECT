@@ -8,7 +8,7 @@ from atlas_runtime import evidence_bridge
 
 def _capture_request(tmp_path):
     workspace = tmp_path / "workspace"
-    workspace.mkdir()
+    workspace.mkdir(exist_ok=True)
     return {
         "run_id": "run-1",
         "session_id": "session-1",
@@ -126,4 +126,3 @@ def test_bridge_rejects_malformed_or_wrong_version_response(monkeypatch, tmp_pat
         assert receipt.status == "unavailable"
         assert receipt.change_set_id is None
         assert receipt.error_code in {"malformed_response", "protocol_mismatch"}
-
