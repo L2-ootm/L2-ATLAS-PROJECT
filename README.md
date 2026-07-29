@@ -263,11 +263,11 @@ remains available to `atlas rollback`.
 
 ## Trust and project status
 
-ATLAS is intentionally honest about unfinished work. Version `0.1.3` is public on npm
+ATLAS is intentionally honest about unfinished work. Version `0.1.5` is public on npm
 for Windows x64 and as GitHub runtime bundles for Windows x64, Linux x64, Intel macOS,
 and Apple Silicon macOS. On 2026-07-29, the public npm launcher and Windows runtime
 were installed again from the anonymous registry into isolated application and state
-directories. The install reported `0.1.3`, every packaged-file checksum matched, and
+directories. The install reported `0.1.5`, every packaged-file checksum matched, and
 the install-only doctor reported healthy. Linux and macOS bundles passed the automated
 build and test matrix but still need independent clean-machine acceptance before they
 should be treated as equally proven. Repository cleanup and the configured
