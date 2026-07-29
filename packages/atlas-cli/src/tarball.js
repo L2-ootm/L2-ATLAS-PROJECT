@@ -142,8 +142,12 @@ function collectEntries(dir, base, entries) {
 }
 
 function createTarGz(sourceDir, outFile) {
-	const base = path.resolve(sourceDir);
-	if (!fs.existsSync(base)) throw new Error(`source directory not found: ${sourceDir}`);
+	const requestedBase = path.resolve(sourceDir);
+	if (!fs.existsSync(requestedBase)) throw new Error(`source directory not found: ${sourceDir}`);
+	// Canonicalize the root before comparing it with canonical symlink targets.
+	// macOS exposes /var through /private/var, so mixing a lexical root with a
+	// realpath target incorrectly rejects safe links inside temporary bundles.
+	const base = fs.realpathSync(requestedBase);
 	const entries = [];
 	collectEntries(base, base, entries);
 	const chunks = [];
