@@ -20,6 +20,14 @@ DESCRIPTION_CAP = 2000
 GOAL_TEMPLATE_CAP = 4000
 
 
+class TeamLifecycleConflict(ValueError):
+    """Typed domain conflict for unsafe physical team deletion."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
 def _now() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
@@ -204,8 +212,11 @@ def _team_members(conn: sqlite3.Connection, team_id: str) -> list[dict[str, Any]
     return [_row_to_dict(cur, row) for row in cur.fetchall()]
 
 
-def list_teams(conn: sqlite3.Connection) -> list[dict[str, Any]]:
-    cur = conn.execute("SELECT * FROM teams ORDER BY name ASC")
+def list_teams(
+    conn: sqlite3.Connection, *, include_archived: bool = False
+) -> list[dict[str, Any]]:
+    where = "" if include_archived else "WHERE archived_at IS NULL"
+    cur = conn.execute(f"SELECT * FROM teams {where} ORDER BY name ASC")  # noqa: S608
     teams = [_row_to_dict(cur, row) for row in cur.fetchall()]
     for team in teams:
         team["members"] = _team_members(conn, team["id"])
@@ -252,15 +263,49 @@ def update_team(
 def delete_team(conn: sqlite3.Connection, lock: threading.Lock, team_id: str) -> bool:
     with lock:
         with conn:
-            in_use = conn.execute(
-                "SELECT 1 FROM team_runs WHERE team_id=? AND status IN ('queued','running')",
+            run = conn.execute(
+                "SELECT status FROM team_runs WHERE team_id=? LIMIT 1",
                 (team_id,),
             ).fetchone()
-            if in_use is not None:
-                raise ValueError("team has an active run; cancel it before deleting the team")
+            if run is not None:
+                code = "team_has_active_run" if run[0] in ("queued", "running") else "team_has_history"
+                message = (
+                    "team has an active run; cancel it before archiving the team"
+                    if code == "team_has_active_run"
+                    else "team has historical runs and cannot be physically deleted; archive it"
+                )
+                raise TeamLifecycleConflict(code, message)
             conn.execute("DELETE FROM team_members WHERE team_id=?", (team_id,))
-            cur = conn.execute("DELETE FROM teams WHERE id=?", (team_id,))
+            try:
+                cur = conn.execute("DELETE FROM teams WHERE id=?", (team_id,))
+            except sqlite3.IntegrityError as exc:
+                raise TeamLifecycleConflict(
+                    "team_dependency_conflict",
+                    "team has dependent records and cannot be physically deleted",
+                ) from exc
             return cur.rowcount == 1
+
+
+def archive_team(
+    conn: sqlite3.Connection, lock: threading.Lock, team_id: str
+) -> dict[str, Any]:
+    """Hide a team while preserving roster and historical run attribution."""
+    now = _now()
+    with lock:
+        with conn:
+            existing = conn.execute(
+                "SELECT 1 FROM teams WHERE id=?", (team_id,)
+            ).fetchone()
+            if existing is None:
+                raise ValueError(f"team {team_id!r} not found")
+            conn.execute(
+                "UPDATE teams SET archived_at=COALESCE(archived_at, ?), updated_at=?"
+                " WHERE id=?",
+                (now, now, team_id),
+            )
+    team = get_team(conn, team_id)
+    assert team is not None
+    return team
 
 
 def set_team_members(
@@ -307,5 +352,7 @@ __all__ = [
     "list_teams",
     "update_team",
     "delete_team",
+    "archive_team",
+    "TeamLifecycleConflict",
     "set_team_members",
 ]

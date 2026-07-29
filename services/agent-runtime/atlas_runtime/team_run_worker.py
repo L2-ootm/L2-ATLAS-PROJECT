@@ -78,6 +78,7 @@ def run_team_run(conn: sqlite3.Connection, lock: threading.Lock, team_run_id: st
     if run["status"] != "queued":
         logger.info("team run %s already %s — nothing to do", team_run_id, run["status"])
         return False
+    team_run_service.record_worker_pid(conn, lock, team_run_id, os.getpid())
 
     team = team_service.get_team(conn, run["team_id"])
     members = team["members"] if team else []
@@ -111,9 +112,16 @@ def run_team_run(conn: sqlite3.Connection, lock: threading.Lock, team_run_id: st
     final_status = "completed"
     try:
         for round_no in range(1, max_rounds + 1):
+            if team_run_service.cancellation_requested(conn, team_run_id):
+                final_status = "cancelled"
+                break
             team_run_service.set_current_round(conn, lock, team_run_id, round_no)
             done = False
             for member in members:
+                if team_run_service.cancellation_requested(conn, team_run_id):
+                    final_status = "cancelled"
+                    done = True
+                    break
                 inbox = team_run_service.build_inbox(
                     conn, team_run_id,
                     role_label=member["role_label"],
@@ -133,15 +141,24 @@ def run_team_run(conn: sqlite3.Connection, lock: threading.Lock, team_run_id: st
                 )
                 if created:
                     run_actor(conn, lock, actor["id"])
+                if team_run_service.cancellation_requested(conn, team_run_id):
+                    final_status = "cancelled"
+                    done = True
+                    break
                 actor = actor_service.get_actor(conn, actor["id"]) or actor
                 content = actor.get("result_preview") or actor.get("error") or "(no output)"
-                team_run_service.append_message(
-                    conn, lock, team_run_id,
-                    round_no=round_no,
-                    sender_role=member["role_label"],
-                    sender_actor_id=actor["id"],
-                    content=content,
-                )
+                try:
+                    team_run_service.append_message(
+                        conn, lock, team_run_id,
+                        round_no=round_no,
+                        sender_role=member["role_label"],
+                        sender_actor_id=actor["id"],
+                        content=content,
+                    )
+                except team_run_service.TeamRunCancelledError:
+                    final_status = "cancelled"
+                    done = True
+                    break
                 if team_run_service.is_done_signal(content):
                     done = True
                     break
@@ -151,8 +168,11 @@ def run_team_run(conn: sqlite3.Connection, lock: threading.Lock, team_run_id: st
         logger.warning("team run %s failed: %s", team_run_id, exc)
         final_status = "failed"
 
-    team_run_service.finish_team_run(conn, lock, team_run_id, status=final_status)
+    if final_status != "cancelled":
+        team_run_service.finish_team_run(conn, lock, team_run_id, status=final_status)
     if mission is not None:
+        if final_status == "cancelled":
+            return True
         complete_run(
             conn, lock,
             run_id=parent_run_id,

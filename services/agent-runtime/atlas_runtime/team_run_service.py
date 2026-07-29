@@ -9,9 +9,12 @@ See docs/plans/2026-07-18-agent-teams-and-group-chat-design.md.
 from __future__ import annotations
 
 import datetime
+import os
 import re
 import sqlite3
+import subprocess
 import threading
+import time
 import uuid
 from typing import Any, Optional
 
@@ -22,6 +25,48 @@ ACTIVE_STATUSES = ("queued", "running")
 TERMINAL_STATUSES = ("completed", "failed", "cancelled")
 
 _MENTION_RE = re.compile(r"^@([a-zA-Z0-9_-]+):\s*(.*)$", re.DOTALL)
+
+
+class TeamRunCancelledError(RuntimeError):
+    """Raised when a writer loses the cancellation race."""
+
+
+def _pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        result = subprocess.run(  # noqa: S603
+            ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+            capture_output=True,
+            text=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000),
+            check=False,
+        )
+        return result.returncode == 0 and f'"{pid}"' in result.stdout
+    try:  # pragma: no cover - POSIX only
+        os.kill(pid, 0)
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def _terminate_process_tree(pid: int) -> bool:
+    """Request bounded process-tree termination; verification is separate."""
+    if pid <= 0:
+        return True
+    try:
+        if os.name == "nt":
+            result = subprocess.run(  # noqa: S603
+                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                capture_output=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000),
+                check=False,
+            )
+            return result.returncode == 0 or not _pid_alive(pid)
+        os.killpg(os.getpgid(pid), 15)  # pragma: no cover - POSIX only
+        return True
+    except (OSError, ValueError):
+        return not _pid_alive(pid)
 
 
 def _now() -> str:
@@ -143,6 +188,31 @@ def mark_team_run_running(
             return cur.rowcount == 1
 
 
+def record_worker_pid(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    team_run_id: str,
+    pid: int,
+) -> bool:
+    """Persist the detached worker identity before it starts spawning actors."""
+    with lock:
+        with conn:
+            cur = conn.execute(
+                "UPDATE team_runs SET worker_pid=?, updated_at=?"
+                " WHERE id=? AND status IN ('queued','running')",
+                (pid, _now(), team_run_id),
+            )
+            return cur.rowcount == 1
+
+
+def cancellation_requested(conn: sqlite3.Connection, team_run_id: str) -> bool:
+    row = conn.execute(
+        "SELECT status, cancel_requested_at FROM team_runs WHERE id=?",
+        (team_run_id,),
+    ).fetchone()
+    return row is None or row[0] == "cancelled" or row[1] is not None
+
+
 def set_current_round(
     conn: sqlite3.Connection, lock: threading.Lock, team_run_id: str, round_no: int
 ) -> bool:
@@ -175,7 +245,114 @@ def finish_team_run(
 
 
 def cancel_team_run(conn: sqlite3.Connection, lock: threading.Lock, team_run_id: str) -> bool:
-    return finish_team_run(conn, lock, team_run_id, status="cancelled")
+    """Cancel actors/runs/processes, then persist verified cleanup truth.
+
+    The boolean reports whether this call made the terminal transition. Cleanup
+    outcome remains available on the run for both first and repeated calls.
+    """
+    now = _now()
+    with lock:
+        with conn:
+            row = conn.execute(
+                "SELECT status, worker_pid FROM team_runs WHERE id=?",
+                (team_run_id,),
+            ).fetchone()
+            if row is None:
+                return False
+            changed = row[0] in ACTIVE_STATUSES
+            if row[0] not in ACTIVE_STATUSES and row[0] != "cancelled":
+                return False
+            conn.execute(
+                "UPDATE team_runs SET status='cancelled',"
+                " cancel_requested_at=COALESCE(cancel_requested_at, ?),"
+                " finished_at=COALESCE(finished_at, ?), updated_at=?,"
+                " cleanup_status='pending', cleanup_error=NULL WHERE id=?",
+                (now, now, now, team_run_id),
+            )
+            actors_cur = conn.execute(
+                "SELECT * FROM actors WHERE idempotency_key LIKE ? ESCAPE '\\'",
+                (team_run_id.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + ":%",),
+            )
+            columns = [description[0] for description in actors_cur.description]
+            actors = [dict(zip(columns, actor)) for actor in actors_cur.fetchall()]
+            worker_pid = row[1]
+
+    # Actor cancellation emits lifecycle events and therefore must run outside
+    # the transaction/lock held above.
+    from atlas_runtime import actor_service  # noqa: PLC0415
+    from atlas_runtime.actor_worker import terminate_actor_pids  # noqa: PLC0415
+
+    transitioned: list[dict[str, Any]] = []
+    for actor in actors:
+        transitioned.extend(actor_service.cancel_actor(conn, lock, actor["id"]))
+    terminate_actor_pids(transitioned)
+
+    child_run_ids = {
+        actor["child_run_id"] for actor in actors if actor.get("child_run_id")
+    }
+    with lock:
+        with conn:
+            for child_run_id in child_run_ids:
+                child = conn.execute(
+                    "SELECT mission_id FROM runs WHERE id=? AND status='running'",
+                    (child_run_id,),
+                ).fetchone()
+                if child is None:
+                    continue
+                conn.execute(
+                    "UPDATE runs SET status='cancelled', finished_at=? WHERE id=?",
+                    (now, child_run_id),
+                )
+                if child[0]:
+                    conn.execute(
+                        "UPDATE missions SET status='cancelled', updated_at=? WHERE id=?",
+                        (now, child[0]),
+                    )
+
+    termination_requested = True
+    if worker_pid and int(worker_pid) != os.getpid():
+        termination_requested = _terminate_process_tree(int(worker_pid))
+
+    deadline = time.monotonic() + 1.0
+    worker_alive = bool(worker_pid and int(worker_pid) != os.getpid() and _pid_alive(int(worker_pid)))
+    while worker_alive and time.monotonic() < deadline:
+        time.sleep(0.05)
+        worker_alive = _pid_alive(int(worker_pid))
+
+    live_actor_count = conn.execute(
+        "SELECT COUNT(*) FROM actors WHERE idempotency_key LIKE ? ESCAPE '\\'"
+        " AND status IN ('queued','running')",
+        (team_run_id.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + ":%",),
+    ).fetchone()[0]
+    live_child_count = 0
+    if child_run_ids:
+        placeholders = ",".join("?" for _ in child_run_ids)
+        live_child_count = conn.execute(
+            f"SELECT COUNT(*) FROM runs WHERE id IN ({placeholders})"  # noqa: S608
+            " AND status='running'",
+            tuple(child_run_ids),
+        ).fetchone()[0]
+
+    if live_actor_count == 0 and live_child_count == 0 and not worker_alive:
+        cleanup_status, cleanup_error = "complete", None
+    elif termination_requested:
+        cleanup_status = "partial"
+        cleanup_error = (
+            f"cleanup incomplete: actors={live_actor_count},"
+            f" child_runs={live_child_count}, worker_alive={worker_alive}"
+        )
+    else:
+        cleanup_status = "failed"
+        cleanup_error = "process-tree termination request failed"
+
+    with lock:
+        with conn:
+            conn.execute(
+                "UPDATE team_runs SET cleanup_status=?, cleanup_error=?, updated_at=?"
+                " WHERE id=?",
+                (cleanup_status, cleanup_error, _now(), team_run_id),
+            )
+    return changed
 
 
 # ---------------------------------------------------------------------------
@@ -198,6 +375,17 @@ def append_message(
     now = _now()
     with lock:
         with conn:
+            status = conn.execute(
+                "SELECT status FROM team_runs WHERE id=?", (team_run_id,)
+            ).fetchone()
+            if status is None:
+                raise ValueError(f"team run {team_run_id!r} not found")
+            if status[0] == "cancelled":
+                raise TeamRunCancelledError(
+                    f"team run {team_run_id!r} was cancelled before append"
+                )
+            if status[0] not in ACTIVE_STATUSES:
+                raise ValueError(f"cannot append to team run in state {status[0]!r}")
             next_seq = conn.execute(
                 "SELECT COALESCE(MAX(seq), 0) + 1 FROM team_chat_messages WHERE team_run_id=?",
                 (team_run_id,),
@@ -266,6 +454,8 @@ __all__ = [
     "get_team_run",
     "list_team_runs",
     "mark_team_run_running",
+    "record_worker_pid",
+    "cancellation_requested",
     "set_current_round",
     "finish_team_run",
     "cancel_team_run",
@@ -273,4 +463,5 @@ __all__ = [
     "list_messages",
     "build_inbox",
     "render_inbox",
+    "TeamRunCancelledError",
 ]
