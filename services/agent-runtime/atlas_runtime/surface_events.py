@@ -23,6 +23,32 @@ from atlas_core.schemas.surface_session import EventKind, SurfaceEvent
 from atlas_runtime.agents.base import RunOutcome
 
 _EVENT_KINDS = frozenset(get_args(EventKind))
+_EVIDENCE_AVAILABILITY = frozenset(
+    {"available", "redacted", "partial", "binary", "too_large", "corrupt", "unavailable"}
+)
+_EVIDENCE_COVERAGE = frozenset({"complete", "tool_only", "partial", "unavailable"})
+_CLEANUP_STATES = frozenset({"complete", "partial", "failed"})
+_ORCHESTRATION_FIELDS = (
+    "runtime",
+    "surface_kind",
+    "orchestration",
+    "actor",
+    "phase",
+    "status",
+    "subagent_id",
+    "parent_id",
+    "depth",
+    "goal",
+    "model",
+    "tool",
+    "tool_count",
+    "background",
+    "mode",
+    "role",
+    "team_run_id",
+    "goal_id",
+    "transition",
+)
 
 # Default audit event_type → SurfaceEvent kind. Covers every AuditEvent.event_type member
 # (a test asserts completeness). `llm_call` is refined to text/reasoning by payload, and a
@@ -89,6 +115,122 @@ def _kind_for(event_type: str, payload: dict) -> EventKind:
     return _KIND_MAP.get(event_type, "task")
 
 
+def _non_negative_int(value: object) -> int:
+    try:
+        return max(0, int(value))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0
+
+
+def _optional_text(value: object) -> Optional[str]:
+    return value if isinstance(value, str) and value else None
+
+
+def _evidence_ids(evidence: dict) -> list[str]:
+    candidates: list[object] = [evidence.get("change_set_id")]
+    for key in ("evidence_ids", "change_set_ids", "child_change_set_ids"):
+        value = evidence.get(key)
+        if isinstance(value, list):
+            candidates.extend(value)
+    seen: set[str] = set()
+    identities: list[str] = []
+    for candidate in candidates:
+        if not isinstance(candidate, str) or not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+        identities.append(candidate)
+    return identities
+
+
+def _orchestration_evidence_payload(payload: dict) -> Optional[str]:
+    """Return canonical metadata-only JSON for an orchestration evidence event.
+
+    Evidence bodies are retrieved through the owner-authorized range API. The
+    normalized event deliberately whitelists identity, totals, provenance and
+    failure state so a producer cannot accidentally push patches, hunks, blobs
+    or full results through replay/SSE. Reference order is stable and duplicate
+    child identities are removed without recomputing Rust-owned totals.
+    """
+    evidence = payload.get("evidence")
+    if not isinstance(evidence, dict) or payload.get("orchestration") not in {
+        "subagent",
+        "team",
+        "goal",
+    }:
+        return None
+
+    raw_ancestry = evidence.get("ancestry")
+    ancestry = raw_ancestry if isinstance(raw_ancestry, dict) else {}
+    coverage = evidence.get("coverage")
+    if coverage not in _EVIDENCE_COVERAGE:
+        coverage = "unavailable"
+    availability = evidence.get("availability")
+    if availability not in _EVIDENCE_AVAILABILITY:
+        availability = "unavailable"
+
+    raw_cleanup = evidence.get("cleanup")
+    cleanup = None
+    if isinstance(raw_cleanup, dict):
+        cleanup_status = raw_cleanup.get("status")
+        if cleanup_status not in _CLEANUP_STATES:
+            cleanup_status = "failed"
+        cleanup = {
+            "status": cleanup_status,
+            "error": _optional_text(raw_cleanup.get("error")),
+        }
+
+    raw_incident = evidence.get("incident")
+    incident = None
+    if isinstance(raw_incident, dict):
+        incident = {
+            "kind": _optional_text(raw_incident.get("kind")) or "policy_incident",
+            "status": _optional_text(raw_incident.get("status")) or "denied",
+            "reason": _optional_text(raw_incident.get("reason")),
+        }
+
+    normalized = {
+        key: payload[key]
+        for key in _ORCHESTRATION_FIELDS
+        if key in payload and payload[key] is not None
+    }
+    normalized["evidence"] = {
+        "evidence_ids": _evidence_ids(evidence),
+        "file_count": _non_negative_int(evidence.get("file_count")),
+        "additions": _non_negative_int(evidence.get("additions")),
+        "deletions": _non_negative_int(evidence.get("deletions")),
+        "coverage": coverage,
+        "availability": availability,
+        "redaction_count": _non_negative_int(evidence.get("redaction_count")),
+        "ancestry": {
+            "actor_id": _optional_text(ancestry.get("actor_id")),
+            "parent_actor_id": _optional_text(ancestry.get("parent_actor_id")),
+            "team_run_id": _optional_text(ancestry.get("team_run_id")),
+            "goal_id": _optional_text(ancestry.get("goal_id")),
+        },
+        "incident": incident,
+    }
+    if cleanup is not None:
+        normalized["evidence"]["cleanup"] = cleanup
+
+    unsafe_state = (
+        availability != "available"
+        or coverage in {"partial", "unavailable"}
+        or incident is not None
+        or (cleanup is not None and cleanup["status"] != "complete")
+        or normalized.get("phase") in {"failed", "cancelled", "orphaned"}
+    )
+    if unsafe_state:
+        normalized["status"] = (
+            "cancelled" if normalized.get("phase") == "cancelled" else "failed"
+        )
+    return json.dumps(
+        normalized,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+
+
 def normalize_surface_events(
     audit_events: Sequence,
     run_outcome: Optional[RunOutcome] = None,
@@ -108,6 +250,7 @@ def normalize_surface_events(
     last_run_id: Optional[str] = None
     for ae in audit_events:
         payload = _payload_dict(ae.data)
+        canonical_evidence = _orchestration_evidence_payload(payload)
         occurred_at = (
             ae.timestamp.isoformat()
             if hasattr(ae.timestamp, "isoformat")
@@ -121,7 +264,11 @@ def normalize_surface_events(
                 kind=_kind_for(ae.event_type, payload),
                 run_id=ae.run_id,
                 occurred_at=occurred_at,
-                payload_json=ae.data if isinstance(ae.data, str) else "{}",
+                payload_json=(
+                    canonical_evidence
+                    if canonical_evidence is not None
+                    else ae.data if isinstance(ae.data, str) else "{}"
+                ),
             )
         )
         seq += 1
