@@ -51,6 +51,11 @@ test('npm package metadata matches the public install contract', () => {
 	assert.equal(packageJson.name, '@systemsl2/atlas');
 	assert.notEqual(packageJson.private, true);
 	assert.deepEqual(packageJson.bin, { atlas: 'bin/atlas.js' });
+	assert.equal(
+		packageJson.optionalDependencies['@systemsl2/atlas-win32-x64'],
+		packageJson.version,
+		'the launcher must pin the matching platform runtime exactly'
+	);
 
 	const result = spawnSync(process.execPath, [path.join(__dirname, '..', 'bin', 'atlas.js')], {
 		encoding: 'utf8',
