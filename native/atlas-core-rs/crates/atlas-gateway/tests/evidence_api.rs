@@ -1,7 +1,13 @@
 //! Evidence Plane API contracts for Phase 10.8 plan 08.
 
 use atlas_gateway::db::{self, AuditEventFilters, ChangeSetScope, ContentRange, EvidenceCursor};
+use atlas_gateway::{app, AppState};
+use axum::body::Body;
+use axum::http::{Request, StatusCode};
+use http_body_util::BodyExt;
+use serde_json::Value;
 use std::path::{Path, PathBuf};
+use tower::util::ServiceExt;
 
 const MIGRATION_0001: &str = include_str!("../../../../../infra/migrations/0001_core.sql");
 const MIGRATION_0006: &str = include_str!("../../../../../infra/migrations/0006_agent_runtime.sql");
@@ -64,7 +70,9 @@ fn seeded_evidence_db(dir: &tempfile::TempDir) -> PathBuf {
             ('blob-patch', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
              'text/x-diff', 12, 1, 'available', 0, '2026-07-29T10:00:01Z'),
             ('blob-result', 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-             'text/plain', 12, 1, 'available', 0, '2026-07-29T10:00:02Z');
+             'text/plain', 12, 1, 'available', 0, '2026-07-29T10:00:02Z'),
+            ('blob-corrupt', 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+             'text/x-diff', 12, 1, 'available', 0, '2026-07-29T10:00:03Z');
         INSERT INTO evidence_blob_chunks (blob_id, chunk_index, content)
         VALUES
             ('blob-patch', 0, X'4061202D6F6C640A2B6E6577'),
@@ -82,7 +90,14 @@ fn seeded_evidence_db(dir: &tempfile::TempDir) -> PathBuf {
         VALUES
             ('file-1', 'change-1', 'src/a.rs', 'edit', 'available', 1, 1,
              'blob-patch'),
-            ('file-2', 'change-1', 'src/b.rs', 'create', 'redacted', 1, 0, NULL);
+            ('file-2', 'change-1', 'src/b.rs', 'create', 'redacted', 1, 0, NULL),
+            ('file-binary', 'change-1', 'image.bin', 'binary', 'available', 0, 0, NULL),
+            ('file-partial', 'change-1', 'partial.txt', 'edit', 'partial', 0, 0, NULL),
+            ('file-unavailable', 'change-1', 'missing.txt', 'edit', 'unavailable', 0, 0, NULL),
+            ('file-too-large', 'change-1', 'huge.txt', 'edit', 'too_large', 0, 0, NULL),
+            ('file-corrupt', 'change-1', 'corrupt.txt', 'edit', 'available', 0, 0,
+             'blob-corrupt');
+        UPDATE evidence_file_changes SET binary=1 WHERE id='file-binary';
         INSERT INTO evidence_hunks
             (id, file_change_id, hunk_index, old_start, old_lines, new_start,
              new_lines, patch_start_byte, patch_bytes, redacted)
@@ -108,6 +123,35 @@ fn seeded_evidence_db(dir: &tempfile::TempDir) -> PathBuf {
     )
     .unwrap();
     path
+}
+
+fn test_app(db_path: PathBuf) -> axum::Router {
+    app(AppState {
+        db_path,
+        atlas_cmd: vec!["atlas".into()],
+        repo_root: PathBuf::from("."),
+    })
+}
+
+async fn get(
+    router: &axum::Router,
+    uri: &str,
+    owner_token: Option<&str>,
+) -> (StatusCode, axum::http::HeaderMap, Value) {
+    let mut builder = Request::builder().uri(uri);
+    if let Some(token) = owner_token {
+        builder = builder.header("x-atlas-surface-owner", token);
+    }
+    let response = router
+        .clone()
+        .oneshot(builder.body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let status = response.status();
+    let headers = response.headers().clone();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let body = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+    (status, headers, body)
 }
 
 fn query_plan(path: &Path, sql: &str, params: &[&dyn rusqlite::ToSql]) -> String {
@@ -241,4 +285,130 @@ fn evidence_db_content_ranges_and_owner_scopes_are_explicit() {
     let actors = db::list_actor_history(&path, "surface-1", None, 5000).unwrap();
     assert_eq!(actors.0.len(), 1);
     assert_eq!(actors.0[0]["id"], "actor-1");
+}
+
+#[tokio::test]
+async fn evidence_api_routes_enforce_owner_bounds_etags_and_pagination() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_app(seeded_evidence_db(&dir));
+
+    let (status, _, body) =
+        get(&router, "/v1/audit/events?session_id=surface-1&limit=1", None).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(body["error"]["code"], "surface_owner_mismatch");
+
+    let (status, _, first) = get(
+        &router,
+        "/v1/audit/events?session_id=surface-1&limit=1",
+        Some("owner-1"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(first["events"].as_array().unwrap().len(), 1);
+    assert!(first["events"][0].get("blob").is_none());
+    let cursor = first["next_cursor"].as_str().unwrap();
+    let (status, _, second) = get(
+        &router,
+        &format!("/v1/audit/events?session_id=surface-1&after={cursor}&limit=9999"),
+        Some("owner-1"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(second["events"][0]["id"], "event-2");
+
+    let (status, _, sets) = get(
+        &router,
+        "/v1/runs/run-1/change-sets?limit=9999",
+        Some("owner-1"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(sets["change_sets"][0]["id"], "change-1");
+    assert!(sets["change_sets"][0].get("files").is_none());
+
+    let (status, headers, patch) = get(
+        &router,
+        "/v1/file-changes/file-1/patch?offset=3&limit=5",
+        Some("owner-1"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::PARTIAL_CONTENT);
+    assert_eq!(patch["content"], "-old\n");
+    assert_eq!(patch["range"]["total_bytes"], 12);
+    assert_eq!(
+        headers.get("etag").unwrap(),
+        "\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\""
+    );
+
+    let (status, headers, result) = get(
+        &router,
+        "/v1/evidence/results/result-1?offset=4&limit=4",
+        Some("owner-1"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::PARTIAL_CONTENT);
+    assert_eq!(result["content"], "4567");
+    assert_eq!(
+        headers.get("etag").unwrap(),
+        "\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\""
+    );
+
+    let (status, _, body) = get(
+        &router,
+        "/v1/change-sets/change-1/files?after=not-a-cursor",
+        Some("owner-1"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "invalid_cursor");
+
+    let (status, _, _) = get(
+        &router,
+        "/v1/file-changes/file-1/hunks?context=999",
+        Some("owner-1"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let (status, _, _) = get(
+        &router,
+        "/v1/evidence/results/result-1",
+        Some("owner-other"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn evidence_api_distinguishes_every_unavailable_state() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_app(seeded_evidence_db(&dir));
+    let cases = [
+        ("file-2", "redacted"),
+        ("file-partial", "partial"),
+        ("file-binary", "binary"),
+        ("file-too-large", "too_large"),
+        ("file-corrupt", "corrupt"),
+        ("file-unavailable", "unavailable"),
+    ];
+    for (file_id, expected) in cases {
+        let (status, _, body) = get(
+            &router,
+            &format!("/v1/file-changes/{file_id}/patch"),
+            Some("owner-1"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{file_id}: {body}");
+        assert_eq!(body["availability"], expected, "{file_id}: {body}");
+        assert!(body.get("content").is_none(), "{file_id}: {body}");
+    }
+
+    let (status, _, actors) = get(
+        &router,
+        "/v1/surface-sessions/surface-1/actors?limit=9999",
+        Some("owner-1"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(actors["actors"][0]["id"], "actor-1");
 }
