@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -25,6 +26,8 @@ import (
 // Models() re-queries the gateway. Settings opens Config+Models together on
 // every visit; without this, repeat visits pay a full catalog fetch each time.
 const modelsCacheTTL = 5 * time.Minute
+
+const evidenceRangePageSize int64 = 64 * 1024
 
 // Client talks to one ATLAS gateway base URL.
 type Client struct {
@@ -229,6 +232,182 @@ func (c *Client) SurfaceEvents(
 		ctx, http.MethodGet, path, nil, &replay, session.OwnerToken,
 	)
 	return replay, err
+}
+
+func requireEvidenceOwner(session SurfaceSession) error {
+	if session.ID == "" || session.OwnerToken == "" {
+		return errors.New("evidence retrieval requires session id and owner token")
+	}
+	return nil
+}
+
+// RunChangeSets pages durable change metadata. Cursor tokens remain opaque.
+func (c *Client) RunChangeSets(
+	ctx context.Context,
+	session SurfaceSession,
+	runID string,
+	after string,
+	limit int,
+) (EvidenceChangeSetPage, error) {
+	var page EvidenceChangeSetPage
+	if err := requireEvidenceOwner(session); err != nil {
+		return page, err
+	}
+	query := url.Values{}
+	if after != "" {
+		query.Set("after", after)
+	}
+	if limit > 0 {
+		query.Set("limit", strconv.Itoa(limit))
+	}
+	path := "/v1/runs/" + url.PathEscape(runID) + "/change-sets"
+	if encoded := query.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
+	err := c.requestJSONWithOwner(
+		ctx, http.MethodGet, path, nil, &page, session.OwnerToken,
+	)
+	return page, err
+}
+
+// ChangeSetFiles pages file receipts without requesting patch bodies.
+func (c *Client) ChangeSetFiles(
+	ctx context.Context,
+	session SurfaceSession,
+	changeSetID string,
+	after string,
+	limit int,
+) (EvidenceFilePage, error) {
+	var page EvidenceFilePage
+	if err := requireEvidenceOwner(session); err != nil {
+		return page, err
+	}
+	query := url.Values{}
+	if after != "" {
+		query.Set("after", after)
+	}
+	if limit > 0 {
+		query.Set("limit", strconv.Itoa(limit))
+	}
+	path := "/v1/change-sets/" + url.PathEscape(changeSetID) + "/files"
+	if encoded := query.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
+	err := c.requestJSONWithOwner(
+		ctx, http.MethodGet, path, nil, &page, session.OwnerToken,
+	)
+	return page, err
+}
+
+// FileChangeHunks requests the Rust-owned hunk index. The TUI never computes
+// or reindexes diffs locally.
+func (c *Client) FileChangeHunks(
+	ctx context.Context,
+	session SurfaceSession,
+	fileChangeID string,
+	after string,
+	limit int,
+	contextLines int,
+	ignoreWhitespace bool,
+) (EvidenceHunkPage, error) {
+	var page EvidenceHunkPage
+	if err := requireEvidenceOwner(session); err != nil {
+		return page, err
+	}
+	query := url.Values{}
+	if after != "" {
+		query.Set("after", after)
+	}
+	if limit > 0 {
+		query.Set("limit", strconv.Itoa(limit))
+	}
+	query.Set("context", strconv.Itoa(contextLines))
+	query.Set("ignore_whitespace", strconv.FormatBool(ignoreWhitespace))
+	path := "/v1/file-changes/" + url.PathEscape(fileChangeID) +
+		"/hunks?" + query.Encode()
+	err := c.requestJSONWithOwner(
+		ctx, http.MethodGet, path, nil, &page, session.OwnerToken,
+	)
+	return page, err
+}
+
+func (c *Client) streamEvidenceContent(
+	ctx context.Context,
+	session SurfaceSession,
+	path string,
+	dst io.Writer,
+) (EvidenceAvailability, error) {
+	if err := requireEvidenceOwner(session); err != nil {
+		return EvidenceUnavailable, err
+	}
+	var offset int64
+	for {
+		query := url.Values{
+			"limit":  []string{strconv.FormatInt(evidenceRangePageSize, 10)},
+			"offset": []string{strconv.FormatInt(offset, 10)},
+		}
+		var page EvidenceContentPage
+		err := c.requestJSONWithOwner(
+			ctx,
+			http.MethodGet,
+			path+"?"+query.Encode(),
+			nil,
+			&page,
+			session.OwnerToken,
+		)
+		if err != nil {
+			return EvidenceUnavailable, err
+		}
+		if page.Availability != EvidenceAvailable {
+			return page.Availability, nil
+		}
+		if page.Range.Start != offset || page.Range.End < page.Range.Start ||
+			page.Range.End > page.Range.TotalBytes {
+			return EvidenceCorrupt, errors.New("gateway returned an invalid evidence range")
+		}
+		if page.Content != "" {
+			if _, err := io.WriteString(dst, page.Content); err != nil {
+				return EvidenceUnavailable, err
+			}
+		}
+		if page.Range.End >= page.Range.TotalBytes {
+			return page.Availability, nil
+		}
+		if page.Range.End == offset {
+			return EvidenceCorrupt, errors.New("gateway evidence range made no progress")
+		}
+		offset = page.Range.End
+	}
+}
+
+// StreamFileChangePatch exports only bounded Rust gateway range pages.
+func (c *Client) StreamFileChangePatch(
+	ctx context.Context,
+	session SurfaceSession,
+	fileChangeID string,
+	dst io.Writer,
+) (EvidenceAvailability, error) {
+	return c.streamEvidenceContent(
+		ctx,
+		session,
+		"/v1/file-changes/"+url.PathEscape(fileChangeID)+"/patch",
+		dst,
+	)
+}
+
+// StreamEvidenceResult exports a lossless result through bounded gateway pages.
+func (c *Client) StreamEvidenceResult(
+	ctx context.Context,
+	session SurfaceSession,
+	evidenceID string,
+	dst io.Writer,
+) (EvidenceAvailability, error) {
+	return c.streamEvidenceContent(
+		ctx,
+		session,
+		"/v1/evidence/results/"+url.PathEscape(evidenceID),
+		dst,
+	)
 }
 
 // Config returns the masked provider config and optimistic revision.

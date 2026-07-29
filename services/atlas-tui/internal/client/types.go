@@ -2,6 +2,119 @@ package client
 
 import "encoding/json"
 
+// EvidenceAvailability is the typed content state returned by the Rust
+// Evidence Plane. Empty content is never interpreted as available evidence.
+type EvidenceAvailability string
+
+const (
+	EvidenceAvailable   EvidenceAvailability = "available"
+	EvidenceRedacted    EvidenceAvailability = "redacted"
+	EvidencePartial     EvidenceAvailability = "partial"
+	EvidenceBinary      EvidenceAvailability = "binary"
+	EvidenceTooLarge    EvidenceAvailability = "too_large"
+	EvidenceCorrupt     EvidenceAvailability = "corrupt"
+	EvidenceUnavailable EvidenceAvailability = "unavailable"
+)
+
+// EvidenceProvenance identifies the durable execution owner for a change set.
+type EvidenceProvenance struct {
+	RunID         string  `json:"run_id"`
+	SessionID     string  `json:"session_id"`
+	TeamRunID     *string `json:"team_run_id"`
+	TurnID        *string `json:"turn_id"`
+	ActorID       *string `json:"actor_id"`
+	ParentActorID *string `json:"parent_actor_id"`
+	ToolCallID    *string `json:"tool_call_id"`
+}
+
+type EvidenceChangeSet struct {
+	ID             string             `json:"id"`
+	Provenance     EvidenceProvenance `json:"provenance"`
+	Coverage       string             `json:"coverage"`
+	Status         string             `json:"status"`
+	RedactionCount int                `json:"redaction_count"`
+	CreatedAt      string             `json:"created_at"`
+	FileCount      int                `json:"file_count"`
+	Additions      int                `json:"additions"`
+	Deletions      int                `json:"deletions"`
+}
+
+type EvidenceFileChange struct {
+	ID             string               `json:"id"`
+	ChangeSetID    string               `json:"change_set_id"`
+	Path           string               `json:"path"`
+	OldPath        *string              `json:"old_path"`
+	Operation      string               `json:"operation"`
+	Availability   EvidenceAvailability `json:"availability"`
+	BeforeSHA256   *string              `json:"before_sha256"`
+	AfterSHA256    *string              `json:"after_sha256"`
+	BeforeBytes    int64                `json:"before_bytes"`
+	AfterBytes     int64                `json:"after_bytes"`
+	Additions      int                  `json:"additions"`
+	Deletions      int                  `json:"deletions"`
+	Binary         bool                 `json:"binary"`
+	Generated      bool                 `json:"generated"`
+	ModeBefore     *string              `json:"mode_before"`
+	ModeAfter      *string              `json:"mode_after"`
+	RedactionCount int                  `json:"redaction_count"`
+}
+
+type EvidenceHunk struct {
+	ID             string `json:"id"`
+	FileChangeID   string `json:"file_change_id"`
+	HunkIndex      int    `json:"hunk_index"`
+	OldStart       int    `json:"old_start"`
+	OldLines       int    `json:"old_lines"`
+	NewStart       int    `json:"new_start"`
+	NewLines       int    `json:"new_lines"`
+	PatchStartByte int64  `json:"patch_start_byte"`
+	PatchBytes     int64  `json:"patch_bytes"`
+	Redacted       bool   `json:"redacted"`
+}
+
+type EvidenceChangeSetPage struct {
+	ChangeSets []EvidenceChangeSet `json:"change_sets"`
+	NextCursor string              `json:"next_cursor"`
+}
+
+type EvidenceFilePage struct {
+	Files      []EvidenceFileChange `json:"files"`
+	NextCursor string               `json:"next_cursor"`
+}
+
+type EvidenceHunkPage struct {
+	Hunks            []EvidenceHunk `json:"hunks"`
+	NextCursor       string         `json:"next_cursor"`
+	Context          int            `json:"context"`
+	IgnoreWhitespace bool           `json:"ignore_whitespace"`
+}
+
+type EvidenceContentPage struct {
+	Availability EvidenceAvailability `json:"availability"`
+	MediaType    string               `json:"media_type"`
+	SHA256       *string              `json:"sha256"`
+	Range        struct {
+		Start      int64 `json:"start"`
+		End        int64 `json:"end"`
+		TotalBytes int64 `json:"total_bytes"`
+	} `json:"range"`
+	Content string `json:"content"`
+}
+
+// EvidenceReceipt is the surface-neutral compact projection shared with the
+// Cockpit registry and atlas-terminal.
+type EvidenceReceipt struct {
+	UIKind       string               `json:"ui_kind"`
+	Operation    string               `json:"operation"`
+	Path         string               `json:"path"`
+	Additions    int                  `json:"additions"`
+	Deletions    int                  `json:"deletions"`
+	Actor        string               `json:"actor"`
+	DurationMS   int64                `json:"duration_ms"`
+	EvidenceID   string               `json:"evidence_id"`
+	Availability EvidenceAvailability `json:"availability"`
+}
+
 // ProviderConfig is the editable provider slice of GET /v1/config.
 type ProviderConfig struct {
 	Name            string  `json:"name"`

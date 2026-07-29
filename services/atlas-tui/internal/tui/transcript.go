@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"strings"
 
+	"atlas-tui/internal/client"
+
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -29,13 +31,22 @@ const (
 )
 
 type transcriptItem struct {
-	kind   itemKind
-	label  string // tool name, rule caption
-	text   string // main body, unstyled
-	detail string // secondary inline detail
-	status string // tool lifecycle: "running" | "done" | "failed"
-	callID string // audit tool_call_id for in-place completion
+	kind     itemKind
+	label    string // tool name, rule caption
+	text     string // main body, unstyled
+	detail   string // secondary inline detail
+	status   string // tool lifecycle: "running" | "done" | "failed"
+	callID   string // audit tool_call_id for in-place completion
+	evidence *client.EvidenceReceipt
 }
+
+type transcriptMode int
+
+const (
+	transcriptSummary transcriptMode = iota
+	transcriptNormal
+	transcriptVerbose
+)
 
 // renderTranscript renders all items wrapped to width, with block spacing:
 // conversation blocks (user/assistant/reasoning/error) breathe; activity
@@ -89,6 +100,9 @@ func renderItem(it transcriptItem, width int) string {
 			truncate(gl.bullet+" retrieval "+safeInline(joinNonEmpty(it.text, it.detail), 200), width),
 		)
 	case itemDiff:
+		if it.evidence != nil {
+			return renderEvidenceReceipt(*it.evidence, transcriptNormal, width)
+		}
 		return styleWarn.Render(truncate(gl.diffMark+" "+safeInline(joinNonEmpty(it.text, it.detail), 200), width))
 	case itemError:
 		return renderErrorItem(it, width)
@@ -101,6 +115,54 @@ func renderItem(it transcriptItem, width int) string {
 	default:
 		return ""
 	}
+}
+
+func evidenceOperationLabel(receipt client.EvidenceReceipt) string {
+	if receipt.UIKind != "file.change" {
+		return "EVIDENCE"
+	}
+	switch strings.ToLower(strings.TrimSpace(receipt.Operation)) {
+	case "create":
+		return "CREATED"
+	case "edit":
+		return "EDITED"
+	case "delete":
+		return "DELETED"
+	case "rename":
+		return "RENAMED"
+	default:
+		return "CHANGED"
+	}
+}
+
+// renderEvidenceReceipt is the compact, keyboard-native terminal projection.
+// It renders semantic metadata only; patch/result content remains behind the
+// bounded owner-authorized client methods.
+func renderEvidenceReceipt(
+	receipt client.EvidenceReceipt,
+	mode transcriptMode,
+	width int,
+) string {
+	label := evidenceOperationLabel(receipt)
+	parts := []string{
+		label,
+		orDash(receipt.Path),
+		fmt.Sprintf("+%d", receipt.Additions),
+		fmt.Sprintf("-%d", receipt.Deletions),
+	}
+	if mode != transcriptSummary {
+		parts = append(
+			parts,
+			orDash(receipt.Actor),
+			fmt.Sprintf("%d ms", receipt.DurationMS),
+		)
+	}
+	parts = append(parts, orDash(receipt.EvidenceID), string(receipt.Availability))
+	line := strings.Join(parts, " · ")
+	if mode == transcriptVerbose {
+		line += " · ui.kind=" + orDash(receipt.UIKind)
+	}
+	return styleWarn.Render(truncate(safeInline(line, 500), max(20, width)))
 }
 
 func renderUserItem(it transcriptItem, width int) string {
