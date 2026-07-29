@@ -229,3 +229,16 @@ def test_l3_tells_the_model_how_to_read_a_failed_tool_result():
     prompt = compilation.stable_prompt.decode("utf-8")
     assert '{"ok": false, ...}' in prompt
     assert "do not repeat the identical call" in prompt
+
+
+def test_core_requires_version_matched_grounding_and_read_only_delegation():
+    compilation = compile_prompt(bootstrap=_bootstrap(), context=_context())
+    prompt = " ".join(compilation.stable_prompt.decode("utf-8").split())
+
+    assert "installed version plus repository-local documentation or source" in prompt
+    assert "may still be loaded by framework convention" in prompt
+    assert "operator explicitly requests subagents" in prompt
+    assert "read-only constraint to each child" in prompt
+    assert "verify the project remained unchanged" in prompt
+    assert "same unstated premise" in prompt
+    assert "Starting a durable actor or team is not completing its task" in prompt
