@@ -54,6 +54,24 @@ function Assert-Unpublished([string]$Package) {
     return $true
 }
 
+function Wait-PublicNpmVersion(
+    [string]$Package,
+    [int]$Attempts = 18,
+    [int]$DelaySeconds = 5
+) {
+    for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+        $published = & npm view "$Package@$Version" version 2>$null
+        if ($LASTEXITCODE -eq 0 -and $published -and "$published".Trim() -eq $Version) {
+            return "$published".Trim()
+        }
+        if ($attempt -lt $Attempts) {
+            Write-Host "Waiting for npm registry propagation: $Package@$Version ($attempt/$Attempts)"
+            Start-Sleep -Seconds $DelaySeconds
+        }
+    }
+    throw "$Package@$Version was not readable from the public npm registry after $Attempts attempts"
+}
+
 if ($Mode -eq 'Prepare') {
     $dirty = @(git -C $repo status --porcelain)
     if ($dirty.Count -gt 0 -and -not $AllowDirty) {
@@ -115,9 +133,9 @@ if ($Mode -eq 'Publish') {
 }
 
 Invoke-Checked 'Verify public npm versions' {
-    $platformVersion = [string](npm view "$platformName@$Version" version)
-    $launcherVersion = [string](npm view "$launcherName@$Version" version)
-    if ($platformVersion.Trim() -ne $Version -or $launcherVersion.Trim() -ne $Version) {
+    $platformVersion = Wait-PublicNpmVersion $platformName
+    $launcherVersion = Wait-PublicNpmVersion $launcherName
+    if ($platformVersion -ne $Version -or $launcherVersion -ne $Version) {
         throw 'registry verification returned an unexpected version'
     }
 }
