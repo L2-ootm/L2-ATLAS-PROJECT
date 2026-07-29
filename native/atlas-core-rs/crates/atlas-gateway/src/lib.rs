@@ -19,7 +19,7 @@ use axum::{
     Json, Router,
 };
 use futures_util::stream::Stream;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -402,6 +402,350 @@ async fn run_events(
         "events": events,
         "next_cursor": cursor,
     })))
+}
+
+#[derive(Deserialize)]
+struct EvidenceAuditParams {
+    session_id: Option<String>,
+    run_id: Option<String>,
+    actor_id: Option<String>,
+    #[serde(rename = "type")]
+    event_type: Option<String>,
+    tool: Option<String>,
+    after: Option<String>,
+    limit: Option<i64>,
+}
+
+#[derive(Deserialize)]
+struct EvidencePageParams {
+    after: Option<String>,
+    limit: Option<i64>,
+}
+
+#[derive(Deserialize)]
+struct EvidenceHunkParams {
+    after: Option<String>,
+    limit: Option<i64>,
+    context: Option<i64>,
+    ignore_whitespace: Option<bool>,
+}
+
+#[derive(Deserialize)]
+struct EvidenceRangeParams {
+    offset: Option<u64>,
+    limit: Option<u64>,
+}
+
+#[derive(Serialize)]
+struct AuditEventsPage {
+    events: Vec<db::AuditEventRecord>,
+    next_cursor: Option<String>,
+}
+
+#[derive(Serialize)]
+struct ChangeSetsPage {
+    change_sets: Vec<db::ChangeSetRecord>,
+    next_cursor: Option<String>,
+}
+
+fn invalid_cursor() -> ApiError {
+    ApiError::Structured(
+        StatusCode::BAD_REQUEST,
+        json!({
+            "error": {
+                "code": "invalid_cursor",
+                "message": "cursor is malformed or belongs to another evidence feed"
+            }
+        }),
+    )
+}
+
+fn validate_evidence_cursor(cursor: Option<&str>) -> Result<(), ApiError> {
+    if let Some(value) = cursor {
+        db::EvidenceCursor::decode(value).map_err(|_| invalid_cursor())?;
+    }
+    Ok(())
+}
+
+async fn require_owned_run(
+    state: &AppState,
+    headers: &HeaderMap,
+    run_id: &str,
+) -> Result<String, ApiError> {
+    let path = state.db_path.clone();
+    let id = run_id.to_owned();
+    let owner = blocking(move || db::run_owner_session(&path, &id)).await?;
+    let Some(owner) = owner else {
+        return Err(ApiError::NotFound("run"));
+    };
+    let Some(session_id) = owner else {
+        return Err(ApiError::Structured(
+            StatusCode::FORBIDDEN,
+            json!({"error": {"code": "evidence_owner_unavailable",
+                             "message": "run has no owning surface session"}}),
+        ));
+    };
+    require_surface_owner(state, headers, &session_id).await?;
+    Ok(session_id)
+}
+
+async fn require_owned_change_set(
+    state: &AppState,
+    headers: &HeaderMap,
+    change_set_id: &str,
+) -> Result<String, ApiError> {
+    let path = state.db_path.clone();
+    let id = change_set_id.to_owned();
+    let session_id = blocking(move || db::change_set_owner_session(&path, &id))
+        .await?
+        .ok_or(ApiError::NotFound("change set"))?;
+    require_surface_owner(state, headers, &session_id).await?;
+    Ok(session_id)
+}
+
+async fn require_owned_file_change(
+    state: &AppState,
+    headers: &HeaderMap,
+    file_change_id: &str,
+) -> Result<String, ApiError> {
+    let path = state.db_path.clone();
+    let id = file_change_id.to_owned();
+    let session_id = blocking(move || db::file_change_owner_session(&path, &id))
+        .await?
+        .ok_or(ApiError::NotFound("file change"))?;
+    require_surface_owner(state, headers, &session_id).await?;
+    Ok(session_id)
+}
+
+async fn require_owned_result(
+    state: &AppState,
+    headers: &HeaderMap,
+    evidence_id: &str,
+) -> Result<String, ApiError> {
+    let path = state.db_path.clone();
+    let id = evidence_id.to_owned();
+    let session_id = blocking(move || db::result_owner_session(&path, &id))
+        .await?
+        .ok_or(ApiError::NotFound("evidence result"))?;
+    require_surface_owner(state, headers, &session_id).await?;
+    Ok(session_id)
+}
+
+async fn audit_events(
+    State(state): State<AppState>,
+    Query(params): Query<EvidenceAuditParams>,
+    headers: HeaderMap,
+) -> ApiResult {
+    let session_id = params
+        .session_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or(ApiError::BadRequest("session_id is required"))?
+        .to_owned();
+    require_surface_owner(&state, &headers, &session_id).await?;
+    validate_evidence_cursor(params.after.as_deref())?;
+    let path = state.db_path.clone();
+    let after = params.after.clone();
+    let filters = db::AuditEventFilters {
+        run_id: params.run_id,
+        session_id: Some(session_id),
+        actor_id: params.actor_id,
+        event_type: params.event_type,
+        tool_name: params.tool,
+    };
+    let limit = clamp_limit(params.limit, 200, 1_000);
+    let (events, next_cursor) =
+        blocking(move || db::list_audit_events(&path, &filters, after.as_deref(), limit)).await?;
+    Ok(Json(
+        serde_json::to_value(AuditEventsPage {
+            events,
+            next_cursor,
+        })
+        .map_err(|error| ApiError::Internal(error.to_string()))?,
+    ))
+}
+
+async fn run_change_sets(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    Query(params): Query<EvidencePageParams>,
+    headers: HeaderMap,
+) -> ApiResult {
+    require_owned_run(&state, &headers, &id).await?;
+    validate_evidence_cursor(params.after.as_deref())?;
+    let path = state.db_path.clone();
+    let after = params.after.clone();
+    let scope = db::ChangeSetScope::Run(id);
+    let limit = clamp_limit(params.limit, 100, 1_000);
+    let (change_sets, next_cursor) =
+        blocking(move || db::list_change_sets(&path, &scope, after.as_deref(), limit)).await?;
+    Ok(Json(
+        serde_json::to_value(ChangeSetsPage {
+            change_sets,
+            next_cursor,
+        })
+        .map_err(|error| ApiError::Internal(error.to_string()))?,
+    ))
+}
+
+async fn change_set_detail(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    headers: HeaderMap,
+) -> ApiResult {
+    let session_id = require_owned_change_set(&state, &headers, &id).await?;
+    let path = state.db_path.clone();
+    let change_set_id = id.clone();
+    let change_set = blocking(move || db::get_change_set(&path, &session_id, &change_set_id))
+        .await?
+        .ok_or(ApiError::NotFound("change set"))?;
+    Ok(Json(json!({"change_set": change_set})))
+}
+
+async fn change_set_files(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    Query(params): Query<EvidencePageParams>,
+    headers: HeaderMap,
+) -> ApiResult {
+    require_owned_change_set(&state, &headers, &id).await?;
+    validate_evidence_cursor(params.after.as_deref())?;
+    let path = state.db_path.clone();
+    let after = params.after.clone();
+    let limit = clamp_limit(params.limit, 100, 1_000);
+    let (files, next_cursor) =
+        blocking(move || db::list_file_changes(&path, &id, after.as_deref(), limit)).await?;
+    Ok(Json(json!({"files": files, "next_cursor": next_cursor})))
+}
+
+async fn file_change_hunks(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    Query(params): Query<EvidenceHunkParams>,
+    headers: HeaderMap,
+) -> ApiResult {
+    require_owned_file_change(&state, &headers, &id).await?;
+    validate_evidence_cursor(params.after.as_deref())?;
+    let context = params.context.unwrap_or(3);
+    if !(0..=50).contains(&context) {
+        return Err(ApiError::BadRequest("context must be between 0 and 50"));
+    }
+    let path = state.db_path.clone();
+    let after = params.after.clone();
+    let limit = clamp_limit(params.limit, 100, 1_000);
+    let (hunks, next_cursor) =
+        blocking(move || db::list_hunks(&path, &id, after.as_deref(), limit)).await?;
+    Ok(Json(json!({
+        "hunks": hunks,
+        "next_cursor": next_cursor,
+        "context": context,
+        "ignore_whitespace": params.ignore_whitespace.unwrap_or(false),
+    })))
+}
+
+fn content_response(page: db::ContentPage) -> Result<Response, ApiError> {
+    let mut availability = page.availability.clone();
+    let content = if page.bytes.is_empty() {
+        None
+    } else {
+        match String::from_utf8(page.bytes) {
+            Ok(content) => Some(content),
+            Err(_) => {
+                availability = "binary".into();
+                None
+            }
+        }
+    };
+    let mut body = json!({
+        "availability": availability,
+        "media_type": page.media_type,
+        "sha256": page.sha256,
+        "range": {
+            "start": page.start,
+            "end": page.end,
+            "total_bytes": page.total_bytes,
+        }
+    });
+    if let Some(content) = content {
+        body["content"] = Value::String(content);
+    }
+    let partial = page.start > 0 || page.end < page.total_bytes;
+    let mut response = (
+        if partial {
+            StatusCode::PARTIAL_CONTENT
+        } else {
+            StatusCode::OK
+        },
+        Json(body),
+    )
+        .into_response();
+    if let Some(sha256) = page.sha256 {
+        if let Ok(etag) = HeaderValue::from_str(&format!("\"{sha256}\"")) {
+            response.headers_mut().insert(header::ETAG, etag);
+        }
+    }
+    if page.end > page.start {
+        if let Ok(value) = HeaderValue::from_str(&format!(
+            "bytes {}-{}/{}",
+            page.start,
+            page.end - 1,
+            page.total_bytes
+        )) {
+            response.headers_mut().insert(header::CONTENT_RANGE, value);
+        }
+    }
+    Ok(response)
+}
+
+async fn file_change_patch(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    Query(params): Query<EvidenceRangeParams>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    let session_id = require_owned_file_change(&state, &headers, &id).await?;
+    let range = db::ContentRange::new(params.offset.unwrap_or(0), params.limit.unwrap_or(16_384))
+        .map_err(|_| ApiError::BadRequest("range limit must be between 1 and 65536"))?;
+    let path = state.db_path.clone();
+    let page = blocking(move || db::get_file_patch(&path, &session_id, &id, range))
+        .await?
+        .ok_or(ApiError::NotFound("file patch"))?;
+    content_response(page)
+}
+
+async fn evidence_result(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    Query(params): Query<EvidenceRangeParams>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    let session_id = require_owned_result(&state, &headers, &id).await?;
+    let range = db::ContentRange::new(params.offset.unwrap_or(0), params.limit.unwrap_or(16_384))
+        .map_err(|_| ApiError::BadRequest("range limit must be between 1 and 65536"))?;
+    let path = state.db_path.clone();
+    let page = blocking(move || db::get_result_range(&path, &session_id, &id, range))
+        .await?
+        .ok_or(ApiError::NotFound("evidence result"))?;
+    content_response(page)
+}
+
+async fn surface_actor_history(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    Query(params): Query<EvidencePageParams>,
+    headers: HeaderMap,
+) -> ApiResult {
+    require_surface_owner(&state, &headers, &id).await?;
+    validate_evidence_cursor(params.after.as_deref())?;
+    let path = state.db_path.clone();
+    let after = params.after.clone();
+    let session_id = id;
+    let limit = clamp_limit(params.limit, 100, 1_000);
+    let (actors, next_cursor) =
+        blocking(move || db::list_actor_history(&path, &session_id, after.as_deref(), limit))
+            .await?;
+    Ok(Json(json!({"actors": actors, "next_cursor": next_cursor})))
 }
 
 #[derive(Deserialize)]
@@ -3556,6 +3900,13 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/runs/{id}", get(run_detail))
         .route("/v1/runs/{id}/events", get(run_events))
         .route("/v1/runs/{id}/stream", get(run_stream))
+        .route("/v1/audit/events", get(audit_events))
+        .route("/v1/runs/{id}/change-sets", get(run_change_sets))
+        .route("/v1/change-sets/{id}", get(change_set_detail))
+        .route("/v1/change-sets/{id}/files", get(change_set_files))
+        .route("/v1/file-changes/{id}/hunks", get(file_change_hunks))
+        .route("/v1/file-changes/{id}/patch", get(file_change_patch))
+        .route("/v1/evidence/results/{id}", get(evidence_result))
         .route("/v1/wiki/pages", get(wiki_pages).post(wiki_create))
         .route(
             "/v1/wiki/pages/{slug}",
@@ -3613,6 +3964,10 @@ pub fn app(state: AppState) -> Router {
         )
         .route("/v1/surface-sessions/{id}", get(surface_get))
         .route("/v1/surface-sessions/{id}/events", get(surface_events))
+        .route(
+            "/v1/surface-sessions/{id}/actors",
+            get(surface_actor_history),
+        )
         .route("/v1/surface-sessions/{id}/messages", get(surface_messages))
         .route(
             "/v1/surface-sessions/{session_id}/approvals",

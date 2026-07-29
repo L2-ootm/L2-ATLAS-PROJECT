@@ -124,6 +124,7 @@ fn invalid_input(message: impl Into<String>) -> DbError {
 pub struct AuditEventFilters {
     pub run_id: Option<String>,
     pub session_id: Option<String>,
+    pub actor_id: Option<String>,
     pub event_type: Option<String>,
     pub tool_name: Option<String>,
 }
@@ -1105,10 +1106,11 @@ pub fn list_audit_events(
          WHERE rowid > ?1
            AND (?2 IS NULL OR run_id = ?2)
            AND (?3 IS NULL OR session_id = ?3)
-           AND (?4 IS NULL OR event_type = ?4)
-           AND (?5 IS NULL OR tool_name = ?5)
+           AND (?4 IS NULL OR json_extract(data,'$.actor_id') = ?4)
+           AND (?5 IS NULL OR event_type = ?5)
+           AND (?6 IS NULL OR tool_name = ?6)
          ORDER BY rowid
-         LIMIT ?6",
+         LIMIT ?7",
     )?;
     let rows = statement
         .query_map(
@@ -1116,6 +1118,7 @@ pub fn list_audit_events(
                 after_rowid,
                 filters.run_id,
                 filters.session_id,
+                filters.actor_id,
                 filters.event_type,
                 filters.tool_name,
                 evidence_limit(limit),
@@ -1231,6 +1234,60 @@ pub fn get_change_set(
          GROUP BY cs.id",
         rusqlite::params![change_set_id, session_id],
         change_set_row,
+    )
+    .optional()
+    .map_err(Into::into)
+}
+
+pub fn run_owner_session(path: &Path, run_id: &str) -> Result<Option<Option<String>>, DbError> {
+    let conn = open_ro(path)?;
+    conn.query_row("SELECT session_id FROM runs WHERE id=?1", [run_id], |row| {
+        row.get::<_, Option<String>>(0)
+    })
+    .optional()
+    .map_err(Into::into)
+}
+
+pub fn change_set_owner_session(
+    path: &Path,
+    change_set_id: &str,
+) -> Result<Option<String>, DbError> {
+    let conn = open_ro(path)?;
+    conn.query_row(
+        "SELECT session_id FROM evidence_change_sets WHERE id=?1",
+        [change_set_id],
+        |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .map_err(Into::into)
+}
+
+pub fn file_change_owner_session(
+    path: &Path,
+    file_change_id: &str,
+) -> Result<Option<String>, DbError> {
+    let conn = open_ro(path)?;
+    conn.query_row(
+        "SELECT cs.session_id
+         FROM evidence_file_changes fc
+         JOIN evidence_change_sets cs ON cs.id=fc.change_set_id
+         WHERE fc.id=?1",
+        [file_change_id],
+        |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .map_err(Into::into)
+}
+
+pub fn result_owner_session(path: &Path, evidence_id: &str) -> Result<Option<String>, DbError> {
+    let conn = open_ro(path)?;
+    conn.query_row(
+        "SELECT r.session_id
+         FROM evidence_full_results fr
+         JOIN runs r ON r.id=fr.run_id
+         WHERE fr.id=?1",
+        [evidence_id],
+        |row| row.get::<_, String>(0),
     )
     .optional()
     .map_err(Into::into)
@@ -1358,8 +1415,8 @@ pub fn get_file_patch(
     let conn = open_ro(path)?;
     let metadata = conn
         .query_row(
-            "SELECT fc.availability,fc.patch_blob_id,b.size_bytes,b.sha256,b.media_type,
-                    b.chunk_size
+            "SELECT fc.availability,fc.binary,fc.patch_blob_id,b.size_bytes,b.sha256,
+                    b.media_type,b.chunk_size
              FROM evidence_file_changes fc
              JOIN evidence_change_sets cs ON cs.id=fc.change_set_id
              LEFT JOIN evidence_blobs b ON b.id=fc.patch_blob_id
@@ -1367,14 +1424,18 @@ pub fn get_file_patch(
             rusqlite::params![file_change_id, session_id],
             |row| {
                 Ok(BlobMetadata {
-                    availability: row.get(0)?,
-                    blob_id: row.get(1)?,
-                    total_bytes: row.get::<_, Option<i64>>(2)?.unwrap_or_default() as u64,
-                    sha256: row.get(3)?,
+                    availability: if row.get::<_, i64>(1)? != 0 {
+                        "binary".into()
+                    } else {
+                        row.get(0)?
+                    },
+                    blob_id: row.get(2)?,
+                    total_bytes: row.get::<_, Option<i64>>(3)?.unwrap_or_default() as u64,
+                    sha256: row.get(4)?,
                     media_type: row
-                        .get::<_, Option<String>>(4)?
+                        .get::<_, Option<String>>(5)?
                         .unwrap_or_else(|| "text/x-diff".into()),
-                    chunk_size: row.get::<_, Option<i64>>(5)?.unwrap_or(65_536) as u64,
+                    chunk_size: row.get::<_, Option<i64>>(6)?.unwrap_or(65_536) as u64,
                 })
             },
         )
@@ -1461,12 +1522,21 @@ fn read_blob_range(
             }
         }
     }
+    let expected = (end - start) as usize;
+    let availability = if metadata.blob_id.is_some() && bytes.len() != expected {
+        bytes.clear();
+        "corrupt".to_string()
+    } else if metadata.blob_id.is_none() && metadata.availability == "available" {
+        "corrupt".to_string()
+    } else {
+        metadata.availability
+    };
     Ok(ContentPage {
         bytes,
         total_bytes: metadata.total_bytes,
         start,
         end,
-        availability: metadata.availability,
+        availability,
         sha256: metadata.sha256,
         media_type: metadata.media_type,
     })

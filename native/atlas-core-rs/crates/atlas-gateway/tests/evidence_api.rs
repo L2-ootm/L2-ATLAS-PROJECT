@@ -292,8 +292,12 @@ async fn evidence_api_routes_enforce_owner_bounds_etags_and_pagination() {
     let dir = tempfile::tempdir().unwrap();
     let router = test_app(seeded_evidence_db(&dir));
 
-    let (status, _, body) =
-        get(&router, "/v1/audit/events?session_id=surface-1&limit=1", None).await;
+    let (status, _, body) = get(
+        &router,
+        "/v1/audit/events?session_id=surface-1&limit=1",
+        None,
+    )
+    .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(body["error"]["code"], "surface_owner_mismatch");
 
