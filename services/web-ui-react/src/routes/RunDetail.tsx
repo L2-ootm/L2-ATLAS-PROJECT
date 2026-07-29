@@ -21,6 +21,8 @@ import {
 import { projectAuditEvents } from '../lib/logProjection';
 import { createTopoField, type TopoFieldAPI } from '../topo/topoEngine';
 import { useAgentSurface } from '../context/AgentSurfaceContext';
+import { EvidenceInspector } from '../components/evidence/EvidenceInspector';
+import { FileChangeReceipt } from '../components/evidence/FileChangeReceipt';
 
 function isActive(status: string): boolean {
 	const s = status.toUpperCase();
@@ -313,17 +315,17 @@ export default function RunDetail() {
 				/>
 			)}
 
-			{selectedEvidence && (
-				<div role="dialog" aria-label="Evidence inspector">
-					<GlassPanel glow="info" style={{ padding: 14, marginBottom: 12 }}>
-						<div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-							<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 12 }}>
-								EVIDENCE INSPECTOR · {selectedEvidence.path}
-							</span>
-							<button type="button" onClick={() => setSelectedEvidence(null)}>CLOSE</button>
-						</div>
-					</GlassPanel>
-				</div>
+			{selectedEvidence && agentSurface.session && (
+				<EvidenceInspector
+					file={selectedEvidence}
+					ownerToken={agentSurface.session.owner_token}
+					provenance={{
+						actorId: null,
+						runId: run?.id ?? id,
+						toolCallId: null
+					}}
+					onClose={() => setSelectedEvidence(null)}
+				/>
 			)}
 
 			{/* controls */}
@@ -500,30 +502,12 @@ export function RunEvidenceReceipts({
 			<HudLabel>CHANGE EVIDENCE</HudLabel>
 			<div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
 				{files.map((file) => (
-					<button
+					<FileChangeReceipt
 						key={file.id}
-						type="button"
-						aria-label={`Inspect ${file.path}`}
-						onClick={() => onInspect(file)}
-						style={{
-							display: 'grid',
-							gridTemplateColumns: '90px minmax(0, 1fr) auto auto auto',
-							gap: 10,
-							textAlign: 'left',
-							padding: '8px 10px',
-							border: '1px solid var(--l2-hairline)',
-							background: 'rgba(8,10,15,0.5)',
-							color: 'var(--l2-fg-2)',
-							fontFamily: 'var(--l2-font-mono)',
-							cursor: 'pointer'
-						}}
-					>
-						<span>{file.operation.toUpperCase()}</span>
-						<span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{file.path}</span>
-						<span style={{ color: 'var(--l2-good)' }}>+{file.additions}</span>
-						<span style={{ color: 'var(--l2-error)' }}>−{file.deletions}</span>
-						<span>{file.actor_id ?? 'operator'}</span>
-					</button>
+						file={file}
+						actorId={file.actor_id}
+						onInspect={onInspect}
+					/>
 				))}
 			</div>
 		</GlassPanel>
