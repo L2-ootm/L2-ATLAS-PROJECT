@@ -1,13 +1,10 @@
 //! Evidence Plane API contracts for Phase 10.8 plan 08.
 
-use atlas_gateway::db::{
-    self, AuditEventFilters, ChangeSetScope, ContentRange, EvidenceCursor,
-};
+use atlas_gateway::db::{self, AuditEventFilters, ChangeSetScope, ContentRange, EvidenceCursor};
 use std::path::{Path, PathBuf};
 
 const MIGRATION_0001: &str = include_str!("../../../../../infra/migrations/0001_core.sql");
-const MIGRATION_0006: &str =
-    include_str!("../../../../../infra/migrations/0006_agent_runtime.sql");
+const MIGRATION_0006: &str = include_str!("../../../../../infra/migrations/0006_agent_runtime.sql");
 const MIGRATION_0016: &str =
     include_str!("../../../../../infra/migrations/0016_surface_sessions.sql");
 const MIGRATION_0019: &str =
@@ -115,9 +112,7 @@ fn seeded_evidence_db(dir: &tempfile::TempDir) -> PathBuf {
 
 fn query_plan(path: &Path, sql: &str, params: &[&dyn rusqlite::ToSql]) -> String {
     let conn = rusqlite::Connection::open(path).unwrap();
-    let mut statement = conn
-        .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
-        .unwrap();
+    let mut statement = conn.prepare(&format!("EXPLAIN QUERY PLAN {sql}")).unwrap();
     statement
         .query_map(params, |row| row.get::<_, String>(3))
         .unwrap()
@@ -145,30 +140,27 @@ fn evidence_db_cursor_pages_are_stable_bounded_and_indexed() {
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].id, "event-1");
     let (second, _) =
-        db::list_audit_events(&path, &AuditEventFilters::default(), next.as_deref(), 5000)
-            .unwrap();
+        db::list_audit_events(&path, &AuditEventFilters::default(), next.as_deref(), 5000).unwrap();
     assert_eq!(
-        second.iter().map(|event| event.id.as_str()).collect::<Vec<_>>(),
+        second
+            .iter()
+            .map(|event| event.id.as_str())
+            .collect::<Vec<_>>(),
         ["event-2"]
     );
 
-    let (sets, set_cursor) = db::list_change_sets(
-        &path,
-        &ChangeSetScope::Run("run-1".into()),
-        None,
-        5000,
-    )
-    .unwrap();
+    let (sets, set_cursor) =
+        db::list_change_sets(&path, &ChangeSetScope::Run("run-1".into()), None, 5000).unwrap();
     assert_eq!(sets.len(), 1);
     assert_eq!(sets[0].id, "change-1");
     assert!(EvidenceCursor::decode(set_cursor.as_deref().unwrap()).is_ok());
 
     let (files, _) = db::list_file_changes(&path, "change-1", None, 5000).unwrap();
     assert_eq!(files.len(), 2);
-    assert!(!files[0].contains_key("patch"));
+    assert!(files[0].get("patch").is_none());
     let (hunks, _) = db::list_hunks(&path, "file-1", None, 5000).unwrap();
     assert_eq!(hunks.len(), 1);
-    assert!(!hunks[0].contains_key("patch"));
+    assert!(hunks[0].get("patch").is_none());
 
     let assertions = [
         (
@@ -231,7 +223,10 @@ fn evidence_db_content_ranges_and_owner_scopes_are_explicit() {
     .unwrap()
     .unwrap();
     assert_eq!(result.bytes, b"4567");
-    assert_eq!(result.sha256.as_deref(), Some("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"));
+    assert_eq!(
+        result.sha256.as_deref(),
+        Some("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+    );
 
     assert!(db::get_result_range(
         &path,

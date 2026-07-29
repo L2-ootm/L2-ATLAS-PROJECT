@@ -1,7 +1,8 @@
 //! Read-only SQLite access for the gateway (D-022: reads direct, writes via
 //! the `atlas` CLI contract — no business logic here, only row → JSON).
 
-use rusqlite::{Connection, OpenFlags};
+use rusqlite::{Connection, OpenFlags, OptionalExtension};
+use serde::Serialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -31,6 +32,174 @@ impl From<rusqlite::Error> for DbError {
     fn from(e: rusqlite::Error) -> Self {
         DbError::Failed(e.to_string())
     }
+}
+
+const MAX_EVIDENCE_PAGE: i64 = 1_000;
+const MAX_CONTENT_RANGE: u64 = 64 * 1024;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EvidenceCursor {
+    pub sort_key: String,
+    pub id: String,
+}
+
+impl EvidenceCursor {
+    pub fn new(sort_key: impl Into<String>, id: impl Into<String>) -> Self {
+        Self {
+            sort_key: sort_key.into(),
+            id: id.into(),
+        }
+    }
+
+    pub fn encode(&self) -> String {
+        format!(
+            "v1:{}:{}",
+            hex_encode(self.sort_key.as_bytes()),
+            hex_encode(self.id.as_bytes())
+        )
+    }
+
+    pub fn decode(value: &str) -> Result<Self, DbError> {
+        let mut parts = value.split(':');
+        if parts.next() != Some("v1") {
+            return Err(invalid_input("cursor must use the v1 evidence format"));
+        }
+        let sort_key = parts
+            .next()
+            .ok_or_else(|| invalid_input("cursor is missing its sort key"))?;
+        let id = parts
+            .next()
+            .ok_or_else(|| invalid_input("cursor is missing its identity"))?;
+        if parts.next().is_some() {
+            return Err(invalid_input("cursor contains unexpected fields"));
+        }
+        Ok(Self {
+            sort_key: hex_decode(sort_key)?,
+            id: hex_decode(id)?,
+        })
+    }
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        output.push(HEX[(byte >> 4) as usize] as char);
+        output.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    output
+}
+
+fn hex_decode(value: &str) -> Result<String, DbError> {
+    if !value.len().is_multiple_of(2) {
+        return Err(invalid_input("cursor has invalid hex"));
+    }
+    let mut bytes = Vec::with_capacity(value.len() / 2);
+    for pair in value.as_bytes().chunks_exact(2) {
+        let high = hex_nibble(pair[0])?;
+        let low = hex_nibble(pair[1])?;
+        bytes.push((high << 4) | low);
+    }
+    String::from_utf8(bytes).map_err(|_| invalid_input("cursor contains invalid UTF-8"))
+}
+
+fn hex_nibble(value: u8) -> Result<u8, DbError> {
+    match value {
+        b'0'..=b'9' => Ok(value - b'0'),
+        b'a'..=b'f' => Ok(value - b'a' + 10),
+        b'A'..=b'F' => Ok(value - b'A' + 10),
+        _ => Err(invalid_input("cursor has invalid hex")),
+    }
+}
+
+fn evidence_limit(limit: i64) -> i64 {
+    limit.clamp(1, MAX_EVIDENCE_PAGE)
+}
+
+fn invalid_input(message: impl Into<String>) -> DbError {
+    DbError::Failed(format!("invalid input: {}", message.into()))
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct AuditEventFilters {
+    pub run_id: Option<String>,
+    pub session_id: Option<String>,
+    pub event_type: Option<String>,
+    pub tool_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AuditEventRecord {
+    pub cursor: String,
+    pub id: String,
+    pub run_id: String,
+    pub session_id: Option<String>,
+    pub event_type: String,
+    pub tool_name: Option<String>,
+    pub timestamp: String,
+    pub duration_ms: Option<i64>,
+    pub data: Value,
+    pub policy_result: Option<String>,
+    pub task_id: Option<String>,
+    pub tool_call_id: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub enum ChangeSetScope {
+    Run(String),
+    Session(String),
+    TeamRun(String),
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ChangeSetRecord {
+    pub id: String,
+    pub run_id: String,
+    pub session_id: Option<String>,
+    pub team_run_id: Option<String>,
+    pub turn_id: Option<String>,
+    pub actor_id: Option<String>,
+    pub parent_actor_id: Option<String>,
+    pub tool_call_id: Option<String>,
+    pub coverage: String,
+    pub status: String,
+    pub redaction_count: i64,
+    pub created_at: String,
+    pub file_count: i64,
+    pub additions: i64,
+    pub deletions: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ContentRange {
+    pub start: u64,
+    pub length: u64,
+}
+
+impl ContentRange {
+    pub fn new(start: u64, length: u64) -> Result<Self, DbError> {
+        if length == 0 || length > MAX_CONTENT_RANGE {
+            return Err(invalid_input(format!(
+                "range length must be between 1 and {MAX_CONTENT_RANGE} bytes"
+            )));
+        }
+        start
+            .checked_add(length)
+            .ok_or_else(|| invalid_input("range overflows u64"))?;
+        Ok(Self { start, length })
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ContentPage {
+    #[serde(skip)]
+    pub bytes: Vec<u8>,
+    pub total_bytes: u64,
+    pub start: u64,
+    pub end: u64,
+    pub availability: String,
+    pub sha256: Option<String>,
+    pub media_type: String,
 }
 
 fn open_ro(path: &Path) -> Result<Connection, DbError> {
@@ -911,6 +1080,460 @@ pub fn list_events(
         })
         .collect();
     Ok((events, cursor))
+}
+
+/// Cross-run audit feed ordered by the database-global rowid. The opaque
+/// cursor never compares rowids from different databases or per-run feeds.
+pub fn list_audit_events(
+    path: &Path,
+    filters: &AuditEventFilters,
+    after: Option<&str>,
+    limit: i64,
+) -> Result<(Vec<AuditEventRecord>, Option<String>), DbError> {
+    let conn = open_ro(path)?;
+    let after_rowid = match after {
+        Some(cursor) => EvidenceCursor::decode(cursor)?
+            .sort_key
+            .parse::<i64>()
+            .map_err(|_| invalid_input("audit cursor is not numeric"))?,
+        None => 0,
+    };
+    let mut statement = conn.prepare(
+        "SELECT rowid,id,run_id,session_id,event_type,tool_name,timestamp,
+                duration_ms,data,policy_result,task_id,tool_call_id
+         FROM audit_events
+         WHERE rowid > ?1
+           AND (?2 IS NULL OR run_id = ?2)
+           AND (?3 IS NULL OR session_id = ?3)
+           AND (?4 IS NULL OR event_type = ?4)
+           AND (?5 IS NULL OR tool_name = ?5)
+         ORDER BY rowid
+         LIMIT ?6",
+    )?;
+    let rows = statement
+        .query_map(
+            rusqlite::params![
+                after_rowid,
+                filters.run_id,
+                filters.session_id,
+                filters.event_type,
+                filters.tool_name,
+                evidence_limit(limit),
+            ],
+            |row| {
+                let rowid = row.get::<_, i64>(0)?;
+                let id = row.get::<_, String>(1)?;
+                let raw_data = row.get::<_, String>(8)?;
+                Ok((
+                    rowid,
+                    AuditEventRecord {
+                        cursor: EvidenceCursor::new(rowid.to_string(), &id).encode(),
+                        id,
+                        run_id: row.get(2)?,
+                        session_id: row.get(3)?,
+                        event_type: row.get(4)?,
+                        tool_name: row.get(5)?,
+                        timestamp: row.get(6)?,
+                        duration_ms: row.get(7)?,
+                        data: serde_json::from_str(&raw_data).unwrap_or(Value::String(raw_data)),
+                        policy_result: row.get(9)?,
+                        task_id: row.get(10)?,
+                        tool_call_id: row.get(11)?,
+                    },
+                ))
+            },
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let next = rows
+        .last()
+        .map(|(rowid, event)| EvidenceCursor::new(rowid.to_string(), &event.id).encode());
+    Ok((rows.into_iter().map(|(_, event)| event).collect(), next))
+}
+
+pub fn list_change_sets(
+    path: &Path,
+    scope: &ChangeSetScope,
+    after: Option<&str>,
+    limit: i64,
+) -> Result<(Vec<ChangeSetRecord>, Option<String>), DbError> {
+    let conn = open_ro(path)?;
+    let cursor = after
+        .map(EvidenceCursor::decode)
+        .transpose()?
+        .unwrap_or_else(|| EvidenceCursor::new("", ""));
+    let (column, scope_id) = match scope {
+        ChangeSetScope::Run(id) => ("run_id", id),
+        ChangeSetScope::Session(id) => ("session_id", id),
+        ChangeSetScope::TeamRun(id) => ("team_run_id", id),
+    };
+    // column is selected from a closed enum above, never user input.
+    let sql = format!(
+        "SELECT cs.id,cs.run_id,cs.session_id,cs.team_run_id,cs.turn_id,
+                cs.actor_id,cs.parent_actor_id,cs.tool_call_id,cs.coverage,
+                cs.status,cs.redaction_count,cs.created_at,
+                COUNT(fc.id),COALESCE(SUM(fc.additions),0),
+                COALESCE(SUM(fc.deletions),0)
+         FROM evidence_change_sets cs
+         LEFT JOIN evidence_file_changes fc ON fc.change_set_id=cs.id
+         WHERE cs.{column}=?1 AND (cs.created_at,cs.id) > (?2,?3)
+         GROUP BY cs.id
+         ORDER BY cs.created_at,cs.id
+         LIMIT ?4"
+    );
+    let mut statement = conn.prepare(&sql)?;
+    let rows = statement
+        .query_map(
+            rusqlite::params![scope_id, cursor.sort_key, cursor.id, evidence_limit(limit)],
+            change_set_row,
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let next = rows
+        .last()
+        .map(|item| EvidenceCursor::new(&item.created_at, &item.id).encode());
+    Ok((rows, next))
+}
+
+fn change_set_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChangeSetRecord> {
+    Ok(ChangeSetRecord {
+        id: row.get(0)?,
+        run_id: row.get(1)?,
+        session_id: row.get(2)?,
+        team_run_id: row.get(3)?,
+        turn_id: row.get(4)?,
+        actor_id: row.get(5)?,
+        parent_actor_id: row.get(6)?,
+        tool_call_id: row.get(7)?,
+        coverage: row.get(8)?,
+        status: row.get(9)?,
+        redaction_count: row.get(10)?,
+        created_at: row.get(11)?,
+        file_count: row.get(12)?,
+        additions: row.get(13)?,
+        deletions: row.get(14)?,
+    })
+}
+
+pub fn get_change_set(
+    path: &Path,
+    session_id: &str,
+    change_set_id: &str,
+) -> Result<Option<ChangeSetRecord>, DbError> {
+    let conn = open_ro(path)?;
+    conn.query_row(
+        "SELECT cs.id,cs.run_id,cs.session_id,cs.team_run_id,cs.turn_id,
+                cs.actor_id,cs.parent_actor_id,cs.tool_call_id,cs.coverage,
+                cs.status,cs.redaction_count,cs.created_at,
+                COUNT(fc.id),COALESCE(SUM(fc.additions),0),
+                COALESCE(SUM(fc.deletions),0)
+         FROM evidence_change_sets cs
+         LEFT JOIN evidence_file_changes fc ON fc.change_set_id=cs.id
+         WHERE cs.id=?1 AND cs.session_id=?2
+         GROUP BY cs.id",
+        rusqlite::params![change_set_id, session_id],
+        change_set_row,
+    )
+    .optional()
+    .map_err(Into::into)
+}
+
+pub fn list_file_changes(
+    path: &Path,
+    change_set_id: &str,
+    after: Option<&str>,
+    limit: i64,
+) -> Result<(Vec<Value>, Option<String>), DbError> {
+    let conn = open_ro(path)?;
+    let cursor = after
+        .map(EvidenceCursor::decode)
+        .transpose()?
+        .unwrap_or_else(|| EvidenceCursor::new("", ""));
+    let mut statement = conn.prepare(
+        "SELECT id,path,old_path,operation,availability,before_sha256,after_sha256,
+                before_bytes,after_bytes,additions,deletions,binary,generated,
+                mode_before,mode_after,redaction_count
+         FROM evidence_file_changes
+         WHERE change_set_id=?1 AND id>?2
+         ORDER BY id
+         LIMIT ?3",
+    )?;
+    let rows = statement
+        .query_map(
+            rusqlite::params![change_set_id, cursor.id, evidence_limit(limit)],
+            |row| {
+                let id = row.get::<_, String>(0)?;
+                Ok((
+                    id.clone(),
+                    json!({
+                        "id": id,
+                        "change_set_id": change_set_id,
+                        "path": row.get::<_, String>(1)?,
+                        "old_path": row.get::<_, Option<String>>(2)?,
+                        "operation": row.get::<_, String>(3)?,
+                        "availability": row.get::<_, String>(4)?,
+                        "before_sha256": row.get::<_, Option<String>>(5)?,
+                        "after_sha256": row.get::<_, Option<String>>(6)?,
+                        "before_bytes": row.get::<_, i64>(7)?,
+                        "after_bytes": row.get::<_, i64>(8)?,
+                        "additions": row.get::<_, i64>(9)?,
+                        "deletions": row.get::<_, i64>(10)?,
+                        "binary": row.get::<_, i64>(11)? != 0,
+                        "generated": row.get::<_, i64>(12)? != 0,
+                        "mode_before": row.get::<_, Option<String>>(13)?,
+                        "mode_after": row.get::<_, Option<String>>(14)?,
+                        "redaction_count": row.get::<_, i64>(15)?,
+                    }),
+                ))
+            },
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let next = rows
+        .last()
+        .map(|(id, _)| EvidenceCursor::new("", id).encode());
+    Ok((rows.into_iter().map(|(_, value)| value).collect(), next))
+}
+
+pub fn list_hunks(
+    path: &Path,
+    file_change_id: &str,
+    after: Option<&str>,
+    limit: i64,
+) -> Result<(Vec<Value>, Option<String>), DbError> {
+    let conn = open_ro(path)?;
+    let after_index = after
+        .map(EvidenceCursor::decode)
+        .transpose()?
+        .map(|cursor| {
+            cursor
+                .sort_key
+                .parse::<i64>()
+                .map_err(|_| invalid_input("hunk cursor is not numeric"))
+        })
+        .transpose()?
+        .unwrap_or(-1);
+    let mut statement = conn.prepare(
+        "SELECT id,hunk_index,old_start,old_lines,new_start,new_lines,
+                patch_start_byte,patch_bytes,redacted
+         FROM evidence_hunks
+         WHERE file_change_id=?1 AND hunk_index>?2
+         ORDER BY hunk_index
+         LIMIT ?3",
+    )?;
+    let rows = statement
+        .query_map(
+            rusqlite::params![file_change_id, after_index, evidence_limit(limit)],
+            |row| {
+                let id = row.get::<_, String>(0)?;
+                let index = row.get::<_, i64>(1)?;
+                Ok((
+                    index,
+                    id.clone(),
+                    json!({
+                        "id": id,
+                        "file_change_id": file_change_id,
+                        "hunk_index": index,
+                        "old_start": row.get::<_, i64>(2)?,
+                        "old_lines": row.get::<_, i64>(3)?,
+                        "new_start": row.get::<_, i64>(4)?,
+                        "new_lines": row.get::<_, i64>(5)?,
+                        "patch_start_byte": row.get::<_, i64>(6)?,
+                        "patch_bytes": row.get::<_, i64>(7)?,
+                        "redacted": row.get::<_, i64>(8)? != 0,
+                    }),
+                ))
+            },
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let next = rows
+        .last()
+        .map(|(index, id, _)| EvidenceCursor::new(index.to_string(), id).encode());
+    Ok((rows.into_iter().map(|(_, _, value)| value).collect(), next))
+}
+
+pub fn get_file_patch(
+    path: &Path,
+    session_id: &str,
+    file_change_id: &str,
+    range: ContentRange,
+) -> Result<Option<ContentPage>, DbError> {
+    let conn = open_ro(path)?;
+    let metadata = conn
+        .query_row(
+            "SELECT fc.availability,fc.patch_blob_id,b.size_bytes,b.sha256,b.media_type,
+                    b.chunk_size
+             FROM evidence_file_changes fc
+             JOIN evidence_change_sets cs ON cs.id=fc.change_set_id
+             LEFT JOIN evidence_blobs b ON b.id=fc.patch_blob_id
+             WHERE fc.id=?1 AND cs.session_id=?2",
+            rusqlite::params![file_change_id, session_id],
+            |row| {
+                Ok(BlobMetadata {
+                    availability: row.get(0)?,
+                    blob_id: row.get(1)?,
+                    total_bytes: row.get::<_, Option<i64>>(2)?.unwrap_or_default() as u64,
+                    sha256: row.get(3)?,
+                    media_type: row
+                        .get::<_, Option<String>>(4)?
+                        .unwrap_or_else(|| "text/x-diff".into()),
+                    chunk_size: row.get::<_, Option<i64>>(5)?.unwrap_or(65_536) as u64,
+                })
+            },
+        )
+        .optional()?;
+    metadata
+        .map(|metadata| read_blob_range(&conn, metadata, range))
+        .transpose()
+}
+
+pub fn get_result_range(
+    path: &Path,
+    session_id: &str,
+    evidence_id: &str,
+    range: ContentRange,
+) -> Result<Option<ContentPage>, DbError> {
+    let conn = open_ro(path)?;
+    let metadata = conn
+        .query_row(
+            "SELECT fr.availability,fr.blob_id,fr.full_bytes,fr.sha256,fr.media_type,
+                    b.chunk_size
+             FROM evidence_full_results fr
+             JOIN runs r ON r.id=fr.run_id
+             LEFT JOIN evidence_blobs b ON b.id=fr.blob_id
+             WHERE fr.id=?1 AND r.session_id=?2",
+            rusqlite::params![evidence_id, session_id],
+            |row| {
+                Ok(BlobMetadata {
+                    availability: row.get(0)?,
+                    blob_id: row.get(1)?,
+                    total_bytes: row.get::<_, i64>(2)? as u64,
+                    sha256: row.get(3)?,
+                    media_type: row.get(4)?,
+                    chunk_size: row.get::<_, Option<i64>>(5)?.unwrap_or(65_536) as u64,
+                })
+            },
+        )
+        .optional()?;
+    metadata
+        .map(|metadata| read_blob_range(&conn, metadata, range))
+        .transpose()
+}
+
+struct BlobMetadata {
+    availability: String,
+    blob_id: Option<String>,
+    total_bytes: u64,
+    sha256: Option<String>,
+    media_type: String,
+    chunk_size: u64,
+}
+
+fn read_blob_range(
+    conn: &Connection,
+    metadata: BlobMetadata,
+    range: ContentRange,
+) -> Result<ContentPage, DbError> {
+    let start = range.start.min(metadata.total_bytes);
+    let end = range
+        .start
+        .saturating_add(range.length)
+        .min(metadata.total_bytes);
+    let mut bytes = Vec::with_capacity((end - start) as usize);
+    if let Some(blob_id) = metadata.blob_id.as_deref() {
+        if start < end {
+            let first_chunk = start / metadata.chunk_size;
+            let last_chunk = (end - 1) / metadata.chunk_size;
+            let mut statement = conn.prepare(
+                "SELECT chunk_index,content FROM evidence_blob_chunks
+                 WHERE blob_id=?1 AND chunk_index BETWEEN ?2 AND ?3
+                 ORDER BY chunk_index",
+            )?;
+            let chunks = statement.query_map(
+                rusqlite::params![blob_id, first_chunk as i64, last_chunk as i64],
+                |row| Ok((row.get::<_, u64>(0)?, row.get::<_, Vec<u8>>(1)?)),
+            )?;
+            for chunk in chunks {
+                let (index, content) = chunk?;
+                let chunk_start = index * metadata.chunk_size;
+                let local_start = start.saturating_sub(chunk_start) as usize;
+                let local_end = (end.saturating_sub(chunk_start) as usize).min(content.len());
+                if local_start < local_end {
+                    bytes.extend_from_slice(&content[local_start..local_end]);
+                }
+            }
+        }
+    }
+    Ok(ContentPage {
+        bytes,
+        total_bytes: metadata.total_bytes,
+        start,
+        end,
+        availability: metadata.availability,
+        sha256: metadata.sha256,
+        media_type: metadata.media_type,
+    })
+}
+
+pub fn list_actor_history(
+    path: &Path,
+    session_id: &str,
+    after: Option<&str>,
+    limit: i64,
+) -> Result<(Vec<Value>, Option<String>), DbError> {
+    let conn = open_ro(path)?;
+    let cursor = after
+        .map(EvidenceCursor::decode)
+        .transpose()?
+        .unwrap_or_else(|| EvidenceCursor::new("", ""));
+    let mut statement = conn.prepare(
+        "SELECT id,parent_run_id,parent_actor_id,session_id,role,goal,model,mode,
+                status,workspace_root,depth,child_run_id,result_preview,error,
+                created_at,started_at,finished_at,updated_at
+         FROM actors
+         WHERE session_id=?1 AND (created_at,id)>(?2,?3)
+         ORDER BY created_at,id
+         LIMIT ?4",
+    )?;
+    let rows = statement
+        .query_map(
+            rusqlite::params![
+                session_id,
+                cursor.sort_key,
+                cursor.id,
+                evidence_limit(limit)
+            ],
+            |row| {
+                let id = row.get::<_, String>(0)?;
+                let created_at = row.get::<_, String>(14)?;
+                Ok((
+                    created_at.clone(),
+                    id.clone(),
+                    json!({
+                        "id": id,
+                        "parent_run_id": row.get::<_, String>(1)?,
+                        "parent_actor_id": row.get::<_, Option<String>>(2)?,
+                        "session_id": row.get::<_, Option<String>>(3)?,
+                        "role": row.get::<_, String>(4)?,
+                        "goal": row.get::<_, String>(5)?,
+                        "model": row.get::<_, Option<String>>(6)?,
+                        "mode": row.get::<_, String>(7)?,
+                        "status": row.get::<_, String>(8)?,
+                        "workspace_root": row.get::<_, Option<String>>(9)?,
+                        "depth": row.get::<_, i64>(10)?,
+                        "child_run_id": row.get::<_, Option<String>>(11)?,
+                        "result_preview": row.get::<_, Option<String>>(12)?,
+                        "error": row.get::<_, Option<String>>(13)?,
+                        "created_at": created_at,
+                        "started_at": row.get::<_, Option<String>>(15)?,
+                        "finished_at": row.get::<_, Option<String>>(16)?,
+                        "updated_at": row.get::<_, String>(17)?,
+                    }),
+                ))
+            },
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let next = rows
+        .last()
+        .map(|(created_at, id, _)| EvidenceCursor::new(created_at, id).encode());
+    Ok((rows.into_iter().map(|(_, _, value)| value).collect(), next))
 }
 
 /// Quote the whole input as a single FTS5 phrase with `""` doubling — the
