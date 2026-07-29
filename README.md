@@ -34,57 +34,133 @@ npm install --global @systemsl2/atlas
 
 ## What ATLAS is
 
-ATLAS turns an evolved Hermes foundation into an L2-owned operator runtime. It joins
-agent execution with an audit ledger, mission and run state, approval-gated tools,
-persistent knowledge, provider routing, and a WebUI cockpit. The product is designed
-so every meaningful action can be traced from intent to tool call, output, and
-verification.
+ATLAS is a local workspace for running AI agents as part of real, organized work.
+Instead of keeping your conversations, tools, tasks, files, and results in separate
+places, ATLAS brings them together in one system.
+
+You give ATLAS a goal. It can break that goal into work, use the tools you allow,
+coordinate more than one agent, keep useful context between sessions, and show you
+what happened. Important actions can require your approval, and ATLAS keeps a record
+of the request, the action, the result, and the checks that followed.
+
+ATLAS is built for work that lasts longer than a single chat. It is closer to an AI
+operations desk than a chatbot: the chat is one way to control the system, while the
+missions, saved knowledge, tools, approvals, and history continue behind it.
 
 <p align="center">
   <img src="docs/media/atlas-cockpit.png" width="880" alt="The ATLAS cockpit — Observatory view">
 </p>
 
-## Capabilities
+## What problem it solves
+
+Most AI tools are good at answering one message. Longer work is harder:
+
+- the agent forgets why a decision was made;
+- work is split across chats and terminal windows;
+- tool calls happen without a clear review trail;
+- restarting the app can interrupt an unfinished task;
+- several agents can duplicate work or lose track of ownership;
+- useful project knowledge stays buried in old conversations.
+
+ATLAS gives those pieces a shared home. A mission has a goal, runs, messages,
+artifacts, approvals, and a visible history. This makes it easier to continue work,
+inspect a result, recover after a failure, and understand what the AI actually did.
+
+## What ATLAS can do
+
+- **Run goal-based missions** — Start with an outcome instead of managing every
+  prompt. Missions can pause, resume, and continue until their completion checks are
+  satisfied.
+- **Keep conversations and work state** — Messages, runs, results, and relevant
+  knowledge can survive restarts instead of disappearing with one terminal session.
+- **Coordinate agents and teams** — Create focused agents, give them separate work,
+  steer active work, and collect their results in one place.
+- **Use tools with approval controls** — Read-only work can flow quickly while
+  sensitive or changing actions can wait for an operator decision.
+- **Record what happened** — ATLAS keeps an audit trail for missions, tool requests,
+  approvals, outputs, failures, and verification.
+- **Connect to different model providers** — Use supported cloud providers, local
+  models, or operator-installed runtimes such as Codex without tying the whole system
+  to one model company.
+- **Build useful project memory** — Ingest documentation and notes into a searchable
+  wiki and knowledge graph, with source information kept alongside the content.
+- **Work from the cockpit or terminal** — The browser cockpit, terminal interface,
+  and command-line tools use the same runtime and saved state.
+
+## A simple example
+
+Suppose you ask ATLAS to prepare a software release.
+
+1. ATLAS creates a mission for the release outcome.
+2. It reads the project state and gathers the relevant checks.
+3. Separate agents can inspect tests, installation, documentation, and release files.
+4. A risky action, such as publishing or deleting data, waits for approval.
+5. Test results and produced files are attached to the run.
+6. If the process stops, the mission can resume from saved state.
+7. The ledger shows what was requested, what ran, what changed, and whether the final
+   verification passed.
+
+The same structure can support research, company operations, knowledge maintenance,
+content work, or any other workflow that benefits from clear goals and traceable
+actions.
+
+## How it fits together
+
+ATLAS has four main parts:
+
+| Part | In plain language |
+|---|---|
+| Runtime | Runs missions, agents, tools, approvals, and background work |
+| Saved state | Stores goals, runs, messages, configuration, and the audit history |
+| Knowledge | Turns approved sources into a wiki and searchable project memory |
+| Surfaces | Lets you control the same system from the browser, terminal, or scripts |
+
+The Rust gateway handles the local API and new infrastructure. Python remains where
+the Hermes-based agent and model integrations need it. The installer ships the
+required runtime pieces together, so normal users do not need to assemble each part
+by hand.
+
+## Main capabilities
 
 <table>
   <tr>
     <td width="33%" valign="top">
       <img src="docs/media/atlas-feature-actors.png" alt="Durable actors">
-      <br><strong>Durable actors</strong><br>
-      Persistent subagent supervision — spawn is idempotent, terminal transitions are
-      monotonic, and detached results are delivered exactly once across crashes.
+      <br><strong>Agents that survive interruptions</strong><br>
+      ATLAS tracks active agents and their results so work can recover cleanly after
+      a restart or process failure.
     </td>
     <td width="33%" valign="top">
       <img src="docs/media/atlas-feature-goal.png" alt="Goal-driven missions">
       <br><strong>Goal-driven missions</strong><br>
-      A Command Center of focus, goals, and tasks. Autonomous <code>/goal</code> loops
-      run to judge-gated completion with pause, resume, and mark-concluded.
+      Use <code>/goal</code> to work toward an outcome with clear completion checks,
+      pause and resume support, and a visible mission history.
     </td>
     <td width="33%" valign="top">
       <img src="docs/media/atlas-feature-audit.png" alt="Audit ledger">
       <br><strong>Audit ledger</strong><br>
-      Structured missions and runs, tool approvals, artifacts, and append-oriented
-      operational evidence — every action on the record.
+      Review missions, runs, tool approvals, files, results, and failures in one
+      traceable record.
     </td>
   </tr>
   <tr>
     <td width="33%" valign="top">
       <img src="docs/media/atlas-feature-surfaces.png" alt="Three surfaces">
       <br><strong>One system, three surfaces</strong><br>
-      A chat-first WebUI cockpit, a terminal UI, and a scriptable CLI over the same
-      runtime and the same audited state.
+      Use the browser cockpit, terminal interface, or scriptable CLI without creating
+      three separate sources of truth.
     </td>
     <td width="33%" valign="top">
       <img src="docs/media/atlas-feature-mesh.png" alt="Provider mesh">
-      <br><strong>Provider mesh</strong><br>
-      Route across API-key, OAuth, local, and sidecar model providers. Optional Claude
-      and Codex SDK runtimes install and uninstall on demand.
+      <br><strong>Choice of AI providers</strong><br>
+      Connect API-key, sign-in, local, and separately installed model providers.
+      Optional Claude and Codex support stays separate from the base install.
     </td>
     <td width="33%" valign="top">
       <img src="docs/media/atlas-feature-modules.png" alt="Module framework">
-      <br><strong>Extensible modules</strong><br>
-      Bundled modules ship with releases; operator and agent modules live under
-      <code>ATLAS_HOME/modules</code> and survive updates.
+      <br><strong>Modules you can keep</strong><br>
+      Releases include built-in modules. Your own modules live under
+      <code>ATLAS_HOME/modules</code> and remain in place when ATLAS updates.
     </td>
   </tr>
 </table>
@@ -93,6 +169,17 @@ verification.
   graph the agent can read and write, and configurable graph scopes.
 - **Native direction** — the gateway and new infrastructure are Rust-first; the Hermes
   plugin surface and LLM adapters remain Python where that boundary is useful.
+
+## Who ATLAS is for
+
+ATLAS is currently aimed at developers, technical operators, founders, researchers,
+and power users who want an AI system they can inspect and control. It is especially
+useful when work spans many steps, tools, agents, or sessions.
+
+It is not yet a finished consumer assistant or a hosted service that hides every
+technical detail. This is an open research preview. You should expect to review
+approvals, inspect important outputs, and avoid sensitive production data until the
+remaining platform and clean-machine checks are complete.
 
 ## Installation
 
@@ -107,10 +194,10 @@ to it. Application versions live outside the source repository and outside live
 operator state. `atlas update` replaces the launcher/runtime version while preserving
 the database, configuration, credentials, wiki, logs, and user modules.
 
-The published package contains an embedded Python runtime, the Rust gateway, terminal
-UI, compiled WebUI, runtime services, and bundled modules. Node.js 20+ and npm are the
-only prerequisites; Git, Python, Go, and Rust are not required. Source developers can
-still use the PowerShell bootstrap:
+The published Windows package contains an embedded Python runtime, the Rust gateway,
+terminal UI, compiled WebUI, runtime services, and bundled modules. Node.js 20+ and
+npm are the only prerequisites; Git, Python, Go, and Rust are not required. Source
+developers can still use the PowerShell bootstrap:
 
 ```powershell
 $f="$env:TEMP\atlas-install.ps1"; (irm https://raw.githubusercontent.com/L2-ootm/L2-ATLAS-PROJECT/main/install/install.ps1) | Set-Content -Path $f -Encoding UTF8; powershell -ExecutionPolicy Bypass -File $f
@@ -130,6 +217,21 @@ atlas
 
 `atlas up` starts the local gateway and cockpit. `atlas` opens the terminal surface.
 Mock Mode supports the core demo path without a provider API key.
+
+## What happens to your data
+
+ATLAS separates the application files from your working data:
+
+- application versions are installed in a versioned application directory;
+- configuration, credentials, the database, logs, wiki content, and personal modules
+  live under `ATLAS_HOME`;
+- updates install and verify a new application version before switching to it;
+- rollback can return to the previous verified application version;
+- uninstall keeps operator state unless you explicitly request a validated purge.
+
+ATLAS is local-first, but model providers and connected tools may send the information
+needed for a request to their own services. Review each provider and tool before using
+private data.
 
 ## Update model
 
@@ -162,10 +264,14 @@ remains available to `atlas rollback`.
 ## Trust and project status
 
 ATLAS is intentionally honest about unfinished work. The Windows x64 npm packages are
-published and passed an anonymous-registry isolated install UAT; the repository is
-public. Independent clean-Windows and future cross-version update/rollback UAT remain
-recommended. Repository cleanup and the configured full-history secret scan are
-complete. Release status is tracked in
+published and passed anonymous-registry isolated install checks. On 2026-07-28, the
+public `latest` tag (`0.1.1`) was installed again in isolated application and state
+directories and passed the package manifest and install-only doctor checks. The
+repository release candidate is `0.1.3`, so `main` is currently ahead of the public
+npm release. Linux and macOS bundles and their installer path exist but still need
+independent clean-machine acceptance before they should be treated as equally proven.
+Repository cleanup and the configured full-history secret scan are complete. Release
+status is tracked in
 [`docs/release/RELEASE_CHECKLIST.md`](docs/release/RELEASE_CHECKLIST.md); internal
 planning/session state is deliberately excluded from the public repository.
 
