@@ -4,32 +4,48 @@ import { Search, X } from 'lucide-react';
 import { Page } from '../components/Page';
 import { GlassPanel } from '../components/hud';
 import TopoInput from '../components/TopoInput';
-import { listRuns, getRunEvents, type AuditEvent } from '../lib/api';
+import { listAuditEvidence, type AuditEvent, type EvidenceAuditEvent } from '../lib/api';
 import { useGatewayHealth } from '../lib/useGatewayHealth';
 import { projectAuditEvents, type AuditLogItem } from '../lib/logProjection';
 import sealMark from '../brand/assets/seal.webp';
+import { useAgentSurface } from '../context/AgentSurfaceContext';
 
 // ── Ledger — /audit — the cross-run forensic explorer ────────────────────────
-// "Every action accounted for." A unified, filterable view across recent runs'
-// audit events. INTERIM data source (HARNESS-WIRING §5): the gateway has no
-// GET /v1/audit/events yet, so this fans out listRuns → getRunEvents and flattens,
-// bounded by RUN_FANOUT × EVENTS_PER_RUN. Replace with the real endpoint when it
-// ships — the table/drawer/filter UI is endpoint-agnostic.
-
-const RUN_FANOUT = 40; // recent runs to scan
-const EVENTS_PER_RUN = 80; // cap per run so a hot run can't dominate
+// "Every action accounted for." One owner-scoped database-global cursor feed;
+// opaque gateway cursors are only passed back to the gateway, never compared.
 
 /** An audit event joined to the run + mission it belongs to (ledger row shape). */
 interface LedgerEvent extends AuditEvent {
 	mission_title: string;
+	evidence_cursor: string;
 }
 
 type Load =
 	| { s: 'loading' }
-	// `unreadable` / `scanned`: partial fan-out failures. For an audit surface a
-	// silently truncated log is worse than an error, so the count is rendered.
-	| { s: 'ready'; events: LedgerEvent[]; unreadable: number; scanned: number }
+	| {
+			s: 'ready';
+			events: LedgerEvent[];
+			nextCursor: string | null;
+			warnings: number;
+	  }
 	| { s: 'error' };
+
+function evidenceState(event: { data: unknown }): string | null {
+	if (!event.data || typeof event.data !== 'object') return null;
+	const raw = (event.data as Record<string, unknown>).evidence;
+	if (!raw || typeof raw !== 'object') return null;
+	const evidence = raw as Record<string, unknown>;
+	const coverage = typeof evidence.coverage === 'string' ? evidence.coverage : '';
+	const status = typeof evidence.status === 'string'
+		? evidence.status
+		: typeof evidence.capture_status === 'string'
+			? evidence.capture_status
+			: '';
+	const complete = coverage === '' || coverage === 'complete';
+	const available = status === '' || ['captured', 'available', 'succeeded'].includes(status);
+	if (complete && available) return null;
+	return [coverage, status].filter(Boolean).join(' · ') || 'partial';
+}
 
 function rel(iso: string): string {
 	const t = Date.parse(iso);
@@ -62,37 +78,51 @@ export default function Ledger() {
 	const [refetching, setRefetching] = useState(false);
 	const { epoch } = useGatewayHealth();
 	const nav = useNavigate();
+	const { session } = useAgentSurface();
+	const sessionId = session?.id;
+	const ownerToken = session?.owner_token;
 
-	const refresh = useCallback(async () => {
+	const loadPage = useCallback(async (after?: string) => {
+		if (!sessionId || !ownerToken) {
+			setLoad({ s: 'error' });
+			return;
+		}
 		setRefetching(true);
 		try {
-			const { runs } = await listRuns(RUN_FANOUT);
-			const settled = await Promise.allSettled(
-				runs.map((r) => getRunEvents(r.id, 0, EVENTS_PER_RUN))
-			);
-			const events: LedgerEvent[] = [];
-			let unreadable = 0;
-			settled.forEach((res, i) => {
-				if (res.status !== 'fulfilled') {
-					unreadable += 1;
-					return;
-				}
-				for (const ev of res.value.events) {
-					events.push({ ...ev, mission_title: runs[i].mission_title });
-				}
+			const page = await listAuditEvidence(sessionId, ownerToken, {
+				after,
+				limit: 200
 			});
-			events.sort((a, b) => b.cursor - a.cursor);
-			setLoad({ s: 'ready', events, unreadable, scanned: runs.length });
+			setLoad((current) => {
+				const prior = after && current.s === 'ready' ? current.events : [];
+				const events = page.events.map((event: EvidenceAuditEvent, index): LedgerEvent => ({
+					...event,
+					// logProjection only needs a local ordinal for burst grouping and
+					// stable DOM identity. The opaque evidence cursor remains separate.
+					cursor: prior.length + index + 1,
+					evidence_cursor: event.cursor,
+					mission_title: event.session_id
+						? `Surface ${event.session_id.slice(0, 8)}`
+						: 'Unowned session'
+				}));
+				const combined = [...prior, ...events];
+				return {
+					s: 'ready',
+					events: combined,
+					nextCursor: page.next_cursor,
+					warnings: combined.filter((event) => evidenceState(event) !== null).length
+				};
+			});
 		} catch {
 			setLoad({ s: 'error' });
 		} finally {
 			setRefetching(false);
 		}
-	}, []);
+	}, [ownerToken, sessionId]);
 
 	useEffect(() => {
-		void refresh();
-	}, [refresh, epoch]);
+		void loadPage();
+	}, [loadPage, epoch]);
 
 	const eventTypes = useMemo(() => {
 		if (load.s !== 'ready') return ['ALL'];
@@ -161,8 +191,8 @@ export default function Ledger() {
 				))}
 			</div>
 
-			{/* An audit trail that silently omits runs is worse than one that errors. */}
-			{load.s === 'ready' && load.unreadable > 0 && (
+			{/* Partial/unreadable evidence remains visible and explicitly counted. */}
+			{load.s === 'ready' && load.warnings > 0 && (
 				<div
 					role="alert"
 					style={{
@@ -173,11 +203,11 @@ export default function Ledger() {
 					}}
 				>
 					<span>
-						INCOMPLETE TRAIL — {load.unreadable} OF {load.scanned} RUNS UNREADABLE
+						INCOMPLETE TRAIL — {load.warnings} ROWS CONTAIN PARTIAL OR UNAVAILABLE EVIDENCE
 					</span>
 					<button
 						type="button"
-						onClick={() => void refresh()}
+						onClick={() => void loadPage()}
 						disabled={refetching}
 						style={{
 							marginLeft: 'auto', padding: '4px 10px', borderRadius: 2,
@@ -213,6 +243,18 @@ export default function Ledger() {
 						</div>
 					))}
 			</GlassPanel>
+
+			{load.s === 'ready' && load.nextCursor && (
+				<button
+					type="button"
+					aria-label="Load more audit events"
+					onClick={() => void loadPage(load.nextCursor ?? undefined)}
+					disabled={refetching}
+					style={{ ...ghostBtn, width: '100%', marginTop: 10 }}
+				>
+					{refetching ? 'LOADING…' : 'LOAD MORE AUDIT EVENTS'}
+				</button>
+			)}
 
 			{selected && (
 				<Drawer item={selected} onClose={() => setSelected(null)} onOpenRun={(id) => nav(`/runs/${id}`)} />
@@ -250,6 +292,7 @@ function Header() {
 function Row({ item, i, onClick }: { item: AuditLogItem<LedgerEvent>; i: number; onClick: () => void }) {
 	const ev = item.event;
 	const tone = eventTone(ev);
+	const warning = evidenceState(ev);
 	return (
 		<div
 			role="button"
@@ -271,7 +314,7 @@ function Row({ item, i, onClick }: { item: AuditLogItem<LedgerEvent>; i: number;
 			onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
 		>
 			<span style={{ ...mono(11, 'var(--l2-fg-3)'), fontVariantNumeric: 'tabular-nums' }}>
-				#{ev.cursor}
+				{ev.evidence_cursor.slice(0, 8)}
 			</span>
 			<span style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 9 }}>
 				<span style={{ width: 6, height: 6, borderRadius: '50%', background: tone, boxShadow: `0 0 7px ${tone}`, flexShrink: 0 }} />
@@ -281,6 +324,7 @@ function Row({ item, i, onClick }: { item: AuditLogItem<LedgerEvent>; i: number;
 					</div>
 					<div style={{ fontSize: 11.5, color: 'var(--l2-fg-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
 						{ev.mission_title} · {ev.run_id.slice(0, 8)}{item.count > 1 ? ` · ${item.charCount.toLocaleString()} chars` : ''}
+						{warning ? ` · ${warning.toUpperCase()}` : ''}
 					</div>
 				</span>
 			</span>
@@ -367,8 +411,8 @@ function Drawer({ item, onClose, onOpenRun }: { item: AuditLogItem<LedgerEvent>;
 	})();
 	const rows: Array<[string, string]> = [
 		['Event type', item.count > 1 ? `${ev.event_type} ×${item.count}` : ev.event_type],
-		['Cursor', `#${ev.cursor}`],
-		...(item.count > 1 ? [['Cursor range', `#${item.firstCursor}–#${item.lastCursor}`] as [string, string]] : []),
+		['Cursor', ev.evidence_cursor],
+		...(item.count > 1 ? [['Loaded row range', `#${item.firstCursor}–#${item.lastCursor}`] as [string, string]] : []),
 		['Run', ev.run_id],
 		['Mission', ev.mission_title],
 		['Tool', ev.tool_name ?? '—'],
