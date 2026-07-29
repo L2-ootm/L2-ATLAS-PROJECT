@@ -84,6 +84,17 @@ export const TOOL_PRESENTATION_REGISTRY: Record<ToolUiKind, PresentationSpec> = 
 	}
 };
 
+const LEGACY_TOOL_KINDS: Record<string, ToolUiKind> = {
+	read: 'file.read',
+	grep: 'search',
+	glob: 'search',
+	ls: 'search',
+	edit: 'file.change',
+	multiedit: 'file.change',
+	write: 'file.change',
+	bash: 'shell'
+};
+
 function knownKind(value: string | undefined): ToolUiKind {
 	return value && value in TOOL_PRESENTATION_REGISTRY
 		? (value as ToolUiKind)
@@ -95,7 +106,12 @@ export function resolveToolPresentation(input: {
 	manifest?: Pick<ToolManifest, 'ui' | 'renderer'>;
 	input?: unknown;
 }): ResolvedToolPresentation {
-	const kind = knownKind(input.manifest?.ui?.kind ?? input.manifest?.renderer);
+	const toolName = input.toolName?.trim().toLowerCase() ?? '';
+	const kind = knownKind(
+		input.manifest?.ui?.kind ??
+			input.manifest?.renderer ??
+			LEGACY_TOOL_KINDS[toolName]
+	);
 	const spec = TOOL_PRESENTATION_REGISTRY[kind];
 	const args = asRecord(input.input);
 	return {

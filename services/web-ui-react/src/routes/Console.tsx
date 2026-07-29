@@ -13,7 +13,6 @@ import {
 	Columns3,
 	CopyPlus,
 	FilePen,
-	FilePlus2,
 	FileText,
 	Folder,
 	FolderOpen,
@@ -22,7 +21,6 @@ import {
 	Grip,
 	GripVertical,
 	LayoutGrid,
-	ListTree,
 	MessageSquare,
 	MousePointer2,
 	Search,
@@ -52,7 +50,10 @@ import {
 	type ToolManifest,
 	type Project
 } from '../lib/api';
-import { resolveToolPresentation } from '../lib/toolPresentation';
+import {
+	resolveToolPresentation,
+	type ToolUiKind
+} from '../lib/toolPresentation';
 import {
 	finalGoalJudgementState,
 	isRunTerminalEvent,
@@ -1744,20 +1745,16 @@ function AuditPane({ events }: { events: ConsoleChatEvent[] }) {
 
 // ── Tool-calling inline rendering (Claude-Code-style cards) ─────────────────
 
-const TOOL_ICON: Record<string, React.ElementType> = {
-	read: FileText,
-	grep: Search,
-	glob: FolderSearch,
-	ls: ListTree,
-	edit: FilePen,
-	multiedit: FilePen,
-	write: FilePlus2,
-	bash: SquareTerminal
+const PRESENTATION_ICON: Record<ToolUiKind, React.ElementType> = {
+	'file.read': FileText,
+	'file.change': FilePen,
+	search: Search,
+	shell: SquareTerminal,
+	generic: Wrench
 };
 
-function toolIcon(name: string | null | undefined): React.ElementType {
-	if (!name) return Wrench;
-	return TOOL_ICON[name.toLowerCase()] ?? Wrench;
+function presentationIcon(kind: ToolUiKind): React.ElementType {
+	return PRESENTATION_ICON[kind];
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -1812,13 +1809,13 @@ export function ToolCallCard({
 	manifest?: ToolManifest;
 }) {
 	const [open, setOpen] = useState(false);
-	const Icon = toolIcon(event.tool_name);
 	const name = (event.tool_name ?? 'tool').toUpperCase();
 	const presentation = resolveToolPresentation({
 		toolName: event.tool_name,
 		manifest,
 		input: event.input
 	});
+	const Icon = presentationIcon(presentation.kind);
 	const summary = presentation.summary;
 	const failed = result?.type === 'failure' || result?.is_error === true;
 	const done = !!result && !failed;
