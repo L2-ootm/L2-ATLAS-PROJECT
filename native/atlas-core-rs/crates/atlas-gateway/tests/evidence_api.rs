@@ -60,7 +60,12 @@ fn seeded_evidence_db(dir: &tempfile::TempDir) -> PathBuf {
             (id, run_id, session_id, event_type, tool_name, timestamp, data)
         VALUES
             ('event-1', 'run-1', 'surface-1', 'tool_call', 'write_file',
-             '2026-07-29T10:00:01Z', '{"evidence_id":"change-1"}'),
+             '2026-07-29T10:00:01Z',
+             '{"evidence":{"change_set_id":"change-1","capture_status":"captured",
+               "coverage":"complete","file_count":2,"additions":2,"deletions":1,
+               "patch":"SSE-MUST-NOT-LEAK-PATCH",
+               "blob":"SSE-MUST-NOT-LEAK-BLOB",
+               "hunks":[{"content":"SSE-MUST-NOT-LEAK-HUNK"}]}}'),
             ('event-2', 'run-2', 'surface-1', 'artifact', 'write_file',
              '2026-07-29T10:02:01Z', '{"evidence_id":"change-2"}');
         INSERT INTO evidence_blobs
@@ -415,4 +420,34 @@ async fn evidence_api_distinguishes_every_unavailable_state() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(actors["actors"][0]["id"], "actor-1");
+}
+
+#[tokio::test]
+async fn evidence_sse_is_metadata_only_and_bounded() {
+    let dir = tempfile::tempdir().unwrap();
+    let router = test_app(seeded_evidence_db(&dir));
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri("/v1/runs/run-1/stream")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let stream = String::from_utf8(body.to_vec()).unwrap();
+    assert!(stream.contains("\"change_set_id\":\"change-1\""));
+    assert!(stream.contains("\"actor_id\":\"actor-1\""));
+    assert!(stream.contains("\"file_count\":2"));
+    assert!(!stream.contains("SSE-MUST-NOT-LEAK-PATCH"));
+    assert!(!stream.contains("SSE-MUST-NOT-LEAK-BLOB"));
+    assert!(!stream.contains("SSE-MUST-NOT-LEAK-HUNK"));
+    assert!(
+        stream.len() < 4 * 1024,
+        "metadata stream was {} bytes",
+        stream.len()
+    );
+    assert!(stream.contains("event: end"));
 }
