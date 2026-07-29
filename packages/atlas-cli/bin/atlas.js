@@ -2,6 +2,7 @@
 'use strict';
 
 const path = require('node:path');
+const packageJson = require('../package.json');
 const cmds = require('../src/commands');
 const { readInstallState } = require('../src/installState');
 const { releaseManifest } = require('../src/config');
@@ -80,7 +81,13 @@ async function main() {
 	};
 
 	try {
-			switch (command) {
+		switch (command) {
+			case '--version':
+			case '-v':
+			case 'version': {
+				console.log(packageJson.version);
+				break;
+			}
 			case 'install': {
 				let r;
 				if (opts.from) r = cmds.install(home, opts);

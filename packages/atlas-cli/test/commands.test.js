@@ -63,6 +63,22 @@ test('npm package metadata matches the public install contract', () => {
 	});
 	assert.equal(result.status, 0);
 	assert.match(result.stdout, /^usage: atlas /);
+
+	const version = spawnSync(
+		process.execPath,
+		[path.join(__dirname, '..', 'bin', 'atlas.js'), '--version'],
+		{
+			encoding: 'utf8',
+			env: {
+				...process.env,
+				ATLAS_INSTALL_ROOT: path.join(tempDir('version-root'), 'app'),
+				ATLAS_HOME: path.join(tempDir('version-state'), 'state')
+			}
+		}
+	);
+	assert.equal(version.status, 0);
+	assert.equal(version.stderr, '');
+	assert.equal(version.stdout.trim(), packageJson.version);
 });
 
 test('bin doctor --json emits machine-readable health reports', () => {

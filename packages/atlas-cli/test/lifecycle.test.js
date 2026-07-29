@@ -178,7 +178,7 @@ if (process.argv.slice(2).join(' ') === 'db init') {
 	assert.equal(fs.existsSync(path.join(stateHome, '.atlas-state-root.json')), true);
 	assert.equal(fs.readFileSync(path.join(stateHome, 'atlas.db'), 'utf8'), 'initialized');
 
-	const firstCommand = spawnSync(process.execPath, [cli, '--version'], { encoding: 'utf8', env });
+	const firstCommand = spawnSync(process.execPath, [cli, 'runtime-smoke'], { encoding: 'utf8', env });
 	assert.equal(firstCommand.status, 0, firstCommand.stderr || firstCommand.stdout);
 	assert.match(firstCommand.stdout, /atlas test runtime 1\.0\.0/);
 });
