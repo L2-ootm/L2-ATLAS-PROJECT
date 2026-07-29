@@ -454,6 +454,21 @@ class NativeAtlasAgent(AgentRuntime):
             logger.debug("native provider resolution fell back to defaults: %s", exc)
         return model, provider, base_url, api_key, auth_mode
 
+
+    @staticmethod
+    def _conformance_metrics(
+        selected_source_ids: tuple[str, ...],
+        rejected_source_ids: tuple[str, ...],
+        evidence_ref: str,
+    ) -> dict[str, bool]:
+        """Expose only aggregate, redacted live-battery facts for one run."""
+        retrieved = bool(selected_source_ids or rejected_source_ids)
+        return {
+            "retrieval_quality": retrieved,
+            "provenance": bool(selected_source_ids),
+            "evidence_completeness": bool(evidence_ref),
+        }
+
     def execute(
         self,
         conn: sqlite3.Connection,
@@ -481,6 +496,19 @@ class NativeAtlasAgent(AgentRuntime):
                     mission_id=mission_id,
                     prompt=prompt,
                 ),
+            )
+            metrics = self._conformance_metrics(
+                contract_snapshot.selected_source_ids,
+                contract_snapshot.rejected_source_ids,
+                f"contract:{contract_snapshot.id}",
+            )
+            self._safe_emit(
+                conn, lock, run_id, event_type="tool_call", tool_name="conformance_metrics",
+                data={
+                    "runtime": "native",
+                    "conformance_metrics": metrics,
+                    "contract_ref": f"contract:{contract_snapshot.id}",
+                },
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("NativeAtlasAgent contract preparation failed: %s", exc)

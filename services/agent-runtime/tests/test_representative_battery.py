@@ -103,3 +103,18 @@ def test_threshold_ids_cannot_be_omitted_or_mutated() -> None:
     assert result["score"] == 0
     assert result["passed"] is False
     assert "threshold IDs" in result["threshold_error"]
+
+
+def test_runtime_metrics_require_retrieval_provenance_and_evidence() -> None:
+    from atlas_runtime.agents.native import NativeAtlasAgent
+
+    assert NativeAtlasAgent._conformance_metrics(("source-a",), (), "evidence:run") == {
+        "retrieval_quality": True,
+        "provenance": True,
+        "evidence_completeness": True,
+    }
+    assert NativeAtlasAgent._conformance_metrics((), ("rejected",), "") == {
+        "retrieval_quality": True,
+        "provenance": False,
+        "evidence_completeness": False,
+    }
