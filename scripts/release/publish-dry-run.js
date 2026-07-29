@@ -12,11 +12,15 @@
  */
 
 const { execSync } = require('node:child_process');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const { pathToFileURL, fileURLToPath } = require('node:url');
 
 const repo = path.resolve(__dirname, '..', '..');
 const launcherDir = path.join(repo, 'packages', 'atlas-cli');
+const releaseDir = path.join(repo, '.artifacts', 'release');
+const releaseIndexPath = path.join(releaseDir, 'atlas-release-index.json');
 
 // ── Parse args ──────────────────────────────────────────────────────────────
 const args = process.argv.slice(2);
@@ -60,8 +64,85 @@ function run(cmd, opts = {}) {
 	try {
 		return execSync(cmd, { cwd: opts.cwd || repo, encoding: 'utf8', stdio: opts.stdio || 'pipe', ...opts }).trim();
 	} catch (err) {
-		throw new Error(`command failed (exit ${err.status}): ${cmd}`);
+		const detail = String(err.stderr || err.stdout || '').trim();
+		throw new Error(`command failed (exit ${err.status}): ${cmd}${detail ? `\n${detail}` : ''}`);
 	}
+}
+
+function sha256(file) {
+	return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+}
+
+function platformKey() {
+	return `${process.platform}-${process.arch}`;
+}
+
+function buildResolvedRelease() {
+	const platform = platformKey();
+	const bundle = path.join(repo, 'artifacts', `atlas-${process.platform}-${version}`);
+	fs.mkdirSync(releaseDir, { recursive: true });
+	if (process.platform === 'win32') {
+		const script = path.join(repo, 'scripts', 'ci', 'build-windows-runtime.ps1');
+		const powershell = process.env.PWSH_EXE || 'pwsh';
+		run(
+			`${powershell} -NoProfile -File "${script}" -Version "${version}" -OutputDir "${bundle}"`
+		);
+	} else {
+		const scriptName = process.platform === 'darwin' ? 'build-darwin-runtime.sh' : 'build-linux-runtime.sh';
+		const script = path.join(repo, 'scripts', 'ci', scriptName);
+		run(`sh "${script}" --version "${version}" --output-dir "${bundle}"`);
+	}
+	const baseUrl = pathToFileURL(releaseDir + path.sep).href;
+	run(
+		[
+			'node',
+			`"${path.join(repo, 'scripts', 'ci', 'build-release-index.js')}"`,
+			`--bundle "${bundle}"`,
+			`--out-dir "${releaseDir}"`,
+			`--version "${version}"`,
+			`--platform "${platform}"`,
+			'--entrypoint "bin/atlas.js"',
+			'--index-name "atlas-release-index.json"',
+			`--base-url "${baseUrl}"`,
+		].join(' ')
+	);
+}
+
+function resolveLocalRelease() {
+	if (!fs.existsSync(releaseIndexPath)) buildResolvedRelease();
+	const index = JSON.parse(fs.readFileSync(releaseIndexPath, 'utf8'));
+	const release = index.releases?.[version];
+	const platform = platformKey();
+	const artifact = release?.platforms?.[platform];
+	if (!release) throw new Error(`local release index does not contain ${version}`);
+	if (!artifact?.url || !artifact?.sha256) {
+		throw new Error(`local release index has no complete ${platform} artifact`);
+	}
+	const artifactPath = artifact.url.startsWith('file:')
+		? fileURLToPath(artifact.url)
+		: path.resolve(releaseDir, artifact.url);
+	if (!fs.existsSync(artifactPath)) throw new Error(`resolved artifact does not exist: ${artifactPath}`);
+	const actualSha256 = sha256(artifactPath);
+	if (actualSha256 !== artifact.sha256) {
+		throw new Error(`resolved artifact SHA-256 mismatch: ${actualSha256} != ${artifact.sha256}`);
+	}
+	const payloadManifestPath = path.join(repo, 'infra', 'release', 'payload.manifest');
+	const resolution = {
+		version,
+		platform,
+		indexPath: releaseIndexPath,
+		artifactPath,
+		sha256: actualSha256,
+		entrypoint: artifact.entrypoint,
+		payloadManifestPath,
+		payloadManifestSha256: sha256(payloadManifestPath),
+	};
+	fs.writeFileSync(
+		path.join(releaseDir, 'resolved-artifact.json'),
+		JSON.stringify(resolution, null, 2) + '\n',
+		'utf8'
+	);
+	return resolution;
 }
 
 // ── Load package.json ──────────────────────────────────────────────────────
@@ -130,29 +211,38 @@ gate('npm pack launcher (dry-run)', () => {
 	run('npm pack --dry-run', { cwd: launcherDir, stdio: 'pipe' });
 });
 
-// ── Gate 7: npm auth ───────────────────────────────────────────────────────
+// ── Gate 7: exact local release resolution ─────────────────────────────────
+gate('Resolved release index, artifact, and payload manifest', () => {
+	const resolved = resolveLocalRelease();
+	return `${resolved.platform} ${resolved.sha256}`;
+});
+
+// ── Gate 8: npm auth ───────────────────────────────────────────────────────
 gate('npm auth (whoami)', () => {
 	const user = run('npm whoami');
 	return 'Logged in as: ' + user;
 });
 
-// ── Gate 8: Registry pre-flight ────────────────────────────────────────────
-gate(`Registry: @systemsl2/atlas@${version} not published`, () => {
+// ── Gate 9: Registry state ─────────────────────────────────────────────────
+gate(`Registry state: @systemsl2/atlas@${version}`, () => {
 	try {
-		run(`npm view @systemsl2/atlas@${version} version`);
-		throw new Error('already published');
+		const published = run(`npm view @systemsl2/atlas@${version} version`);
+		if (published !== version) throw new Error(`unexpected published version: ${published}`);
+		return 'already published (exact version)';
 	} catch (err) {
-		if (err.message === 'already published') throw err;
-		// npm view exits non-zero when version doesn't exist — that's what we want
+		if (err.message.startsWith('unexpected published version')) throw err;
+		return 'not yet published';
 	}
 });
 
-gate(`Registry: ${platformName}@${version} not published`, () => {
+gate(`Registry state: ${platformName}@${version}`, () => {
 	try {
-		run(`npm view ${platformName}@${version} version`);
-		throw new Error('already published');
+		const published = run(`npm view ${platformName}@${version} version`);
+		if (published !== version) throw new Error(`unexpected published version: ${published}`);
+		return 'already published (exact version)';
 	} catch (err) {
-		if (err.message === 'already published') throw err;
+		if (err.message.startsWith('unexpected published version')) throw err;
+		return 'not yet published';
 	}
 });
 
