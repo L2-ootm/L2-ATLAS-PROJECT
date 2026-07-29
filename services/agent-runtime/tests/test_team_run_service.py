@@ -89,6 +89,52 @@ def test_mark_running_then_finish_is_monotonic(db: sqlite3.Connection, lock: thr
     assert refreshed["status"] == "completed"
 
 
+def test_cancel_is_idempotent_and_records_verified_cleanup(
+    db: sqlite3.Connection, lock: threading.Lock, monkeypatch
+) -> None:
+    team = _make_team(db, lock)
+    run = team_run_service.create_team_run(
+        db, lock, team_id=team["id"], kickoff_message="hi"
+    )
+    team_run_service.mark_team_run_running(db, lock, run["id"])
+    team_run_service.record_worker_pid(db, lock, run["id"], 987654)
+    monkeypatch.setattr(team_run_service, "_terminate_process_tree", lambda pid: True)
+    monkeypatch.setattr(team_run_service, "_pid_alive", lambda pid: False)
+
+    assert team_run_service.cancel_team_run(db, lock, run["id"]) is True
+    assert team_run_service.cancel_team_run(db, lock, run["id"]) is False
+
+    refreshed = team_run_service.get_team_run(db, run["id"])
+    assert refreshed["status"] == "cancelled"
+    assert refreshed["cleanup_status"] == "complete"
+    assert refreshed["cancel_requested_at"]
+
+
+def test_append_rejects_cancelled_run_transactionally(
+    db: sqlite3.Connection, lock: threading.Lock
+) -> None:
+    team = _make_team(db, lock)
+    run = team_run_service.create_team_run(
+        db, lock, team_id=team["id"], kickoff_message="hi"
+    )
+    team_run_service.mark_team_run_running(db, lock, run["id"])
+    team_run_service.cancel_team_run(db, lock, run["id"])
+    before = len(team_run_service.list_messages(db, run["id"]))
+
+    with pytest.raises(team_run_service.TeamRunCancelledError):
+        team_run_service.append_message(
+            db,
+            lock,
+            run["id"],
+            round_no=1,
+            sender_role="researcher",
+            sender_actor_id="actor-race",
+            content="must not be committed",
+        )
+
+    assert len(team_run_service.list_messages(db, run["id"])) == before
+
+
 def test_append_message_increments_seq_and_parses_mention(
     db: sqlite3.Connection, lock: threading.Lock
 ) -> None:

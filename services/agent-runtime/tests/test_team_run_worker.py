@@ -120,6 +120,35 @@ def test_run_team_run_marks_failed_on_exception(
     assert refreshed["status"] == "failed"
 
 
+def test_cancel_after_actor_execution_prevents_post_cancel_append(
+    db: sqlite3.Connection, lock: threading.Lock, monkeypatch
+) -> None:
+    team = _make_team(db, lock)
+    run = team_run_service.create_team_run(
+        db, lock, team_id=team["id"], kickoff_message="hi", max_rounds=1
+    )
+    monkeypatch.setattr(team_run_service, "_terminate_process_tree", lambda pid: True)
+    monkeypatch.setattr(team_run_service, "_pid_alive", lambda pid: False)
+
+    def _cancel_before_append(conn, actor_lock, actor_id):
+        actor_service.mark_running(conn, actor_lock, actor_id, pid=1)
+        actor_service.complete_actor(
+            conn, actor_lock, actor_id, result_preview="late output"
+        )
+        team_run_service.cancel_team_run(conn, actor_lock, run["id"])
+        return True
+
+    monkeypatch.setattr(team_run_worker, "run_actor", _cancel_before_append)
+    assert team_run_worker.run_team_run(db, lock, run["id"]) is True
+
+    refreshed = team_run_service.get_team_run(db, run["id"])
+    assert refreshed["status"] == "cancelled"
+    assert refreshed["cleanup_status"] == "complete"
+    assert [message["content"] for message in team_run_service.list_messages(db, run["id"])] == [
+        "hi"
+    ]
+
+
 def test_run_team_run_rejects_non_queued_run(db: sqlite3.Connection, lock: threading.Lock) -> None:
     team = _make_team(db, lock)
     run = team_run_service.create_team_run(db, lock, team_id=team["id"], kickoff_message="hi")

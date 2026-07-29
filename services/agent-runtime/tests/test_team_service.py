@@ -6,7 +6,7 @@ import threading
 
 import pytest
 
-from atlas_runtime import team_service
+from atlas_runtime import team_run_service, team_service
 
 
 def _make_preset(db: sqlite3.Connection, lock: threading.Lock, name: str = "researcher"):
@@ -130,3 +130,26 @@ def test_delete_team_removes_members(db: sqlite3.Connection, lock: threading.Loc
     assert team_service.get_team(db, team["id"]) is None
     # The preset itself survives — deleting a team must not delete its presets.
     assert team_service.get_preset(db, preset["id"]) is not None
+
+
+def test_historical_team_archives_and_refuses_physical_delete(
+    db: sqlite3.Connection, lock: threading.Lock
+) -> None:
+    preset = _make_preset(db, lock)
+    team = team_service.create_team(db, lock, name="historical-team")
+    team_service.set_team_members(db, lock, team["id"], [preset["id"]])
+    run = team_run_service.create_team_run(
+        db, lock, team_id=team["id"], kickoff_message="preserve me"
+    )
+    team_run_service.finish_team_run(db, lock, run["id"], status="completed")
+
+    archived = team_service.archive_team(db, lock, team["id"])
+    assert archived["archived_at"]
+    assert team_service.get_team(db, team["id"])["members"][0]["id"] == preset["id"]
+
+    with pytest.raises(team_service.TeamLifecycleConflict) as exc:
+        team_service.delete_team(db, lock, team["id"])
+    assert exc.value.code == "team_has_history"
+    assert db.execute(
+        "SELECT team_id FROM team_runs WHERE id=?", (run["id"],)
+    ).fetchone()[0] == team["id"]
