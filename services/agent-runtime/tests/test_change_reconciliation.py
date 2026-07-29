@@ -64,7 +64,7 @@ def test_git_reconciliation_matches_native_receipt_by_path_and_hash(tmp_path):
     baseline = capture_git_baseline(root)
     content = "native edit\n"
     (root / "edit.txt").write_text(content, encoding="utf-8")
-    after_hash = hashlib.sha256(content.encode()).hexdigest()
+    after_hash = hashlib.sha256((root / "edit.txt").read_bytes()).hexdigest()
 
     result = reconcile_git_changes(
         root,
