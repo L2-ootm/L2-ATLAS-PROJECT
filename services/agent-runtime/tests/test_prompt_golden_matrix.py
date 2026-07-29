@@ -22,7 +22,7 @@ from atlas_runtime.prompt_compiler import _PROVIDER_ADAPTERS, compile_prompt
 FIXTURE = Path(__file__).parent / "fixtures" / "prompt_golden_matrix.json"
 SURFACES = {
     "go_tui": "tui",
-    "atlas_terminal": "terminal",
+    "atlas_terminal": "cli",
     "cockpit": "webui",
 }
 WORKSPACES = ("global", "registered_project")
@@ -36,7 +36,7 @@ def _bootstrap(*, surface: str, workspace: str, permission_mode: str, provider: 
         workspace=WorkspaceIdentity(
             kind="global" if workspace == "global" else "project",
             project_id=None if workspace == "global" else "atlas",
-            root=None if workspace == "global" else "C:/work/atlas",
+            root="C:/work/global" if workspace == "global" else "C:/work/atlas",
         ),
         focus_id="focus-matrix",
         focus_title="Freeze prompt conformance",

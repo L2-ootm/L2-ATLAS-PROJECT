@@ -1,0 +1,879 @@
+{
+  "schema_version": 1,
+  "provider_families": [
+    "generic",
+    "openai-compatible",
+    "anthropic-compatible"
+  ],
+  "surfaces": {
+    "go_tui": "tui",
+    "atlas_terminal": "cli",
+    "cockpit": "webui"
+  },
+  "cases": [
+    {
+      "provider": "generic",
+      "surface": "go_tui",
+      "workspace": "global",
+      "permission_mode": "deny",
+      "context_present": false,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "go_tui",
+      "workspace": "global",
+      "permission_mode": "deny",
+      "context_present": true,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "go_tui",
+      "workspace": "global",
+      "permission_mode": "ask",
+      "context_present": false,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "go_tui",
+      "workspace": "global",
+      "permission_mode": "ask",
+      "context_present": true,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "go_tui",
+      "workspace": "global",
+      "permission_mode": "allow",
+      "context_present": false,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "go_tui",
+      "workspace": "global",
+      "permission_mode": "allow",
+      "context_present": true,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "go_tui",
+      "workspace": "registered_project",
+      "permission_mode": "deny",
+      "context_present": false,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "go_tui",
+      "workspace": "registered_project",
+      "permission_mode": "deny",
+      "context_present": true,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "go_tui",
+      "workspace": "registered_project",
+      "permission_mode": "ask",
+      "context_present": false,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "go_tui",
+      "workspace": "registered_project",
+      "permission_mode": "ask",
+      "context_present": true,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "go_tui",
+      "workspace": "registered_project",
+      "permission_mode": "allow",
+      "context_present": false,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "go_tui",
+      "workspace": "registered_project",
+      "permission_mode": "allow",
+      "context_present": true,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "atlas_terminal",
+      "workspace": "global",
+      "permission_mode": "deny",
+      "context_present": false,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "atlas_terminal",
+      "workspace": "global",
+      "permission_mode": "deny",
+      "context_present": true,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "atlas_terminal",
+      "workspace": "global",
+      "permission_mode": "ask",
+      "context_present": false,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "atlas_terminal",
+      "workspace": "global",
+      "permission_mode": "ask",
+      "context_present": true,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "atlas_terminal",
+      "workspace": "global",
+      "permission_mode": "allow",
+      "context_present": false,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "atlas_terminal",
+      "workspace": "global",
+      "permission_mode": "allow",
+      "context_present": true,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "atlas_terminal",
+      "workspace": "registered_project",
+      "permission_mode": "deny",
+      "context_present": false,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "atlas_terminal",
+      "workspace": "registered_project",
+      "permission_mode": "deny",
+      "context_present": true,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "atlas_terminal",
+      "workspace": "registered_project",
+      "permission_mode": "ask",
+      "context_present": false,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "atlas_terminal",
+      "workspace": "registered_project",
+      "permission_mode": "ask",
+      "context_present": true,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "atlas_terminal",
+      "workspace": "registered_project",
+      "permission_mode": "allow",
+      "context_present": false,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "atlas_terminal",
+      "workspace": "registered_project",
+      "permission_mode": "allow",
+      "context_present": true,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "cockpit",
+      "workspace": "global",
+      "permission_mode": "deny",
+      "context_present": false,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "cockpit",
+      "workspace": "global",
+      "permission_mode": "deny",
+      "context_present": true,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "cockpit",
+      "workspace": "global",
+      "permission_mode": "ask",
+      "context_present": false,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "cockpit",
+      "workspace": "global",
+      "permission_mode": "ask",
+      "context_present": true,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "cockpit",
+      "workspace": "global",
+      "permission_mode": "allow",
+      "context_present": false,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "cockpit",
+      "workspace": "global",
+      "permission_mode": "allow",
+      "context_present": true,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "cockpit",
+      "workspace": "registered_project",
+      "permission_mode": "deny",
+      "context_present": false,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "cockpit",
+      "workspace": "registered_project",
+      "permission_mode": "deny",
+      "context_present": true,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "cockpit",
+      "workspace": "registered_project",
+      "permission_mode": "ask",
+      "context_present": false,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "cockpit",
+      "workspace": "registered_project",
+      "permission_mode": "ask",
+      "context_present": true,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "cockpit",
+      "workspace": "registered_project",
+      "permission_mode": "allow",
+      "context_present": false,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "generic",
+      "surface": "cockpit",
+      "workspace": "registered_project",
+      "permission_mode": "allow",
+      "context_present": true,
+      "stable_prompt_sha256": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "go_tui",
+      "workspace": "global",
+      "permission_mode": "deny",
+      "context_present": false,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "go_tui",
+      "workspace": "global",
+      "permission_mode": "deny",
+      "context_present": true,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "go_tui",
+      "workspace": "global",
+      "permission_mode": "ask",
+      "context_present": false,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "go_tui",
+      "workspace": "global",
+      "permission_mode": "ask",
+      "context_present": true,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "go_tui",
+      "workspace": "global",
+      "permission_mode": "allow",
+      "context_present": false,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "go_tui",
+      "workspace": "global",
+      "permission_mode": "allow",
+      "context_present": true,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "go_tui",
+      "workspace": "registered_project",
+      "permission_mode": "deny",
+      "context_present": false,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "go_tui",
+      "workspace": "registered_project",
+      "permission_mode": "deny",
+      "context_present": true,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "go_tui",
+      "workspace": "registered_project",
+      "permission_mode": "ask",
+      "context_present": false,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "go_tui",
+      "workspace": "registered_project",
+      "permission_mode": "ask",
+      "context_present": true,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "go_tui",
+      "workspace": "registered_project",
+      "permission_mode": "allow",
+      "context_present": false,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "go_tui",
+      "workspace": "registered_project",
+      "permission_mode": "allow",
+      "context_present": true,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "atlas_terminal",
+      "workspace": "global",
+      "permission_mode": "deny",
+      "context_present": false,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "atlas_terminal",
+      "workspace": "global",
+      "permission_mode": "deny",
+      "context_present": true,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "atlas_terminal",
+      "workspace": "global",
+      "permission_mode": "ask",
+      "context_present": false,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "atlas_terminal",
+      "workspace": "global",
+      "permission_mode": "ask",
+      "context_present": true,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "atlas_terminal",
+      "workspace": "global",
+      "permission_mode": "allow",
+      "context_present": false,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "atlas_terminal",
+      "workspace": "global",
+      "permission_mode": "allow",
+      "context_present": true,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "atlas_terminal",
+      "workspace": "registered_project",
+      "permission_mode": "deny",
+      "context_present": false,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "atlas_terminal",
+      "workspace": "registered_project",
+      "permission_mode": "deny",
+      "context_present": true,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "atlas_terminal",
+      "workspace": "registered_project",
+      "permission_mode": "ask",
+      "context_present": false,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "atlas_terminal",
+      "workspace": "registered_project",
+      "permission_mode": "ask",
+      "context_present": true,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "atlas_terminal",
+      "workspace": "registered_project",
+      "permission_mode": "allow",
+      "context_present": false,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "atlas_terminal",
+      "workspace": "registered_project",
+      "permission_mode": "allow",
+      "context_present": true,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "cockpit",
+      "workspace": "global",
+      "permission_mode": "deny",
+      "context_present": false,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "cockpit",
+      "workspace": "global",
+      "permission_mode": "deny",
+      "context_present": true,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "cockpit",
+      "workspace": "global",
+      "permission_mode": "ask",
+      "context_present": false,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "cockpit",
+      "workspace": "global",
+      "permission_mode": "ask",
+      "context_present": true,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "cockpit",
+      "workspace": "global",
+      "permission_mode": "allow",
+      "context_present": false,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "cockpit",
+      "workspace": "global",
+      "permission_mode": "allow",
+      "context_present": true,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "cockpit",
+      "workspace": "registered_project",
+      "permission_mode": "deny",
+      "context_present": false,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "cockpit",
+      "workspace": "registered_project",
+      "permission_mode": "deny",
+      "context_present": true,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "cockpit",
+      "workspace": "registered_project",
+      "permission_mode": "ask",
+      "context_present": false,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "cockpit",
+      "workspace": "registered_project",
+      "permission_mode": "ask",
+      "context_present": true,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "cockpit",
+      "workspace": "registered_project",
+      "permission_mode": "allow",
+      "context_present": false,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "openai-compatible",
+      "surface": "cockpit",
+      "workspace": "registered_project",
+      "permission_mode": "allow",
+      "context_present": true,
+      "stable_prompt_sha256": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "go_tui",
+      "workspace": "global",
+      "permission_mode": "deny",
+      "context_present": false,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "go_tui",
+      "workspace": "global",
+      "permission_mode": "deny",
+      "context_present": true,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "go_tui",
+      "workspace": "global",
+      "permission_mode": "ask",
+      "context_present": false,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "go_tui",
+      "workspace": "global",
+      "permission_mode": "ask",
+      "context_present": true,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "go_tui",
+      "workspace": "global",
+      "permission_mode": "allow",
+      "context_present": false,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "go_tui",
+      "workspace": "global",
+      "permission_mode": "allow",
+      "context_present": true,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "go_tui",
+      "workspace": "registered_project",
+      "permission_mode": "deny",
+      "context_present": false,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "go_tui",
+      "workspace": "registered_project",
+      "permission_mode": "deny",
+      "context_present": true,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "go_tui",
+      "workspace": "registered_project",
+      "permission_mode": "ask",
+      "context_present": false,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "go_tui",
+      "workspace": "registered_project",
+      "permission_mode": "ask",
+      "context_present": true,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "go_tui",
+      "workspace": "registered_project",
+      "permission_mode": "allow",
+      "context_present": false,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "go_tui",
+      "workspace": "registered_project",
+      "permission_mode": "allow",
+      "context_present": true,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "atlas_terminal",
+      "workspace": "global",
+      "permission_mode": "deny",
+      "context_present": false,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "atlas_terminal",
+      "workspace": "global",
+      "permission_mode": "deny",
+      "context_present": true,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "atlas_terminal",
+      "workspace": "global",
+      "permission_mode": "ask",
+      "context_present": false,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "atlas_terminal",
+      "workspace": "global",
+      "permission_mode": "ask",
+      "context_present": true,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "atlas_terminal",
+      "workspace": "global",
+      "permission_mode": "allow",
+      "context_present": false,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "atlas_terminal",
+      "workspace": "global",
+      "permission_mode": "allow",
+      "context_present": true,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "atlas_terminal",
+      "workspace": "registered_project",
+      "permission_mode": "deny",
+      "context_present": false,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "atlas_terminal",
+      "workspace": "registered_project",
+      "permission_mode": "deny",
+      "context_present": true,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "atlas_terminal",
+      "workspace": "registered_project",
+      "permission_mode": "ask",
+      "context_present": false,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "atlas_terminal",
+      "workspace": "registered_project",
+      "permission_mode": "ask",
+      "context_present": true,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "atlas_terminal",
+      "workspace": "registered_project",
+      "permission_mode": "allow",
+      "context_present": false,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "atlas_terminal",
+      "workspace": "registered_project",
+      "permission_mode": "allow",
+      "context_present": true,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "cockpit",
+      "workspace": "global",
+      "permission_mode": "deny",
+      "context_present": false,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "cockpit",
+      "workspace": "global",
+      "permission_mode": "deny",
+      "context_present": true,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "cockpit",
+      "workspace": "global",
+      "permission_mode": "ask",
+      "context_present": false,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "cockpit",
+      "workspace": "global",
+      "permission_mode": "ask",
+      "context_present": true,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "cockpit",
+      "workspace": "global",
+      "permission_mode": "allow",
+      "context_present": false,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "cockpit",
+      "workspace": "global",
+      "permission_mode": "allow",
+      "context_present": true,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "cockpit",
+      "workspace": "registered_project",
+      "permission_mode": "deny",
+      "context_present": false,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "cockpit",
+      "workspace": "registered_project",
+      "permission_mode": "deny",
+      "context_present": true,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "cockpit",
+      "workspace": "registered_project",
+      "permission_mode": "ask",
+      "context_present": false,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "cockpit",
+      "workspace": "registered_project",
+      "permission_mode": "ask",
+      "context_present": true,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "cockpit",
+      "workspace": "registered_project",
+      "permission_mode": "allow",
+      "context_present": false,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    },
+    {
+      "provider": "anthropic-compatible",
+      "surface": "cockpit",
+      "workspace": "registered_project",
+      "permission_mode": "allow",
+      "context_present": true,
+      "stable_prompt_sha256": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    }
+  ]
+}
