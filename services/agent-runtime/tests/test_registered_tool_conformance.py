@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import pytest
 
+from atlas_runtime.tools import registry as _registry
+
 
 DIMENSIONS = (
     "capability_schema",
@@ -67,9 +69,6 @@ def test_live_registry_generates_all_tool_dimension_rows() -> None:
 
     rows = generate_conformance_rows(registry.get_registry())
     assert rows
-
-
-from atlas_runtime.tools import registry as _registry
 
 
 @pytest.mark.parametrize("tool_name,dimension", generate_conformance_rows(_registry.get_registry()))
