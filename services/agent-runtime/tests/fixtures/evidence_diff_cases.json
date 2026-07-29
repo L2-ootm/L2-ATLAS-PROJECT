@@ -1,0 +1,114 @@
+[
+  {
+    "name": "create",
+    "path": "new.txt",
+    "operation": "create",
+    "before": "",
+    "after": "alpha\nbeta\n",
+    "additions": 2,
+    "deletions": 0,
+    "binary": false
+  },
+  {
+    "name": "edit",
+    "path": "edit.txt",
+    "operation": "edit",
+    "before": "alpha\nold\nomega\n",
+    "after": "alpha\nnew\nomega\n",
+    "additions": 1,
+    "deletions": 1,
+    "binary": false
+  },
+  {
+    "name": "delete",
+    "path": "gone.txt",
+    "operation": "delete",
+    "before": "alpha\nbeta\n",
+    "after": "",
+    "additions": 0,
+    "deletions": 2,
+    "binary": false
+  },
+  {
+    "name": "rename",
+    "path": "new-name.txt",
+    "old_path": "old-name.txt",
+    "operation": "rename",
+    "before": "same\n",
+    "after": "same\n",
+    "additions": 0,
+    "deletions": 0,
+    "binary": false
+  },
+  {
+    "name": "mode",
+    "path": "script.sh",
+    "operation": "mode",
+    "before": "#!/bin/sh\n",
+    "after": "#!/bin/sh\n",
+    "additions": 0,
+    "deletions": 0,
+    "binary": false
+  },
+  {
+    "name": "binary",
+    "path": "asset.bin",
+    "operation": "binary",
+    "before": "old\u0000bytes",
+    "after": "new\u0000bytes",
+    "additions": 0,
+    "deletions": 0,
+    "binary": true
+  },
+  {
+    "name": "crlf",
+    "path": "windows.txt",
+    "operation": "edit",
+    "before": "a\r\nold\r\n",
+    "after": "a\r\nnew\r\n",
+    "additions": 1,
+    "deletions": 1,
+    "binary": false
+  },
+  {
+    "name": "unicode",
+    "path": "unicode.txt",
+    "operation": "edit",
+    "before": "olá\n旧\n",
+    "after": "olá\n新\n",
+    "additions": 1,
+    "deletions": 1,
+    "binary": false
+  },
+  {
+    "name": "empty",
+    "path": "empty.txt",
+    "operation": "edit",
+    "before": "",
+    "after": "",
+    "additions": 0,
+    "deletions": 0,
+    "binary": false
+  },
+  {
+    "name": "long-line",
+    "path": "minified.js",
+    "operation": "edit",
+    "before": "const value = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';\n",
+    "after": "const value = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';\n",
+    "additions": 1,
+    "deletions": 1,
+    "binary": false
+  },
+  {
+    "name": "generated",
+    "path": "generated.lock",
+    "operation": "edit",
+    "before": "version=1\n",
+    "after": "version=2\n",
+    "additions": 1,
+    "deletions": 1,
+    "binary": false,
+    "generated": true
+  }
+]
