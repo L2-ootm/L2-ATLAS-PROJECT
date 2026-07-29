@@ -1767,6 +1767,32 @@ test('state adoption writes a path-bound marker without deleting legacy state', 
 	assert.throws(() => cmds.initializeStateRoot(os.homedir(), { adopt: true, installRoot: home }), /broad-path:user-home/);
 });
 
+test('explicit adoption binds legacy state with unknown files but never authorizes purge', () => {
+	const { home } = installFixture();
+	const stateHome = tempDir('legacy-state-with-operator-files');
+	fs.writeFileSync(path.join(stateHome, 'atlas.db'), 'missions');
+	fs.writeFileSync(path.join(stateHome, 'registry.db'), 'operator-owned');
+
+	assert.throws(
+		() => cmds.initializeStateRoot(stateHome, { installRoot: home }),
+		/refusing to adopt state root with unexpected content: registry\.db/
+	);
+
+	const markerId = cmds.initializeStateRoot(stateHome, { adopt: true, installRoot: home });
+	assert.equal(typeof markerId, 'string');
+	assert.equal(
+		cmds.initializeStateRoot(stateHome, { installRoot: home }),
+		markerId,
+		'normal runtime binding must accept an explicitly adopted legacy root'
+	);
+	assert.equal(
+		cmds.validatePurgeTarget(stateHome, { installRoot: home }).reason,
+		'unexpected-top-level-content',
+		'unknown files must continue to block recursive purge'
+	);
+	assert.equal(fs.readFileSync(path.join(stateHome, 'registry.db'), 'utf8'), 'operator-owned');
+});
+
 test('purge validator rejects symlink targets when supported', (t) => {
 	const { home } = installFixture();
 	const stateHome = tempDir('state');

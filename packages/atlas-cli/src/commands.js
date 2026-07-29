@@ -871,7 +871,12 @@ function initializeStateRoot(target, opts = {}) {
 	const markerPath = stateRootMarkerFile(resolved);
 	if (fs.existsSync(markerPath)) {
 		const validation = validatePurgeTarget(resolved, opts);
-		if (!validation.ok && validation.reason !== 'layout-evidence-missing') {
+		// Binding an already-marked state root is intentionally less strict than
+		// authorizing recursive purge. Legacy/operator files may coexist with
+		// ATLAS state without making the directory unsafe to use; purge still
+		// rejects those files through validatePurgeTarget().
+		const bindableReasons = new Set(['layout-evidence-missing', 'unexpected-top-level-content']);
+		if (!validation.ok && !bindableReasons.has(validation.reason)) {
 			throw new CliError(`invalid state-root marker (${validation.reason}): ${resolved}`);
 		}
 		return validation.markerId || JSON.parse(fs.readFileSync(markerPath, 'utf8')).id;
@@ -885,7 +890,7 @@ function initializeStateRoot(target, opts = {}) {
 		}
 		const entries = fs.readdirSync(resolved);
 		const unexpected = entries.filter((entry) => !STATE_LAYOUT_ENTRIES.has(entry) && entry !== STATE_ROOT_MARKER);
-		if (unexpected.length) {
+		if (unexpected.length && !opts.adopt) {
 			throw new CliError(`refusing to adopt state root with unexpected content: ${unexpected.sort().join(', ')}`);
 		}
 		if (entries.length > 0 && !opts.adopt) {
