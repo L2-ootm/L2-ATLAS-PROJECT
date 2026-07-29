@@ -5,6 +5,7 @@ Only the deterministic pieces (no real node process is started, no network).
 from __future__ import annotations
 
 import pathlib
+import subprocess
 
 from typer.testing import CliRunner
 
@@ -177,3 +178,35 @@ def test_cli_freellmapi_install(tmp_path, monkeypatch) -> None:
     result = runner.invoke(app, ["freellmapi", "install", "--json"])
     assert result.exit_code == 0
     assert '"ok": true' in result.output
+
+
+def test_installed_redaction_probe_never_echoes_canary_on_setup_failure(
+    tmp_path, monkeypatch
+) -> None:
+    canary = "ATLAS-SECRET-CANARY-DO-NOT-PRINT"
+    monkeypatch.setenv("ATLAS_TEST_SECRET_CANARY", canary)
+    result = subprocess.run(
+        [
+            "node",
+            str(
+                pathlib.Path(__file__).resolve().parents[3]
+                / "scripts"
+                / "ci"
+                / "verify-clean-install.js"
+            ),
+            "--local-index",
+            str(tmp_path / "missing.json"),
+            "--home",
+            str(tmp_path / "install"),
+            "--version",
+            "0.1.5",
+            "--probe-freellmapi-redaction",
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert canary not in result.stdout
+    assert canary not in result.stderr

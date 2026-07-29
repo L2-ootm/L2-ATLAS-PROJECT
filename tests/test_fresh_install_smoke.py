@@ -10,6 +10,7 @@ false) causes the smoke to exit non-zero and report which step failed.
 from __future__ import annotations
 
 import pathlib
+import subprocess
 import sys
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -42,3 +43,27 @@ def test_fresh_install_smoke_fails_when_atlas_up_fails(capsys):
     assert exit_code == 1
     assert "FAIL: step 2 (atlas up)" in captured.err
     assert "SMOKE PASSED" not in captured.out
+
+
+def test_installed_verifier_fails_closed_without_local_index(tmp_path):
+    missing = tmp_path / "missing-release-index.json"
+    result = subprocess.run(
+        [
+            "node",
+            str(REPO_ROOT / "scripts" / "ci" / "verify-clean-install.js"),
+            "--local-index",
+            str(missing),
+            "--home",
+            str(tmp_path / "install"),
+            "--version",
+            "0.1.5",
+            "--probe-version",
+            "--probe-freellmapi-redaction",
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "local release index does not exist" in (result.stdout + result.stderr)
