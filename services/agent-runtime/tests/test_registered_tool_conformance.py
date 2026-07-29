@@ -38,6 +38,9 @@ def generate_conformance_rows(registry) -> list[pytest.ParamSpec]:
 
 def _assert_dimension(manifest, adapter, dimension: str) -> None:
     """Assert registry-owned invariants without invoking a real side effect."""
+    from atlas_runtime.tool_catalog import capability_from_atlas
+
+    capability = capability_from_atlas(manifest)
     if dimension == "capability_schema":
         assert manifest.name
         assert manifest.inputs, f"{manifest.name} has no declared input schema"
@@ -54,12 +57,17 @@ def _assert_dimension(manifest, adapter, dimension: str) -> None:
         assert "tool_failed" in manifest.audit_events
     elif dimension in {"timeout", "cancellation", "malformed_input"}:
         assert callable(adapter), f"{manifest.name} must be invokable by the guarded executor"
+        if dimension == "timeout":
+            assert capability.timeout_ms > 0
+        if dimension == "cancellation":
+            assert isinstance(capability.cancellable, bool)
     elif dimension == "output_bound_reference":
         assert manifest.outputs
+        assert capability.max_result_bytes > 0
     elif dimension == "surface_rendering":
-        # Legacy manifests have no ui.kind; the contract requires generic text
-        # rendering rather than a tool-name heuristic until a kind is added.
-        assert getattr(manifest, "ui", None) is None or getattr(manifest.ui, "kind", "text")
+        # Atlas manifests are projected through the catalog. This establishes the
+        # explicit generic fallback until a manifest-specific ui.kind is added.
+        assert capability.renderer == "text"
     else:  # pragma: no cover - protects the frozen matrix itself
         raise AssertionError(f"unknown TEST-02 dimension: {dimension}")
 
