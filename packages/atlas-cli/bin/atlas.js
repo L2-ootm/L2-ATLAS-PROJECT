@@ -7,7 +7,7 @@ const { readInstallState } = require('../src/installState');
 const { releaseManifest } = require('../src/config');
 const { launchRuntime, resolveRuntimeEntrypoint } = require('../src/launcher');
 const { updateLauncher, handoffUpdatedLauncher } = require('../src/selfUpdate');
-const { materializePlatformPackage } = require('../src/platformPackage');
+const { materializePlatformPackage, readPlatformPackage } = require('../src/platformPackage');
 
 function parseArgs(argv) {
 	const opts = { _: [] };
@@ -64,20 +64,39 @@ async function main() {
 	const [command, ...rest] = process.argv.slice(2);
 	const opts = parseArgs(rest);
 	const home = cmds.atlasInstallRoot();
-	const materialize = () => materializePlatformPackage(home, { env: process.env });
+	const ensureFreshStateRoot = () => {
+		if (!cmds.readCurrent(home)) {
+			cmds.initializeStateRoot(cmds.atlasStateHome(), { installRoot: home });
+		}
+	};
+	const materialize = () => {
+		if (!readPlatformPackage({ env: process.env })) return null;
+		// A fresh runtime runs DB migrations while it is being activated. Bind
+		// the empty state root before those migrations create atlas.db, or the
+		// first delegated command will mistake its own new database for legacy
+		// state that needs manual adoption.
+		ensureFreshStateRoot();
+		return materializePlatformPackage(home, { env: process.env });
+	};
 
 	try {
 			switch (command) {
 			case 'install': {
 				let r;
 				if (opts.from) r = cmds.install(home, opts);
-				else if (opts.manifest) r = await cmds.installFromRelease(home, opts);
+				else if (opts.manifest) {
+					ensureFreshStateRoot();
+					r = await cmds.installFromRelease(home, opts);
+				}
 				else r = materialize();
 				if (!r && !opts.from) {
 					// No npm platform package for this OS/arch (only win32-x64 is published
 					// today) — fall back to the release index the same way `update` does.
 					opts.manifest = opts.manifest || releaseManifest();
-					if (opts.manifest) r = await cmds.installFromRelease(home, opts);
+					if (opts.manifest) {
+						ensureFreshStateRoot();
+						r = await cmds.installFromRelease(home, opts);
+					}
 				}
 				if (!r) throw new cmds.CliError('platform runtime package is missing; reinstall @systemsl2/atlas');
 				if (opts.json) {

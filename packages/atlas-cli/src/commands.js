@@ -867,6 +867,16 @@ function initializeStateRoot(target, opts = {}) {
 	if (broadReason) {
 		throw new CliError(`refusing to initialize unsafe state root (${broadReason}): ${resolved}`);
 	}
+
+	const markerPath = stateRootMarkerFile(resolved);
+	if (fs.existsSync(markerPath)) {
+		const validation = validatePurgeTarget(resolved, opts);
+		if (!validation.ok && validation.reason !== 'layout-evidence-missing') {
+			throw new CliError(`invalid state-root marker (${validation.reason}): ${resolved}`);
+		}
+		return validation.markerId || JSON.parse(fs.readFileSync(markerPath, 'utf8')).id;
+	}
+
 	const existed = fs.existsSync(resolved);
 	if (existed) {
 		const stat = fs.lstatSync(resolved);
@@ -885,14 +895,6 @@ function initializeStateRoot(target, opts = {}) {
 		fs.mkdirSync(resolved, { recursive: true });
 	}
 
-	const markerPath = stateRootMarkerFile(resolved);
-	if (fs.existsSync(markerPath)) {
-		const validation = validatePurgeTarget(resolved, opts);
-		if (!validation.ok && validation.reason !== 'layout-evidence-missing') {
-			throw new CliError(`invalid state-root marker (${validation.reason}): ${resolved}`);
-		}
-		return validation.markerId || JSON.parse(fs.readFileSync(markerPath, 'utf8')).id;
-	}
 	const marker = {
 		kind: STATE_ROOT_KIND,
 		schema: STATE_ROOT_SCHEMA,

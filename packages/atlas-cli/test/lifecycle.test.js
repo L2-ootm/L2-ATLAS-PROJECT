@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 
 const cmds = require('../src/commands');
@@ -131,4 +132,53 @@ test('platform npm package materializes a verified release without touching ATLA
 	assert.equal(cmds.readCurrent(installRoot), '1.0.0');
 	assert.equal(fs.readFileSync(marker, 'utf8'), 'id: operator-module\n');
 	assert.equal(resolveRuntimeEntrypoint(installRoot), path.join(installRoot, 'versions', '1.0.0', 'bin', 'runtime.js'));
+});
+
+test('fresh platform install binds state before migrations and the first runtime command', () => {
+	const work = tempDir('clean-platform-install');
+	const installRoot = path.join(work, 'app');
+	const stateHome = path.join(work, 'state');
+	const bundle = path.join(work, 'bundle');
+	const packages = path.join(work, 'packages');
+	const runtime = path.join(bundle, 'bin', 'runtime.js');
+	fs.mkdirSync(path.dirname(runtime), { recursive: true });
+	fs.writeFileSync(runtime, `
+const fs = require('node:fs');
+const path = require('node:path');
+const marker = path.join(process.env.ATLAS_HOME, '.atlas-state-root.json');
+if (!fs.existsSync(marker)) {
+	console.error('state marker missing before runtime launch');
+	process.exit(9);
+}
+if (process.argv.slice(2).join(' ') === 'db init') {
+	fs.writeFileSync(path.join(process.env.ATLAS_HOME, 'atlas.db'), 'initialized');
+	console.log('applied 0001_test');
+} else {
+	console.log('atlas test runtime 1.0.0');
+}
+`);
+	const built = buildPlatformPackage({
+		bundleDir: bundle,
+		outDir: packages,
+		version: '1.0.0',
+		platform: `${process.platform}-${process.arch}`,
+		entrypoint: 'bin/runtime.js'
+	});
+	const cli = path.join(__dirname, '..', 'bin', 'atlas.js');
+	const env = {
+		...process.env,
+		ATLAS_INSTALL_ROOT: installRoot,
+		ATLAS_HOME: stateHome,
+		ATLAS_PLATFORM_PACKAGE_ROOT: built.packageDir
+	};
+
+	const installed = spawnSync(process.execPath, [cli, 'install', '--json'], { encoding: 'utf8', env });
+	assert.equal(installed.status, 0, installed.stderr || installed.stdout);
+	assert.equal(JSON.parse(installed.stdout).version, '1.0.0');
+	assert.equal(fs.existsSync(path.join(stateHome, '.atlas-state-root.json')), true);
+	assert.equal(fs.readFileSync(path.join(stateHome, 'atlas.db'), 'utf8'), 'initialized');
+
+	const firstCommand = spawnSync(process.execPath, [cli, '--version'], { encoding: 'utf8', env });
+	assert.equal(firstCommand.status, 0, firstCommand.stderr || firstCommand.stdout);
+	assert.match(firstCommand.stdout, /atlas test runtime 1\.0\.0/);
 });
