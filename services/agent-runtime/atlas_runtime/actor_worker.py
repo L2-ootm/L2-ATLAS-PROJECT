@@ -328,18 +328,22 @@ def run_actor(
             run_id=run.id,
             prompt=actor["goal"],
         )
-        complete_run(
-            conn, lock,
-            run_id=run.id,
-            mission_id=mission.id,
-            status=outcome.status,
-            summary=outcome.summary,
-        )
         if outcome.status == "succeeded":
             actor_service.complete_actor(
                 conn, lock, actor_id,
                 result_preview=outcome.summary,
                 child_run_id=run.id,
+            )
+            settled = actor_service.get_actor(conn, actor_id)
+            settled_status = (
+                "succeeded"
+                if settled is not None and settled["status"] == "completed"
+                else "failed"
+            )
+            settled_summary = (
+                outcome.summary
+                if settled_status == "succeeded"
+                else str((settled or {}).get("error") or "actor settlement failed")
             )
         else:
             actor_service.fail_actor(
@@ -347,6 +351,16 @@ def run_actor(
                 error=outcome.summary or outcome.stop_reason or "child run failed",
                 child_run_id=run.id,
             )
+            settled_status = "failed"
+            settled_summary = outcome.summary or outcome.stop_reason or "child run failed"
+        complete_run(
+            conn,
+            lock,
+            run_id=run.id,
+            mission_id=mission.id,
+            status=settled_status,
+            summary=settled_summary,
+        )
         # Stop heartbeating before the wakeup drives a whole second run on this
         # connection: the actor is terminal, so the beat is already a no-op, and
         # two threads interleaving execute() on one sqlite3 connection raises

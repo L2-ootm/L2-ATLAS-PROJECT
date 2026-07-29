@@ -16,6 +16,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from atlas_runtime import evidence_bridge
+from atlas_runtime.evidence_bridge import AggregationReceipt
+
 GIT_TIMEOUT_SECONDS = 5.0
 MAX_FILE_BYTES = 32 * 1024 * 1024
 
@@ -70,6 +73,26 @@ class ReconciliationResult(BaseModel):
     baseline_head: str | None = None
     final_head: str | None = None
     error_code: str | None = None
+
+
+def persist_reference_aggregation(
+    *,
+    db_path: pathlib.Path | None,
+    provenance: dict[str, object],
+    child_change_set_ids: list[str],
+) -> AggregationReceipt:
+    """Deduplicate child identities before crossing the Rust boundary."""
+
+    unique_ids = sorted(
+        {value.strip() for value in child_change_set_ids if value.strip()}
+    )
+    if not unique_ids:
+        return evidence_bridge.unavailable_aggregation_receipt("no_children")
+    return evidence_bridge.persist_change_aggregation(
+        db_path=db_path,
+        provenance=provenance,
+        child_change_set_ids=unique_ids,
+    )
 
 
 def _git(root: pathlib.Path, *args: str) -> bytes:

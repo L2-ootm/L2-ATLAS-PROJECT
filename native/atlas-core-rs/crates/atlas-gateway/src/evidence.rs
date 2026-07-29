@@ -6,6 +6,7 @@
 
 use rusqlite::{params, Connection, TransactionBehavior};
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeSet, VecDeque};
 use std::path::{Component, Path};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -75,6 +76,8 @@ pub struct ProtocolResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub change_set: Option<ChangeSetReceipt>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub aggregation: Option<AggregationReceipt>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<ProtocolError>,
 }
 
@@ -137,6 +140,220 @@ pub struct ChangeSetReceipt {
     pub additions: usize,
     pub deletions: usize,
     pub redaction_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AggregateChangeSetsRequest {
+    pub protocol: String,
+    pub db_path: String,
+    pub kind: String,
+    pub provenance: EvidenceProvenance,
+    pub child_change_set_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AggregationReceipt {
+    pub change_set_id: String,
+    pub coverage: String,
+    pub status: String,
+    pub child_count: usize,
+    pub file_count: usize,
+    pub additions: usize,
+    pub deletions: usize,
+    pub redaction_count: usize,
+}
+
+pub fn persist_change_set_aggregation(
+    request: &AggregateChangeSetsRequest,
+) -> Result<AggregationReceipt, String> {
+    if request.protocol != PROTOCOL_VERSION {
+        return Err(format!("unsupported protocol {:?}", request.protocol));
+    }
+    if request.kind != "aggregate_change_sets" {
+        return Err("kind must be aggregate_change_sets".to_string());
+    }
+    if request.provenance.run_id.trim().is_empty() {
+        return Err("run_id must be non-empty".to_string());
+    }
+    if request.child_change_set_ids.is_empty() {
+        return Err("aggregation requires at least one child change set".to_string());
+    }
+
+    let mut conn = Connection::open(Path::new(&request.db_path)).map_err(|e| e.to_string())?;
+    conn.pragma_update(None, "foreign_keys", "ON")
+        .map_err(|e| e.to_string())?;
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|e| e.to_string())?;
+
+    let mut queue: VecDeque<String> = request
+        .child_change_set_ids
+        .iter()
+        .filter(|value| !value.trim().is_empty())
+        .cloned()
+        .collect();
+    let mut visited = BTreeSet::new();
+    let mut leaves = BTreeSet::new();
+    while let Some(change_set_id) = queue.pop_front() {
+        if !visited.insert(change_set_id.clone()) {
+            continue;
+        }
+        let exists: i64 = tx
+            .query_row(
+                "SELECT COUNT(*) FROM evidence_change_sets WHERE id=?1",
+                [&change_set_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if exists != 1 {
+            return Err(format!("unknown child change set {change_set_id:?}"));
+        }
+        let mut statement = tx
+            .prepare(
+                "SELECT child_change_set_id FROM evidence_child_refs
+                 WHERE parent_change_set_id=?1 ORDER BY child_change_set_id",
+            )
+            .map_err(|e| e.to_string())?;
+        let children = statement
+            .query_map([&change_set_id], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        drop(statement);
+        if children.is_empty() {
+            leaves.insert(change_set_id);
+        } else {
+            queue.extend(children);
+        }
+    }
+    if leaves.is_empty() {
+        return Err("aggregation resolved to no leaf change sets".to_string());
+    }
+
+    let identity = format!(
+        "{}|{}|{}|{}",
+        request.provenance.run_id,
+        request.provenance.actor_id.as_deref().unwrap_or(""),
+        request.provenance.team_run_id.as_deref().unwrap_or(""),
+        leaves.iter().cloned().collect::<Vec<_>>().join("|"),
+    );
+    let fingerprint = sha256_hex(identity.as_bytes());
+    let change_set_id = format!("aggregate-{}", &fingerprint[..24]);
+    if leaves.contains(&change_set_id) {
+        return Err("aggregation cycle detected".to_string());
+    }
+
+    let mut coverage = "complete".to_string();
+    let mut status = "captured".to_string();
+    let mut file_count = 0usize;
+    let mut additions = 0usize;
+    let mut deletions = 0usize;
+    let mut redaction_count = 0usize;
+    let mut leaf_actors: Vec<(String, Option<String>)> = Vec::new();
+    for leaf in &leaves {
+        let (leaf_coverage, leaf_status, leaf_redactions, actor_id): (
+            String,
+            String,
+            i64,
+            Option<String>,
+        ) = tx
+            .query_row(
+                "SELECT coverage,status,redaction_count,actor_id
+                 FROM evidence_change_sets WHERE id=?1",
+                [leaf],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .map_err(|e| e.to_string())?;
+        coverage = worse_coverage(&coverage, &leaf_coverage).to_string();
+        status = worse_status(&status, &leaf_status).to_string();
+        redaction_count = redaction_count.saturating_add(leaf_redactions.max(0) as usize);
+        let (files, adds, deletes): (i64, i64, i64) = tx
+            .query_row(
+                "SELECT COUNT(*),COALESCE(SUM(additions),0),COALESCE(SUM(deletions),0)
+                 FROM evidence_file_changes WHERE change_set_id=?1",
+                [leaf],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .map_err(|e| e.to_string())?;
+        file_count = file_count.saturating_add(files.max(0) as usize);
+        additions = additions.saturating_add(adds.max(0) as usize);
+        deletions = deletions.saturating_add(deletes.max(0) as usize);
+        leaf_actors.push((leaf.clone(), actor_id));
+    }
+
+    let now = unix_nanos().to_string();
+    tx.execute(
+        "INSERT OR IGNORE INTO evidence_change_sets
+         (id,run_id,session_id,team_run_id,turn_id,actor_id,parent_actor_id,
+          tool_call_id,coverage,status,redaction_count,created_at)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
+        params![
+            change_set_id,
+            request.provenance.run_id,
+            request.provenance.session_id,
+            request.provenance.team_run_id,
+            request.provenance.turn_id,
+            request.provenance.actor_id,
+            request.provenance.parent_actor_id,
+            request.provenance.tool_call_id,
+            coverage,
+            status,
+            redaction_count as i64,
+            now,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    for (leaf, actor_id) in &leaf_actors {
+        tx.execute(
+            "INSERT OR IGNORE INTO evidence_child_refs
+             (parent_change_set_id,child_change_set_id,actor_id)
+             VALUES (?1,?2,?3)",
+            params![change_set_id, leaf, actor_id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+
+    Ok(AggregationReceipt {
+        change_set_id,
+        coverage,
+        status,
+        child_count: leaves.len(),
+        file_count,
+        additions,
+        deletions,
+        redaction_count,
+    })
+}
+
+fn worse_coverage<'a>(left: &'a str, right: &'a str) -> &'a str {
+    let rank = |value: &str| match value {
+        "complete" => 0,
+        "tool_only" => 1,
+        "partial" => 2,
+        "unavailable" => 3,
+        _ => 3,
+    };
+    if rank(right) > rank(left) {
+        right
+    } else {
+        left
+    }
+}
+
+fn worse_status<'a>(left: &'a str, right: &'a str) -> &'a str {
+    let rank = |value: &str| match value {
+        "captured" => 0,
+        "partial" => 1,
+        "unavailable" => 2,
+        "too_large" => 3,
+        _ => 2,
+    };
+    if rank(right) > rank(left) {
+        right
+    } else {
+        left
+    }
 }
 
 pub fn persist_change_set(request: &ChangeSetRequest) -> Result<ChangeSetReceipt, String> {

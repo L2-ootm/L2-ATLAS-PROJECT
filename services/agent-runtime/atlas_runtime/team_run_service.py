@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -17,9 +18,13 @@ import subprocess
 import threading
 import time
 import uuid
+from pathlib import Path
 from typing import Any, Optional
 
+from atlas_runtime import change_reconciliation
 from atlas_runtime.run_service import persist_full_result_reference
+
+logger = logging.getLogger(__name__)
 
 CONTENT_CAP = 4000
 MAX_ROUNDS_CAP = 20
@@ -265,6 +270,43 @@ def finish_team_run(
     """Monotonic terminal transition. Repeated finishing is a no-op."""
     if status not in TERMINAL_STATUSES:
         raise ValueError(f"invalid terminal status: {status!r}")
+    team_run = get_team_run(conn, team_run_id)
+    if team_run is None or team_run["status"] not in ACTIVE_STATUSES:
+        return False
+    if status == "completed":
+        escaped = (
+            team_run_id.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        )
+        change_set_ids = [
+            row[0]
+            for row in conn.execute(
+                "SELECT DISTINCT ecs.id FROM evidence_change_sets ecs"
+                " LEFT JOIN actors actor ON actor.id=ecs.actor_id"
+                " WHERE ecs.team_run_id=?"
+                " OR actor.idempotency_key LIKE ? ESCAPE '\\'"
+                " ORDER BY ecs.id",
+                (team_run_id, f"{escaped}:%"),
+            ).fetchall()
+        ]
+        if change_set_ids:
+            db_row = conn.execute("PRAGMA database_list").fetchone()
+            db_path = Path(db_row[2]) if db_row and db_row[2] else None
+            receipt = change_reconciliation.persist_reference_aggregation(
+                db_path=db_path,
+                provenance={
+                    "run_id": team_run.get("parent_run_id"),
+                    "team_run_id": team_run_id,
+                },
+                child_change_set_ids=change_set_ids,
+            )
+            if receipt.status != "captured":
+                # Evidence failure is explicit without corrupting the team's
+                # already-completed application result.
+                logger.error(
+                    "team %s evidence aggregation unavailable: %s",
+                    team_run_id,
+                    receipt.error_code,
+                )
     now = _now()
     with lock:
         with conn:

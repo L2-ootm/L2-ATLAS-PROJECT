@@ -28,8 +28,10 @@ import sqlite3
 import threading
 import time
 import uuid
+from pathlib import Path
 from typing import Any, Optional
 
+from atlas_runtime import change_reconciliation
 from atlas_runtime.audit_service import emit
 
 logger = logging.getLogger(__name__)
@@ -296,6 +298,85 @@ def complete_actor(
     result_preview: str = "",
     child_run_id: Optional[str] = None,
 ) -> bool:
+    actor = _fetch_actor(conn, actor_id)
+    if actor is None or actor["status"] not in ("queued", "running"):
+        return False
+    effective_run_id = child_run_id or actor.get("child_run_id") or actor["parent_run_id"]
+    mutation_ids = [
+        row[0]
+        for row in conn.execute(
+            "SELECT DISTINCT ecs.id FROM evidence_change_sets ecs"
+            " JOIN evidence_file_changes efc ON efc.change_set_id=ecs.id"
+            " WHERE ecs.actor_id=? ORDER BY ecs.id",
+            (actor_id,),
+        ).fetchall()
+    ]
+    permission = None
+    if actor.get("session_id"):
+        row = conn.execute(
+            "SELECT permission_mode FROM surface_sessions WHERE id=?",
+            (actor["session_id"],),
+        ).fetchone()
+        permission = row[0] if row else None
+    if permission == "read_only" and mutation_ids:
+        error = "read-only mutation incident: actor produced file changes"
+        emit(
+            conn,
+            lock,
+            run_id=effective_run_id,
+            event_type="failure",
+            task_id=actor_id,
+            session_id=actor.get("session_id"),
+            policy_result="denied",
+            data={
+                "status": "failed",
+                "reason": error,
+                "change_set_ids": mutation_ids,
+            },
+        )
+        return _finish(
+            conn,
+            lock,
+            actor_id,
+            status="failed",
+            error=error,
+            child_run_id=child_run_id,
+        )
+
+    descendant_ids = [
+        row[0]
+        for row in conn.execute(
+            "WITH RECURSIVE descendants(id) AS ("
+            " SELECT id FROM actors WHERE parent_actor_id=?"
+            " UNION ALL"
+            " SELECT actor.id FROM actors actor"
+            " JOIN descendants parent ON actor.parent_actor_id=parent.id"
+            ")"
+            " SELECT DISTINCT ecs.id FROM evidence_change_sets ecs"
+            " JOIN descendants ON descendants.id=ecs.actor_id"
+            " ORDER BY ecs.id",
+            (actor_id,),
+        ).fetchall()
+    ]
+    if descendant_ids:
+        db_row = conn.execute("PRAGMA database_list").fetchone()
+        db_path = Path(db_row[2]) if db_row and db_row[2] else None
+        receipt = change_reconciliation.persist_reference_aggregation(
+            db_path=db_path,
+            provenance={
+                "run_id": effective_run_id,
+                "session_id": actor.get("session_id"),
+                "actor_id": actor_id,
+                "parent_actor_id": actor.get("parent_actor_id"),
+            },
+            child_change_set_ids=descendant_ids,
+        )
+        if receipt.status != "captured":
+            logger.error(
+                "actor %s evidence aggregation unavailable: %s",
+                actor_id,
+                receipt.error_code,
+            )
     return _finish(
         conn, lock, actor_id,
         status="completed", result_preview=result_preview, child_run_id=child_run_id,

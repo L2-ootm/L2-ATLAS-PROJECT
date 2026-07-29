@@ -38,8 +38,32 @@ class CaptureReceipt(BaseModel):
     error_code: str | None = None
 
 
+class AggregationReceipt(BaseModel):
+    """Bounded receipt for a reference-only parent change set."""
+
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    change_set_id: str | None = None
+    coverage: Literal["complete", "tool_only", "partial", "unavailable"]
+    status: Literal["captured", "partial", "unavailable", "too_large"]
+    child_count: int = Field(default=0, ge=0)
+    file_count: int = Field(default=0, ge=0)
+    additions: int = Field(default=0, ge=0)
+    deletions: int = Field(default=0, ge=0)
+    redaction_count: int = Field(default=0, ge=0)
+    error_code: str | None = None
+
+
 def unavailable_receipt(error_code: str) -> CaptureReceipt:
     return CaptureReceipt(
+        coverage="unavailable",
+        status="unavailable",
+        error_code=error_code,
+    )
+
+
+def unavailable_aggregation_receipt(error_code: str) -> AggregationReceipt:
+    return AggregationReceipt(
         coverage="unavailable",
         status="unavailable",
         error_code=error_code,
@@ -168,3 +192,72 @@ def persist_change_capture(
     except ValidationError:
         logger.error("Rust evidence capture returned an invalid typed receipt")
         return unavailable_receipt("malformed_response")
+
+
+def persist_change_aggregation(
+    *,
+    db_path: pathlib.Path | None,
+    provenance: dict[str, object],
+    child_change_set_ids: list[str],
+    evidence_bin: str | None = None,
+    timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+) -> AggregationReceipt:
+    """Persist one reference-only aggregate through the Rust authority."""
+
+    if db_path is None:
+        return unavailable_aggregation_receipt("database_unavailable")
+    executable = evidence_bin or find_evidence_binary()
+    if not executable:
+        return unavailable_aggregation_receipt("binary_unavailable")
+    if not provenance.get("run_id") or not child_change_set_ids:
+        return unavailable_aggregation_receipt("invalid_aggregation")
+    request = {
+        "protocol": PROTOCOL_VERSION,
+        "kind": "aggregate_change_sets",
+        "db_path": str(db_path),
+        "provenance": provenance,
+        "child_change_set_ids": child_change_set_ids,
+    }
+    try:
+        result = subprocess.run(  # noqa: S603
+            [executable],
+            input=json.dumps(request, ensure_ascii=False) + "\n",
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout_seconds,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        logger.error("Rust evidence aggregation timed out after %.3fs", timeout_seconds)
+        return unavailable_aggregation_receipt("timeout")
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.error("Rust evidence aggregation process unavailable: %s", exc)
+        return unavailable_aggregation_receipt("process_unavailable")
+
+    try:
+        lines = result.stdout.splitlines()
+        response = json.loads(lines[-1]) if lines else None
+        if not isinstance(response, dict):
+            raise ValueError("response is not an object")
+    except (ValueError, json.JSONDecodeError):
+        logger.error("Rust evidence aggregation returned malformed JSON")
+        return unavailable_aggregation_receipt("malformed_response")
+    if response.get("protocol") != PROTOCOL_VERSION:
+        logger.error("Rust evidence aggregation protocol mismatch")
+        return unavailable_aggregation_receipt("protocol_mismatch")
+    if result.returncode != 0 or response.get("ok") is not True:
+        error = response.get("error")
+        code = error.get("code") if isinstance(error, dict) else None
+        logger.error(
+            "Rust evidence aggregation failed rc=%s error=%s",
+            result.returncode,
+            error or result.stderr[-500:],
+        )
+        return unavailable_aggregation_receipt(str(code or "persistence_failed"))
+    try:
+        return AggregationReceipt.model_validate(response.get("aggregation"))
+    except ValidationError:
+        logger.error("Rust evidence aggregation returned an invalid typed receipt")
+        return unavailable_aggregation_receipt("malformed_response")
