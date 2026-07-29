@@ -21,18 +21,153 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import json
 import logging
+import os
+import pathlib
+import shutil
 import sqlite3
+import subprocess
 import threading
 from typing import Literal, Optional
 
-from atlas_core.schemas.core import Run
+from atlas_core.schemas.core import SECRET_PATTERNS, Run
 import uuid
 
 from atlas_runtime.audit_service import emit, get_events_for_run
 from atlas_runtime.run_summary_service import generate_run_summary
 
 logger = logging.getLogger(__name__)
+FULL_RESULT_PREVIEW = 2000
+
+
+def _redacted_preview(content: str, limit: int) -> str:
+    redacted = content
+    for pattern in SECRET_PATTERNS:
+        redacted = pattern.sub(
+            lambda match: f"{match.group(1)}=[REDACTED]"
+            if match.lastindex and match.lastindex >= 1
+            else "[REDACTED]",
+            redacted,
+        )
+    return redacted[:limit]
+
+
+def _evidence_binary() -> str | None:
+    configured = os.environ.get("ATLAS_EVIDENCE_BIN", "").strip()
+    if configured:
+        return configured
+    installed = shutil.which("atlas-evidence")
+    if installed:
+        return installed
+    suffix = ".exe" if os.name == "nt" else ""
+    root = pathlib.Path(__file__).resolve().parents[3]
+    for profile in ("release", "debug"):
+        candidate = (
+            root
+            / "native"
+            / "atlas-core-rs"
+            / "target"
+            / profile
+            / f"atlas-evidence{suffix}"
+        )
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
+def persist_full_result_reference(
+    conn: sqlite3.Connection,
+    *,
+    owner_kind: str,
+    owner_id: str,
+    content: str,
+    preview_limit: int,
+    run_id: str | None = None,
+    team_run_id: str | None = None,
+    tool_call_id: str | None = None,
+    media_type: str = "text/plain",
+) -> dict[str, object]:
+    """Call the canonical Rust NDJSON authority or return typed unavailable.
+
+    No Python persistence/hash fallback exists. The preview remains bounded and
+    redacted even when the process/database is unavailable.
+    """
+    preview = _redacted_preview(content, preview_limit)
+    unavailable: dict[str, object] = {
+        "evidence_id": "",
+        "owner_kind": owner_kind,
+        "owner_id": owner_id,
+        "availability": "unavailable",
+        "preview": preview,
+        "preview_bytes": len(preview.encode("utf-8")),
+        "full_bytes": len(content.encode("utf-8")),
+        "sha256": None,
+        "media_type": media_type,
+        "redaction_count": int(preview != content[:preview_limit]),
+    }
+    db_rows = conn.execute("PRAGMA database_list").fetchall()
+    db_path = next((row[2] for row in db_rows if row[1] == "main" and row[2]), "")
+    evidence_bin = _evidence_binary()
+    if not db_path or not evidence_bin:
+        logger.warning(
+            "full-result evidence unavailable owner=%s:%s db_file=%s binary=%s",
+            owner_kind,
+            owner_id,
+            bool(db_path),
+            bool(evidence_bin),
+        )
+        return unavailable
+    request = {
+        "protocol": "atlas-evidence/v1",
+        "db_path": db_path,
+        "owner_kind": owner_kind,
+        "owner_id": owner_id,
+        "run_id": run_id,
+        "team_run_id": team_run_id,
+        "tool_call_id": tool_call_id,
+        "content": content,
+        "media_type": media_type,
+        "preview_limit": preview_limit,
+    }
+    try:
+        result = subprocess.run(  # noqa: S603
+            [evidence_bin],
+            input=json.dumps(request, ensure_ascii=False) + "\n",
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+            check=False,
+        )
+        response = json.loads(result.stdout.splitlines()[-1]) if result.stdout else {}
+        reference = response.get("reference")
+        if result.returncode == 0 and response.get("ok") is True and isinstance(reference, dict):
+            return reference
+        logger.error(
+            "Rust evidence persistence failed owner=%s:%s rc=%s error=%s",
+            owner_kind,
+            owner_id,
+            result.returncode,
+            response.get("error") or result.stderr[-500:],
+        )
+    except (OSError, subprocess.SubprocessError, ValueError, json.JSONDecodeError) as exc:
+        logger.error(
+            "Rust evidence process unavailable owner=%s:%s: %s",
+            owner_kind,
+            owner_id,
+            exc,
+        )
+    return unavailable
+
+
+def _result_envelope(reference: dict[str, object]) -> str:
+    return json.dumps(
+        {"preview": reference["preview"], "full_result": reference},
+        ensure_ascii=False,
+        sort_keys=True,
+    )
 
 
 def start_run(
@@ -181,6 +316,17 @@ def complete_run(
         )
 
     stored_summary = summary
+    full_result_reference = None
+    if len(summary) > FULL_RESULT_PREVIEW:
+        full_result_reference = persist_full_result_reference(
+            conn,
+            owner_kind="run",
+            owner_id=run_id,
+            content=summary,
+            preview_limit=FULL_RESULT_PREVIEW,
+            run_id=run_id,
+        )
+        stored_summary = _result_envelope(full_result_reference)
     if generate_summary:
         try:
             events = get_events_for_run(conn, run_id)
@@ -191,11 +337,26 @@ def complete_run(
             try:
                 run_summary = generate_run_summary(events)
                 if not run_summary.outcome and summary:
-                    run_summary = dataclasses.replace(run_summary, outcome=summary[:2000])
+                    outcome = (
+                        str(full_result_reference["preview"])
+                        if full_result_reference is not None
+                        else summary
+                    )
+                    run_summary = dataclasses.replace(run_summary, outcome=outcome)
                 stored_summary = run_summary.to_json()
+                if full_result_reference is not None:
+                    summary_payload = json.loads(stored_summary)
+                    summary_payload["full_result"] = full_result_reference
+                    stored_summary = json.dumps(
+                        summary_payload, ensure_ascii=False, sort_keys=True
+                    )
             except Exception as exc:  # noqa: BLE001 — fall back to plain text, never block
                 logger.warning("complete_run: structured summary generation failed for %s: %s", run_id, exc)
-                stored_summary = summary
+                stored_summary = (
+                    _result_envelope(full_result_reference)
+                    if full_result_reference is not None
+                    else summary
+                )
 
     # Atomic dual-table update with pre-condition check inside lock (prevents TOCTOU)
     with lock:

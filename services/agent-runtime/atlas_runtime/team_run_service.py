@@ -9,6 +9,7 @@ See docs/plans/2026-07-18-agent-teams-and-group-chat-design.md.
 from __future__ import annotations
 
 import datetime
+import json
 import os
 import re
 import sqlite3
@@ -17,6 +18,8 @@ import threading
 import time
 import uuid
 from typing import Any, Optional
+
+from atlas_runtime.run_service import persist_full_result_reference
 
 CONTENT_CAP = 4000
 MAX_ROUNDS_CAP = 20
@@ -94,6 +97,26 @@ def is_done_signal(content: str) -> bool:
     return (content or "").strip().upper() == "DONE"
 
 
+def _lossless_team_content(
+    conn: sqlite3.Connection, team_run_id: str, content: str
+) -> str:
+    if len(content) <= CONTENT_CAP:
+        return content
+    reference = persist_full_result_reference(
+        conn,
+        owner_kind="team_run",
+        owner_id=team_run_id,
+        content=content,
+        preview_limit=CONTENT_CAP,
+        team_run_id=team_run_id,
+    )
+    return json.dumps(
+        {"preview": reference["preview"], "full_result": reference},
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+
+
 # ---------------------------------------------------------------------------
 # team_runs
 # ---------------------------------------------------------------------------
@@ -138,6 +161,15 @@ def create_team_run(
                 " VALUES (?,?,1,0,NULL,'orchestrator','all',?,?)",
                 (f"msg-{uuid.uuid4()}", team_run_id, kickoff_message[:CONTENT_CAP], now),
             )
+    if len(kickoff_message) > CONTENT_CAP:
+        stored_kickoff = _lossless_team_content(conn, team_run_id, kickoff_message)
+        with lock:
+            with conn:
+                conn.execute(
+                    "UPDATE team_chat_messages SET content=?"
+                    " WHERE team_run_id=? AND seq=1",
+                    (stored_kickoff, team_run_id),
+                )
     run = get_team_run(conn, team_run_id)
     assert run is not None
     return run
@@ -372,6 +404,7 @@ def append_message(
     target: Optional[str] = None,
 ) -> dict[str, Any]:
     resolved_target, cleaned = (target, content) if target else parse_target(content)
+    stored_content = _lossless_team_content(conn, team_run_id, cleaned)
     now = _now()
     with lock:
         with conn:
@@ -397,7 +430,7 @@ def append_message(
                 " VALUES (?,?,?,?,?,?,?,?,?)",
                 (
                     msg_id, team_run_id, next_seq, round_no, sender_actor_id,
-                    sender_role, resolved_target, cleaned[:CONTENT_CAP], now,
+                    sender_role, resolved_target, stored_content, now,
                 ),
             )
     cur = conn.execute("SELECT * FROM team_chat_messages WHERE id=?", (msg_id,))

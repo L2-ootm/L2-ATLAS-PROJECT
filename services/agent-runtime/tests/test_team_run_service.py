@@ -223,3 +223,34 @@ def test_team_message_lossless_reference_replaces_legacy_clipping(
     assert envelope["preview"] == full[:4000]
     assert envelope["full_result"]["evidence_id"] == "result-team-1"
     assert envelope["full_result"]["full_bytes"] == len(full.encode())
+
+
+def test_team_kickoff_lossless_reference_replaces_legacy_clipping(
+    db, lock, monkeypatch
+) -> None:
+    import json
+
+    team = _make_team(db, lock)
+    full = "kickoff-result-" * 400
+    monkeypatch.setattr(
+        team_run_service,
+        "persist_full_result_reference",
+        lambda *_a, **kw: {
+            "evidence_id": "result-kickoff-1",
+            "owner_kind": "team_run",
+            "owner_id": kw["owner_id"],
+            "availability": "available",
+            "preview": kw["content"][:4000],
+            "preview_bytes": 4000,
+            "full_bytes": len(kw["content"].encode()),
+            "sha256": "d" * 64,
+            "media_type": "text/plain",
+            "redaction_count": 0,
+        },
+    )
+    run = team_run_service.create_team_run(
+        db, lock, team_id=team["id"], kickoff_message=full
+    )
+    message = team_run_service.list_messages(db, run["id"])[0]
+    envelope = json.loads(message["content"])
+    assert envelope["full_result"]["evidence_id"] == "result-kickoff-1"

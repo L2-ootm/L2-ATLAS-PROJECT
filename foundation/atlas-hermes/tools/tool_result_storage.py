@@ -23,8 +23,11 @@ Defense against context-window overflow operates at three levels:
 """
 
 import logging
+import json
 import os
+import shutil
 import shlex
+import subprocess
 import uuid
 
 from tools.budget_config import (
@@ -34,6 +37,62 @@ from tools.budget_config import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class FullResultMessage(str):
+    """Prompt-compatible string carrying typed evidence reference metadata."""
+
+    reference: dict
+
+    def __new__(cls, prompt_text: str, reference: dict):
+        value = super().__new__(cls, prompt_text)
+        value.reference = reference
+        return value
+
+
+def _default_evidence_writer(**kwargs) -> dict:
+    db_path = os.environ.get("ATLAS_DB", "").strip()
+    evidence_bin = os.environ.get("ATLAS_EVIDENCE_BIN", "").strip() or shutil.which(
+        "atlas-evidence"
+    )
+    if not db_path or not evidence_bin:
+        raise RuntimeError("ATLAS evidence database or atlas-evidence binary unavailable")
+    request = {
+        "protocol": "atlas-evidence/v1",
+        "db_path": db_path,
+        "owner_kind": "tool_call",
+        "owner_id": kwargs["owner_id"],
+        "tool_call_id": kwargs["owner_id"],
+        "content": kwargs["content"],
+        "media_type": kwargs.get("media_type", "text/plain"),
+        "preview_limit": kwargs["preview_limit"],
+    }
+    result = subprocess.run(  # noqa: S603
+        [evidence_bin],
+        input=json.dumps(request, ensure_ascii=False) + "\n",
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+        check=False,
+    )
+    response = json.loads(result.stdout.splitlines()[-1]) if result.stdout else {}
+    if result.returncode != 0 or response.get("ok") is not True:
+        raise RuntimeError(str(response.get("error") or result.stderr[-500:]))
+    reference = response.get("reference")
+    if not isinstance(reference, dict):
+        raise RuntimeError("Rust evidence response omitted reference")
+    return reference
+
+
+def _full_result_message(reference: dict) -> FullResultMessage:
+    prompt_text = (
+        f"{reference['preview']}\n\n"
+        f"<full-result-reference>{json.dumps(reference, ensure_ascii=False, sort_keys=True)}"
+        "</full-result-reference>"
+    )
+    return FullResultMessage(prompt_text, reference)
 PERSISTED_OUTPUT_TAG = "<persisted-output>"
 PERSISTED_OUTPUT_CLOSING_TAG = "</persisted-output>"
 STORAGE_DIR = "/tmp/hermes-results"
@@ -126,6 +185,7 @@ def maybe_persist_tool_result(
     env=None,
     config: BudgetConfig = DEFAULT_BUDGET,
     threshold: int | float | None = None,
+    evidence_writer=None,
 ) -> str:
     """Layer 2: persist oversized result into the sandbox, return preview + path.
 
@@ -155,6 +215,36 @@ def maybe_persist_tool_result(
     storage_dir = _resolve_storage_dir(env)
     remote_path = f"{storage_dir}/{tool_use_id}.txt"
     preview, has_more = generate_preview(content, max_chars=config.preview_size)
+
+    writer = evidence_writer
+    evidence_configured = bool(
+        os.environ.get("ATLAS_DB")
+        and (os.environ.get("ATLAS_EVIDENCE_BIN") or shutil.which("atlas-evidence"))
+    )
+    if writer is not None or evidence_configured:
+        try:
+            reference = (writer or _default_evidence_writer)(
+                owner_id=tool_use_id,
+                content=content,
+                preview_limit=config.preview_size,
+                media_type="text/plain",
+            )
+            return _full_result_message(reference)
+        except Exception as exc:
+            logger.error("Canonical evidence persistence failed for %s: %s", tool_use_id, exc)
+            reference = {
+                "evidence_id": "",
+                "owner_kind": "tool_call",
+                "owner_id": tool_use_id,
+                "availability": "unavailable",
+                "preview": preview,
+                "preview_bytes": len(preview.encode("utf-8")),
+                "full_bytes": len(content.encode("utf-8")),
+                "sha256": None,
+                "media_type": "text/plain",
+                "redaction_count": 0,
+            }
+            return _full_result_message(reference)
 
     if env is not None:
         try:
