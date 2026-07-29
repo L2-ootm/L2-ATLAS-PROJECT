@@ -305,6 +305,56 @@ def test_two_workers_racing_single_delivery_have_one_winner(db, lock, run_id) ->
 # --- orphan recovery ---------------------------------------------------------
 
 
+def test_actor_history_reloads_after_service_restart_by_session_and_parent_run(
+    db, lock, run_id, tmp_path
+) -> None:
+    parent, _ = _spawn(
+        db,
+        lock,
+        run_id,
+        idempotency_key="history-parent",
+        session_id="surface-history",
+    )
+    child, _ = _spawn(
+        db,
+        lock,
+        run_id,
+        idempotency_key="history-child",
+        session_id="surface-history",
+        parent_actor_id=parent["id"],
+        depth=2,
+    )
+    actor_service.mark_running(db, lock, parent["id"], pid=111)
+    actor_service.attach_child_run(db, lock, parent["id"], run_id)
+    actor_service.complete_actor(
+        db, lock, parent["id"], result_preview="durable result", child_run_id=run_id
+    )
+    actor_service.cancel_actor(db, lock, child["id"])
+
+    restored_path = tmp_path / "actor-history.db"
+    restored = sqlite3.connect(restored_path)
+    db.backup(restored)
+    restored.close()
+
+    reopened = sqlite3.connect(restored_path)
+    try:
+        by_session = actor_service.load_actor_history(
+            reopened, session_id="surface-history"
+        )
+        by_parent = actor_service.load_actor_history(
+            reopened, parent_run_id=run_id
+        )
+    finally:
+        reopened.close()
+
+    assert [actor["id"] for actor in by_session] == [parent["id"], child["id"]]
+    assert [actor["id"] for actor in by_parent] == [parent["id"], child["id"]]
+    assert by_session[0]["child_run_id"] == run_id
+    assert by_session[0]["status"] == "completed"
+    assert by_session[1]["parent_actor_id"] == parent["id"]
+    assert by_session[1]["status"] == "cancelled"
+
+
 def test_orphan_reconciliation(db, lock, run_id) -> None:
     actor, _ = _spawn(db, lock, run_id)
     actor_service.mark_running(db, lock, actor["id"])

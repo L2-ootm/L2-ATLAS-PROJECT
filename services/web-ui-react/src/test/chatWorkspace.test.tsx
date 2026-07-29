@@ -1,10 +1,11 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ChatActorWorkspace } from '../components/chat/ChatActorWorkspace';
 import { OrchestrationCallCard } from '../components/chat/OrchestrationCallCard';
 import { QueuedChatComposer } from '../components/chat/QueuedChatComposer';
 import { TopoScroll } from '../components/TopoScroll';
 import type { SurfaceEvent } from '../lib/surfaceContracts';
+import * as api from '../lib/api';
 
 function event(seq: number, kind: SurfaceEvent['kind'], runId: string, payload: object): SurfaceEvent {
 	return {
@@ -18,6 +19,10 @@ function event(seq: number, kind: SurfaceEvent['kind'], runId: string, payload: 
 }
 
 describe('chat actor workspace', () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
 	it('opens a durable actor and shows its linked child tool stream', () => {
 		const events = [
 			event(1, 'task', 'parent-run', {
@@ -81,6 +86,73 @@ describe('chat actor workspace', () => {
 			}]}
 		/>);
 		expect(screen.getByText('SETTLED')).toBeInTheDocument();
+	});
+
+	it('hydrates SQLite actor history before merging live events by stable id', async () => {
+		vi.spyOn(api, 'listSurfaceSessionsDashboard').mockResolvedValue({
+			sessions: [{
+				id: 'surface-1',
+				surface: { kind: 'webui', session_id: 'surface-1' },
+				workspace: { kind: 'global', root: '', project_id: null },
+				agent: 'native',
+				model: { provider: 'test', model_id: 'test' },
+				permission_mode: 'ask',
+				state: 'active',
+				mission_id: null,
+				mission_title: null,
+				mission_intent: null,
+				run_id: 'parent-run',
+				heartbeat_at: '2026-07-17T01:02:03Z',
+				heartbeat_age_seconds: 0,
+				health: 'healthy',
+				actor_count: 2,
+				active_actor_count: 1,
+				actors: [
+					{
+						id: 'actor-stable',
+						parent_id: null,
+						goal: 'Persisted duplicate',
+						status: 'running',
+						model: 'test',
+						mode: 'joined',
+						depth: 1,
+						heartbeat_age_seconds: 0,
+						health: 'healthy',
+						created_at: '2026-07-17T01:02:03Z'
+					},
+					{
+						id: 'actor-cancelled',
+						parent_id: null,
+						goal: 'Cancelled durable actor',
+						status: 'cancelled',
+						model: 'test',
+						mode: 'detached',
+						depth: 1,
+						heartbeat_age_seconds: null,
+						health: 'unknown',
+						created_at: '2026-07-17T01:02:04Z'
+					}
+				],
+				created_at: '2026-07-17T01:02:03Z',
+				updated_at: '2026-07-17T01:02:04Z'
+			}],
+			total: 1,
+			limit: 200,
+			offset: 0
+		});
+		render(<ChatActorWorkspace events={[
+			event(2, 'task', 'parent-run', {
+				orchestration: 'subagent',
+				actor: true,
+				subagent_id: 'actor-stable',
+				phase: 'working',
+				goal: 'Live merged actor'
+			})
+		]} busy={false} />);
+
+		await waitFor(() => expect(screen.getByText('Cancelled durable actor')).toBeInTheDocument());
+		expect(screen.getAllByText('Live merged actor')).toHaveLength(1);
+		expect(screen.queryByText('Persisted duplicate')).not.toBeInTheDocument();
 	});
 });
 
