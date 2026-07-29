@@ -371,6 +371,128 @@ class Artifact(BaseModel):
         return None if dt is None else dt.isoformat()
 
 
+class EvidenceProvenance(BaseModel):
+    """Stable ownership and actor lineage for a captured evidence envelope."""
+
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    run_id: str
+    session_id: str | None = None
+    team_run_id: str | None = None
+    turn_id: str | None = None
+    actor_id: str | None = None
+    parent_actor_id: str | None = None
+    tool_call_id: str | None = None
+
+
+class DiffHunk(BaseModel):
+    """A canonical unified-diff hunk with byte-addressable patch content."""
+
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    file_change_id: str
+    old_start: int = Field(ge=0)
+    old_lines: int = Field(ge=0)
+    new_start: int = Field(ge=0)
+    new_lines: int = Field(ge=0)
+    patch: str = ""
+    patch_start_byte: int = Field(default=0, ge=0)
+    patch_bytes: int = Field(default=0, ge=0)
+    redacted: bool = False
+
+
+class FileChange(BaseModel):
+    """One normalized file mutation inside a change set."""
+
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    change_set_id: str
+    path: str
+    old_path: str | None = None
+    operation: Literal["create", "edit", "delete", "rename", "mode", "binary"]
+    availability: Literal[
+        "available", "redacted", "partial", "unavailable", "too_large"
+    ] = "available"
+    before_sha256: str | None = None
+    after_sha256: str | None = None
+    before_bytes: int = Field(default=0, ge=0)
+    after_bytes: int = Field(default=0, ge=0)
+    additions: int = Field(default=0, ge=0)
+    deletions: int = Field(default=0, ge=0)
+    binary: bool = False
+    generated: bool = False
+    mode_before: str | None = None
+    mode_after: str | None = None
+    redaction_count: int = Field(default=0, ge=0)
+    hunks: list[DiffHunk] = Field(default_factory=list)
+
+
+class ChangeSet(BaseModel):
+    """Atomic capture receipt containing normalized file mutations."""
+
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    provenance: EvidenceProvenance
+    coverage: Literal["complete", "tool_only", "partial", "unavailable"]
+    status: Literal["captured", "partial", "unavailable", "too_large"] = "captured"
+    files: list[FileChange] = Field(default_factory=list)
+    redaction_count: int = Field(default=0, ge=0)
+    created_at: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
+    )
+
+    @field_serializer("created_at")
+    def serialize_dt(self, dt: datetime.datetime | None) -> str | None:
+        return None if dt is None else dt.isoformat()
+
+
+class EvidenceBlobReference(BaseModel):
+    """Content-addressed chunked evidence stored by the Rust authority."""
+
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    evidence_id: str
+    sha256: str | None = None
+    media_type: str = "application/octet-stream"
+    size_bytes: int = Field(default=0, ge=0)
+    chunk_size: int = Field(default=65536, ge=1, le=65536)
+    chunk_count: int = Field(default=0, ge=0)
+    availability: Literal[
+        "available", "redacted", "partial", "unavailable", "too_large"
+    ] = "available"
+    redaction_count: int = Field(default=0, ge=0)
+
+
+class ChildEvidenceReference(BaseModel):
+    """Reference-only parent/child edge; blob bytes are never duplicated."""
+
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    parent_change_set_id: str
+    child_change_set_id: str
+    actor_id: str | None = None
+
+
+class FullResultReference(BaseModel):
+    """Bounded producer preview plus lossless retrievable result identity."""
+
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    evidence_id: str
+    owner_kind: Literal["run", "team_run", "tool_call"]
+    owner_id: str
+    availability: Literal["available", "redacted", "unavailable", "too_large"]
+    preview: str
+    preview_bytes: int = Field(ge=0)
+    full_bytes: int = Field(ge=0)
+    sha256: str | None = None
+    media_type: str = "text/plain"
+    redaction_count: int = Field(default=0, ge=0)
+
+
 class Source(BaseModel):
     """Immutable raw-content record stamped with SHA-256 at ingest time (WIKI-01).
 
@@ -455,6 +577,13 @@ __all__ = [
     "AuditEvent",
     "ToolCall",
     "Artifact",
+    "EvidenceProvenance",
+    "DiffHunk",
+    "FileChange",
+    "ChangeSet",
+    "EvidenceBlobReference",
+    "ChildEvidenceReference",
+    "FullResultReference",
     "Source",
     "WikiPage",
     "MemoryProvenance",

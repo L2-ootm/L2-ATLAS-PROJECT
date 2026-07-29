@@ -6,6 +6,19 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+/// Owner-scoped full-result bytes. The evidence module performs the indexed
+/// metadata lookup and ordered chunk assembly; callers never receive a result
+/// belonging to a different run/team/tool owner.
+pub fn get_full_result(
+    path: &Path,
+    owner_kind: &str,
+    owner_id: &str,
+    evidence_id: &str,
+) -> Result<Vec<u8>, DbError> {
+    crate::evidence::read_full_result(path, owner_kind, owner_id, evidence_id)
+        .map_err(DbError::Failed)
+}
+
 #[derive(Debug)]
 pub enum DbError {
     /// Database file does not exist yet (fresh machine, no runs).

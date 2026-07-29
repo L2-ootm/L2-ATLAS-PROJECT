@@ -5,6 +5,7 @@
 //! `atlas` CLI contract. Loopback-only bind, no auth (v1.0 single operator).
 
 pub mod db;
+pub mod evidence;
 pub mod retention;
 
 use axum::extract::{Path as AxPath, Query, Request, State};
