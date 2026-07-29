@@ -325,6 +325,7 @@ def _argv(command: Sequence[str], cwd: pathlib.Path | None = None) -> list[str]:
         candidate = pathlib.Path(head)
         if not candidate.is_absolute() and cwd is not None:
             candidate = cwd / candidate
+        candidate = candidate.resolve()
         if candidate.is_file():
             return [str(candidate), *command[1:]]
         raise ProvisionError(f"{head!r} not found at {candidate}")
