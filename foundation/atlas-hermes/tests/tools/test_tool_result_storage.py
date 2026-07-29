@@ -549,3 +549,44 @@ class TestPerToolThresholds:
             assert val == 100_000
         except ImportError:
             pytest.skip("file_tools not importable in test env")
+
+
+def test_lossless_tool_result_exposes_typed_reference_metadata():
+    full = "tool-output-" * 1000
+    result = maybe_persist_tool_result(
+        full,
+        "terminal",
+        "call-1",
+        threshold=100,
+        evidence_writer=lambda **kw: {
+            "evidence_id": "result-tool-1",
+            "owner_kind": "tool_call",
+            "owner_id": kw["owner_id"],
+            "availability": "redacted",
+            "preview": kw["content"][:2000],
+            "preview_bytes": 2000,
+            "full_bytes": len(kw["content"].encode()),
+            "sha256": "c" * 64,
+            "media_type": "text/plain",
+            "redaction_count": 1,
+        },
+    )
+    assert isinstance(result, str)
+    assert result.reference["evidence_id"] == "result-tool-1"
+    assert result.reference["availability"] == "redacted"
+    assert "result-tool-1" in result
+
+
+def test_tool_result_persistence_failure_is_explicit_unavailable():
+    def broken_writer(**_kwargs):
+        raise RuntimeError("rust process failed")
+
+    result = maybe_persist_tool_result(
+        "x" * 1000,
+        "terminal",
+        "call-2",
+        threshold=100,
+        evidence_writer=broken_writer,
+    )
+    assert result.reference["availability"] == "unavailable"
+    assert "unavailable" in result.lower()

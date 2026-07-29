@@ -217,3 +217,78 @@ def test_dispatch_subagent_emits_subagent_run(db, lock, mission_id):
         (run.id,),
     ).fetchone()[0]
     assert count >= 1
+
+
+def test_lossless_full_result_reference_replaces_run_clipping(
+    db, lock, mission_id, monkeypatch
+):
+    import json
+
+    full = "result-" * 600
+
+    def persist(*_args, **kwargs):
+        assert kwargs["content"] == full
+        return {
+            "evidence_id": "result-run-1",
+            "owner_kind": "run",
+            "owner_id": kwargs["owner_id"],
+            "availability": "available",
+            "preview": full[:2000],
+            "preview_bytes": 2000,
+            "full_bytes": len(full.encode()),
+            "sha256": "a" * 64,
+            "media_type": "text/plain",
+            "redaction_count": 0,
+        }
+
+    monkeypatch.setattr(run_service, "persist_full_result_reference", persist)
+    run = run_service.start_run(db, lock, mission_id=mission_id)
+    run_service.complete_run(
+        db,
+        lock,
+        run_id=run.id,
+        mission_id=mission_id,
+        status="succeeded",
+        summary=full,
+        generate_summary=False,
+    )
+    stored = db.execute("SELECT summary FROM runs WHERE id=?", (run.id,)).fetchone()[0]
+    envelope = json.loads(stored)
+    assert envelope["preview"] == full[:2000]
+    assert envelope["full_result"]["evidence_id"] == "result-run-1"
+    assert envelope["full_result"]["full_bytes"] == len(full.encode())
+
+
+def test_full_result_persistence_failure_is_explicit(
+    db, lock, mission_id, monkeypatch
+):
+    import json
+
+    monkeypatch.setattr(
+        run_service,
+        "persist_full_result_reference",
+        lambda *_a, **kw: {
+            "evidence_id": "",
+            "owner_kind": "run",
+            "owner_id": kw["owner_id"],
+            "availability": "unavailable",
+            "preview": kw["content"][:2000],
+            "preview_bytes": 2000,
+            "full_bytes": len(kw["content"].encode()),
+            "sha256": None,
+            "media_type": "text/plain",
+            "redaction_count": 0,
+        },
+    )
+    run = run_service.start_run(db, lock, mission_id=mission_id)
+    run_service.complete_run(
+        db,
+        lock,
+        run_id=run.id,
+        mission_id=mission_id,
+        status="failed",
+        summary="x" * 3000,
+        generate_summary=False,
+    )
+    stored = db.execute("SELECT summary FROM runs WHERE id=?", (run.id,)).fetchone()[0]
+    assert json.loads(stored)["full_result"]["availability"] == "unavailable"

@@ -183,3 +183,43 @@ def test_render_inbox_formats_lines() -> None:
 
 def test_render_inbox_empty_is_empty_string() -> None:
     assert team_run_service.render_inbox([]) == ""
+
+
+def test_team_message_lossless_reference_replaces_legacy_clipping(
+    db, lock, monkeypatch
+) -> None:
+    import json
+
+    team = _make_team(db, lock)
+    run = team_run_service.create_team_run(
+        db, lock, team_id=team["id"], kickoff_message="kickoff"
+    )
+    full = "team-result-" * 500
+    monkeypatch.setattr(
+        team_run_service,
+        "persist_full_result_reference",
+        lambda *_a, **kw: {
+            "evidence_id": "result-team-1",
+            "owner_kind": "team_run",
+            "owner_id": kw["owner_id"],
+            "availability": "available",
+            "preview": kw["content"][:4000],
+            "preview_bytes": 4000,
+            "full_bytes": len(kw["content"].encode()),
+            "sha256": "b" * 64,
+            "media_type": "text/plain",
+            "redaction_count": 0,
+        },
+    )
+    message = team_run_service.append_message(
+        db,
+        lock,
+        run["id"],
+        round_no=1,
+        sender_role="researcher",
+        content=full,
+    )
+    envelope = json.loads(message["content"])
+    assert envelope["preview"] == full[:4000]
+    assert envelope["full_result"]["evidence_id"] == "result-team-1"
+    assert envelope["full_result"]["full_bytes"] == len(full.encode())
