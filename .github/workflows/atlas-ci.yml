@@ -32,7 +32,7 @@ jobs:
           # so the full suite needs it (matches the operator machine). Installed
           # last — it depends on atlas-core/atlas-runtime, which must already be
           # present as editable installs or pip would look for them on PyPI.
-          pip install -e services/wiki-runtime
+          pip install -e "services/wiki-runtime[dev]"
       - name: Test
         run: python -m pytest services/agent-runtime/tests -q
       - name: Lint

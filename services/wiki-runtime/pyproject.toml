@@ -16,7 +16,7 @@ dependencies = [
 
 [project.optional-dependencies]
 semantic = ["sqlite-vec>=0.1.9", "fastembed>=0.8.0"]
-dev = ["pytest>=9.0", "pytest-cov>=7.0"]
+dev = ["pytest>=9.0", "pytest-cov>=7.0", "ruff>=0.15,<0.16"]
 
 [tool.hatch.metadata]
 allow-direct-references = true
