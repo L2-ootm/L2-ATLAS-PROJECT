@@ -1,14 +1,18 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -210,6 +214,120 @@ func TestSurfaceEventsUsesReplayCursor(t *testing.T) {
 	if replay.SessionID != "surface-1" || len(replay.Events) != 1 ||
 		replay.Events[0].Seq != 8 || replay.Events[0].Kind != "error" {
 		t.Fatalf("unexpected replay: %+v", replay)
+	}
+}
+
+func TestEvidencePagesUseOwnerTokenAndOpaqueCursors(t *testing.T) {
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Atlas-Surface-Owner") != "owner-1" {
+			t.Fatalf("missing owner token header")
+		}
+		paths = append(paths, r.URL.RequestURI())
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/runs/run-1/change-sets":
+			_, _ = w.Write([]byte(`{"change_sets":[{"id":"change-1","provenance":{"run_id":"run-1","session_id":"surface-1","actor_id":"actor-1"},"coverage":"complete","status":"captured","file_count":1,"additions":42,"deletions":11}],"next_cursor":"opaque:set:2"}`))
+		case "/v1/change-sets/change-1/files":
+			_, _ = w.Write([]byte(`{"files":[{"id":"file-1","change_set_id":"change-1","path":"services/runtime/worker.py","operation":"edit","availability":"partial","additions":42,"deletions":11}],"next_cursor":"opaque:file:2"}`))
+		case "/v1/file-changes/file-1/hunks":
+			_, _ = w.Write([]byte(`{"hunks":[{"id":"hunk-1","file_change_id":"file-1","hunk_index":0,"old_start":1,"old_lines":11,"new_start":1,"new_lines":42,"patch_start_byte":0,"patch_bytes":128,"redacted":false}],"next_cursor":null,"context":3,"ignore_whitespace":false}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	session := SurfaceSession{ID: "surface-1", OwnerToken: "owner-1"}
+	c := New(srv.URL)
+	sets, err := c.RunChangeSets(context.Background(), session, "run-1", "opaque:set:1", 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := c.ChangeSetFiles(context.Background(), session, "change-1", "opaque:file:1", 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hunks, err := c.FileChangeHunks(context.Background(), session, "file-1", "", 100, 3, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sets.NextCursor != "opaque:set:2" || files.NextCursor != "opaque:file:2" ||
+		len(hunks.Hunks) != 1 || files.Files[0].Availability != EvidencePartial {
+		t.Fatalf("unexpected evidence pages: sets=%+v files=%+v hunks=%+v", sets, files, hunks)
+	}
+	for _, want := range []string{
+		"/v1/runs/run-1/change-sets?after=opaque%3Aset%3A1&limit=100",
+		"/v1/change-sets/change-1/files?after=opaque%3Afile%3A1&limit=100",
+		"/v1/file-changes/file-1/hunks?context=3&ignore_whitespace=false&limit=100",
+	} {
+		if !slices.Contains(paths, want) {
+			t.Fatalf("missing request %q in %v", want, paths)
+		}
+	}
+}
+
+func TestEvidenceContentStreamsBoundedGatewayRanges(t *testing.T) {
+	const pageSize = 64 * 1024
+	const full = "0123456789"
+	var limits []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Atlas-Surface-Owner") != "owner-1" {
+			t.Fatalf("missing owner token header")
+		}
+		limits = append(limits, r.URL.Query().Get("limit"))
+		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+		end := min(offset+4, len(full))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(
+			w,
+			`{"availability":"available","media_type":"text/x-diff","sha256":"abc","range":{"start":%d,"end":%d,"total_bytes":%d},"content":%q}`,
+			offset, end, len(full), full[offset:end],
+		)
+	}))
+	defer srv.Close()
+
+	session := SurfaceSession{ID: "surface-1", OwnerToken: "owner-1"}
+	var out bytes.Buffer
+	state, err := New(srv.URL).StreamFileChangePatch(
+		context.Background(), session, "file-1", &out,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state != EvidenceAvailable || out.String() != full {
+		t.Fatalf("unexpected streamed evidence: state=%q content=%q", state, out.String())
+	}
+	for _, limit := range limits {
+		n, err := strconv.Atoi(limit)
+		if err != nil || n <= 0 || n > pageSize {
+			t.Fatalf("unbounded evidence request limit %q", limit)
+		}
+	}
+	if len(limits) < 2 {
+		t.Fatalf("expected paged retrieval, got %d request", len(limits))
+	}
+}
+
+func TestEvidenceContentPreservesUnavailableState(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"availability":"redacted","media_type":"text/x-diff","sha256":null,"range":{"start":0,"end":0,"total_bytes":0}}`))
+	}))
+	defer srv.Close()
+
+	var out bytes.Buffer
+	state, err := New(srv.URL).StreamEvidenceResult(
+		context.Background(),
+		SurfaceSession{ID: "surface-1", OwnerToken: "owner-1"},
+		"result-1",
+		&out,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state != EvidenceRedacted || out.Len() != 0 {
+		t.Fatalf("typed unavailable state was lost: state=%q bytes=%d", state, out.Len())
 	}
 }
 

@@ -89,6 +89,53 @@ func TestEventItemKinds(t *testing.T) {
 	}
 }
 
+func TestEvidenceReceiptMatchesSharedSemanticFixture(t *testing.T) {
+	receipt := client.EvidenceReceipt{
+		UIKind:       "file.change",
+		Operation:    "edit",
+		Path:         "services/runtime/worker.py",
+		Additions:    42,
+		Deletions:    11,
+		Actor:        "EULER",
+		DurationMS:   184,
+		EvidenceID:   "file-1",
+		Availability: client.EvidencePartial,
+	}
+	got := plain(renderEvidenceReceipt(receipt, transcriptNormal, 140))
+	for _, want := range []string{
+		"EDITED",
+		"services/runtime/worker.py",
+		"+42",
+		"-11",
+		"EULER",
+		"184 ms",
+		"file-1",
+		"partial",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("receipt = %q, want substring %q", got, want)
+		}
+	}
+}
+
+func TestEvidenceReceiptModesAndUnknownKindFallback(t *testing.T) {
+	receipt := client.EvidenceReceipt{
+		UIKind:       "future.semantic.kind",
+		Operation:    "observe",
+		Path:         "opaque-resource",
+		EvidenceID:   "evidence-9",
+		Availability: client.EvidenceUnavailable,
+	}
+	for _, mode := range []transcriptMode{transcriptSummary, transcriptNormal, transcriptVerbose} {
+		got := plain(renderEvidenceReceipt(receipt, mode, 100))
+		if !strings.Contains(got, "EVIDENCE") ||
+			!strings.Contains(got, "evidence-9") ||
+			!strings.Contains(got, "unavailable") {
+			t.Fatalf("mode %d lost generic evidence semantics: %q", mode, got)
+		}
+	}
+}
+
 func TestEventsNeverDumpUnknownAuditData(t *testing.T) {
 	secret := "sk-never-render-this"
 	got := renderedEvent(t, auditEvent(
