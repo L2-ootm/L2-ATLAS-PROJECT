@@ -146,6 +146,31 @@ fn python_schema(model: &str) -> Option<Value> {
     None
 }
 
+fn python_evidence_fixture() -> Option<Value> {
+    let snippet = "from atlas_core.schemas.core import ChangeSet, EvidenceProvenance, FileChange; \
+        import json; \
+        provenance=EvidenceProvenance(run_id='r1', session_id='sess-1', actor_id='actor-1'); \
+        file=FileChange(id='file-1', change_set_id='change-1', path='src/new.rs', \
+            old_path=None, operation='create', availability='available', additions=2); \
+        change=ChangeSet(id='change-1', provenance=provenance, coverage='complete', \
+            status='captured', files=[file], redaction_count=0); \
+        print(json.dumps({'change_set': change.model_dump(mode='json'), \
+            'file': file.model_dump(mode='json')}))";
+    for exe in &["python", "python3"] {
+        let output = std::process::Command::new(exe)
+            .args(["-c", snippet])
+            .output();
+        if let Ok(output) = output {
+            if output.status.success() {
+                if let Ok(value) = serde_json::from_slice(&output.stdout) {
+                    return Some(value);
+                }
+            }
+        }
+    }
+    None
+}
+
 fn required_fields(schema: &Value) -> Vec<String> {
     schema["required"]
         .as_array()
@@ -329,6 +354,7 @@ async fn evidence_responses_match_pydantic_types_enums_and_optionality() {
         }
     };
     let file_schema = python_schema("FileChange").expect("FileChange schema");
+    let fixture = python_evidence_fixture().expect("serialized Pydantic evidence fixture");
     assert_eq!(
         schema_enum(&change_schema, "coverage"),
         ["complete", "tool_only", "partial", "unavailable"]
@@ -353,25 +379,68 @@ async fn evidence_responses_match_pydantic_types_enums_and_optionality() {
     let (status, detail) = get_json_with_owner(&router, "/v1/change-sets/change-1").await;
     assert_eq!(status, StatusCode::OK);
     let change_set = &detail["change_set"];
-    assert!(change_set["id"].is_string());
-    assert!(change_set["provenance"].is_object());
-    assert!(change_set["provenance"]["run_id"].is_string());
-    assert!(change_set["provenance"]["actor_id"].is_string());
-    assert!(change_set["coverage"].is_string());
-    assert!(change_set["status"].is_string());
-    assert!(change_set["redaction_count"].is_i64());
-    assert!(change_set["created_at"].is_string());
+    assert_eq!(
+        json_kind(&change_set["id"]),
+        json_kind(&fixture["change_set"]["id"])
+    );
+    assert_eq!(
+        json_kind(&change_set["provenance"]),
+        json_kind(&fixture["change_set"]["provenance"])
+    );
+    assert_eq!(
+        json_kind(&change_set["provenance"]["run_id"]),
+        json_kind(&fixture["change_set"]["provenance"]["run_id"])
+    );
+    assert_eq!(
+        json_kind(&change_set["provenance"]["actor_id"]),
+        json_kind(&fixture["change_set"]["provenance"]["actor_id"])
+    );
+    assert_eq!(
+        json_kind(&change_set["coverage"]),
+        json_kind(&fixture["change_set"]["coverage"])
+    );
+    assert_eq!(
+        json_kind(&change_set["status"]),
+        json_kind(&fixture["change_set"]["status"])
+    );
+    assert_eq!(
+        json_kind(&change_set["redaction_count"]),
+        json_kind(&fixture["change_set"]["redaction_count"])
+    );
+    assert_eq!(
+        json_kind(&change_set["created_at"]),
+        json_kind(&fixture["change_set"]["created_at"])
+    );
 
     let (status, files) = get_json_with_owner(&router, "/v1/change-sets/change-1/files").await;
     assert_eq!(status, StatusCode::OK);
     let file = &files["files"][0];
-    assert!(file["id"].is_string());
-    assert!(file["change_set_id"].is_string());
-    assert!(file["path"].is_string());
-    assert!(file["old_path"].is_null());
-    assert!(file["operation"].is_string());
-    assert!(file["availability"].is_string());
-    assert!(file["binary"].is_boolean());
-    assert!(file["generated"].is_boolean());
-    assert!(file["redaction_count"].is_i64());
+    for field in [
+        "id",
+        "change_set_id",
+        "path",
+        "old_path",
+        "operation",
+        "availability",
+        "binary",
+        "generated",
+        "redaction_count",
+    ] {
+        assert_eq!(
+            json_kind(&file[field]),
+            json_kind(&fixture["file"][field]),
+            "FileChange.{field} type/optionality drifted"
+        );
+    }
+}
+
+fn json_kind(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "boolean",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    }
 }

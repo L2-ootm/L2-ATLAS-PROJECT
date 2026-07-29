@@ -153,8 +153,7 @@ pub enum ChangeSetScope {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct ChangeSetRecord {
-    pub id: String,
+pub struct EvidenceProvenanceRecord {
     pub run_id: String,
     pub session_id: Option<String>,
     pub team_run_id: Option<String>,
@@ -162,6 +161,12 @@ pub struct ChangeSetRecord {
     pub actor_id: Option<String>,
     pub parent_actor_id: Option<String>,
     pub tool_call_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ChangeSetRecord {
+    pub id: String,
+    pub provenance: EvidenceProvenanceRecord,
     pub coverage: String,
     pub status: String,
     pub redaction_count: i64,
@@ -1043,17 +1048,32 @@ pub fn list_events(
     limit: i64,
 ) -> Result<(Vec<Value>, i64), DbError> {
     let conn = open_ro(path)?;
-    let mut stmt = conn.prepare(
-        "SELECT rowid, id, event_type, tool_name, timestamp, duration_ms, data, \
-                policy_result, task_id, session_id, tool_call_id \
-         FROM audit_events WHERE run_id = ?1 AND rowid > ?2 ORDER BY rowid LIMIT ?3",
-    )?;
+    let sql = if table_exists(&conn, "evidence_change_sets")? {
+        "SELECT ae.rowid,ae.id,ae.event_type,ae.tool_name,ae.timestamp,
+                ae.duration_ms,ae.data,ae.policy_result,ae.task_id,ae.session_id,
+                ae.tool_call_id,cs.actor_id,cs.parent_actor_id,cs.team_run_id
+         FROM audit_events ae
+         LEFT JOIN evidence_change_sets cs
+           ON cs.id=COALESCE(
+                json_extract(ae.data,'$.evidence.change_set_id'),
+                json_extract(ae.data,'$.change_set_id'))
+         WHERE ae.run_id=?1 AND ae.rowid>?2
+         ORDER BY ae.rowid LIMIT ?3"
+    } else {
+        "SELECT rowid,id,event_type,tool_name,timestamp,duration_ms,data,
+                policy_result,task_id,session_id,tool_call_id,NULL,NULL,NULL
+         FROM audit_events
+         WHERE run_id=?1 AND rowid>?2
+         ORDER BY rowid LIMIT ?3"
+    };
+    let mut stmt = conn.prepare(sql)?;
     let mut cursor = after;
     let rows = stmt
         .query_map(rusqlite::params![run_id, after, limit], |row| {
             let rowid: i64 = row.get(0)?;
             let raw_data: String = row.get(6)?;
-            let data: Value = serde_json::from_str(&raw_data).unwrap_or(Value::String(raw_data));
+            let data =
+                metadata_only_evidence_data(&raw_data, row.get(11)?, row.get(12)?, row.get(13)?);
             Ok((
                 rowid,
                 json!({
@@ -1083,6 +1103,47 @@ pub fn list_events(
     Ok((events, cursor))
 }
 
+fn metadata_only_evidence_data(
+    raw_data: &str,
+    actor_id: Option<String>,
+    parent_actor_id: Option<String>,
+    team_run_id: Option<String>,
+) -> Value {
+    let parsed = serde_json::from_str::<Value>(raw_data)
+        .unwrap_or_else(|_| Value::String(raw_data.to_string()));
+    let Some(evidence) = parsed.get("evidence").and_then(Value::as_object) else {
+        return parsed;
+    };
+    const SAFE_KEYS: &[&str] = &[
+        "change_set_id",
+        "capture_status",
+        "status",
+        "coverage",
+        "file_count",
+        "additions",
+        "deletions",
+        "redaction_count",
+        "error_code",
+        "duration_ms",
+    ];
+    let mut metadata = serde_json::Map::new();
+    for key in SAFE_KEYS {
+        if let Some(value) = evidence.get(*key) {
+            metadata.insert((*key).to_string(), value.clone());
+        }
+    }
+    if let Some(actor_id) = actor_id {
+        metadata.insert("actor_id".into(), Value::String(actor_id));
+    }
+    if let Some(parent_actor_id) = parent_actor_id {
+        metadata.insert("parent_actor_id".into(), Value::String(parent_actor_id));
+    }
+    if let Some(team_run_id) = team_run_id {
+        metadata.insert("team_run_id".into(), Value::String(team_run_id));
+    }
+    json!({"evidence": metadata})
+}
+
 /// Cross-run audit feed ordered by the database-global rowid. The opaque
 /// cursor never compares rowids from different databases or per-run feeds.
 pub fn list_audit_events(
@@ -1099,19 +1160,37 @@ pub fn list_audit_events(
             .map_err(|_| invalid_input("audit cursor is not numeric"))?,
         None => 0,
     };
-    let mut statement = conn.prepare(
+    let sql = if table_exists(&conn, "evidence_change_sets")? {
+        "SELECT ae.rowid,ae.id,ae.run_id,ae.session_id,ae.event_type,ae.tool_name,
+                ae.timestamp,ae.duration_ms,ae.data,ae.policy_result,ae.task_id,
+                ae.tool_call_id,cs.actor_id,cs.parent_actor_id,cs.team_run_id
+         FROM audit_events ae
+         LEFT JOIN evidence_change_sets cs
+           ON cs.id=COALESCE(
+                json_extract(ae.data,'$.evidence.change_set_id'),
+                json_extract(ae.data,'$.change_set_id'))
+         WHERE ae.rowid > ?1
+           AND (?2 IS NULL OR ae.run_id = ?2)
+           AND (?3 IS NULL OR ae.session_id = ?3)
+           AND (?4 IS NULL OR cs.actor_id = ?4)
+           AND (?5 IS NULL OR ae.event_type = ?5)
+           AND (?6 IS NULL OR ae.tool_name = ?6)
+         ORDER BY ae.rowid
+         LIMIT ?7"
+    } else {
         "SELECT rowid,id,run_id,session_id,event_type,tool_name,timestamp,
-                duration_ms,data,policy_result,task_id,tool_call_id
+                duration_ms,data,policy_result,task_id,tool_call_id,NULL,NULL,NULL
          FROM audit_events
          WHERE rowid > ?1
            AND (?2 IS NULL OR run_id = ?2)
            AND (?3 IS NULL OR session_id = ?3)
-           AND (?4 IS NULL OR json_extract(data,'$.actor_id') = ?4)
+           AND ?4 IS NULL
            AND (?5 IS NULL OR event_type = ?5)
            AND (?6 IS NULL OR tool_name = ?6)
          ORDER BY rowid
-         LIMIT ?7",
-    )?;
+         LIMIT ?7"
+    };
+    let mut statement = conn.prepare(sql)?;
     let rows = statement
         .query_map(
             rusqlite::params![
@@ -1138,7 +1217,12 @@ pub fn list_audit_events(
                         tool_name: row.get(5)?,
                         timestamp: row.get(6)?,
                         duration_ms: row.get(7)?,
-                        data: serde_json::from_str(&raw_data).unwrap_or(Value::String(raw_data)),
+                        data: metadata_only_evidence_data(
+                            &raw_data,
+                            row.get(12)?,
+                            row.get(13)?,
+                            row.get(14)?,
+                        ),
                         policy_result: row.get(9)?,
                         task_id: row.get(10)?,
                         tool_call_id: row.get(11)?,
@@ -1199,13 +1283,15 @@ pub fn list_change_sets(
 fn change_set_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChangeSetRecord> {
     Ok(ChangeSetRecord {
         id: row.get(0)?,
-        run_id: row.get(1)?,
-        session_id: row.get(2)?,
-        team_run_id: row.get(3)?,
-        turn_id: row.get(4)?,
-        actor_id: row.get(5)?,
-        parent_actor_id: row.get(6)?,
-        tool_call_id: row.get(7)?,
+        provenance: EvidenceProvenanceRecord {
+            run_id: row.get(1)?,
+            session_id: row.get(2)?,
+            team_run_id: row.get(3)?,
+            turn_id: row.get(4)?,
+            actor_id: row.get(5)?,
+            parent_actor_id: row.get(6)?,
+            tool_call_id: row.get(7)?,
+        },
         coverage: row.get(8)?,
         status: row.get(9)?,
         redaction_count: row.get(10)?,

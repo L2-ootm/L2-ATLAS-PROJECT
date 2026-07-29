@@ -205,7 +205,7 @@ fn evidence_db_cursor_pages_are_stable_bounded_and_indexed() {
     assert!(EvidenceCursor::decode(set_cursor.as_deref().unwrap()).is_ok());
 
     let (files, _) = db::list_file_changes(&path, "change-1", None, 5000).unwrap();
-    assert_eq!(files.len(), 2);
+    assert_eq!(files.len(), 7);
     assert!(files[0].get("patch").is_none());
     let (hunks, _) = db::list_hunks(&path, "file-1", None, 5000).unwrap();
     assert_eq!(hunks.len(), 1);
