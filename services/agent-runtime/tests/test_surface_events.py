@@ -144,3 +144,185 @@ def test_normalizer_performs_no_writes(db, lock) -> None:
     normalize_surface_events([_ae("llm_call")], session_id="sess")
     after = db.execute("SELECT COUNT(*) FROM audit_events").fetchone()[0]
     assert before == after
+
+
+# ---------------------------------------------------------------------------
+# orchestration Evidence Plane fixture (10.8-10)
+# ---------------------------------------------------------------------------
+
+
+def test_orchestration_evidence_fixture_is_metadata_only_and_byte_stable() -> None:
+    occurred_at = datetime.datetime(
+        2026, 7, 29, 17, 0, 0, tzinfo=datetime.timezone.utc
+    )
+    actor = AuditEvent(
+        run_id="run-parent",
+        session_id="surface-1",
+        event_type="subagent_run",
+        timestamp=occurred_at,
+        data=json.dumps(
+            {
+                "surface_kind": "task",
+                "orchestration": "subagent",
+                "actor": True,
+                "phase": "completed",
+                "status": "succeeded",
+                "subagent_id": "actor-parent",
+                "parent_id": "run-parent",
+                "goal": "Inspect runtime",
+                "evidence": {
+                    "change_set_id": "aggregate-parent",
+                    "child_change_set_ids": ["leaf-a", "leaf-b", "leaf-a"],
+                    "file_count": 2,
+                    "additions": 11,
+                    "deletions": 4,
+                    "coverage": "complete",
+                    "availability": "available",
+                    "redaction_count": 0,
+                    "ancestry": {
+                        "actor_id": "actor-parent",
+                        "parent_actor_id": None,
+                        "team_run_id": None,
+                        "goal_id": "goal-1",
+                    },
+                    "patch": "must never cross the event boundary",
+                    "hunks": [{"content": "must never cross the event boundary"}],
+                    "blob": "must never cross the event boundary",
+                },
+            },
+            ensure_ascii=False,
+        ),
+    )
+    team = AuditEvent(
+        run_id="run-parent",
+        session_id="surface-1",
+        event_type="subagent_run",
+        timestamp=occurred_at + datetime.timedelta(seconds=1),
+        data=json.dumps(
+            {
+                "surface_kind": "task",
+                "orchestration": "team",
+                "phase": "cancelled",
+                "status": "cancelled",
+                "team_run_id": "team-1",
+                "evidence": {
+                    "evidence_ids": ["leaf-a", "leaf-b", "leaf-b"],
+                    "file_count": 2,
+                    "additions": 11,
+                    "deletions": 4,
+                    "coverage": "partial",
+                    "availability": "partial",
+                    "cleanup": {
+                        "status": "partial",
+                        "error": "worker still stopping",
+                    },
+                },
+            }
+        ),
+    )
+    incident = AuditEvent(
+        run_id="run-child",
+        session_id="surface-1",
+        event_type="failure",
+        timestamp=occurred_at + datetime.timedelta(seconds=2),
+        data=json.dumps(
+            {
+                "surface_kind": "error",
+                "orchestration": "goal",
+                "phase": "failed",
+                "status": "failed",
+                "goal_id": "goal-1",
+                "evidence": {
+                    "change_set_ids": ["leaf-a"],
+                    "file_count": 1,
+                    "additions": 7,
+                    "deletions": 1,
+                    "coverage": "unavailable",
+                    "availability": "unavailable",
+                    "incident": {
+                        "kind": "read_only_mutation",
+                        "status": "denied",
+                        "reason": "actor produced file changes",
+                    },
+                    "result": "must never cross the event boundary",
+                },
+            }
+        ),
+    )
+
+    events = normalize_surface_events(
+        [actor, team, incident],
+        session_id="surface-1",
+        start_seq=40,
+    )
+
+    assert [event.seq for event in events] == [40, 41, 42]
+    assert [event.kind for event in events] == ["task", "task", "error"]
+    assert [event.occurred_at for event in events] == [
+        "2026-07-29T17:00:00+00:00",
+        "2026-07-29T17:00:01+00:00",
+        "2026-07-29T17:00:02+00:00",
+    ]
+    assert events[0].payload_json == (
+        '{"actor":true,"evidence":{"additions":11,"ancestry":{"actor_id":'
+        '"actor-parent","goal_id":"goal-1","parent_actor_id":null,'
+        '"team_run_id":null},"availability":"available","coverage":"complete",'
+        '"deletions":4,"evidence_ids":["aggregate-parent","leaf-a","leaf-b"],'
+        '"file_count":2,"incident":null,"redaction_count":0},'
+        '"goal":"Inspect runtime","orchestration":"subagent","parent_id":'
+        '"run-parent","phase":"completed","status":"succeeded","subagent_id":'
+        '"actor-parent","surface_kind":"task"}'
+    )
+    assert events[1].payload_json == (
+        '{"evidence":{"additions":11,"ancestry":{"actor_id":null,"goal_id":'
+        'null,"parent_actor_id":null,"team_run_id":null},"availability":'
+        '"partial","cleanup":{"error":"worker still stopping","status":'
+        '"partial"},"coverage":"partial","deletions":4,"evidence_ids":'
+        '["leaf-a","leaf-b"],"file_count":2,"incident":null,'
+        '"redaction_count":0},"orchestration":"team","phase":"cancelled",'
+        '"status":"cancelled","surface_kind":"task","team_run_id":"team-1"}'
+    )
+    assert events[2].payload_json == (
+        '{"evidence":{"additions":7,"ancestry":{"actor_id":null,"goal_id":'
+        'null,"parent_actor_id":null,"team_run_id":null},"availability":'
+        '"unavailable","coverage":"unavailable","deletions":1,"evidence_ids":'
+        '["leaf-a"],"file_count":1,"incident":{"kind":"read_only_mutation",'
+        '"reason":"actor produced file changes","status":"denied"},'
+        '"redaction_count":0},"goal_id":"goal-1","orchestration":"goal",'
+        '"phase":"failed","status":"failed","surface_kind":"error"}'
+    )
+    serialized = "\n".join(event.model_dump_json() for event in events)
+    assert "must never cross the event boundary" not in serialized
+    assert '"patch"' not in serialized
+    assert '"hunks"' not in serialized
+    assert '"blob"' not in serialized
+    assert '"result"' not in serialized
+
+
+def test_orchestration_evidence_unknown_states_fail_closed() -> None:
+    events = normalize_surface_events(
+        [
+            _ae(
+                "subagent_run",
+                data=json.dumps(
+                    {
+                        "orchestration": "subagent",
+                        "phase": "completed",
+                        "status": "succeeded",
+                        "evidence": {
+                            "change_set_id": "change-1",
+                            "coverage": "future-value",
+                            "availability": "future-value",
+                            "cleanup": {"status": "future-value"},
+                        },
+                    }
+                ),
+            )
+        ],
+        session_id="sess",
+    )
+    payload = json.loads(events[0].payload_json)
+    assert payload["evidence"]["coverage"] == "unavailable"
+    assert payload["evidence"]["availability"] == "unavailable"
+    assert payload["evidence"]["cleanup"]["status"] == "failed"
+    assert payload["status"] == "failed"
