@@ -1,5 +1,6 @@
 use atlas_gateway::diff::{diff_file, DiffInput};
 use serde::Deserialize;
+use std::process::Command;
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Deserialize)]
@@ -25,6 +26,51 @@ fn fixtures() -> Vec<Fixture> {
     .expect("valid frozen evidence fixtures")
 }
 
+fn resident_bytes() -> Option<u64> {
+    #[cfg(target_os = "windows")]
+    {
+        let output = Command::new("tasklist")
+            .args([
+                "/FI",
+                &format!("PID eq {}", std::process::id()),
+                "/FO",
+                "CSV",
+                "/NH",
+            ])
+            .output()
+            .ok()?;
+        let text = String::from_utf8(output.stdout).ok()?;
+        let memory = text.trim().rsplit("\",\"").next()?.trim_matches('"');
+        let kib = memory
+            .chars()
+            .filter(char::is_ascii_digit)
+            .collect::<String>()
+            .parse::<u64>()
+            .ok()?;
+        Some(kib * 1024)
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let status = std::fs::read_to_string("/proc/self/status").ok()?;
+        let line = status.lines().find(|line| line.starts_with("VmRSS:"))?;
+        let kib = line.split_whitespace().nth(1)?.parse::<u64>().ok()?;
+        Some(kib * 1024)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let output = Command::new("ps")
+            .args(["-o", "rss=", "-p", &std::process::id().to_string()])
+            .output()
+            .ok()?;
+        let kib = String::from_utf8(output.stdout)
+            .ok()?
+            .trim()
+            .parse::<u64>()
+            .ok()?;
+        Some(kib * 1024)
+    }
+}
+
 #[test]
 fn evidence_engine_matches_frozen_fixture_oracle() {
     for fixture in fixtures() {
@@ -36,17 +82,30 @@ fn evidence_engine_matches_frozen_fixture_oracle() {
             after: fixture.after.clone(),
             generated: fixture.generated,
         });
-        assert_eq!(result.additions, fixture.additions, "{} additions", fixture.name);
-        assert_eq!(result.deletions, fixture.deletions, "{} deletions", fixture.name);
+        assert_eq!(
+            result.additions, fixture.additions,
+            "{} additions",
+            fixture.name
+        );
+        assert_eq!(
+            result.deletions, fixture.deletions,
+            "{} deletions",
+            fixture.name
+        );
         assert_eq!(result.binary, fixture.binary, "{} binary", fixture.name);
-        assert_eq!(result, diff_file(&DiffInput {
-            path: fixture.path,
-            old_path: fixture.old_path,
-            operation: fixture.operation,
-            before: fixture.before,
-            after: fixture.after,
-            generated: fixture.generated,
-        }), "{} is deterministic", fixture.name);
+        assert_eq!(
+            result,
+            diff_file(&DiffInput {
+                path: fixture.path,
+                old_path: fixture.old_path,
+                operation: fixture.operation,
+                before: fixture.before,
+                after: fixture.after,
+                generated: fixture.generated,
+            }),
+            "{} is deterministic",
+            fixture.name
+        );
     }
 }
 
@@ -74,7 +133,9 @@ fn evidence_engine_scale_budgets() {
         (10_000, Duration::from_millis(500)),
         (100_000, Duration::from_millis(2_000)),
     ] {
-        let before = (0..lines).map(|i| format!("line-{i}\n")).collect::<String>();
+        let before = (0..lines)
+            .map(|i| format!("line-{i}\n"))
+            .collect::<String>();
         let mut after = before.clone();
         after.push_str("tail-change\n");
         let input = DiffInput {
@@ -86,6 +147,7 @@ fn evidence_engine_scale_budgets() {
             generated: false,
         };
         let _warmup = diff_file(&input);
+        let rss_before = resident_bytes();
         let mut samples = Vec::new();
         for _ in 0..10 {
             let started = Instant::now();
@@ -103,9 +165,16 @@ fn evidence_engine_scale_budgets() {
         );
         assert!(p95 <= budget, "{lines} lines p95 {p95:?} > {budget:?}");
         if lines == 100_000 {
-            let working_bytes = input.before.len()
-                + input.after.len()
-                + diff_file(&input).patch.len();
+            if let (Some(before_rss), Some(after_rss)) = (rss_before, resident_bytes()) {
+                let rss_delta = after_rss.saturating_sub(before_rss);
+                eprintln!("evidence_engine lines=100000 peak_rss_delta={rss_delta}");
+                assert!(
+                    rss_delta <= 256 * 1024 * 1024,
+                    "100k peak RSS delta exceeded 256 MiB"
+                );
+            }
+            let working_bytes =
+                input.before.len() + input.after.len() + diff_file(&input).patch.len();
             assert!(
                 working_bytes <= 256 * 1024 * 1024,
                 "100k deterministic working set exceeded 256 MiB"

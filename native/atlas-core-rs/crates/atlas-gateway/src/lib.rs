@@ -5,6 +5,7 @@
 //! `atlas` CLI contract. Loopback-only bind, no auth (v1.0 single operator).
 
 pub mod db;
+pub mod diff;
 pub mod evidence;
 pub mod retention;
 
