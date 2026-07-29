@@ -10,6 +10,19 @@ import {
 const runtimeFixtures = resolve(process.cwd(), '../agent-runtime/tests/fixtures');
 
 describe('cross-surface conformance', () => {
+	it('projects every reference mission from the shared gateway contract', () => {
+		const fixture = JSON.parse(
+			readFileSync(resolve(runtimeFixtures, 'reference_missions.json'), 'utf8')
+		) as { missions: Array<{ id: string; surface_projections: Record<string, Array<{ event_index: number; kind: string }>> }> };
+
+		expect(fixture.missions).toHaveLength(8);
+		for (const mission of fixture.missions) {
+			const events = mission.surface_projections.cockpit;
+			expect(events.length, `${mission.id}: cockpit projection`).toBeGreaterThan(0);
+			expect(events.map((event) => event.event_index), `${mission.id}: ordered events`).toEqual(events.map((_, index) => index));
+		}
+	});
+
 	it('preserves session/run identity, sequence, kinds, and terminal outcome', () => {
 		const fixture = JSON.parse(
 			readFileSync(resolve(runtimeFixtures, 'surface_event_parity.json'), 'utf8')

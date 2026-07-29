@@ -1,0 +1,1375 @@
+{
+  "schema_version": 1,
+  "mask_only": [
+    "duration_ms",
+    "gateway_pid",
+    "timestamp"
+  ],
+  "surfaces": [
+    "go_tui",
+    "atlas_terminal",
+    "cockpit"
+  ],
+  "missions": [
+    {
+      "id": "plain_completion",
+      "surface_projections": {
+        "go_tui": [
+          {
+            "event_index": 0,
+            "kind": "text",
+            "run_id": "run-plain_completion",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-plain_completion-0",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 1,
+            "kind": "completion",
+            "run_id": "run-plain_completion",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-plain_completion-1",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": "succeeded",
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          }
+        ],
+        "atlas_terminal": [
+          {
+            "event_index": 0,
+            "kind": "text",
+            "run_id": "run-plain_completion",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-plain_completion-0",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 1,
+            "kind": "completion",
+            "run_id": "run-plain_completion",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-plain_completion-1",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": "succeeded",
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          }
+        ],
+        "cockpit": [
+          {
+            "event_index": 0,
+            "kind": "text",
+            "run_id": "run-plain_completion",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-plain_completion-0",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 1,
+            "kind": "completion",
+            "run_id": "run-plain_completion",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-plain_completion-1",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": "succeeded",
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          }
+        ]
+      }
+    },
+    {
+      "id": "tool_use",
+      "surface_projections": {
+        "go_tui": [
+          {
+            "event_index": 0,
+            "kind": "tool_call",
+            "run_id": "run-tool_use",
+            "tool_call": {
+              "name": "file.read",
+              "outcome": "pending"
+            },
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-tool_use-0",
+            "cancellation": null,
+            "evidence_ids": [
+              "change-tool_use"
+            ],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 1,
+            "kind": "tool_result",
+            "run_id": "run-tool_use",
+            "tool_call": {
+              "name": "file.read",
+              "outcome": "ok"
+            },
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-tool_use-1",
+            "cancellation": null,
+            "evidence_ids": [
+              "change-tool_use"
+            ],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 2,
+            "kind": "completion",
+            "run_id": "run-tool_use",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-tool_use-2",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": "succeeded",
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          }
+        ],
+        "atlas_terminal": [
+          {
+            "event_index": 0,
+            "kind": "tool_call",
+            "run_id": "run-tool_use",
+            "tool_call": {
+              "name": "file.read",
+              "outcome": "pending"
+            },
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-tool_use-0",
+            "cancellation": null,
+            "evidence_ids": [
+              "change-tool_use"
+            ],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 1,
+            "kind": "tool_result",
+            "run_id": "run-tool_use",
+            "tool_call": {
+              "name": "file.read",
+              "outcome": "ok"
+            },
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-tool_use-1",
+            "cancellation": null,
+            "evidence_ids": [
+              "change-tool_use"
+            ],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 2,
+            "kind": "completion",
+            "run_id": "run-tool_use",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-tool_use-2",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": "succeeded",
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          }
+        ],
+        "cockpit": [
+          {
+            "event_index": 0,
+            "kind": "tool_call",
+            "run_id": "run-tool_use",
+            "tool_call": {
+              "name": "file.read",
+              "outcome": "pending"
+            },
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-tool_use-0",
+            "cancellation": null,
+            "evidence_ids": [
+              "change-tool_use"
+            ],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 1,
+            "kind": "tool_result",
+            "run_id": "run-tool_use",
+            "tool_call": {
+              "name": "file.read",
+              "outcome": "ok"
+            },
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-tool_use-1",
+            "cancellation": null,
+            "evidence_ids": [
+              "change-tool_use"
+            ],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 2,
+            "kind": "completion",
+            "run_id": "run-tool_use",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-tool_use-2",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": "succeeded",
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          }
+        ]
+      }
+    },
+    {
+      "id": "retrieval",
+      "surface_projections": {
+        "go_tui": [
+          {
+            "event_index": 0,
+            "kind": "retrieval",
+            "run_id": "run-retrieval",
+            "tool_call": null,
+            "provenance": [
+              {
+                "source_id": "wiki:atlas",
+                "trust": "evidence"
+              }
+            ],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-retrieval-0",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 1,
+            "kind": "text",
+            "run_id": "run-retrieval",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-retrieval-1",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 2,
+            "kind": "completion",
+            "run_id": "run-retrieval",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-retrieval-2",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": "succeeded",
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          }
+        ],
+        "atlas_terminal": [
+          {
+            "event_index": 0,
+            "kind": "retrieval",
+            "run_id": "run-retrieval",
+            "tool_call": null,
+            "provenance": [
+              {
+                "source_id": "wiki:atlas",
+                "trust": "evidence"
+              }
+            ],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-retrieval-0",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 1,
+            "kind": "text",
+            "run_id": "run-retrieval",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-retrieval-1",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 2,
+            "kind": "completion",
+            "run_id": "run-retrieval",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-retrieval-2",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": "succeeded",
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          }
+        ],
+        "cockpit": [
+          {
+            "event_index": 0,
+            "kind": "retrieval",
+            "run_id": "run-retrieval",
+            "tool_call": null,
+            "provenance": [
+              {
+                "source_id": "wiki:atlas",
+                "trust": "evidence"
+              }
+            ],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-retrieval-0",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 1,
+            "kind": "text",
+            "run_id": "run-retrieval",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-retrieval-1",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 2,
+            "kind": "completion",
+            "run_id": "run-retrieval",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-retrieval-2",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": "succeeded",
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          }
+        ]
+      }
+    },
+    {
+      "id": "approve",
+      "surface_projections": {
+        "go_tui": [
+          {
+            "event_index": 0,
+            "kind": "approval",
+            "run_id": "run-approve",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "ask",
+              "workspace": "atlas"
+            },
+            "permission_decision": "approved",
+            "audit_row": "audit-approve-0",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 1,
+            "kind": "tool_call",
+            "run_id": "run-approve",
+            "tool_call": {
+              "name": "file.read",
+              "outcome": "pending"
+            },
+            "provenance": [],
+            "config": {
+              "permission_mode": "ask",
+              "workspace": "atlas"
+            },
+            "permission_decision": "approved",
+            "audit_row": "audit-approve-1",
+            "cancellation": null,
+            "evidence_ids": [
+              "change-approve"
+            ],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 2,
+            "kind": "tool_result",
+            "run_id": "run-approve",
+            "tool_call": {
+              "name": "file.read",
+              "outcome": "ok"
+            },
+            "provenance": [],
+            "config": {
+              "permission_mode": "ask",
+              "workspace": "atlas"
+            },
+            "permission_decision": "approved",
+            "audit_row": "audit-approve-2",
+            "cancellation": null,
+            "evidence_ids": [
+              "change-approve"
+            ],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 3,
+            "kind": "completion",
+            "run_id": "run-approve",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "ask",
+              "workspace": "atlas"
+            },
+            "permission_decision": "approved",
+            "audit_row": "audit-approve-3",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": "succeeded",
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          }
+        ],
+        "atlas_terminal": [
+          {
+            "event_index": 0,
+            "kind": "approval",
+            "run_id": "run-approve",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "ask",
+              "workspace": "atlas"
+            },
+            "permission_decision": "approved",
+            "audit_row": "audit-approve-0",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 1,
+            "kind": "tool_call",
+            "run_id": "run-approve",
+            "tool_call": {
+              "name": "file.read",
+              "outcome": "pending"
+            },
+            "provenance": [],
+            "config": {
+              "permission_mode": "ask",
+              "workspace": "atlas"
+            },
+            "permission_decision": "approved",
+            "audit_row": "audit-approve-1",
+            "cancellation": null,
+            "evidence_ids": [
+              "change-approve"
+            ],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 2,
+            "kind": "tool_result",
+            "run_id": "run-approve",
+            "tool_call": {
+              "name": "file.read",
+              "outcome": "ok"
+            },
+            "provenance": [],
+            "config": {
+              "permission_mode": "ask",
+              "workspace": "atlas"
+            },
+            "permission_decision": "approved",
+            "audit_row": "audit-approve-2",
+            "cancellation": null,
+            "evidence_ids": [
+              "change-approve"
+            ],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 3,
+            "kind": "completion",
+            "run_id": "run-approve",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "ask",
+              "workspace": "atlas"
+            },
+            "permission_decision": "approved",
+            "audit_row": "audit-approve-3",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": "succeeded",
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          }
+        ],
+        "cockpit": [
+          {
+            "event_index": 0,
+            "kind": "approval",
+            "run_id": "run-approve",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "ask",
+              "workspace": "atlas"
+            },
+            "permission_decision": "approved",
+            "audit_row": "audit-approve-0",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 1,
+            "kind": "tool_call",
+            "run_id": "run-approve",
+            "tool_call": {
+              "name": "file.read",
+              "outcome": "pending"
+            },
+            "provenance": [],
+            "config": {
+              "permission_mode": "ask",
+              "workspace": "atlas"
+            },
+            "permission_decision": "approved",
+            "audit_row": "audit-approve-1",
+            "cancellation": null,
+            "evidence_ids": [
+              "change-approve"
+            ],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 2,
+            "kind": "tool_result",
+            "run_id": "run-approve",
+            "tool_call": {
+              "name": "file.read",
+              "outcome": "ok"
+            },
+            "provenance": [],
+            "config": {
+              "permission_mode": "ask",
+              "workspace": "atlas"
+            },
+            "permission_decision": "approved",
+            "audit_row": "audit-approve-2",
+            "cancellation": null,
+            "evidence_ids": [
+              "change-approve"
+            ],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 3,
+            "kind": "completion",
+            "run_id": "run-approve",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "ask",
+              "workspace": "atlas"
+            },
+            "permission_decision": "approved",
+            "audit_row": "audit-approve-3",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": "succeeded",
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          }
+        ]
+      }
+    },
+    {
+      "id": "deny",
+      "surface_projections": {
+        "go_tui": [
+          {
+            "event_index": 0,
+            "kind": "approval",
+            "run_id": "run-deny",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "deny",
+              "workspace": "atlas"
+            },
+            "permission_decision": "denied",
+            "audit_row": "audit-deny-0",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 1,
+            "kind": "completion",
+            "run_id": "run-deny",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "deny",
+              "workspace": "atlas"
+            },
+            "permission_decision": "denied",
+            "audit_row": "audit-deny-1",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": "succeeded",
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          }
+        ],
+        "atlas_terminal": [
+          {
+            "event_index": 0,
+            "kind": "approval",
+            "run_id": "run-deny",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "deny",
+              "workspace": "atlas"
+            },
+            "permission_decision": "denied",
+            "audit_row": "audit-deny-0",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 1,
+            "kind": "completion",
+            "run_id": "run-deny",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "deny",
+              "workspace": "atlas"
+            },
+            "permission_decision": "denied",
+            "audit_row": "audit-deny-1",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": "succeeded",
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          }
+        ],
+        "cockpit": [
+          {
+            "event_index": 0,
+            "kind": "approval",
+            "run_id": "run-deny",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "deny",
+              "workspace": "atlas"
+            },
+            "permission_decision": "denied",
+            "audit_row": "audit-deny-0",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 1,
+            "kind": "completion",
+            "run_id": "run-deny",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "deny",
+              "workspace": "atlas"
+            },
+            "permission_decision": "denied",
+            "audit_row": "audit-deny-1",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": "succeeded",
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          }
+        ]
+      }
+    },
+    {
+      "id": "cancellation",
+      "surface_projections": {
+        "go_tui": [
+          {
+            "event_index": 0,
+            "kind": "text",
+            "run_id": "run-cancellation",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-cancellation-0",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 1,
+            "kind": "completion",
+            "run_id": "run-cancellation",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-cancellation-1",
+            "cancellation": "cancelled",
+            "evidence_ids": [],
+            "terminal_status": "cancelled",
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          }
+        ],
+        "atlas_terminal": [
+          {
+            "event_index": 0,
+            "kind": "text",
+            "run_id": "run-cancellation",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-cancellation-0",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 1,
+            "kind": "completion",
+            "run_id": "run-cancellation",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-cancellation-1",
+            "cancellation": "cancelled",
+            "evidence_ids": [],
+            "terminal_status": "cancelled",
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          }
+        ],
+        "cockpit": [
+          {
+            "event_index": 0,
+            "kind": "text",
+            "run_id": "run-cancellation",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-cancellation-0",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 1,
+            "kind": "completion",
+            "run_id": "run-cancellation",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-cancellation-1",
+            "cancellation": "cancelled",
+            "evidence_ids": [],
+            "terminal_status": "cancelled",
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          }
+        ]
+      }
+    },
+    {
+      "id": "reconnect_resume",
+      "surface_projections": {
+        "go_tui": [
+          {
+            "event_index": 0,
+            "kind": "text",
+            "run_id": "run-reconnect_resume",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-reconnect_resume-0",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 1,
+            "kind": "reasoning",
+            "run_id": "run-reconnect_resume",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-reconnect_resume-1",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 2,
+            "kind": "completion",
+            "run_id": "run-reconnect_resume",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-reconnect_resume-2",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": "succeeded",
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          }
+        ],
+        "atlas_terminal": [
+          {
+            "event_index": 0,
+            "kind": "text",
+            "run_id": "run-reconnect_resume",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-reconnect_resume-0",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 1,
+            "kind": "reasoning",
+            "run_id": "run-reconnect_resume",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-reconnect_resume-1",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 2,
+            "kind": "completion",
+            "run_id": "run-reconnect_resume",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-reconnect_resume-2",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": "succeeded",
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          }
+        ],
+        "cockpit": [
+          {
+            "event_index": 0,
+            "kind": "text",
+            "run_id": "run-reconnect_resume",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-reconnect_resume-0",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 1,
+            "kind": "reasoning",
+            "run_id": "run-reconnect_resume",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-reconnect_resume-1",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 2,
+            "kind": "completion",
+            "run_id": "run-reconnect_resume",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-reconnect_resume-2",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": "succeeded",
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          }
+        ]
+      }
+    },
+    {
+      "id": "config_visibility",
+      "surface_projections": {
+        "go_tui": [
+          {
+            "event_index": 0,
+            "kind": "text",
+            "run_id": "run-config_visibility",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-config_visibility-0",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 1,
+            "kind": "completion",
+            "run_id": "run-config_visibility",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-config_visibility-1",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": "succeeded",
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          }
+        ],
+        "atlas_terminal": [
+          {
+            "event_index": 0,
+            "kind": "text",
+            "run_id": "run-config_visibility",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-config_visibility-0",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 1,
+            "kind": "completion",
+            "run_id": "run-config_visibility",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-config_visibility-1",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": "succeeded",
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          }
+        ],
+        "cockpit": [
+          {
+            "event_index": 0,
+            "kind": "text",
+            "run_id": "run-config_visibility",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-config_visibility-0",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": null,
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          },
+          {
+            "event_index": 1,
+            "kind": "completion",
+            "run_id": "run-config_visibility",
+            "tool_call": null,
+            "provenance": [],
+            "config": {
+              "permission_mode": "allow",
+              "workspace": "atlas"
+            },
+            "permission_decision": null,
+            "audit_row": "audit-config_visibility-1",
+            "cancellation": null,
+            "evidence_ids": [],
+            "terminal_status": "succeeded",
+            "timestamp": "2026-07-29T00:00:00Z",
+            "duration_ms": 10,
+            "gateway_pid": 123
+          }
+        ]
+      }
+    }
+  ]
+}
