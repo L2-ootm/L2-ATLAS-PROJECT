@@ -26,7 +26,7 @@ from typing import Any
 
 from atlas_runtime.config_service import atlas_home
 from atlas_runtime.db import MIGRATIONS_DIR
-from atlas_runtime.secure_store import durable_replace_text
+from atlas_runtime.secure_store import durable_replace_text, file_lock
 
 # db.py lives at services/agent-runtime/atlas_runtime/db.py; MIGRATIONS_DIR is
 # <repo_root>/infra/migrations, so .parent.parent is the repo root. Reuses the
@@ -76,6 +76,10 @@ def _tier_store_path() -> Path:
     return atlas_home() / _TIER_STORE_FILENAME
 
 
+def _tier_store_lock_path() -> Path:
+    return atlas_home() / "skill_tiers.lock"
+
+
 def _load_tier_overrides() -> dict[str, str]:
     path = _tier_store_path()
     if not path.is_file():
@@ -90,17 +94,59 @@ def _load_tier_overrides() -> dict[str, str]:
 
 
 def set_skill_tier(skill_id: str, tier: str) -> dict[str, str]:
-    """Persist a loading-tier override for *skill_id*. Returns the updated map."""
+    """Persist a loading-tier override for *skill_id*. Returns the updated map.
+
+    This compatibility helper uses the same cross-process lock as the audited
+    control-plane path. API callers should use
+    :func:`atlas_runtime.skill_control_service.set_tier`, which also validates
+    identity, checks expected state, and emits a durable receipt.
+    """
+    _before, overrides = commit_skill_tier(
+        skill_id,
+        tier,
+        expected_tier=None,
+    )
+    return overrides
+
+
+class SkillTierConflictError(ValueError):
+    """The tier changed after the caller read the catalog."""
+
+    def __init__(self, current_tier: str) -> None:
+        super().__init__(f"skill tier changed to {current_tier!r}")
+        self.current_tier = current_tier
+
+
+def commit_skill_tier(
+    skill_id: str,
+    tier: str,
+    *,
+    expected_tier: str | None,
+) -> tuple[str, dict[str, str]]:
+    """Lock, compare, and durably commit one tier override.
+
+    Returns ``(before_tier, updated_overrides)``. The effective default is
+    ``full`` when no explicit override exists.
+    """
     if tier not in VALID_TIERS:
         raise ValueError(
             f"unknown loading tier {tier!r}; expected one of {sorted(VALID_TIERS)}"
         )
-    overrides = _load_tier_overrides()
-    overrides[skill_id] = tier
-    durable_replace_text(
-        _tier_store_path(), json.dumps(overrides, indent=2, sort_keys=True) + "\n"
-    )
-    return overrides
+    if expected_tier is not None and expected_tier not in VALID_TIERS:
+        raise ValueError(
+            f"unknown expected loading tier {expected_tier!r}; "
+            f"expected one of {sorted(VALID_TIERS)}"
+        )
+    with file_lock(_tier_store_lock_path()):
+        overrides = _load_tier_overrides()
+        before = overrides.get(skill_id, "full")
+        if expected_tier is not None and before != expected_tier:
+            raise SkillTierConflictError(before)
+        overrides[skill_id] = tier
+        durable_replace_text(
+            _tier_store_path(), json.dumps(overrides, indent=2, sort_keys=True) + "\n"
+        )
+    return before, overrides
 
 
 # ---------------------------------------------------------------------------

@@ -97,5 +97,22 @@ def test_set_skill_tier_rejects_unknown_tier(
         skill_manifest.set_skill_tier("skills/atlas/gsd", "bogus-tier")
 
 
+def test_commit_skill_tier_rejects_stale_expected_state_without_writing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    skill_manifest.set_skill_tier("skills/atlas/gsd", "name-only")
+
+    with pytest.raises(skill_manifest.SkillTierConflictError) as caught:
+        skill_manifest.commit_skill_tier(
+            "skills/atlas/gsd",
+            "deactivated",
+            expected_tier="full",
+        )
+
+    assert caught.value.current_tier == "name-only"
+    assert skill_manifest._load_tier_overrides()["skills/atlas/gsd"] == "name-only"
+
+
 def test_get_skill_returns_none_for_unknown_id() -> None:
     assert skill_manifest.get_skill("skills/atlas/does-not-exist") is None

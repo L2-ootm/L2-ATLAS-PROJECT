@@ -21,10 +21,10 @@ use axum::{
 use futures_util::stream::Stream;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::OnceLock;
-use std::time::Duration;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::io::AsyncWriteExt;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -37,6 +37,47 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// steady stream. 200ms keeps relay latency under the delta cadence without
 /// meaningfully increasing DB poll load (single-operator, few concurrent runs).
 const STREAM_POLL: Duration = Duration::from_millis(200);
+const SKILLS_CACHE_TTL: Duration = Duration::from_secs(30);
+
+#[derive(Clone)]
+struct SkillsCacheEntry {
+    value: Value,
+    generated_at_ms: u64,
+    cached_at: Instant,
+}
+
+static SKILLS_CACHE: OnceLock<tokio::sync::RwLock<HashMap<String, SkillsCacheEntry>>> =
+    OnceLock::new();
+
+fn skills_cache() -> &'static tokio::sync::RwLock<HashMap<String, SkillsCacheEntry>> {
+    SKILLS_CACHE.get_or_init(|| tokio::sync::RwLock::new(HashMap::new()))
+}
+
+fn skills_cache_key(state: &AppState) -> String {
+    serde_json::to_string(&state.atlas_cmd).unwrap_or_else(|_| state.atlas_cmd.join("\u{0}"))
+}
+
+fn skills_response(
+    mut value: Value,
+    generated_at_ms: u64,
+    cache_status: &'static str,
+) -> Result<Value, ApiError> {
+    let object = value
+        .as_object_mut()
+        .ok_or_else(|| ApiError::Internal("skills list must return a JSON object".into()))?;
+    let total = object
+        .get("skills")
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len);
+    object.insert("total".into(), json!(total));
+    object.insert("catalog_generated_at".into(), json!(generated_at_ms));
+    object.insert("cache_status".into(), json!(cache_status));
+    object.insert(
+        "cache_ttl_seconds".into(),
+        json!(SKILLS_CACHE_TTL.as_secs()),
+    );
+    Ok(value)
+}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -1042,7 +1083,10 @@ fn structured_cli_status(body: &Value) -> StatusCode {
         | "surface_resume_conflict"
         | "approval_already_decided"
         | "config_revision_conflict"
+        | "skill_tier_conflict"
         | "permission_profile_widening" => StatusCode::CONFLICT,
+        "skill_not_found" => StatusCode::NOT_FOUND,
+        "skill_tier_audit_failed" => StatusCode::INTERNAL_SERVER_ERROR,
         "approval_stale" => StatusCode::GONE,
         _ => StatusCode::BAD_REQUEST,
     }
@@ -1589,16 +1633,61 @@ async fn discord_reject(
 
 /// GET /api/skills — return the skills manifest (dispatches to atlas skills list --json).
 async fn skills_list(State(state): State<AppState>) -> ApiResult {
-    let out = dispatch_atlas(&state.atlas_cmd, &["skills", "list", "--json"]).await?;
-    let value: Value = serde_json::from_str(&out)
-        .map_err(|e| ApiError::Internal(format!("skills list parse failed: {e}")))?;
-    Ok(Json(value))
+    let key = skills_cache_key(&state);
+    {
+        let cache = skills_cache().read().await;
+        if let Some(entry) = cache.get(&key) {
+            if entry.cached_at.elapsed() < SKILLS_CACHE_TTL {
+                return Ok(Json(skills_response(
+                    entry.value.clone(),
+                    entry.generated_at_ms,
+                    "fresh",
+                )?));
+            }
+        }
+    }
+
+    // Hold the per-process write lock through refresh so concurrent cold reads
+    // collapse into one CLI scan instead of spawning duplicate Python trees.
+    let mut cache = skills_cache().write().await;
+    if let Some(entry) = cache.get(&key) {
+        if entry.cached_at.elapsed() < SKILLS_CACHE_TTL {
+            return Ok(Json(skills_response(
+                entry.value.clone(),
+                entry.generated_at_ms,
+                "fresh",
+            )?));
+        }
+    }
+    let value = dispatch_json_cli(
+        &state.atlas_cmd,
+        &["skills", "list", "--json"],
+        "skills list",
+    )
+    .await?;
+    let generated_at_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .min(u128::from(u64::MAX)) as u64;
+    cache.insert(
+        key,
+        SkillsCacheEntry {
+            value: value.clone(),
+            generated_at_ms,
+            cached_at: Instant::now(),
+        },
+    );
+    Ok(Json(skills_response(value, generated_at_ms, "refreshed")?))
 }
 
 #[derive(Deserialize)]
 struct SetSkillTierBody {
     id: String,
     tier: String,
+    expected_tier: Option<String>,
+    reason: Option<String>,
+    source_surface: Option<String>,
 }
 
 /// PUT /api/skills/tier — change a skill's loading tier.
@@ -1607,12 +1696,36 @@ async fn skills_set_tier(
     Json(body): Json<SetSkillTierBody>,
 ) -> ApiResult {
     require_arg(&body.id, "skill id must be non-empty")?;
-    dispatch_atlas(
-        &state.atlas_cmd,
-        &["skills", "set-tier", "--id", &body.id, "--tier", &body.tier],
-    )
-    .await?;
-    Ok(Json(json!({ "ok": true })))
+    if !matches!(body.tier.as_str(), "full" | "name-only" | "deactivated") {
+        return Err(ApiError::BadRequest(
+            "tier must be full, name-only, or deactivated",
+        ));
+    }
+    let mut args = vec![
+        "skills".to_string(),
+        "set-tier".to_string(),
+        "--id".to_string(),
+        body.id,
+        "--tier".to_string(),
+        body.tier,
+        "--reason".to_string(),
+        body.reason
+            .unwrap_or_else(|| "operator changed the skill loading tier".to_string()),
+        "--source-surface".to_string(),
+        body.source_surface
+            .unwrap_or_else(|| "cockpit.skills".to_string()),
+    ];
+    if let Some(expected_tier) = body.expected_tier {
+        args.push("--expected-tier".to_string());
+        args.push(expected_tier);
+    }
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let value = dispatch_json_cli(&state.atlas_cmd, &arg_refs, "skills set-tier").await?;
+    skills_cache()
+        .write()
+        .await
+        .remove(&skills_cache_key(&state));
+    Ok(Json(value))
 }
 
 // ---------------------------------------------------------------------------

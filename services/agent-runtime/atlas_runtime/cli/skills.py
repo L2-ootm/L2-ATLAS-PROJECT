@@ -9,10 +9,36 @@ GET /api/skills and PUT /api/skills/tier routes
 from __future__ import annotations
 
 import json
+import sqlite3
+import threading
 
 import typer
+from atlas_core.schemas.control_plane import ControlPlaneError
 
 skills_app = typer.Typer(name="skills", help="Discover and manage ATLAS skills.")
+
+
+def _get_connection() -> sqlite3.Connection:
+    from atlas_runtime.cli import main
+
+    return main._get_connection()
+
+
+def _get_lock() -> threading.Lock:
+    from atlas_runtime.cli import main
+
+    return main._get_lock()
+
+
+def _render_control_error(exc: ControlPlaneError) -> None:
+    error: dict[str, object] = {
+        "code": exc.code,
+        "message": exc.message,
+        "remediation": exc.remediation,
+    }
+    if exc.field is not None:
+        error["field"] = exc.field
+    typer.echo(json.dumps({"error": error}, ensure_ascii=False), err=True)
 
 
 @skills_app.command("list")
@@ -55,13 +81,36 @@ def skills_set_tier_cmd(
         ..., "--id", help="Skill id, as printed by 'atlas skills list' (its relative dir path)."
     ),
     tier: str = typer.Option(..., "--tier", help="full | name-only | deactivated"),
+    expected_tier: str | None = typer.Option(
+        None,
+        "--expected-tier",
+        help="Reject the write if the effective tier changed since it was read.",
+    ),
+    reason: str = typer.Option(
+        "operator changed the skill loading tier",
+        "--reason",
+        help="Human-readable audit reason.",
+    ),
+    source_surface: str = typer.Option(
+        "cli",
+        "--source-surface",
+        help="Originating operator surface (for the durable receipt).",
+    ),
 ) -> None:
-    """Set a skill's loading tier (persisted at <ATLAS_HOME>/skill_tiers.json)."""
-    from atlas_runtime import skill_manifest
+    """Set a skill tier through the guarded, audited control-plane path."""
+    from atlas_runtime import skill_control_service
 
     try:
-        skill_manifest.set_skill_tier(skill_id, tier)
-    except ValueError as exc:
-        typer.echo(f"Error: {exc}", err=True)
+        receipt = skill_control_service.set_tier(
+            _get_connection(),
+            _get_lock(),
+            skill_id=skill_id,
+            tier=tier,
+            expected_tier=expected_tier,
+            reason=reason,
+            source_surface=source_surface,
+        )
+    except ControlPlaneError as exc:
+        _render_control_error(exc)
         raise typer.Exit(1)
-    typer.echo("updated")
+    typer.echo(receipt.model_dump_json())

@@ -1654,6 +1654,108 @@ async fn put_json(router: &axum::Router, uri: &str, body: Value) -> (StatusCode,
     (status, body)
 }
 
+fn skills_cache_test_app(db_path: PathBuf, dir: &tempfile::TempDir) -> (axum::Router, PathBuf) {
+    let stub = dir.path().join("skills_stub.py");
+    let counter = dir.path().join("skills_count.txt");
+    std::fs::write(
+        &stub,
+        r#"import json
+import pathlib
+import sys
+
+counter = pathlib.Path(sys.argv[1])
+args = sys.argv[2:]
+if args[:3] == ["skills", "list", "--json"]:
+    count = int(counter.read_text() or "0") if counter.exists() else 0
+    counter.write_text(str(count + 1))
+    print(json.dumps({"skills": [{"id": "skills/atlas/gsd", "name": "gsd"}]}))
+elif args[:2] == ["skills", "set-tier"]:
+    tier = args[args.index("--tier") + 1]
+    if tier == "deactivated":
+        print(json.dumps({"error": {"code": "skill_tier_conflict", "message": "stale", "remediation": "reload"}}), file=sys.stderr)
+        raise SystemExit(1)
+    print(json.dumps({"receipt_id": "receipt-1", "resource_type": "skill", "resource_id": "skills/atlas/gsd", "resource_name": "gsd", "action": "set_loading_tier", "before": "full", "after": tier, "actor": "cockpit.skills", "reason": "test", "timestamp": "2026-07-30T00:00:00Z", "status": "committed"}))
+else:
+    print(json.dumps({"error": {"code": "bad_request", "message": "unexpected args", "remediation": "fix test"}}), file=sys.stderr)
+    raise SystemExit(1)
+"#,
+    )
+    .unwrap();
+    let python = if cfg!(windows) { "python" } else { "python3" };
+    (
+        app(AppState {
+            db_path,
+            atlas_cmd: vec![
+                python.to_string(),
+                stub.to_string_lossy().to_string(),
+                counter.to_string_lossy().to_string(),
+            ],
+            repo_root: PathBuf::from("."),
+        }),
+        counter,
+    )
+}
+
+#[tokio::test]
+async fn skills_catalog_cache_collapses_reads_and_invalidates_after_commit() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let (router, counter) = skills_cache_test_app(seeded_db(&dir), &stub_dir);
+
+    let (first_status, first) = get_json(&router, "/api/skills").await;
+    let (second_status, second) = get_json(&router, "/api/skills").await;
+    assert_eq!(first_status, StatusCode::OK);
+    assert_eq!(second_status, StatusCode::OK);
+    assert_eq!(first["cache_status"], "refreshed");
+    assert_eq!(second["cache_status"], "fresh");
+    assert_eq!(second["total"], 1);
+    assert_eq!(std::fs::read_to_string(&counter).unwrap(), "1");
+
+    let (put_status, receipt) = put_json(
+        &router,
+        "/api/skills/tier",
+        json!({
+            "id": "skills/atlas/gsd",
+            "tier": "name-only",
+            "expected_tier": "full",
+            "reason": "test",
+            "source_surface": "cockpit.skills"
+        }),
+    )
+    .await;
+    assert_eq!(put_status, StatusCode::OK);
+    assert_eq!(receipt["receipt_id"], "receipt-1");
+
+    let (_, after_write) = get_json(&router, "/api/skills").await;
+    assert_eq!(after_write["cache_status"], "refreshed");
+    assert_eq!(std::fs::read_to_string(&counter).unwrap(), "2");
+}
+
+#[tokio::test]
+async fn failed_skill_write_preserves_cache_and_maps_conflict() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let (router, counter) = skills_cache_test_app(seeded_db(&dir), &stub_dir);
+    let _ = get_json(&router, "/api/skills").await;
+
+    let (status, body) = put_json(
+        &router,
+        "/api/skills/tier",
+        json!({
+            "id": "skills/atlas/gsd",
+            "tier": "deactivated",
+            "expected_tier": "full"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(body["error"]["code"], "skill_tier_conflict");
+
+    let (_, cached) = get_json(&router, "/api/skills").await;
+    assert_eq!(cached["cache_status"], "fresh");
+    assert_eq!(std::fs::read_to_string(&counter).unwrap(), "1");
+}
+
 async fn patch_json(router: &axum::Router, uri: &str, body: Value) -> (StatusCode, Value) {
     let bytes = serde_json::to_vec(&body).unwrap();
     let resp = router
