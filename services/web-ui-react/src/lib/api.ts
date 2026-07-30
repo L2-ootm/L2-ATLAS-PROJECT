@@ -2033,16 +2033,77 @@ export interface SkillInfo {
 	path: string;
 }
 
-export async function listSkills(): Promise<{ skills: SkillInfo[] }> {
-	return apiFetch('/api/skills');
+export interface SkillCatalogResponse {
+	skills: SkillInfo[];
+	total: number;
+	catalog_generated_at: number;
+	cache_status: 'fresh' | 'refreshed';
+	cache_ttl_seconds: number;
+}
+
+export interface ControlReceipt {
+	receipt_id: string;
+	resource_type: string;
+	resource_id: string;
+	resource_name: string;
+	action: string;
+	before: string;
+	after: string;
+	actor: string;
+	reason: string;
+	timestamp: string;
+	status: 'committed';
+}
+
+let skillCatalogCache: SkillCatalogResponse | null = null;
+
+export function peekSkillCatalog(): SkillCatalogResponse | null {
+	return skillCatalogCache;
+}
+
+export async function listSkills(): Promise<SkillCatalogResponse> {
+	const raw = await apiFetch<Partial<SkillCatalogResponse> & { skills?: SkillInfo[] }>('/api/skills');
+	const skills = raw.skills ?? [];
+	// Rolling upgrades can briefly pair the new Cockpit with a pre-cache
+	// gateway. Normalize the additive metadata instead of turning a valid
+	// legacy catalog into a page crash.
+	const catalog: SkillCatalogResponse = {
+		skills,
+		total: raw.total ?? skills.length,
+		catalog_generated_at: raw.catalog_generated_at ?? Date.now(),
+		cache_status: raw.cache_status ?? 'refreshed',
+		cache_ttl_seconds: raw.cache_ttl_seconds ?? 0
+	};
+	skillCatalogCache = catalog;
+	return catalog;
 }
 
 export async function setSkillTier(
 	id: string,
-	tier: SkillLoadingTier
-): Promise<{ updated?: boolean; id?: string; tier?: string }> {
-	return apiFetch('/api/skills/tier', {
+	tier: SkillLoadingTier,
+	expectedTier: SkillLoadingTier,
+	reason: string,
+	sourceSurface = 'cockpit.skills'
+): Promise<ControlReceipt> {
+	const receipt = await apiFetch<ControlReceipt>('/api/skills/tier', {
 		method: 'PUT',
-		body: JSON.stringify({ id, tier })
+		body: JSON.stringify({
+			id,
+			tier,
+			expected_tier: expectedTier,
+			reason,
+			source_surface: sourceSurface
+		})
 	});
+	if (skillCatalogCache) {
+		skillCatalogCache = {
+			...skillCatalogCache,
+			skills: skillCatalogCache.skills.map((skill) =>
+				skill.id === id
+					? { ...skill, loading_tier: tier, enabled: tier !== 'deactivated' }
+					: skill
+			)
+		};
+	}
+	return receipt;
 }

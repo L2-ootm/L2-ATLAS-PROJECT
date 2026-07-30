@@ -1,8 +1,17 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Search, ChevronDown } from 'lucide-react';
 import { Page } from '../components/Page';
 import { GlassPanel, HudLabel } from '../components/hud';
-import { listSkills, setSkillTier, type SkillInfo, type SkillLoadingTier } from '../lib/api';
+import { ControlReceipt } from '../components/control/ControlReceipt';
+import {
+	listSkills,
+	peekSkillCatalog,
+	setSkillTier,
+	type ControlReceipt as ControlReceiptData,
+	type SkillCatalogResponse,
+	type SkillInfo,
+	type SkillLoadingTier
+} from '../lib/api';
 
 /** Discriminated load state so an offline gateway or a non-2xx is never
  * rendered as "No skills found." (the shape Missions.tsx:28-32 uses). */
@@ -20,17 +29,35 @@ const PROVENANCE_LABELS: Record<string, { label: string; color: string }> = {
 	'third-party': { label: '3RD PARTY', color: 'var(--l2-fg-3)' }
 };
 
+const INITIAL_CARD_LIMIT = 36;
+
+function catalogAge(generatedAt: number): string {
+	if (!generatedAt) return 'UNKNOWN AGE';
+	const seconds = Math.max(0, Math.floor((Date.now() - generatedAt) / 1000));
+	if (seconds < 60) return `${seconds}s AGO`;
+	if (seconds < 3600) return `${Math.floor(seconds / 60)}m AGO`;
+	return `${Math.floor(seconds / 3600)}h AGO`;
+}
+
 export default function SkillsPage() {
-	const [skills, setSkills] = useState<SkillInfo[]>([]);
-	const [load, setLoad] = useState<Load>({ s: 'loading' });
+	const initialCatalog = peekSkillCatalog();
+	const [hadInitialCatalog] = useState(initialCatalog !== null);
+	const [skills, setSkills] = useState<SkillInfo[]>(() => initialCatalog?.skills ?? []);
+	const [catalog, setCatalog] = useState<SkillCatalogResponse | null>(initialCatalog);
+	const [load, setLoad] = useState<Load>(() => initialCatalog ? { s: 'ready' } : { s: 'loading' });
 	const [search, setSearch] = useState('');
 	const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+	const [visibleCount, setVisibleCount] = useState(INITIAL_CARD_LIMIT);
+	const [receipt, setReceipt] = useState<ControlReceiptData | null>(null);
+	const [undoBusy, setUndoBusy] = useState(false);
+	const [receiptError, setReceiptError] = useState<string | null>(null);
 
 	const fetchSkills = useCallback(async (silent: boolean) => {
 		if (!silent) setLoad({ s: 'loading' });
 		try {
-			const { skills } = await listSkills();
-			setSkills(skills || []);
+			const nextCatalog = await listSkills();
+			setCatalog(nextCatalog);
+			setSkills(nextCatalog.skills || []);
 			setLoad({ s: 'ready' });
 		} catch {
 			if (!silent) setLoad({ s: 'error' });
@@ -38,27 +65,64 @@ export default function SkillsPage() {
 	}, []);
 
 	useEffect(() => {
-		void fetchSkills(false);
-	}, [fetchSkills]);
+		void fetchSkills(hadInitialCatalog);
+	}, [fetchSkills, hadInitialCatalog]);
 
 	/** A tier change touches exactly one card — patch it in place instead of
 	 * refetching the whole grid and flashing a LOADING… panel over it. */
-	const applyTier = useCallback((id: string, tier: SkillLoadingTier) => {
+	const applyTier = useCallback((id: string, tier: SkillLoadingTier, nextReceipt: ControlReceiptData) => {
 		setSkills((prior) => prior.map((s) => (s.id === id ? { ...s, loading_tier: tier } : s)));
+		setReceipt(nextReceipt);
+		setReceiptError(null);
 	}, []);
 
-	const categories = Array.from(new Set(skills.map((s) => s.category))).sort();
+	const categoryCounts = useMemo(() => {
+		const counts = new Map<string, number>();
+		for (const skill of skills) counts.set(skill.category, (counts.get(skill.category) ?? 0) + 1);
+		return counts;
+	}, [skills]);
 
-	const filtered = skills.filter((s) => {
-		if (search) {
-			const q = search.toLowerCase();
-			if (!s.name.toLowerCase().includes(q) && !s.description.toLowerCase().includes(q) && !s.tags.some((t) => t.includes(q))) {
+	const categories = useMemo(() => Array.from(categoryCounts.keys()).sort(), [categoryCounts]);
+	const filtered = useMemo(() => {
+		const q = search.trim().toLowerCase();
+		return skills.filter((skill) => {
+			if (
+				q &&
+				!skill.name.toLowerCase().includes(q) &&
+				!skill.description.toLowerCase().includes(q) &&
+				!skill.tags.some((tag) => tag.toLowerCase().includes(q))
+			) {
 				return false;
 			}
+			return !categoryFilter || skill.category === categoryFilter;
+		});
+	}, [skills, search, categoryFilter]);
+	const visible = filtered.slice(0, visibleCount);
+
+	useEffect(() => {
+		setVisibleCount(INITIAL_CARD_LIMIT);
+	}, [search, categoryFilter]);
+
+	const undoReceipt = useCallback(async () => {
+		if (!receipt || undoBusy) return;
+		setUndoBusy(true);
+		setReceiptError(null);
+		try {
+			const before = receipt.before as SkillLoadingTier;
+			const after = receipt.after as SkillLoadingTier;
+			const rollback = await setSkillTier(
+				receipt.resource_id,
+				before,
+				after,
+				`Rollback receipt ${receipt.receipt_id}`
+			);
+			applyTier(receipt.resource_id, before, rollback);
+		} catch (error) {
+			setReceiptError(error instanceof Error ? error.message : 'Rollback failed');
+		} finally {
+			setUndoBusy(false);
 		}
-		if (categoryFilter && s.category !== categoryFilter) return false;
-		return true;
-	});
+	}, [applyTier, receipt, undoBusy]);
 
 	return (
 		<Page eyebrow="SYSTEM" title="Skills">
@@ -89,7 +153,7 @@ export default function SkillsPage() {
 								All ({skills.length})
 							</button>
 							{categories.map((cat) => {
-								const count = skills.filter((s) => s.category === cat).length;
+								const count = categoryCounts.get(cat) ?? 0;
 								return (
 									<button
 										key={cat}
@@ -121,7 +185,14 @@ export default function SkillsPage() {
 				<div style={{ flex: 1, minWidth: 0 }}>
 					{/* Search */}
 					<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
-						<HudLabel>INSTALLED</HudLabel>
+						<div>
+							<HudLabel>DISCOVERED · {skills.length}</HudLabel>
+							{catalog && (
+								<div style={{ marginTop: 4, color: 'var(--l2-fg-3)', fontFamily: 'var(--l2-font-mono)', fontSize: 9, letterSpacing: '0.08em' }}>
+									CATALOG {catalog.cache_status.toUpperCase()} · {catalogAge(catalog.catalog_generated_at)} · TTL {catalog.cache_ttl_seconds}s
+								</div>
+							)}
+						</div>
 						<div style={{ position: 'relative' }}>
 							<Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--l2-fg-3)' }} />
 							<input
@@ -141,6 +212,13 @@ export default function SkillsPage() {
 						</div>
 					</div>
 
+					{receipt && <ControlReceipt receipt={receipt} onUndo={() => void undoReceipt()} undoBusy={undoBusy} />}
+					{receiptError && (
+						<div role="alert" style={{ marginBottom: 12, color: 'var(--l2-error)', fontFamily: 'var(--l2-font-mono)', fontSize: 10.5 }}>
+							ROLLBACK NOT APPLIED — {receiptError}
+						</div>
+					)}
+
 					{/* Skills grid */}
 					{load.s === 'loading' ? (
 						<GlassPanel style={{ padding: 48, display: 'grid', placeItems: 'center' }}>
@@ -158,9 +236,29 @@ export default function SkillsPage() {
 						</GlassPanel>
 					) : (
 						<div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
-							{filtered.map((skill) => (
+							{visible.map((skill) => (
 								<SkillCard key={skill.id} skill={skill} onApplied={applyTier} />
 							))}
+							{visible.length < filtered.length && (
+								<button
+									type="button"
+									onClick={() => setVisibleCount((count) => count + INITIAL_CARD_LIMIT)}
+									style={{
+										gridColumn: '1 / -1',
+										padding: 12,
+										border: '1px solid var(--l2-hairline)',
+										borderRadius: 2,
+										background: 'transparent',
+										color: 'var(--l2-fg-2)',
+										fontFamily: 'var(--l2-font-mono)',
+										fontSize: 10,
+										letterSpacing: '0.12em',
+										cursor: 'pointer'
+									}}
+								>
+									SHOW {Math.min(INITIAL_CARD_LIMIT, filtered.length - visible.length)} MORE · {filtered.length - visible.length} REMAINING
+								</button>
+							)}
 						</div>
 					)}
 				</div>
@@ -197,7 +295,7 @@ function Offline({ onRetry }: { onRetry: () => void }) {
 
 function SkillCard({ skill, onApplied }: {
 	skill: SkillInfo;
-	onApplied: (id: string, tier: SkillLoadingTier) => void;
+	onApplied: (id: string, tier: SkillLoadingTier, receipt: ControlReceiptData) => void;
 }) {
 	const [tierOpen, setTierOpen] = useState(false);
 	const [busy, setBusy] = useState(false);
@@ -212,8 +310,13 @@ function SkillCard({ skill, onApplied }: {
 		setBusy(true);
 		setError(null);
 		try {
-			await setSkillTier(skill.id, newTier);
-			onApplied(skill.id, newTier);
+			const receipt = await setSkillTier(
+				skill.id,
+				newTier,
+				skill.loading_tier,
+				`Operator changed ${skill.name} loading tier from the Skills page`
+			);
+			onApplied(skill.id, newTier, receipt);
 			setTierOpen(false);
 		} catch (e) {
 			setError(e instanceof Error ? e.message : 'Tier change failed');
@@ -336,6 +439,13 @@ function SkillCard({ skill, onApplied }: {
 					<span>{skill.category}</span>
 					{skill.usage?.use_count > 0 && <span>{skill.usage.use_count} uses</span>}
 					<span style={{ marginLeft: 'auto' }}>{skill.author}</span>
+				</div>
+				<div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8, fontFamily: 'var(--l2-font-mono)', fontSize: 8.5, letterSpacing: '0.08em', color: 'var(--l2-fg-3)' }}>
+					<span>DISCOVERED · {skill.provenance.source}</span>
+					<span>CONFIGURED · {skill.loading_tier}</span>
+					<span style={{ color: skill.enabled ? 'var(--atlas-emerald)' : 'var(--l2-fg-3)' }}>
+						EFFECTIVE · {skill.enabled ? 'enabled' : 'disabled'}
+					</span>
 				</div>
 				{skill.tags?.length > 0 && (
 					<div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 8 }}>
