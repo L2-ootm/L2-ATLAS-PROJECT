@@ -60,6 +60,9 @@ def test_start_spawns_detached_and_records_pid(monkeypatch, tmp_path) -> None:
     (bot_dir / "bot" / "main.py").write_text("", encoding="utf-8")
     monkeypatch.setattr(dc, "DISCORD_DIR", bot_dir)
     monkeypatch.setattr(dc, "bot_python", lambda work_dir=None: "python")
+    credential_file = tmp_path / "discord.env"
+    credential_file.write_text("DISCORD_BOT_TOKEN=test-token\n", encoding="utf-8")
+    monkeypatch.setattr(dc, "credentials_path", lambda: credential_file)
     monkeypatch.setattr(dc, "health_ok", lambda timeout=1.0: False)
     # start() now provisions the bot venv before spawning; the provisioning
     # contract itself is covered by test_provisioning.
@@ -75,6 +78,7 @@ def test_start_spawns_detached_and_records_pid(monkeypatch, tmp_path) -> None:
 
     def _fake_popen(args, **kwargs):
         captured["args"] = args
+        captured.update(kwargs)
         return _FakeProc(pid=9300)
 
     monkeypatch.setattr(dc.subprocess, "Popen", _fake_popen)
@@ -83,7 +87,70 @@ def test_start_spawns_detached_and_records_pid(monkeypatch, tmp_path) -> None:
     assert ok is True
     assert "9300" in msg
     assert captured["args"][1:] == ["-m", "bot.main"]
+    assert captured["env"]["ATLAS_DISCORD_ENV_FILE"] == str(credential_file)
     assert dc._read_state()["pid"] == 9300
+
+
+def test_start_bootstraps_release_local_deps_under_embedded_python(
+    monkeypatch, tmp_path
+) -> None:
+    bot_dir = tmp_path / "discord-bot"
+    (bot_dir / "bot").mkdir(parents=True)
+    (bot_dir / "bot" / "main.py").write_text("", encoding="utf-8")
+    (bot_dir / ".deps").mkdir()
+    credential_file = tmp_path / "discord.env"
+    credential_file.write_text("DISCORD_BOT_TOKEN=test-token\n", encoding="utf-8")
+    monkeypatch.setattr(dc, "DISCORD_DIR", bot_dir)
+    monkeypatch.setattr(dc, "credentials_path", lambda: credential_file)
+    monkeypatch.setattr(dc, "health_ok", lambda timeout=1.0: False)
+    from atlas_runtime import provisioning
+
+    monkeypatch.setattr(
+        provisioning,
+        "ensure_provisioned",
+        lambda component, **kw: provisioning.ProvisionResult(True, "stubbed", bot_dir),
+    )
+    captured = {}
+
+    def _fake_popen(args, **kwargs):
+        captured["args"] = args
+        captured.update(kwargs)
+        return _FakeProc()
+
+    monkeypatch.setattr(dc.subprocess, "Popen", _fake_popen)
+    assert dc.start()[0] is True
+    assert captured["args"][1:2] == ["-c"]
+    assert "sys.path[:0]=['.','.deps']" in captured["args"][2]
+    assert "PYTHONPATH" not in captured["env"]
+
+
+def test_import_credentials_uses_owner_only_store(monkeypatch, tmp_path) -> None:
+    source = tmp_path / "legacy.env"
+    source.write_text("DISCORD_BOT_TOKEN=test-token\nOTHER=value\n", encoding="utf-8")
+    target = tmp_path / "managed" / "discord-bot.env"
+    monkeypatch.setattr(dc, "managed_credentials_path", lambda: target)
+    assert dc.import_credentials(source) == target
+    assert target.read_text(encoding="utf-8") == source.read_text(encoding="utf-8")
+
+
+def test_import_credentials_requires_bot_token(tmp_path) -> None:
+    source = tmp_path / "legacy.env"
+    source.write_text("OTHER=value\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="DISCORD_BOT_TOKEN"):
+        dc.import_credentials(source)
+
+
+def test_start_fails_before_provisioning_without_credentials(monkeypatch, tmp_path) -> None:
+    bot_dir = tmp_path / "discord-bot"
+    (bot_dir / "bot").mkdir(parents=True)
+    (bot_dir / "bot" / "main.py").write_text("", encoding="utf-8")
+    monkeypatch.setattr(dc, "DISCORD_DIR", bot_dir)
+    monkeypatch.setattr(dc, "credentials_path", lambda: None)
+    monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
+    monkeypatch.setattr(dc, "health_ok", lambda timeout=1.0: False)
+    ok, message = dc.start()
+    assert ok is False
+    assert "import-credentials" in message
 
 
 def test_start_is_idempotent_when_running(monkeypatch) -> None:

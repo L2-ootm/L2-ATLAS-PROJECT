@@ -67,6 +67,20 @@ def test_start_json_reports_status(monkeypatch):
     assert data["ok"] is True and data["pid"] == 8200
 
 
+def test_import_credentials_json_never_echoes_secret(monkeypatch, tmp_path):
+    from atlas_runtime import discord_control as dc
+
+    source = tmp_path / "discord.env"
+    source.write_text("DISCORD_BOT_TOKEN=top-secret-token\n", encoding="utf-8")
+    monkeypatch.setattr(dc, "import_credentials", lambda path: tmp_path / "managed.env")
+    result = runner.invoke(
+        app, ["discord", "import-credentials", str(source), "--json"]
+    )
+    assert result.exit_code == 0
+    assert json.loads(result.output) == {"ok": True, "configured": True}
+    assert "top-secret-token" not in result.output
+
+
 # ---------------------------------------------------------------------------
 # Gated writes — propose / approvals / approve / reject (Phase C)
 # ---------------------------------------------------------------------------

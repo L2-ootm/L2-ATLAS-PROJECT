@@ -9,6 +9,7 @@ follow-up.
 from __future__ import annotations
 
 import json
+import pathlib
 import sqlite3
 import threading
 from typing import Optional
@@ -81,6 +82,28 @@ def stop(json_out: bool = typer.Option(False, "--json", help="Emit JSON.")) -> N
     typer.echo(message)
     if not ok:
         raise typer.Exit(1)
+
+
+@discord_app.command("import-credentials")
+def import_credentials(
+    env_file: pathlib.Path = typer.Argument(..., help="Existing Discord .env file."),
+    json_out: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """Import Discord secrets into ATLAS's owner-only credential store."""
+    from atlas_runtime import discord_control
+
+    try:
+        discord_control.import_credentials(env_file)
+    except (OSError, ValueError) as exc:
+        if json_out:
+            typer.echo(json.dumps({"ok": False, "configured": False, "error": str(exc)}))
+        else:
+            typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    if json_out:
+        typer.echo(json.dumps({"ok": True, "configured": True}))
+    else:
+        typer.echo("Discord credentials imported into the owner-only ATLAS store.")
 
 
 @discord_app.command("guilds")

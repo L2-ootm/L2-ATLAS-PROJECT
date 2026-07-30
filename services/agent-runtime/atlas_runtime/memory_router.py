@@ -204,8 +204,8 @@ class RecentRunsRetriever:
 
 
 # ---------------------------------------------------------------------------
-# Conversation history retriever (Phase 2 Track A) — compressed cross-run
-# session continuity, replacing native.py's raw audit_events replay.
+# Conversation history retriever (Phase 2 Track A) — durable cross-run session
+# continuity, replacing native.py's raw audit_events and summary replay.
 # ---------------------------------------------------------------------------
 
 # Dedicated budget for this section: enforced inside retrieve() itself (not by
@@ -213,110 +213,88 @@ class RecentRunsRetriever:
 # wiki/brain/skills sections when the router is shared — the highest-priority
 # section per the operational-importance research finding, but still bounded.
 _CONVERSATION_TOKEN_BUDGET = 2000
-# Tool-fingerprint fallback (used when a prior run has no runs.summary): top-N
-# tool_calls rows, each truncated to a compact "name(args)->exit_code" entry.
-_TOOL_FINGERPRINT_MAX = 10
-_TOOL_FINGERPRINT_ARGS_CHARS = 100
-
-
-def _tool_call_fingerprint(conn: sqlite3.Connection, run_id: str) -> str:
-    """Compact fingerprint of a run's tool calls, used as the runs.summary
-    fallback. Sourced from the `tool_calls` table (not `audit_events`, which
-    retention_service.compress_mission_data purges well before runs.summary
-    would go stale) — safe even after a mission has been retention-compressed,
-    though compression also clears tool_calls, so very old runs may yield no
-    fingerprint either (see retention_service.py; graceful no-op, not an error).
-    """
-    if not _table_exists(conn, "tool_calls"):
-        return ""
-    try:
-        rows = conn.execute(
-            "SELECT tool_name, args, exit_code FROM tool_calls WHERE run_id=? "
-            "ORDER BY timestamp ASC LIMIT ?",
-            (run_id, _TOOL_FINGERPRINT_MAX),
-        ).fetchall()
-    except sqlite3.Error:
-        return ""
-    parts: list[str] = []
-    for tool_name, args, exit_code in rows:
-        args_preview = (args or "")[:_TOOL_FINGERPRINT_ARGS_CHARS]
-        suffix = f" -> exit {exit_code}" if exit_code is not None else ""
-        parts.append(f"{tool_name}({args_preview}){suffix}")
-    return "; ".join(parts)
 
 
 class ConversationHistoryRetriever:
-    """Compressed cross-run session history: one line per prior run in the same
-    session, oldest first — `runs.summary` when non-empty, else a tool_calls
-    fingerprint (see `_tool_call_fingerprint`). A run with neither is skipped.
+    """Bounded replay of durable user/assistant turns from prior session runs.
 
-    Replaces the previous raw approach (native.py replaying every
-    llm_call/model_call_end audit event from every prior run in the session:
-    unbounded, ~200K tokens/100 turns, and broken by retention's audit_events
-    purge). This retriever enforces its own ~2000 token budget rather than
-    competing for the shared MemoryRouter budget, per the research finding that
-    session continuity is the most operationally important section.
+    ``runs.summary`` is synthesized evidence, not conversation. Replaying it as
+    assistant speech caused models to echo raw summary JSON, trust hallucinated
+    file claims, and forget the actual preceding operator message. Migration
+    0030's ``session_messages`` rows are the canonical conversational record.
+    The newest ``max_runs`` are selected, then replayed oldest-first under a
+    dedicated ~2000-token budget.
     """
 
     def section_lines(self, query: RouterQuery) -> list[str]:
         return [f"## Session History (session {query.session_id})"]
 
     def retrieve(self, conn: sqlite3.Connection, query: RouterQuery) -> list[MemorySnippet]:
-        if not query.session_id:
+        if not query.session_id or not _table_exists(conn, "session_messages"):
             return []
-        # The mission intent is what the operator actually asked for. Without it
-        # the replayed history is assistant turns only — answers with no
-        # questions — which reads to the model as if it had spoken unprompted
-        # and hides what each prior run was for. `runs` stores no prompt column,
-        # so the intent behind the run is the closest durable record of the ask.
-        rows = conn.execute(
-            "SELECT r.id, r.summary, COALESCE(m.intent, '') "
-            "FROM runs r LEFT JOIN missions m ON m.id = r.mission_id "
-            "WHERE r.session_id=? AND r.status IN ('succeeded','completed') "
-            "ORDER BY r.started_at ASC LIMIT ?",
+        run_rows = conn.execute(
+            "SELECT id FROM runs WHERE session_id=? "
+            "AND status IN ('succeeded','completed') "
+            "ORDER BY started_at DESC LIMIT ?",
             (query.session_id, query.max_runs),
         ).fetchall()
+        run_ids = [str(row[0]) for row in reversed(run_rows)]
+        if not run_ids:
+            return []
+
         out: list[MemorySnippet] = []
         used_tokens = 0
-        last_intent = ""
-        for i, (run_id, summary, intent) in enumerate(rows):
-            summary = (summary or "").strip()
-            intent = (intent or "").strip()
-            if summary:
-                text = f"- **run {run_id[:8]} summary:** {summary}"
-                source = f"run_summary:{run_id}"
-            else:
-                fingerprint = _tool_call_fingerprint(conn, run_id)
-                if not fingerprint:
+        last_user_text = ""
+        for run_index, run_id in enumerate(run_ids):
+            rows = conn.execute(
+                "SELECT role,content FROM session_messages "
+                "WHERE surface_session_id=? AND run_id=? "
+                "AND role IN ('user','assistant') ORDER BY seq ASC",
+                (query.session_id, run_id),
+            ).fetchall()
+            for message_index, (role, content) in enumerate(rows):
+                text = _clean_history_turn(str(role), str(content or ""))
+                if not text:
                     continue
-                text = f"- **run {run_id[:8]} tools:** {fingerprint}"
-                source = f"run_tools:{run_id}"
-
-            pending: list[tuple[str, str]] = []
-            # Consecutive runs of one mission share an intent; emitting it once
-            # keeps the transcript readable instead of repeating the same ask.
-            if intent and intent != last_intent:
-                pending.append((f"- **asked:** {intent}", f"run_prompt:{run_id}"))
-            pending.append((text, source))
-
-            tokens = sum(estimate_tokens(item[0]) for item in pending)
-            # Dedicated per-section budget: keep at least one entry, then cap
-            # (mirrors WikiFtsRetriever's char-budget pattern).
-            if out and used_tokens + tokens > _CONVERSATION_TOKEN_BUDGET:
-                break
-            used_tokens += tokens
-            if intent:
-                last_intent = intent
-            for entry_text, entry_source in pending:
+                if role == "user":
+                    if text == last_user_text:
+                        continue
+                    last_user_text = text
+                tokens = estimate_tokens(text)
+                if out and used_tokens + tokens > _CONVERSATION_TOKEN_BUDGET:
+                    return out
+                used_tokens += tokens
                 out.append(
                     MemorySnippet(
-                        text=entry_text,
-                        score=float(-i),
-                        source=entry_source,
-                        approx_tokens=estimate_tokens(entry_text),
+                        text=text,
+                        score=float(-(run_index * 10 + message_index)),
+                        source=f"session_{role}:{run_id}",
+                        approx_tokens=tokens,
                     )
                 )
         return out
+
+
+_OPERATOR_CONTEXT_DELIMITER = "\n\n---\n\n"
+
+
+def _clean_history_turn(role: str, content: str) -> str:
+    """Keep conversation replay human-authored and free of internal dumps."""
+    text = content.strip()
+    if role == "user" and text.startswith("# ATLAS Operator Context"):
+        _, separator, operator_prompt = text.rpartition(_OPERATOR_CONTEXT_DELIMITER)
+        if separator:
+            text = operator_prompt.strip()
+    if role == "assistant":
+        lowered = text.lower()
+        looks_like_summary_dump = (
+            lowered.startswith("- **run ") and " summary:** {" in lowered
+        ) or lowered.count(" summary:** {") >= 2
+        if looks_like_summary_dump or (
+            "</arg_value>" in lowered and "summary" in lowered
+        ):
+            return ""
+    return text
 
 
 def history_snippets_to_messages(snippets: list[MemorySnippet]) -> list[dict[str, Any]]:
@@ -328,17 +306,19 @@ def history_snippets_to_messages(snippets: list[MemorySnippet]) -> list[dict[str
     markdown brief, so it bypasses `MemoryRouter.assemble()`/`assemble_envelope()`,
     which redact at their own boundary), so redaction happens here instead.
 
-    Run-summary snippets (`run_summary:<id>`) become assistant turns. Tool-
-    fingerprint snippets (`run_tools:<id>`) become `tool` messages with a
-    synthesized `tool_call_id` — there is no original tool_call_id to reuse
-    since the raw audit_events/tool_calls rows behind a fingerprint are not
-    guaranteed to survive retention indefinitely.
+    New snippets carry the durable role in their source id. Legacy source types
+    remain understood for compatibility with retained tests/data, but the live
+    retriever no longer produces synthesized summary/tool turns.
     """
     messages: list[dict[str, Any]] = []
     for i, snip in enumerate(snippets):
         source_type, _, source_id = snip.source.partition(":")
         text = redact(snip.text)
-        if source_type == "run_tools":
+        if source_type == "session_user":
+            messages.append({"role": "user", "content": text})
+        elif source_type == "session_assistant":
+            messages.append({"role": "assistant", "content": text})
+        elif source_type == "run_tools":
             messages.append(
                 {
                     "role": "tool",

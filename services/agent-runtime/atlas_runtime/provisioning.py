@@ -701,31 +701,43 @@ def _venv_python(relative: bool = True) -> str:
     return tail if relative else str(pathlib.Path(tail).resolve())
 
 
-def discord_bot_component() -> Component:
+def discord_bot_component(source_dir: pathlib.Path | None = None) -> Component:
     """The vendored Discord bot sidecar.
 
-    It runs on its OWN interpreter, not the ATLAS runtime venv: discord.py,
-    langchain and chromadb are its dependencies, not ATLAS's, and installing
-    them into the runtime venv would couple every ATLAS install to a bot nobody
-    may be using. So the install sequence creates that venv first and then
-    installs into it — the case a single-command Component could not express,
-    which is why this component did not exist and `atlas discord start` told the
-    operator to go build it by hand.
-
-    `deps_marker` is the venv itself: its absence is what "not installed" means
-    here, exactly as `node_modules` is for the Node components.
+    A checkout keeps using its existing bot-owned .venv. Release Python is the
+    Windows embeddable distribution and deliberately has no stdlib ``venv``
+    module, so an immutable release installs the bot packages into the mirrored
+    sidecar's ``.deps`` directory with the embedded interpreter's pip instead.
+    ``discord_control`` prepends that directory to PYTHONPATH when no bot venv
+    exists. The optional sidecar therefore remains isolated without requiring a
+    second system Python or adding its dependencies to every ATLAS process.
     """
+    source = source_dir or pathlib.Path(__file__).resolve().parents[2] / "discord-bot"
+    venv_marker = _venv_python()
+    if (source / venv_marker).is_file():
+        install = ((sys.executable, "-m", "pip", "--version"),)
+        deps_marker = venv_marker
+    else:
+        install = (
+            (
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--disable-pip-version-check",
+                "--target",
+                ".deps",
+                "-r",
+                "requirements.txt",
+            ),
+        )
+        deps_marker = ".deps/discord/__init__.py"
     return Component(
         name="discord-bot",
-        source_dir=pathlib.Path(__file__).resolve().parents[2] / "discord-bot",
+        source_dir=source,
         dep_manifests=("requirements.txt",),
-        install=(
-            # sys.executable, not "python": provisioning may run from a launcher
-            # whose PATH python is a different (or missing) interpreter.
-            (sys.executable, "-m", "venv", ".venv"),
-            (_venv_python(), "-m", "pip", "install", "-r", "requirements.txt"),
-        ),
-        deps_marker=_venv_python(),
+        install=install,
+        deps_marker=deps_marker,
     )
 
 

@@ -387,6 +387,40 @@ def test_native_reuses_the_surface_session_for_the_harness(
     assert harness.system_messages[0] == harness.system_messages[1]
 
 
+def test_native_persists_mission_intent_not_compiled_operator_context(
+    db: sqlite3.Connection, lock: threading.Lock, surface_session: str
+) -> None:
+    operator_prompt = "remember COBALT-MERIDIAN-731"
+    mid = _pending_mission(db, intent=operator_prompt)
+    rid = _running_run_in_session(db, mid, surface_session)
+    harness = _FakeHarness(
+        {
+            "final_response": "ACK",
+            "api_calls": 1,
+            "completed": True,
+            "failed": False,
+            "error": None,
+        }
+    )
+    compiled = (
+        "# ATLAS Operator Context\n\n## Goals\n- stale machine brief\n\n---\n\n"
+        + operator_prompt
+    )
+
+    NativeAtlasAgent(agent_factory=lambda session_id: harness).execute(
+        db, lock, mission_id=mid, run_id=rid, prompt=compiled
+    )
+
+    row = db.execute(
+        "SELECT content,metadata_json FROM session_messages "
+        "WHERE surface_session_id=? AND run_id=? AND role='user'",
+        (surface_session, rid),
+    ).fetchone()
+    assert row is not None
+    assert row[0] == operator_prompt
+    assert json.loads(row[1])["compiled_context_excluded"] is True
+
+
 def test_native_falls_back_to_run_id_without_a_session(
     db: sqlite3.Connection, lock: threading.Lock
 ) -> None:

@@ -34,6 +34,8 @@ RETENTION_FK_POLICY = {
     ("artifacts", "run_id", "runs"): "explicit-delete",
     ("audit_events", "run_id", "runs"): "explicit-delete",
     ("compaction_artifacts", "surface_session_id", "surface_sessions"): "retained",
+    ("evidence_change_sets", "run_id", "runs"): "cascade",
+    ("evidence_full_results", "run_id", "runs"): "cascade",
     ("memory_provenance", "audit_event_id", "audit_events"): "set-null",
     ("mission_archive", "mission_id", "missions"): "cascade",
     ("mission_compressions", "mission_id", "missions"): "explicit-delete",

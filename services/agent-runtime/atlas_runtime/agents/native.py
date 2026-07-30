@@ -558,12 +558,33 @@ class NativeAtlasAgent(AgentRuntime):
         except Exception as exc:
             logger.debug("Failed to resolve surface session for run %s: %s", run_id, exc)
 
-        # Durable conversation history (migration 0030). The operator's ask is
+        # Durable conversation history (migration 0030). Persist the operator's
+        # actual mission intent, not the compiled prompt containing the entire
+        # ATLAS Operator Context brief. Replaying that brief as a user turn
+        # duplicated machine evidence, hid the last message, and encouraged
+        # summary-JSON echo/hallucination on follow-ups.
+        operator_prompt = prompt
+        try:
+            mission_row = conn.execute(
+                "SELECT intent FROM missions WHERE id=?", (mission_id,)
+            ).fetchone()
+            if mission_row and str(mission_row[0] or "").strip():
+                operator_prompt = str(mission_row[0]).strip()
+        except Exception as exc:
+            logger.debug("Failed to resolve operator prompt for run %s: %s", run_id, exc)
+
+        # The operator's ask is
         # recorded before execution so a run that dies mid-turn still leaves the
         # question in the transcript — the cockpit's history is otherwise
         # localStorage-only and dies with the browser tab.
         self._record_message(
-            conn, lock, session_key, run_id=run_id, role="user", content=prompt
+            conn,
+            lock,
+            session_key,
+            run_id=run_id,
+            role="user",
+            content=operator_prompt,
+            metadata={"compiled_context_excluded": operator_prompt != prompt},
         )
 
         # --- resolve the harness factory -----------------------------------
@@ -809,15 +830,9 @@ class NativeAtlasAgent(AgentRuntime):
         system_message = _contract_system_message(contract_snapshot)
         volatile_context = _volatile_context_message(contract_snapshot)
 
-        # Load conversation history from previous runs in the same session so
-        # the agent has context from earlier turns (session continuity).
-        # Ported off a raw audit_events replay (every llm_call/model_call_end
-        # event from every prior run in the session — unbounded, ~200K
-        # tokens/100 turns, and incompatible with retention_service purging
-        # audit_events after 14 days) onto the budget-aware
-        # ConversationHistoryRetriever: runs.summary per prior run, falling
-        # back to a tool_calls fingerprint, capped at ~2000 tokens for this
-        # section regardless of how many prior runs exist (memory_router.py).
+        # Load bounded durable user/assistant turns from previous runs in the
+        # same session. Synthesized runs.summary rows are evidence, not dialogue,
+        # and must never be replayed as assistant messages.
         conversation_history: list[dict[str, Any]] = []
         if session_key:
             try:

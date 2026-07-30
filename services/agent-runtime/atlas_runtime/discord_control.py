@@ -8,8 +8,8 @@ Discord gateway (services/discord-bot/bot/main.py), exposing /health, /guilds,
 and /guilds/{id}/structure. ATLAS treats it as a sidecar (D-001: foundation
 untouched); read data flows through the `atlas discord` CLI over that API.
 
-The bot runs on its OWN interpreter/venv (discord.py, langchain, chromadb) — NOT
-the ATLAS runtime venv — resolved by bot_python(). start() does NOT block on the
+The bot runs with either its checkout-owned interpreter/venv or release-local
+sidecar dependencies resolved by bot_python(). start() does NOT block on the
 gateway handshake; it returns once spawned and the UI polls status.
 """
 from __future__ import annotations
@@ -19,6 +19,7 @@ import json
 import os
 import pathlib
 import subprocess
+import sys
 import urllib.request
 
 # discord_control.py -> atlas_runtime -> agent-runtime -> services ; /discord-bot
@@ -28,6 +29,11 @@ DISCORD_DIR = pathlib.Path(
 )
 DISCORD_URL = os.environ.get("ATLAS_DISCORD_BOT_URL", "http://localhost:8081")
 STATE_FILE = pathlib.Path.home() / ".atlas" / "discord-bot.json"
+_SIDECAR_BOOTSTRAP = (
+    "import runpy,sys;"
+    "sys.path[:0]=['.','.deps'];"
+    "runpy.run_module('bot.main',run_name='__main__')"
+)
 
 
 def _read_state() -> dict:
@@ -45,7 +51,8 @@ def _write_state(state: dict) -> None:
 def bot_python(work_dir=None) -> str:
     """Resolve the interpreter for the vendored bot.
 
-    Order: ATLAS_DISCORD_PYTHON override -> the bot's own .venv -> bare `python`.
+    Order: ATLAS_DISCORD_PYTHON override -> the bot's own .venv -> the current
+    ATLAS interpreter.
     The bot needs discord.py/langchain/chromadb, which live in its venv, not the
     ATLAS runtime venv.
 
@@ -62,7 +69,60 @@ def bot_python(work_dir=None) -> str:
         venv = root / ".venv" / "Scripts" / "python.exe"
     else:
         venv = root / ".venv" / "bin" / "python"
-    return str(venv) if venv.exists() else "python"
+    return str(venv) if venv.exists() else sys.executable
+
+
+def managed_credentials_path() -> pathlib.Path:
+    """Owner-local Discord environment store; never part of a release tree."""
+    from atlas_runtime import db as db_module  # noqa: PLC0415
+
+    return pathlib.Path(db_module.default_db_path()).parent / "credentials" / "discord-bot.env"
+
+
+def credentials_path() -> pathlib.Path | None:
+    """Resolve the credential file without reading or exposing its values."""
+    override = os.environ.get("ATLAS_DISCORD_ENV_FILE", "").strip()
+    candidates = (
+        pathlib.Path(override).expanduser() if override else None,
+        managed_credentials_path(),
+        DISCORD_DIR / ".env",
+    )
+    return next((path for path in candidates if path is not None and path.is_file()), None)
+
+
+def _env_value(path: pathlib.Path | None, key: str) -> str | None:
+    if path is None:
+        return None
+    try:
+        for raw in path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            name, value = line.split("=", 1)
+            if name.strip() == key:
+                return value.strip().strip('"').strip("'") or None
+    except OSError:
+        return None
+    return None
+
+
+def import_credentials(source: pathlib.Path) -> pathlib.Path:
+    """Import a legacy .env into the owner-only ATLAS credential store.
+
+    The value is never returned or logged. ``durable_replace_text`` uses an
+    exclusive owner-only temp file, an atomic replace, and hardened ACLs.
+    """
+    from atlas_runtime import secure_store  # noqa: PLC0415
+
+    source = pathlib.Path(source).expanduser()
+    if not source.is_file():
+        raise ValueError("Discord credential file was not found")
+    if source.stat().st_size > 64 * 1024:
+        raise ValueError("Discord credential file exceeds the 64 KiB safety limit")
+    body = source.read_text(encoding="utf-8")
+    if not _env_value(source, "DISCORD_BOT_TOKEN"):
+        raise ValueError("Discord credential file has no DISCORD_BOT_TOKEN")
+    return secure_store.durable_replace_text(managed_credentials_path(), body)
 
 
 def _token_fingerprint(token: str | None) -> str | None:
@@ -72,16 +132,10 @@ def _token_fingerprint(token: str | None) -> str | None:
 
 
 def _bot_token() -> str | None:
-    """The vendored bot's DISCORD_BOT_TOKEN from services/discord-bot/.env (best-effort)."""
-    env_path = DISCORD_DIR / ".env"
-    try:
-        for line in env_path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if line.startswith("DISCORD_BOT_TOKEN") and "=" in line:
-                return line.split("=", 1)[1].strip().strip('"').strip("'")
-    except Exception:
-        return None
-    return None
+    """Resolve the bot token only for non-reversible coexistence comparison."""
+    return os.environ.get("DISCORD_BOT_TOKEN") or _env_value(
+        credentials_path(), "DISCORD_BOT_TOKEN"
+    )
 
 
 def _foundation_discord_token() -> str | None:
@@ -155,8 +209,9 @@ def start(poll_seconds: float = 0.0) -> tuple[bool, str]:
     """Spawn the vendored Discord bot detached; track its PID. Idempotent.
 
     Returns once spawned (the Discord gateway handshake can take seconds); the UI
-    polls status. The bot reads its own services/discord-bot/.env via load_dotenv
-    (cwd-based), so credentials stay in that file.
+    polls status. Credentials are loaded from an owner-local file selected by
+    ``credentials_path``; the secret value is never copied into the release or
+    placed on the process command line.
     """
     if health_ok():
         return True, "discord bot already running"
@@ -164,6 +219,15 @@ def start(poll_seconds: float = 0.0) -> tuple[bool, str]:
         return False, f"discord bot not found at {DISCORD_DIR}"
     if not (DISCORD_DIR / "bot" / "main.py").exists():
         return False, f"discord bot entry missing: {DISCORD_DIR / 'bot' / 'main.py'}"
+    credential_file = credentials_path()
+    if not os.environ.get("DISCORD_BOT_TOKEN") and not _env_value(
+        credential_file, "DISCORD_BOT_TOKEN"
+    ):
+        return (
+            False,
+            "Discord credentials are not configured; run "
+            "`atlas discord import-credentials PATH_TO_ENV`",
+        )
 
     # The bot ships as source (infra/release/payload.manifest), so a release
     # install has no .venv and every start failed with instructions to build it
@@ -177,6 +241,17 @@ def start(poll_seconds: float = 0.0) -> tuple[bool, str]:
         return False, f"discord bot provisioning failed: {result.message}"
     work_dir = result.workspace
     python = bot_python(work_dir)
+    child_env = os.environ.copy()
+    if credential_file is not None:
+        child_env["ATLAS_DISCORD_ENV_FILE"] = os.fspath(credential_file)
+    deps_dir = work_dir / ".deps"
+    command = [python, "-m", "bot.main"]
+    if deps_dir.is_dir() and not (work_dir / ".venv").is_dir():
+        # Python's Windows embeddable distribution enables ``._pth`` isolated
+        # mode, which intentionally ignores PYTHONPATH. Insert only this
+        # sidecar's dependency directory before running the module instead of
+        # mutating the shared runtime site-packages.
+        command = [python, "-c", _SIDECAR_BOOTSTRAP]
     kwargs: dict = {}
     if os.name == "nt":
         kwargs["creationflags"] = (
@@ -185,11 +260,11 @@ def start(poll_seconds: float = 0.0) -> tuple[bool, str]:
     else:
         kwargs["start_new_session"] = True
     proc = subprocess.Popen(
-        [python, "-m", "bot.main"],
+        command,
         cwd=str(work_dir),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
-        env=os.environ.copy(),
+        env=child_env,
         **kwargs,
     )
     _write_state({"pid": proc.pid})

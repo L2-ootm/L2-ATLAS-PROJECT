@@ -544,20 +544,33 @@ def test_missing_tool_is_reported_as_actionable(tmp_path):
 # --- the other source-shipped sidecars ----------------------------------------
 
 
-def test_discord_bot_component_creates_its_own_interpreter_first():
-    """The bot's deps belong in its venv, never in the ATLAS runtime venv."""
-    component = provisioning.discord_bot_component()
+def test_discord_bot_release_component_uses_embedded_pip_target(tmp_path):
+    """Embedded release Python has pip but no venv; dependencies stay sidecar-local."""
+    source = tmp_path / "discord-bot"
+    source.mkdir()
+    component = provisioning.discord_bot_component(source)
     assert component.name == "discord-bot"
     assert component.dep_manifests == ("requirements.txt",)
-    assert len(component.install) == 2
-    assert component.install[0][:2] == (sys.executable, "-m")
-    assert component.install[0][2] == "venv"
-    assert component.install[1][-2:] == ("-r", "requirements.txt")
-    # The second step runs the interpreter the first step just created, which no
-    # PATH lookup could resolve.
-    assert ".venv" in component.install[1][0]
-    assert component.deps_marker == component.install[1][0]
+    assert len(component.install) == 1
+    assert component.install[0][:3] == (sys.executable, "-m", "pip")
+    assert component.install[0][-4:] == (
+        "--target",
+        ".deps",
+        "-r",
+        "requirements.txt",
+    )
+    assert component.deps_marker == ".deps/discord/__init__.py"
     assert component.build is None
+
+
+def test_discord_bot_checkout_reuses_existing_venv(tmp_path):
+    source = tmp_path / "discord-bot"
+    marker = source / provisioning._venv_python()
+    marker.parent.mkdir(parents=True)
+    marker.write_text("", encoding="utf-8")
+    component = provisioning.discord_bot_component(source)
+    assert component.deps_marker == provisioning._venv_python()
+    assert component.install == ((sys.executable, "-m", "pip", "--version"),)
 
 
 def test_atlas_terminal_component_installs_without_a_build_step():

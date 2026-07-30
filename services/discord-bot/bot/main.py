@@ -7,8 +7,9 @@ from aiohttp import web
 from bot.api import setup_bot_api
 from database.database import connect_database, disconnect_database
 
-# Load environment variables from .env file
-load_dotenv()
+# Load the explicit owner-local credential file selected by ATLAS. A checkout
+# without that override keeps the legacy cwd-based .env behavior.
+load_dotenv(os.getenv("ATLAS_DISCORD_ENV_FILE") or None)
 
 # Get the bot token from environment variables
 BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")

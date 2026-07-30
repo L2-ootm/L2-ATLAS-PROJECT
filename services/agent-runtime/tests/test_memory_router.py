@@ -14,6 +14,7 @@ import uuid
 import pytest
 
 from atlas_runtime import memory_router as mr
+from atlas_runtime import session_message_service
 
 _HAS_SEMANTIC = bool(
     importlib.util.find_spec("sqlite_vec")
@@ -493,7 +494,7 @@ def test_envelope_filters_only_snippets_reporting_real_relevance(db):
 # --- session history includes the operator's ask ---------------------------
 
 
-def _session_run(db, session_id, mission_id, summary, started_at):
+def _session_run(db, session_id, mission_id, summary, started_at, messages=()):
     rid = str(uuid.uuid4())
     db.execute(
         "INSERT INTO runs(id, mission_id, session_id, status, started_at, finished_at, summary) "
@@ -501,6 +502,16 @@ def _session_run(db, session_id, mission_id, summary, started_at):
         (rid, mission_id, session_id, started_at, started_at, summary),
     )
     db.commit()
+    lock = threading.Lock()
+    for role, content in messages:
+        session_message_service.append_message(
+            db,
+            lock,
+            surface_session_id=session_id,
+            run_id=rid,
+            role=role,
+            content=content,
+        )
     return rid
 
 
@@ -516,13 +527,27 @@ def _mission(db, intent):
     return mid
 
 
-def test_history_replays_the_ask_not_just_the_answer(db):
+def test_history_replays_durable_turns_not_synthesized_summaries(db, surface_session):
     """Assistant-only history reads as answers to unseen questions."""
-    session = "s-hist-1"
+    session = surface_session
     m1 = _mission(db, "audit the installer")
     m2 = _mission(db, "ship the release")
-    _session_run(db, session, m1, "found the payload bug", "2026-07-26T01:00:00Z")
-    _session_run(db, session, m2, "cut 0.1.2", "2026-07-26T02:00:00Z")
+    _session_run(
+        db,
+        session,
+        m1,
+        '{"outcome":"hallucinated summary"}',
+        "2026-07-26T01:00:00Z",
+        [("user", "audit the installer"), ("assistant", "found the payload bug")],
+    )
+    _session_run(
+        db,
+        session,
+        m2,
+        '{"outcome":"another synthesized claim"}',
+        "2026-07-26T02:00:00Z",
+        [("user", "ship the release"), ("assistant", "cut 0.1.2")],
+    )
 
     snippets = mr.ConversationHistoryRetriever().retrieve(
         db, mr.RouterQuery(session_id=session, max_runs=5)
@@ -534,14 +559,29 @@ def test_history_replays_the_ask_not_just_the_answer(db):
     assert "audit the installer" in messages[0]["content"]
     assert "found the payload bug" in messages[1]["content"]
     assert "ship the release" in messages[2]["content"]
+    assert all("hallucinated summary" not in m["content"] for m in messages)
 
 
-def test_history_does_not_repeat_one_mission_intent_per_run(db):
+def test_history_does_not_repeat_identical_operator_turn_per_run(db, surface_session):
     """Several runs of one mission share an ask; state it once."""
-    session = "s-hist-2"
+    session = surface_session
     mid = _mission(db, "keep going until green")
-    _session_run(db, session, mid, "first attempt", "2026-07-26T01:00:00Z")
-    _session_run(db, session, mid, "second attempt", "2026-07-26T02:00:00Z")
+    _session_run(
+        db,
+        session,
+        mid,
+        "first attempt",
+        "2026-07-26T01:00:00Z",
+        [("user", "keep going until green"), ("assistant", "first attempt")],
+    )
+    _session_run(
+        db,
+        session,
+        mid,
+        "second attempt",
+        "2026-07-26T02:00:00Z",
+        [("user", "keep going until green"), ("assistant", "second attempt")],
+    )
 
     messages = mr.history_snippets_to_messages(
         mr.ConversationHistoryRetriever().retrieve(
@@ -551,3 +591,52 @@ def test_history_does_not_repeat_one_mission_intent_per_run(db):
 
     assert [m["role"] for m in messages] == ["user", "assistant", "assistant"]
     assert sum("keep going until green" in m["content"] for m in messages) == 1
+
+
+def test_history_uses_newest_runs_and_remembers_last_message(db, surface_session):
+    session = surface_session
+    for index in range(6):
+        mid = _mission(db, f"question {index}")
+        _session_run(
+            db,
+            session,
+            mid,
+            f"summary {index}",
+            f"2026-07-26T0{index}:00:00Z",
+            [("user", f"question {index}"), ("assistant", f"answer {index}")],
+        )
+    messages = mr.history_snippets_to_messages(
+        mr.ConversationHistoryRetriever().retrieve(
+            db, mr.RouterQuery(session_id=session, max_runs=5)
+        )
+    )
+    text = "\n".join(message["content"] for message in messages)
+    assert "question 0" not in text
+    assert "answer 5" in text
+    assert messages[-1]["content"] == "answer 5"
+
+
+def test_history_strips_compiled_context_and_drops_summary_dump(db, surface_session):
+    mid = _mission(db, "what did I just ask?")
+    compiled = (
+        "# ATLAS Operator Context\n\n## Goals\n- stale\n\n---\n\n"
+        "what did I just ask?"
+    )
+    malformed = (
+        '- **run 1 summary:** {"outcome":"invented"}'
+        '- **run 2 summary:** {"files_touched":["fake.md"]}</arg_value>'
+    )
+    _session_run(
+        db,
+        surface_session,
+        mid,
+        "unused",
+        "2026-07-26T01:00:00Z",
+        [("user", compiled), ("assistant", malformed)],
+    )
+    messages = mr.history_snippets_to_messages(
+        mr.ConversationHistoryRetriever().retrieve(
+            db, mr.RouterQuery(session_id=surface_session, max_runs=5)
+        )
+    )
+    assert messages == [{"role": "user", "content": "what did I just ask?"}]

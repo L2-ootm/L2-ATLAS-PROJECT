@@ -509,7 +509,7 @@ def load_actor_history(
     where = " AND ".join(clauses)
     cur = conn.execute(
         f"SELECT * FROM actors WHERE {where}"  # noqa: S608
-        " ORDER BY created_at ASC, id ASC LIMIT ?",
+        " ORDER BY depth ASC, created_at ASC, id ASC LIMIT ?",
         (*params, max(1, min(int(limit), 500))),
     )
     return [_row_to_dict(cur, row) for row in cur.fetchall()]
