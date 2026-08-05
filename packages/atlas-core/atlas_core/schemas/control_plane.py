@@ -517,6 +517,7 @@ class ControlPlaneError(ValueError):
         *,
         current_revision: int | None = None,
         field: str | None = None,
+        committed: bool | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
@@ -524,6 +525,7 @@ class ControlPlaneError(ValueError):
         self.remediation = remediation
         self.current_revision = current_revision
         self.field = field
+        self.committed = committed
 
     def as_dict(self) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -535,6 +537,8 @@ class ControlPlaneError(ValueError):
             payload["current_revision"] = self.current_revision
         if self.field is not None:
             payload["field"] = self.field
+        if self.committed is not None:
+            payload["committed"] = self.committed
         return payload
 
 

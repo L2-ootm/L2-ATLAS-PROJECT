@@ -257,6 +257,18 @@ def test_audited_patch_emits_masked_diff_after_commit(
     )
 
     assert snapshot.revision == 1
+    assert snapshot.receipt is not None
+    assert snapshot.receipt.committed_revision == 1
+    assert snapshot.receipt.changed_paths == (
+        "context.token_budget",
+        "provider.api_key",
+    )
+    assert snapshot.receipt.before["context.token_budget"] == 8000
+    assert snapshot.receipt.after["context.token_budget"] == 6000
+    assert snapshot.receipt.after["provider.api_key"] == "env:PATCH_SECRET"
+    assert snapshot.receipt.authenticated_actor == "local-service"
+    assert snapshot.receipt.asserted_source_surface == "webui"
+    assert snapshot.receipt.asserted_source_session_id == "surface-1"
     row = db.execute(
         "SELECT session_id, data FROM audit_events "
         "WHERE event_type='config_change'"
@@ -373,5 +385,7 @@ def test_audit_failure_reports_committed_revision_honestly(
 
     assert caught.value.code == "config_audit_failed"
     assert caught.value.current_revision == 1
+    assert caught.value.committed is True
+    assert caught.value.as_dict()["committed"] is True
     assert config_service.load_config(path).provider.model == "committed/model"
     assert "committed" in caught.value.remediation

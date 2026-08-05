@@ -43,6 +43,8 @@ def _error_payload(exc: ControlPlaneError) -> dict[str, object]:
     payload: dict[str, object] = {"error": error}
     if exc.current_revision is not None:
         payload["current_revision"] = exc.current_revision
+    if exc.committed is not None:
+        payload["committed"] = exc.committed
     return payload
 
 
@@ -127,6 +129,8 @@ def patch_config(
             expected_revision=request.expected_revision,
             changes=request.changes(),
             source_surface=request.source_surface,
+            authenticated_actor="local-cli",
+            reason=request.reason,
         )
     except ValidationError as exc:
         error = ControlPlaneError(

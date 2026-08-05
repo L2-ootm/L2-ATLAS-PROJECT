@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import json
 import pathlib
+import re
 import sqlite3
 import threading
 from collections.abc import Mapping
 
 from atlas_core.schemas.control_plane import (
     AtlasConfig,
+    ConfigChangeReceipt,
+    ConfigPatchResult,
+    ConfigReceiptValue,
+    ConfigReloadMetadata,
     ControlPlaneError,
     ControlPlaneSnapshot,
     SettingStatus,
@@ -61,6 +66,12 @@ _SETTING_METADATA: tuple[tuple[str, bool], ...] = (
     ("modules.wiki", False),
     ("modules.graph", False),
     ("modules.cashflow", False),
+)
+_CONTROL_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._:-]{0,95}$")
+_CONFIG_PATH_RE = re.compile(r"^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$")
+_SECRET_VALUE_RE = re.compile(
+    r"(?:\bBearer\s+\S+|\bsk-[A-Za-z0-9_-]{8,}|\bgh[oprsu]_[A-Za-z0-9]{8,})",
+    re.IGNORECASE,
 )
 
 
@@ -161,6 +172,74 @@ def _restart_required(path: str) -> bool:
     return dict(_SETTING_METADATA).get(path, False)
 
 
+def _receipt_value(path: str, value: object) -> ConfigReceiptValue:
+    """Project one validated config leaf into the bounded receipt contract."""
+    if path.rsplit(".", 1)[-1] in {
+        "api_key",
+        "credential",
+        "credentials",
+        "owner_token",
+        "password",
+        "secret",
+        "token",
+    }:
+        if value is None or value == "" or (
+            isinstance(value, str) and value.startswith("env:")
+        ):
+            return value  # type: ignore[return-value]
+        return "[REDACTED]"
+    if isinstance(value, str) and _SECRET_VALUE_RE.search(value):
+        return "[REDACTED]"
+    if value is None or isinstance(value, bool | int | float | str):
+        if isinstance(value, str) and len(value) > 512:
+            return "[VALUE_TOO_LARGE]"
+        return value
+    # Legacy callers may patch a composite value. Keep the receipt bounded and
+    # secret-safe; canonical UI mutations use leaf paths and remain reversible.
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":"))
+    if _SECRET_VALUE_RE.search(encoded):
+        return "[REDACTED]"
+    return encoded if len(encoded) <= 512 else "[COMPOSITE_VALUE_TOO_LARGE]"
+
+
+def _validate_receipt_inputs(
+    changes: Mapping[str, object],
+    *,
+    authenticated_actor: str,
+    source_surface: str | None,
+    source_session_id: str | None,
+    reason: str,
+) -> None:
+    """Reject receipt-invalid metadata before the durable config boundary."""
+    invalid = (
+        not changes
+        or len(changes) > 64
+        or any(len(key) > 128 or not _CONFIG_PATH_RE.fullmatch(key) for key in changes)
+        or not _CONTROL_ID_RE.fullmatch(authenticated_actor)
+        or not reason
+        or len(reason) > 240
+        or "\n" in reason
+        or "\r" in reason
+        or (source_surface is not None and (
+            not source_surface
+            or len(source_surface) > 96
+            or "\n" in source_surface
+            or "\r" in source_surface
+        ))
+        or (
+            source_session_id is not None
+            and not _CONTROL_ID_RE.fullmatch(source_session_id)
+        )
+    )
+    if invalid:
+        raise ControlPlaneError(
+            "config_invalid",
+            "invalid configuration receipt metadata",
+            "provide 1-64 dotted changes and bounded, single-line attribution",
+            committed=False,
+        )
+
+
 def patch(
     conn: sqlite3.Connection,
     audit_lock: threading.Lock,
@@ -169,10 +248,19 @@ def patch(
     changes: Mapping[str, object],
     source_surface: str | None = None,
     source_session_id: str | None = None,
+    authenticated_actor: str = "local-service",
+    reason: str = "configuration update",
     path: pathlib.Path | None = None,
     focus_framework: str | None = None,
-) -> ControlPlaneSnapshot:
+) -> ConfigPatchResult:
     """Commit one optimistic config patch, then emit its masked audit event."""
+    _validate_receipt_inputs(
+        changes,
+        authenticated_actor=authenticated_actor,
+        source_surface=source_surface,
+        source_session_id=source_session_id,
+        reason=reason,
+    )
     before = config_service.load_config(path)
     try:
         updated = config_service.patch_config(
@@ -199,28 +287,32 @@ def patch(
             )
         raise
     changed_paths = sorted(changes)
-    before_values = {
-        changed_path: config_service.get_value(before, changed_path)
+    before_values: dict[str, ConfigReceiptValue] = {
+        changed_path: _receipt_value(
+            changed_path, config_service.get_value(before, changed_path)
+        )
         for changed_path in changed_paths
     }
-    after_values = {
-        changed_path: config_service.get_value(updated, changed_path)
+    after_values: dict[str, ConfigReceiptValue] = {
+        changed_path: _receipt_value(
+            changed_path, config_service.get_value(updated, changed_path)
+        )
         for changed_path in changed_paths
     }
     reload_metadata = {
-        changed_path: {
-            "restart_required": _restart_required(changed_path),
-            "visibility": (
+        changed_path: ConfigReloadMetadata(
+            restart_required=_restart_required(changed_path),
+            visibility=(
                 "restart"
                 if _restart_required(changed_path)
                 else "next_read_or_new_execution"
             ),
-        }
+        )
         for changed_path in changed_paths
     }
     try:
         run_id = mission_service.ensure_operator_run(conn, audit_lock)
-        audit_service.emit(
+        event = audit_service.emit(
             conn,
             audit_lock,
             run_id=run_id,
@@ -231,9 +323,13 @@ def patch(
                 "changed_paths": changed_paths,
                 "before": before_values,
                 "after": after_values,
-                "reload": reload_metadata,
+                "reload": {
+                    key: value.model_dump() for key, value in reload_metadata.items()
+                },
                 "source_surface": source_surface or "service",
                 "source_session_id": source_session_id,
+                "authenticated_actor": authenticated_actor,
+                "reason": reason,
             },
         )
     except Exception as exc:
@@ -248,11 +344,29 @@ def patch(
                 "database and reconcile this change before retrying"
             ),
             current_revision=updated.revision,
+            committed=True,
         ) from exc
-    return get_config_snapshot(
+    snapshot = get_config_snapshot(
         updated,
         focus_framework=focus_framework,
         conn=conn,
+    )
+    event_row = event.model_dump()
+    receipt = ConfigChangeReceipt(
+        event_id=event.id,
+        committed_revision=updated.revision,
+        changed_paths=tuple(changed_paths),
+        before=before_values,
+        after=after_values,
+        reload=reload_metadata,
+        authenticated_actor=authenticated_actor,
+        asserted_source_surface=source_surface or "service",
+        asserted_source_session_id=source_session_id,
+        reason=reason,
+        timestamp=str(event_row["timestamp"]),
+    )
+    return ConfigPatchResult.model_validate(
+        {**snapshot.model_dump(), "receipt": receipt.model_dump()}
     )
 
 

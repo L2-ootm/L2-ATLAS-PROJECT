@@ -14,10 +14,24 @@ from atlas_core.schemas.control_plane import (
     ConfigPatchRequest,
     ConfigPatchResult,
     ConfigReloadMetadata,
+    ControlPlaneError,
     ControlPlaneSnapshot,
     ProviderModelStatus,
     SettingStatus,
 )
+
+
+def test_control_plane_error_can_report_partial_commit_without_guessing() -> None:
+    error = ControlPlaneError(
+        "config_audit_failed",
+        "config committed but audit failed",
+        "reconcile before retrying",
+        current_revision=7,
+        committed=True,
+    )
+
+    assert error.as_dict()["committed"] is True
+    assert error.as_dict()["current_revision"] == 7
 
 
 def test_atlas_config_defaults_are_versioned_and_backward_compatible() -> None:
