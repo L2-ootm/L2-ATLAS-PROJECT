@@ -27,7 +27,40 @@ use std::sync::OnceLock;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::io::AsyncWriteExt;
 
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+/// Crate/component version. This is deliberately distinct from the ATLAS
+/// product release version compiled by the packaging pipeline.
+pub const COMPONENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+/// Product release containing this gateway. Local Cargo builds have no release
+/// authority, so they explicitly identify as the component version.
+pub const RELEASE_VERSION: &str = match option_env!("ATLAS_RELEASE_VERSION") {
+    Some(version) => version,
+    None => COMPONENT_VERSION,
+};
+/// Immutable source identity. `dev` is explicit rather than an empty/unknown
+/// value so local builds cannot be mistaken for release candidates.
+pub const BUILD_SHA: &str = match option_env!("ATLAS_BUILD_SHA") {
+    Some(sha) => sha,
+    None => "dev",
+};
+/// Backwards-compatible component version alias for existing Rust consumers.
+pub const VERSION: &str = COMPONENT_VERSION;
+
+#[derive(Debug, Serialize)]
+pub struct VersionInfo {
+    pub service: &'static str,
+    pub release_version: &'static str,
+    pub component_version: &'static str,
+    pub build_sha: &'static str,
+}
+
+pub fn version_info() -> VersionInfo {
+    VersionInfo {
+        service: "atlas-gateway",
+        release_version: RELEASE_VERSION,
+        component_version: COMPONENT_VERSION,
+        build_sha: BUILD_SHA,
+    }
+}
 
 /// SSE poll interval (PHASE_7_8_READINESS: rowid-cursor poll ≤500 ms).
 ///
@@ -246,7 +279,10 @@ async fn health(State(state): State<AppState>) -> Json<Value> {
     Json(json!({
         "status": "ok",
         "service": "atlas-gateway",
-        "version": VERSION,
+        "version": RELEASE_VERSION,
+        "release_version": RELEASE_VERSION,
+        "component_version": COMPONENT_VERSION,
+        "build_sha": BUILD_SHA,
         "db": db,
     }))
 }

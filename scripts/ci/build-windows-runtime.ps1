@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = '0.1.0',
+    [string]$Version = '',
     [string]$OutputDir = '',
     [switch]$SkipNativeBuild,
     [switch]$SkipWebBuild
@@ -8,6 +8,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$launcherManifest = Join-Path $repo 'packages\atlas-cli\package.json'
+if (-not $Version) { $Version = (Get-Content -Raw -LiteralPath $launcherManifest | ConvertFrom-Json).version }
+$buildSha = (& git -C $repo rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0 -or -not $buildSha) { throw 'could not resolve build Git SHA' }
 $artifactRoot = Join-Path $repo 'artifacts'
 if (-not $OutputDir) { $OutputDir = Join-Path $artifactRoot "atlas-windows-$Version" }
 $bundle = [IO.Path]::GetFullPath($OutputDir)
@@ -89,12 +93,18 @@ function Invoke-PayloadManifest([string]$ManifestPath) {
 if (-not $SkipNativeBuild) {
     New-Item -ItemType Directory -Force -Path $nativeBuildRoot | Out-Null
     $previousCargoTarget = $env:CARGO_TARGET_DIR
+    $previousReleaseVersion = $env:ATLAS_RELEASE_VERSION
+    $previousBuildSha = $env:ATLAS_BUILD_SHA
     $env:CARGO_TARGET_DIR = Join-Path $nativeBuildRoot 'cargo'
+    $env:ATLAS_RELEASE_VERSION = $Version
+    $env:ATLAS_BUILD_SHA = $buildSha
     Push-Location (Join-Path $repo 'native\atlas-core-rs')
     try { cargo build --release -p atlas-gateway; if ($LASTEXITCODE) { throw 'cargo build failed' } }
     finally {
         Pop-Location
         $env:CARGO_TARGET_DIR = $previousCargoTarget
+        $env:ATLAS_RELEASE_VERSION = $previousReleaseVersion
+        $env:ATLAS_BUILD_SHA = $previousBuildSha
     }
     Push-Location (Join-Path $repo 'services\atlas-tui')
     try { go build -trimpath -ldflags '-s -w' -o $tuiBuild .; if ($LASTEXITCODE) { throw 'go build failed' } }
@@ -119,6 +129,10 @@ foreach ($relative in $required) {
 foreach ($output in @($gatewayBuild, $tuiBuild)) {
     if (-not (Test-Path -LiteralPath $output)) { throw "required native build output missing: $output" }
 }
+& node (Join-Path $repo 'scripts\ci\verify-gateway-identity.js') `
+    --binary $gatewayBuild --release-version $Version --build-sha $buildSha `
+    --launcher-manifest $launcherManifest
+if ($LASTEXITCODE) { throw 'gateway binary identity verification failed' }
 
 if (Test-Path -LiteralPath $bundle) { Remove-Item -LiteralPath $bundle -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $bundle | Out-Null

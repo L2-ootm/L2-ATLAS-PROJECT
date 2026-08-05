@@ -22,7 +22,7 @@ set -eu
 # ---------------------------------------------------------------------------
 # Argument parsing
 # ---------------------------------------------------------------------------
-VERSION="0.1.0"
+VERSION=""
 OUTPUT_DIR=""
 SKIP_NATIVE_BUILD=false
 SKIP_WEB_BUILD=false
@@ -39,6 +39,11 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$SCRIPT_DIR/../.." && pwd)"
+BUILD_SHA="$(git -C "$REPO" rev-parse HEAD)"
+LAUNCHER_MANIFEST="$REPO/packages/atlas-cli/package.json"
+if [ -z "$VERSION" ]; then
+    VERSION="$(node -e 'process.stdout.write(require(process.argv[1]).version)' "$LAUNCHER_MANIFEST")"
+fi
 ARTIFACT_ROOT="$REPO/artifacts"
 
 # ---------------------------------------------------------------------------
@@ -202,7 +207,8 @@ if [ "$SKIP_NATIVE_BUILD" = false ]; then
     mkdir -p "$NATIVE_BUILD_ROOT"
     (
         cd "$REPO/native/atlas-core-rs"
-        CARGO_TARGET_DIR="$NATIVE_BUILD_ROOT/cargo" cargo build --release -p atlas-gateway
+        ATLAS_RELEASE_VERSION="$VERSION" ATLAS_BUILD_SHA="$BUILD_SHA" \
+            CARGO_TARGET_DIR="$NATIVE_BUILD_ROOT/cargo" cargo build --release -p atlas-gateway
     )
     (
         cd "$REPO/services/atlas-tui"
@@ -237,6 +243,9 @@ for output in "$GATEWAY_BUILD" "$TUI_BUILD"; do
         exit 1
     fi
 done
+node "$REPO/scripts/ci/verify-gateway-identity.js" \
+    --binary "$GATEWAY_BUILD" --release-version "$VERSION" \
+    --build-sha "$BUILD_SHA" --launcher-manifest "$LAUNCHER_MANIFEST"
 
 if [ -d "$BUNDLE" ]; then rm -rf "$BUNDLE"; fi
 mkdir -p "$BUNDLE"

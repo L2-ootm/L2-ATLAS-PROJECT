@@ -293,6 +293,11 @@ async fn health_reports_db_ok() {
     assert_eq!(body["status"], "ok");
     assert_eq!(body["db"], "ok");
     assert_eq!(body["service"], "atlas-gateway");
+    assert_eq!(body["version"], body["release_version"]);
+    assert_eq!(body["release_version"], atlas_gateway::RELEASE_VERSION);
+    assert_eq!(body["component_version"], atlas_gateway::COMPONENT_VERSION);
+    assert_eq!(body["build_sha"], atlas_gateway::BUILD_SHA);
+    assert!(!body["build_sha"].as_str().unwrap().is_empty());
 }
 
 // --- provider mesh + auth dispatch routes (P4) -----------------------------
