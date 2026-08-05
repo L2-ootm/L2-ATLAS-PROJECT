@@ -81,10 +81,10 @@ describe('Models route', () => {
 		const row = screen.getByText('gpt-5.5').closest('div')!.parentElement!;
 		await userEvent.click(within(row).getByRole('button', { name: 'USE' }));
 		await waitFor(() =>
-			expect(api.patchConfig).toHaveBeenCalledWith(7, {
-				'provider.name': 'openai-codex',
-				'provider.model': 'gpt-5.5'
-			})
+				expect(api.patchConfig).toHaveBeenCalledWith(7, {
+					'provider.name': 'openai-codex',
+					'provider.model': 'gpt-5.5'
+				}, 'model control: Active model set to openai-codex/gpt-5.5.')
 		);
 		expect(screen.queryByText(/SAVE CONFIGURATION/i)).not.toBeInTheDocument();
 	});
@@ -97,7 +97,7 @@ describe('Models route', () => {
 		await waitFor(() =>
 			expect(api.patchConfig).toHaveBeenCalledWith(7, {
 				'functions.curator_model': 'openai-codex/gpt-5.4-mini'
-			})
+			}, 'model control: Curator routed to openai-codex/gpt-5.4-mini.')
 		);
 	});
 
