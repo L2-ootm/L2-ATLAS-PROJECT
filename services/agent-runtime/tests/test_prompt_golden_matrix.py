@@ -5,8 +5,6 @@ import hashlib
 import json
 from pathlib import Path
 
-import pytest
-
 from atlas_core.schemas.agent_contract import (
     ContextEnvelope,
     ContextSource,
