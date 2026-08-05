@@ -10,7 +10,7 @@ Run these five PowerShell commands from the repository root. Pick unused non-def
 
 ```powershell
 $repo = (Resolve-Path .).Path; $run = Join-Path ([System.IO.Path]::GetTempPath()) ("atlas-production-gate-" + ([guid]::NewGuid().ToString('N')))
-$common = @{ Mode='source'; Repo=$repo; GateRoot=$run; AtlasHome=(Join-Path $run 'atlas-home'); Database=(Join-Path $run 'data/atlas.db'); Config=(Join-Path $run 'config/config.yaml'); NpmPrefix=(Join-Path $run 'npm-prefix'); GatewayBinary=(Join-Path $repo 'native/atlas-gateway/target/release/atlas-gateway.exe'); ReleaseVersion='0.1.5'; Port=@(18484,15173,13001); TestCommand=@('planning','python-core','python-runtime','node-cli','rust-gateway') }
+$common = @{ Mode='source'; Repo=$repo; GateRoot=$run; AtlasHome=(Join-Path $run 'atlas-home'); Database=(Join-Path $run 'data/atlas.db'); Config=(Join-Path $run 'config/config.yaml'); NpmPrefix=(Join-Path $run 'npm-prefix'); GatewayBinary=(Join-Path $repo 'native/atlas-core-rs/target/release/atlas-gateway.exe'); ReleaseVersion='0.1.5'; Port=@(18484,15173,13001); TestCommand=@('planning','python-core','python-runtime','node-cli','rust-gateway') }
 & "$repo/scripts/production/run-production-gate.ps1" @common -DryRun
 & "$repo/scripts/production/run-production-gate.ps1" @common -Resume
 Get-Content (Join-Path $run 'evidence/production-gate.json') | ConvertFrom-Json | Select-Object gate_id,status,started_at,finished_at
