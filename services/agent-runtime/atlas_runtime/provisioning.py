@@ -741,7 +741,7 @@ def discord_bot_component(source_dir: pathlib.Path | None = None) -> Component:
     )
 
 
-def atlas_terminal_component() -> Component:
+def atlas_terminal_component(source_dir: pathlib.Path | None = None) -> Component:
     """The vendored Bun/OpenTUI terminal surface.
 
     Install only, no build step: the launcher runs `bun run dev`, which executes
@@ -752,7 +752,11 @@ def atlas_terminal_component() -> Component:
     """
     return Component(
         name="atlas-terminal",
-        source_dir=pathlib.Path(__file__).resolve().parents[2] / "atlas-terminal",
+        source_dir=(
+            source_dir
+            if source_dir is not None
+            else pathlib.Path(__file__).resolve().parents[2] / "atlas-terminal"
+        ),
         dep_manifests=("package.json", "bun.lock"),
         install=(("bun", "install"),),
         deps_marker="node_modules",

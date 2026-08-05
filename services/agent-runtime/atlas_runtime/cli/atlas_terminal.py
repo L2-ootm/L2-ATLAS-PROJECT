@@ -11,12 +11,27 @@ import os
 import pathlib
 import shutil
 import subprocess
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from atlas_runtime.provisioning import Component
 
 DEFAULT_GATEWAY_URL = "http://127.0.0.1:8484"
 
 
 class TerminalLaunchError(RuntimeError):
     """atlas-terminal cannot be resolved or started."""
+
+
+@dataclass(frozen=True)
+class TerminalLayout:
+    """Resolved source and execution workspace for atlas-terminal."""
+
+    component: Component
+    source_dir: pathlib.Path
+    workspace: pathlib.Path
+    mirrored: bool
 
 
 def _repo_root() -> pathlib.Path | None:
@@ -30,9 +45,10 @@ def resolve_terminal_dir() -> pathlib.Path:
     """Resolve the atlas-terminal checkout directory."""
     override = os.environ.get("ATLAS_TERMINAL_DIR", "").strip()
     if override:
-        candidate = pathlib.Path(override).expanduser()
-        if (candidate / "package.json").is_file():
-            return candidate
+        # An explicit override is authoritative. Do not silently fall back to
+        # the bundled source when it is missing or incomplete: launch and
+        # status must diagnose the path the operator actually selected.
+        return pathlib.Path(override).expanduser()
 
     repo = _repo_root()
     if repo is not None:
@@ -41,6 +57,26 @@ def resolve_terminal_dir() -> pathlib.Path:
     raise TerminalLaunchError(
         "atlas-terminal checkout not found. Run from a repo checkout or set "
         "ATLAS_TERMINAL_DIR to the atlas-terminal directory."
+    )
+
+
+def resolve_terminal_layout() -> TerminalLayout:
+    """Resolve launch/status source and workspace without provisioning.
+
+    This deliberately performs no writes. In an immutable release the source
+    remains inside the release payload while ``workspace`` points at the
+    operator-local sidecar selected from the current ATLAS_HOME / ATLAS_DB.
+    """
+    from atlas_runtime import provisioning  # noqa: PLC0415 — CLI-time import
+
+    source_dir = resolve_terminal_dir()
+    component = provisioning.atlas_terminal_component(source_dir)
+    workspace, mirrored = provisioning.resolve_workspace(component)
+    return TerminalLayout(
+        component=component,
+        source_dir=source_dir,
+        workspace=workspace,
+        mirrored=mirrored,
     )
 
 
@@ -55,7 +91,7 @@ def launch(gateway_url: str | None = None, work_dir: str | None = None) -> int:
     working directory — ATLAS_WORK_DIR carries it to src/main.tsx, which
     chdirs back before the TUI reads process.cwd().
     """
-    terminal_dir = resolve_terminal_dir()
+    layout = resolve_terminal_layout()
     # Ships as source (infra/release/payload.manifest), so a release install has
     # no node_modules until something creates them. Telling the operator to go
     # run `bun install` themselves also pointed them at the immutable release
@@ -65,8 +101,7 @@ def launch(gateway_url: str | None = None, work_dir: str | None = None) -> int:
     # and returns the checkout unchanged.
     from atlas_runtime import provisioning  # noqa: PLC0415 — CLI-time import
 
-    component = provisioning.atlas_terminal_component()
-    result = provisioning.ensure_provisioned(component)
+    result = provisioning.ensure_provisioned(layout.component)
     if not result.ok:
         raise TerminalLaunchError(f"atlas-terminal provisioning failed: {result.message}")
     terminal_dir = result.workspace
@@ -103,7 +138,9 @@ def launch(gateway_url: str | None = None, work_dir: str | None = None) -> int:
 
 __all__ = [
     "DEFAULT_GATEWAY_URL",
+    "TerminalLayout",
     "TerminalLaunchError",
     "launch",
     "resolve_terminal_dir",
+    "resolve_terminal_layout",
 ]

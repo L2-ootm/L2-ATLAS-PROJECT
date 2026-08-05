@@ -155,25 +155,65 @@ def _terminal_status_cmd(
     json_output: bool = typer.Option(False, "--json", help="Emit as JSON."),
 ) -> None:
     from atlas_runtime import gateway_control
-    from atlas_runtime.db import MIGRATIONS_DIR
+    resolution_error = None
+    try:
+        layout = _atlas_terminal_mod.resolve_terminal_layout()
+    except _atlas_terminal_mod.TerminalLaunchError as exc:
+        layout = None
+        resolution_error = str(exc)
 
-    root = MIGRATIONS_DIR.parent.parent  # infra/migrations -> infra -> repo root
-    terminal_dir = root / "services" / "atlas-terminal"
-    package_json = terminal_dir / "package.json"
-    built = (terminal_dir / "node_modules").is_dir()
+    source_dir = layout.source_dir if layout is not None else None
+    workspace = layout.workspace if layout is not None else None
+    component = layout.component if layout is not None else None
+    source_present = bool(source_dir is not None and source_dir.is_dir())
+    workspace_present = bool(workspace is not None and workspace.is_dir())
+    built = bool(
+        workspace is not None
+        and component is not None
+        and (workspace / component.deps_marker).is_dir()
+    )
+
+    # Before an immutable release has been provisioned there is no sidecar
+    # package.json yet, so report the shipped version. Once a workspace exists,
+    # inspect what launch will actually execute and do not mask a broken mirror.
+    package_json = None
+    if workspace_present and workspace is not None:
+        package_json = workspace / "package.json"
+    elif source_dir is not None:
+        package_json = source_dir / "package.json"
     version = None
-    if package_json.is_file():
+    package_valid = False
+    package_error = None
+    if package_json is not None and package_json.is_file():
         try:
-            version = json.loads(package_json.read_text(encoding="utf-8")).get("version")
-        except Exception:  # noqa: BLE001
-            version = None
+            package = json.loads(package_json.read_text(encoding="utf-8"))
+            if not isinstance(package, dict):
+                raise ValueError("package.json root is not an object")
+            raw_version = package.get("version")
+            version = raw_version if isinstance(raw_version, str) else None
+            package_valid = True
+        except (OSError, ValueError) as exc:
+            package_error = str(exc)
+    elif package_json is not None:
+        package_error = "package.json not found"
     gateway_reachable = gateway_control.health_ok()
 
     report = {
-        "present": terminal_dir.is_dir(),
+        # Preserve the legacy keys while making their meaning explicit through
+        # additive fields. ``present`` continues to mean source availability;
+        # ``built`` means the resolved execution workspace has dependencies.
+        "present": source_present,
         "built": built,
         "version": version,
         "gateway_reachable": gateway_reachable,
+        "source_dir": str(source_dir) if source_dir is not None else None,
+        "source_present": source_present,
+        "workspace": str(workspace) if workspace is not None else None,
+        "workspace_present": workspace_present,
+        "mirrored": layout.mirrored if layout is not None else None,
+        "package_valid": package_valid,
+        "package_error": package_error,
+        "resolution_error": resolution_error,
     }
     if json_output:
         typer.echo(json.dumps(report))
@@ -182,8 +222,12 @@ def _terminal_status_cmd(
     typer.echo(f"built (bun install ran): {built}")
     typer.echo(f"version: {version or 'unknown'}")
     typer.echo(f"gateway reachable: {gateway_reachable}")
+    if resolution_error:
+        typer.echo(f"resolution error: {resolution_error}")
+    elif package_error:
+        typer.echo(f"package error: {package_error}")
     if not report["present"] or not built:
-        typer.echo("remediation: cd services/atlas-terminal && bun install && bun run typecheck")
+        typer.echo("remediation: run `atlas` to provision atlas-terminal dependencies")
 
 
 import atlas_runtime.cli.atlas_terminal as _atlas_terminal_mod
