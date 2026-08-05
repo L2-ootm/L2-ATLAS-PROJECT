@@ -9,12 +9,10 @@ import RunDetail from './routes/RunDetail';
 import SessionsPage from './routes/SessionsPage';
 import Command from './routes/Command';
 import Projects from './routes/Projects';
-import Control from './routes/Control';
 import Discord from './routes/Discord';
 import Cashflow from './routes/Cashflow';
 import Ledger from './routes/Ledger';
 import Codex from './routes/Codex';
-import Models from './routes/Models';
 import Integrations from './routes/Integrations';
 import SkillsPage from './routes/SkillsPage';
 import TeamsPage from './routes/TeamsPage';
@@ -30,6 +28,9 @@ const Console = recoveringLazy('console', () => import('./routes/Console'));
 const Chat = recoveringLazy('chat', () => import('./routes/Chat'));
 // Lazy — schema-driven module pages (module framework).
 const ModuleHost = recoveringLazy('module-host', () => import('./routes/ModuleHost'));
+// Lazy — control/provider forms and model registry are operator-only routes.
+const Control = recoveringLazy('control', () => import('./routes/Control'));
+const Models = recoveringLazy('models', () => import('./routes/Models'));
 
 const router = createBrowserRouter([
 	{
@@ -52,12 +53,12 @@ const router = createBrowserRouter([
 			{ path: 'cashflow', element: <Cashflow /> },
 			{ path: 'audit', element: <Ledger /> },
 			{ path: 'wiki', element: <Codex /> },
-			{ path: 'models', element: <Models /> },
+			{ path: 'models', element: <Suspense fallback={null}><Models /></Suspense> },
 			{ path: 'skills', element: <SkillsPage /> },
 			{ path: 'teams', element: <TeamsPage /> },
 			{ path: 'integrations', element: <Integrations /> },
 			{ path: 'discord', element: <Discord /> },
-			{ path: 'control', element: <Control /> },
+			{ path: 'control', element: <Suspense fallback={null}><Control /></Suspense> },
 			// Compatibility shims — Settings and System merged into /control.
 			{ path: 'system', element: <Navigate to="/control" replace /> },
 			{ path: 'settings', element: <Navigate to="/control?tab=provider" replace /> },
