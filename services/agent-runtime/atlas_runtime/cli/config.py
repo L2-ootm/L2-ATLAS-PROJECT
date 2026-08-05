@@ -115,13 +115,36 @@ def patch_config(
         "--changes-json",
         help="JSON object whose keys are dotted config paths",
     ),
+    reason: str = typer.Option(
+        "configuration update",
+        "--reason",
+        help="Single-line audit reason",
+    ),
+    source_surface: str = typer.Option(
+        "cli",
+        "--source-surface",
+        help="Caller-asserted surface label",
+    ),
+    source_session_id: str | None = typer.Option(
+        None,
+        "--source-session-id",
+        help="Caller-asserted surface session id",
+    ),
+    authenticated_actor: str = typer.Option(
+        "local-cli",
+        "--authenticated-actor",
+        hidden=True,
+        help="Actor authenticated by the trusted dispatch boundary",
+    ),
 ) -> None:
     """Apply one optimistic multi-field patch and emit the new snapshot."""
     try:
         request = ConfigPatchRequest(
             expected_revision=expected_revision,
             changes_json=changes_json,
-            source_surface="cli",
+            reason=reason,
+            source_surface=source_surface,
+            source_session_id=source_session_id,
         )
         snapshot = control_plane_service.patch(
             _get_connection(),
@@ -129,7 +152,8 @@ def patch_config(
             expected_revision=request.expected_revision,
             changes=request.changes(),
             source_surface=request.source_surface,
-            authenticated_actor="local-cli",
+            source_session_id=request.source_session_id,
+            authenticated_actor=authenticated_actor,
             reason=request.reason,
         )
     except ValidationError as exc:

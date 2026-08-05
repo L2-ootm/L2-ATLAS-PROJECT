@@ -174,7 +174,9 @@ def test_config_patch_multi_field_and_stale_conflict(
     )
 
     assert success.exit_code == 0, success.output
-    assert json.loads(success.output)["revision"] == 1
+    success_payload = json.loads(success.output)
+    assert success_payload["revision"] == 1
+    assert success_payload["receipt"]["authenticated_actor"] == "local-cli"
     assert cfgsvc.load_config().provider.model == "patched/model"
     assert cfgsvc.load_config().context.token_budget == 6000
     assert conflict.exit_code == 2
@@ -182,6 +184,42 @@ def test_config_patch_multi_field_and_stale_conflict(
     assert error["error"]["code"] == "config_revision_conflict"
     assert error["current_revision"] == 1
     assert error["error"]["remediation"]
+
+
+def test_config_patch_preserves_gateway_authenticated_attribution(
+    monkeypatch,
+    tmp_path,
+    db,
+    lock,
+):
+    _home(monkeypatch, tmp_path, db, lock)
+
+    result = runner.invoke(
+        app,
+        [
+            "config",
+            "patch",
+            "--expected-revision",
+            "0",
+            "--changes-json",
+            '{"provider.model":"owned/model"}',
+            "--reason",
+            "operator selected model",
+            "--source-surface",
+            "webui",
+            "--source-session-id",
+            "surface-1",
+            "--authenticated-actor",
+            "surface-1",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    receipt = json.loads(result.output)["receipt"]
+    assert receipt["authenticated_actor"] == "surface-1"
+    assert receipt["asserted_source_surface"] == "webui"
+    assert receipt["asserted_source_session_id"] == "surface-1"
+    assert receipt["reason"] == "operator selected model"
 
 
 def test_config_patch_visible_to_subsequent_json_read_without_restart(
