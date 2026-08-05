@@ -1384,6 +1384,46 @@ async fn provider_modes(State(state): State<AppState>) -> ApiResult {
 struct ConfigPatchBody {
     expected_revision: i64,
     changes: Value,
+    surface_session_id: Option<String>,
+    reason: Option<String>,
+}
+
+fn valid_control_plane_id(value: &str) -> bool {
+    let mut chars = value.chars();
+    matches!(chars.next(), Some(first) if first.is_ascii_lowercase() || first.is_ascii_digit())
+        && value.len() <= 96
+        && chars.all(|ch| {
+            ch.is_ascii_lowercase() || ch.is_ascii_digit() || matches!(ch, '.' | '_' | ':' | '-')
+        })
+}
+
+fn validate_config_reason(reason: &str) -> Result<(), ApiError> {
+    if reason.trim().is_empty() || reason.chars().count() > 240 {
+        return Err(ApiError::BadRequest(
+            "reason must contain 1 to 240 non-whitespace characters",
+        ));
+    }
+    if reason.contains(['\n', '\r']) {
+        return Err(ApiError::BadRequest("reason must be single-line"));
+    }
+    Ok(())
+}
+
+fn config_cli_status(body: &Value) -> StatusCode {
+    match body
+        .get("error")
+        .and_then(|error| error.get("code"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+    {
+        "config_revision_conflict" => StatusCode::CONFLICT,
+        "config_invalid" | "config_schema_unsupported" => StatusCode::BAD_REQUEST,
+        // The config file was committed, but the durable audit append failed.
+        // Preserve the CLI's committed/current_revision fields so clients can
+        // reconcile without retrying a mutation that already took effect.
+        "config_audit_failed" => StatusCode::INTERNAL_SERVER_ERROR,
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+    }
 }
 
 /// PATCH /v1/config — one optimistic config mutation dispatched to the
@@ -1396,8 +1436,26 @@ struct ConfigPatchBody {
 /// validation codes -> 400; any unstructured/unexpected failure stays 500.
 async fn config_patch(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(body): Json<ConfigPatchBody>,
 ) -> ApiResult {
+    let surface_session_id = body
+        .surface_session_id
+        .as_deref()
+        .ok_or(ApiError::BadRequest("surface_session_id is required"))?;
+    if !valid_control_plane_id(surface_session_id) {
+        return Err(ApiError::BadRequest("surface_session_id is invalid"));
+    }
+    let reason = body
+        .reason
+        .as_deref()
+        .ok_or(ApiError::BadRequest("reason is required"))?;
+    validate_config_reason(reason)?;
+    // Authenticate before serializing or dispatching the mutation. Browser
+    // attribution is never trusted: only the session proven by its owner token
+    // becomes the CLI's authenticated actor/source session.
+    require_surface_owner(&state, &headers, surface_session_id).await?;
+
     let changes_obj = match &body.changes {
         Value::Object(map) if !map.is_empty() => &body.changes,
         Value::Object(_) => return Err(ApiError::BadRequest("changes must be a non-empty object")),
@@ -1415,6 +1473,14 @@ async fn config_patch(
         &revision_arg,
         "--changes-json",
         &changes_arg,
+        "--authenticated-actor",
+        surface_session_id,
+        "--source-surface",
+        "webui",
+        "--source-session-id",
+        surface_session_id,
+        "--reason",
+        reason,
     ];
     let output = dispatch_atlas_raw(&state.atlas_cmd, &args, DISPATCH_TIMEOUT).await?;
     if output.status.success() {
@@ -1425,21 +1491,10 @@ async fn config_patch(
     }
     let stderr = String::from_utf8_lossy(&output.stderr);
     if let Ok(error_body) = serde_json::from_str::<Value>(stderr.trim()) {
-        let code = error_body
-            .get("error")
-            .and_then(|e| e.get("code"))
-            .and_then(Value::as_str)
-            .unwrap_or("");
-        let status = match code {
-            "config_revision_conflict" => StatusCode::CONFLICT,
-            "config_invalid" | "config_schema_unsupported" => StatusCode::BAD_REQUEST,
-            _ => {
-                return Err(ApiError::Internal(format!(
-                    "atlas config patch failed: {stderr}"
-                )))
-            }
-        };
-        return Err(ApiError::Structured(status, error_body));
+        return Err(ApiError::Structured(
+            config_cli_status(&error_body),
+            error_body,
+        ));
     }
     Err(ApiError::Internal(format!(
         "atlas config patch failed: {stderr}"

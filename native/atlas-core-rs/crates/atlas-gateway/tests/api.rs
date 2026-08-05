@@ -1762,17 +1762,41 @@ async fn failed_skill_write_preserves_cache_and_maps_conflict() {
 }
 
 async fn patch_json(router: &axum::Router, uri: &str, body: Value) -> (StatusCode, Value) {
+    let mut body = body;
+    let owner = if uri == "/v1/config" {
+        let object = body
+            .as_object_mut()
+            .expect("config patch fixture is an object");
+        object
+            .entry("surface_session_id")
+            .or_insert_with(|| json!("surface-1"));
+        object
+            .entry("reason")
+            .or_insert_with(|| json!("test configuration update"));
+        Some("owner-1")
+    } else {
+        None
+    };
+    patch_json_raw(router, uri, body, owner).await
+}
+
+async fn patch_json_raw(
+    router: &axum::Router,
+    uri: &str,
+    body: Value,
+    owner: Option<&str>,
+) -> (StatusCode, Value) {
     let bytes = serde_json::to_vec(&body).unwrap();
+    let mut request = Request::builder()
+        .method("PATCH")
+        .uri(uri)
+        .header("content-type", "application/json");
+    if let Some(owner) = owner {
+        request = request.header("x-atlas-surface-owner", owner);
+    }
     let resp = router
         .clone()
-        .oneshot(
-            Request::builder()
-                .method("PATCH")
-                .uri(uri)
-                .header("content-type", "application/json")
-                .body(Body::from(bytes))
-                .unwrap(),
-        )
+        .oneshot(request.body(Body::from(bytes)).unwrap())
         .await
         .unwrap();
     let status = resp.status();
@@ -2527,7 +2551,7 @@ async fn config_patch_dispatches_expected_revision_and_changes_json() {
     let stub_dir = tempfile::tempdir().unwrap();
     let db_path = seeded_db(&dir);
     let argv_path = stub_dir.path().join("argv.txt");
-    let stub_output = r#"{"schema_version":1,"revision":1,"provider":{"name":"openrouter","api_key":"env:OPENROUTER_API_KEY"}}"#;
+    let stub_output = r#"{"schema_version":2,"revision":1,"provider":{"name":"openrouter","api_key":"env:OPENROUTER_API_KEY"},"receipt":{"receipt_id":"cfg-1","authenticated_actor":"surface-1","asserted_source_surface":"webui","asserted_source_session_id":"surface-1"}}"#;
     let router = test_app_with_arg_capture(db_path, stub_output, &argv_path, &stub_dir);
 
     let (status, body) = patch_json(
@@ -2542,6 +2566,11 @@ async fn config_patch_dispatches_expected_revision_and_changes_json() {
 
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["revision"], 1);
+    assert_eq!(body["receipt"]["receipt_id"], "cfg-1");
+    assert_eq!(
+        body["receipt"]["authenticated_actor"],
+        body["receipt"]["asserted_source_session_id"]
+    );
 
     let argv = std::fs::read_to_string(&argv_path).unwrap();
     let args: Vec<&str> = argv.lines().collect();
@@ -2562,10 +2591,95 @@ async fn config_patch_dispatches_expected_revision_and_changes_json() {
     let parsed: Value = serde_json::from_str(changes_arg).unwrap();
     assert_eq!(parsed["provider.model"], "patched/model");
     assert_eq!(
-        args.len(),
-        changes_idx + 2,
-        "changes-json leaked extra argv tokens"
+        &args[changes_idx + 2..],
+        &[
+            "--authenticated-actor",
+            "surface-1",
+            "--source-surface",
+            "webui",
+            "--source-session-id",
+            "surface-1",
+            "--reason",
+            "test configuration update",
+        ]
     );
+}
+
+#[tokio::test]
+async fn config_patch_missing_or_stale_owner_is_403_without_dispatch() {
+    for owner in [None, Some("stale-owner")] {
+        let dir = tempfile::tempdir().unwrap();
+        let stub_dir = tempfile::tempdir().unwrap();
+        let argv_path = stub_dir.path().join("argv.txt");
+        let router =
+            test_app_with_arg_capture(seeded_db(&dir), r#"{"revision":1}"#, &argv_path, &stub_dir);
+
+        let (status, body) = patch_json_raw(
+            &router,
+            "/v1/config",
+            json!({
+                "expected_revision": 0,
+                "changes": {"provider.model": "patched/model"},
+                "surface_session_id": "surface-1",
+                "reason": "operator selected a new model"
+            }),
+            owner,
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert_eq!(body["error"]["code"], "surface_owner_mismatch");
+        assert!(
+            !argv_path.exists(),
+            "an unauthenticated config mutation reached the CLI"
+        );
+    }
+}
+
+#[tokio::test]
+async fn config_patch_rejects_invalid_attribution_before_dispatch() {
+    let cases = [
+        json!({
+            "expected_revision": 0,
+            "changes": {"provider.model": "x"},
+            "surface_session_id": "INVALID SESSION",
+            "reason": "valid reason"
+        }),
+        json!({
+            "expected_revision": 0,
+            "changes": {"provider.model": "x"},
+            "surface_session_id": "surface-1",
+            "reason": "line one\nline two"
+        }),
+        json!({
+            "expected_revision": 0,
+            "changes": {"provider.model": "x"},
+            "surface_session_id": "surface-1",
+            "reason": "x".repeat(241)
+        }),
+        json!({
+            "expected_revision": 0,
+            "changes": {"provider.model": "x"},
+            "surface_session_id": "surface-1"
+        }),
+        json!({
+            "expected_revision": 0,
+            "changes": {"provider.model": "x"},
+            "reason": "valid reason"
+        }),
+    ];
+
+    for body in cases {
+        let dir = tempfile::tempdir().unwrap();
+        let stub_dir = tempfile::tempdir().unwrap();
+        let argv_path = stub_dir.path().join("argv.txt");
+        let router =
+            test_app_with_arg_capture(seeded_db(&dir), r#"{"revision":1}"#, &argv_path, &stub_dir);
+        let (status, response) = patch_json_raw(&router, "/v1/config", body, Some("owner-1")).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(response["error"]["code"], "bad_request");
+        assert!(!argv_path.exists(), "invalid attribution reached the CLI");
+    }
 }
 
 #[tokio::test]
@@ -2627,7 +2741,7 @@ async fn config_patch_value_with_spaces_stays_one_argv_element() {
     let parsed: Value = serde_json::from_str(changes_arg).unwrap();
     assert_eq!(parsed["cockpit.branding"], "atlas; rm -rf /");
     // Exactly one token holds the whole dangerous string — no extra argv entries.
-    assert_eq!(args.len(), changes_idx + 2);
+    assert_eq!(args.len(), changes_idx + 10);
 }
 
 // ---------------------------------------------------------------------------
@@ -2762,6 +2876,35 @@ async fn config_patch_unexpected_cli_failure_is_500() {
 
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
     assert_eq!(body["error"]["code"], "internal");
+}
+
+#[tokio::test]
+async fn config_patch_committed_audit_failure_is_structured_500() {
+    let dir = tempfile::tempdir().unwrap();
+    let stub_dir = tempfile::tempdir().unwrap();
+    let stderr_json = serde_json::json!({
+        "error": {
+            "code": "config_audit_failed",
+            "message": "config committed but audit append failed",
+            "remediation": "reload config before deciding whether to retry",
+        },
+        "committed": true,
+        "current_revision": 7,
+    })
+    .to_string();
+    let router = test_app_with_failing_stub(seeded_db(&dir), &stderr_json, 1, &stub_dir);
+
+    let (status, body) = patch_json(
+        &router,
+        "/v1/config",
+        json!({ "expected_revision": 6, "changes": {"provider.model": "x"} }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(body["error"]["code"], "config_audit_failed");
+    assert_eq!(body["committed"], true);
+    assert_eq!(body["current_revision"], 7);
 }
 
 #[tokio::test]
