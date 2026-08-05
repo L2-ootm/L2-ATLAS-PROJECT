@@ -93,11 +93,22 @@ export default function Models() {
 			setBusyKey(key);
 			setToast(null);
 			try {
-				await patchConfig(config.revision, changes);
-				setToast({ tone: 'good', text: doneText });
+				const result = await patchConfig(config.revision, changes, `model control: ${doneText}`);
+				setToast({
+					tone: 'good',
+					text: result.receipt
+						? `${doneText} · receipt r${result.receipt.committed_revision}`
+						: doneText
+				});
 				await refresh();
 			} catch (err) {
-				if (err instanceof ApiError && err.status === 409) {
+				if (err instanceof ApiError && err.committed) {
+					setToast({
+						tone: 'warn',
+						text: 'Change committed but audit failed; it was not retried. Reconcile before editing again.'
+					});
+					await refresh();
+				} else if (err instanceof ApiError && err.status === 409) {
 					setToast({ tone: 'warn', text: 'Config changed elsewhere — reloaded; try again.' });
 					await refresh();
 				} else {

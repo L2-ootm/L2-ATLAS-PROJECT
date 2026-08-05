@@ -454,11 +454,17 @@ def start(poll_seconds: float = 0.0) -> tuple[bool, str]:
                 metadata = _read_state()
                 metadata.update({"pid": proc.pid, "dir": str(root)})
                 _write_state(metadata)
-            except Exception:
-                _terminate_pid(proc.pid)
-                _wait_until_dead(proc.pid)
-                _remove_runtime_projection()
-                raise
+            except Exception as exc:
+                with contextlib.suppress(OSError):
+                    _terminate_pid(proc.pid)
+                    _wait_until_dead(proc.pid)
+                with contextlib.suppress(OSError):
+                    _remove_runtime_projection()
+                return (
+                    False,
+                    "freellmapi supervision state could not be persisted "
+                    f"({type(exc).__name__}); child termination attempted",
+                )
 
             if poll_seconds > 0:
                 deadline = time.monotonic() + poll_seconds
@@ -484,6 +490,8 @@ def start(poll_seconds: float = 0.0) -> tuple[bool, str]:
             return True, f"freellmapi starting (pid {proc.pid}); {BASE_URL} shortly"
     except supervision.ServiceLockBusy as exc:
         return False, str(exc)
+    except OSError as exc:
+        return False, f"freellmapi launch failed: {type(exc).__name__}"
 
 
 def stop() -> tuple[bool, str]:
@@ -533,3 +541,5 @@ def stop() -> tuple[bool, str]:
             return True, f"stopped (pid {record.pid})"
     except supervision.ServiceLockBusy as exc:
         return False, str(exc)
+    except OSError as exc:
+        return False, f"freellmapi stop bookkeeping failed: {type(exc).__name__}"

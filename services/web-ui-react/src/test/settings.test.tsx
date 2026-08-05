@@ -12,6 +12,7 @@ import {
 	patchConfig,
 	storeProviderKey,
 	type AtlasConfigView,
+	type ConfigChangeReceipt,
 	type ProviderModeView,
 	type ProviderStatusView
 } from '../lib/api';
@@ -76,6 +77,31 @@ const modeBoard: ProviderModeView[] = [
 	{ mode: 'freellmapi', label: 'FREE LLM API', active: false, available: false, detail: 'needs base URL', remediation: null }
 ];
 
+function receipt(): ConfigChangeReceipt {
+	return {
+		schema_version: 1,
+		kind: 'config_change',
+		event_id: 'event-1',
+		committed_revision: 8,
+		changed_paths: ['provider.model'],
+		before: { 'provider.model': 'old/model' },
+		after: { 'provider.model': 'gpt-5.4-codex' },
+		reload: {
+			'provider.model': {
+				restart_required: false,
+				visibility: 'next_read_or_new_execution'
+			}
+		},
+		authenticated_actor: 'surface-1',
+		asserted_source_surface: 'webui',
+		asserted_source_session_id: 'surface-1',
+		reason: 'update provider and function routing',
+		timestamp: '2026-08-05T12:00:00+00:00',
+		credential_status: 'not_in_scope',
+		config_status: 'committed'
+	};
+}
+
 function arm(config = configView(), status = statusView()) {
 	vi.mocked(getConfig).mockResolvedValue(config);
 	vi.mocked(getProviderStatus).mockResolvedValue(status);
@@ -137,7 +163,7 @@ describe('Settings route', () => {
 			'functions.curator_model': 'openai-codex/gpt-5.4-mini',
 			'functions.auxiliary_model': '',
 			'functions.judge_model': 'openai-codex/gpt-5.4-mini'
-		});
+		}, 'update provider and function routing');
 		expect(storeProviderKey).not.toHaveBeenCalled();
 		expect(await screen.findByText('Provider configuration saved.')).toBeInTheDocument();
 	});
@@ -176,6 +202,50 @@ describe('Settings route', () => {
 		await user.click(screen.getByRole('button', { name: 'SAVE CONFIGURATION' }));
 		expect(await screen.findByText(/Config changed elsewhere/)).toBeInTheDocument();
 		// initial load + post-conflict refresh
+		expect(getConfig).toHaveBeenCalledTimes(2);
+	});
+
+	it('shows an authenticated receipt and limits undo to configuration values', async () => {
+		const config = configView();
+		arm(config);
+		vi.mocked(patchConfig).mockResolvedValueOnce({ ...config, revision: 8, receipt: receipt() });
+		const user = userEvent.setup();
+		render(<Settings />);
+		await screen.findByText('CODEX OAUTH');
+		await user.click(screen.getByRole('button', { name: 'SAVE CONFIGURATION' }));
+		expect(await screen.findByRole('region', { name: 'Last configuration receipt' })).toHaveTextContent(
+			'revision 8'
+		);
+		expect(screen.getByRole('region', { name: 'Last configuration receipt' })).toHaveTextContent(
+			'Credentials are outside this reversible receipt'
+		);
+
+		await user.click(screen.getByRole('button', { name: 'UNDO CONFIG' }));
+		expect(patchConfig).toHaveBeenLastCalledWith(
+			8,
+			{ 'provider.model': 'old/model' },
+			'undo config change event-1'
+		);
+	});
+
+	it('does not retry a config write that committed before its audit failed', async () => {
+		arm();
+		vi.mocked(patchConfig).mockRejectedValue(
+			new ApiError(
+				500,
+				'config committed but audit failed',
+				'config_audit_failed',
+				'reconcile before retrying',
+				8,
+				true
+			)
+		);
+		const user = userEvent.setup();
+		render(<Settings />);
+		await screen.findByText('CODEX OAUTH');
+		await user.click(screen.getByRole('button', { name: 'SAVE CONFIGURATION' }));
+		expect(await screen.findByText(/was committed, but its audit receipt failed/)).toBeInTheDocument();
+		expect(patchConfig).toHaveBeenCalledTimes(1);
 		expect(getConfig).toHaveBeenCalledTimes(2);
 	});
 

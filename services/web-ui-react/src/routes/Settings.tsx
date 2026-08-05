@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
-import { Cable, KeyRound, Power, ShieldAlert, Zap, RefreshCw, Save } from 'lucide-react';
+import { Cable, KeyRound, Power, ShieldAlert, Zap, RefreshCw, Save, Undo2 } from 'lucide-react';
 import { TopoScroll } from '../components/TopoScroll';
 import { Page } from '../components/Page';
 import { glassPanel } from '../lib/glass';
@@ -16,6 +16,7 @@ import {
 	patchConfig,
 	storeProviderKey,
 	type AtlasConfigView,
+	type ConfigChangeReceipt,
 	type FreellmapiStatus,
 	type ModelEntry,
 	type ProviderAuthMode,
@@ -70,6 +71,7 @@ export function ProviderSettingsPanel() {
 
 	const [busy, setBusy] = useState(false);
 	const [banner, setBanner] = useState<Banner>(null);
+	const [lastReceipt, setLastReceipt] = useState<ConfigChangeReceipt | null>(null);
 	const [sidecar, setSidecar] = useState<FreellmapiStatus | null>(null);
 	const [sidecarBusy, setSidecarBusy] = useState(false);
 
@@ -125,12 +127,14 @@ export function ProviderSettingsPanel() {
 		}
 		setBusy(true);
 		setBanner(null);
+		let credentialStored = false;
 		try {
 			if ((authMode === 'api_key' || authMode === 'freellmapi') && apiKey.trim() !== '') {
 				await storeProviderKey(providerName.trim(), apiKey, baseUrl.trim() || undefined);
+				credentialStored = true;
 				setApiKey('');
 			}
-			await patchConfig(revision, {
+			const result = await patchConfig(revision, {
 				'provider.name': providerName.trim(),
 				'provider.model': model.trim(),
 				'provider.auth_mode': authMode,
@@ -140,11 +144,24 @@ export function ProviderSettingsPanel() {
 				'functions.curator_model': fnCurator.trim(),
 				'functions.auxiliary_model': fnAuxiliary.trim(),
 				'functions.judge_model': fnJudge.trim()
+			}, 'update provider and function routing');
+			setLastReceipt(result.receipt ?? null);
+			setBanner({
+				tone: 'good',
+				text: credentialStored
+					? 'Credential stored separately; provider configuration saved.'
+					: 'Provider configuration saved.'
 			});
-			setBanner({ tone: 'good', text: 'Provider configuration saved.' });
 			await refresh();
 		} catch (err) {
-			if (err instanceof ApiError && err.status === 409) {
+			if (err instanceof ApiError && err.committed) {
+				setLastReceipt(null);
+				setBanner({
+					tone: 'warn',
+					text: 'Configuration was committed, but its audit receipt failed. It was not retried; reconcile the reported revision before editing again.'
+				});
+				await refresh();
+			} else if (err instanceof ApiError && err.status === 409) {
 				setBanner({
 					tone: 'warn',
 					text: 'Config changed elsewhere — reloaded the latest revision, review and save again.'
@@ -152,7 +169,10 @@ export function ProviderSettingsPanel() {
 				await refresh();
 			} else {
 				const detail = err instanceof ApiError && err.remediation ? ` — ${err.remediation}` : '';
-				setBanner({ tone: 'bad', text: `${(err as Error).message}${detail}` });
+				const stored = credentialStored
+					? ' The credential was already stored separately and cannot be undone here.'
+					: '';
+				setBanner({ tone: 'bad', text: `${(err as Error).message}${detail}${stored}` });
 			}
 		} finally {
 			setBusy(false);
@@ -171,6 +191,38 @@ export function ProviderSettingsPanel() {
 		fnJudge,
 		refresh
 	]);
+
+	const undoLastConfigChange = useCallback(async () => {
+		if (!lastReceipt) return;
+		setBusy(true);
+		setBanner(null);
+		try {
+			const result = await patchConfig(
+				lastReceipt.committed_revision,
+				lastReceipt.before,
+				`undo config change ${lastReceipt.event_id}`
+			);
+			setLastReceipt(result.receipt ?? null);
+			setBanner({
+				tone: 'good',
+				text: 'Configuration reverted. Credential storage was not changed.'
+			});
+			await refresh();
+		} catch (err) {
+			if (err instanceof ApiError && err.status === 409) {
+				setLastReceipt(null);
+				setBanner({
+					tone: 'warn',
+					text: 'Undo was not applied because configuration changed elsewhere.'
+				});
+				await refresh();
+			} else {
+				setBanner({ tone: 'bad', text: (err as Error).message });
+			}
+		} finally {
+			setBusy(false);
+		}
+	}, [lastReceipt, refresh]);
 
 	const runCodexImport = useCallback(async () => {
 		setBusy(true);
@@ -267,6 +319,48 @@ export function ProviderSettingsPanel() {
 						{banner.text}
 					</span>
 				</div>
+			)}
+			{lastReceipt && (
+				<section
+					aria-label="Last configuration receipt"
+					style={{
+						...glassPanel({ borderColor: 'rgba(0,229,255,0.28)' }),
+						padding: 14,
+						marginBottom: 16,
+						display: 'grid',
+						gap: 8
+					}}
+				>
+					<div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+						<span style={mono(10, 'var(--atlas-cyan)')}>CONFIG RECEIPT</span>
+						<span style={mono(9.5, 'var(--l2-fg-3)')}>
+							revision {lastReceipt.committed_revision} · {lastReceipt.changed_paths.length} fields ·{' '}
+							{lastReceipt.authenticated_actor}
+						</span>
+						<button
+							type="button"
+							onClick={() => void undoLastConfigChange()}
+							disabled={busy}
+							style={{
+								marginLeft: 'auto',
+								display: 'inline-flex',
+								alignItems: 'center',
+								gap: 6,
+								padding: '6px 10px',
+								border: '1px solid rgba(0,229,255,0.35)',
+								background: 'rgba(0,229,255,0.06)',
+								color: 'var(--atlas-cyan)',
+								cursor: busy ? 'default' : 'pointer',
+								...mono(9.5)
+							}}
+						>
+							<Undo2 size={11} /> UNDO CONFIG
+						</button>
+					</div>
+					<span style={mono(9.5, 'var(--l2-fg-3)')}>
+						{lastReceipt.changed_paths.join(' · ')}. Credentials are outside this reversible receipt.
+					</span>
+				</section>
 			)}
 
 			<div style={{ display: 'grid', gap: 16 }}>

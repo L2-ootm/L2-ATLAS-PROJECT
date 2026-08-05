@@ -198,7 +198,8 @@ export class ApiError extends Error {
 		message: string,
 		public readonly code?: string,
 		public readonly remediation?: string,
-		public readonly currentRevision?: number
+		public readonly currentRevision?: number,
+		public readonly committed?: boolean
 	) {
 		super(message);
 		this.name = 'ApiError';
@@ -218,6 +219,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 			| {
 					error?: { code?: string; message?: string; remediation?: string };
 					current_revision?: number;
+					committed?: boolean;
 			  }
 			| undefined;
 		try {
@@ -230,7 +232,8 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 			detail?.error?.message ?? `GATEWAY ERROR ${response.status} — ${path}: ${text}`,
 			detail?.error?.code,
 			detail?.error?.remediation,
-			detail?.current_revision
+			detail?.current_revision,
+			detail?.committed
 		);
 	}
 	return response.json() as Promise<T>;
@@ -1583,6 +1586,51 @@ export interface AtlasConfigView {
 	mock_mode?: boolean;
 }
 
+export type ConfigReceiptValue = boolean | number | string | null;
+
+export interface ConfigChangeReceipt {
+	schema_version: 1;
+	kind: 'config_change';
+	event_id: string;
+	committed_revision: number;
+	changed_paths: string[];
+	before: Record<string, ConfigReceiptValue>;
+	after: Record<string, ConfigReceiptValue>;
+	reload: Record<
+		string,
+		{ restart_required: boolean; visibility: 'restart' | 'next_read_or_new_execution' }
+	>;
+	authenticated_actor: string;
+	asserted_source_surface: string;
+	asserted_source_session_id: string | null;
+	reason: string;
+	timestamp: string;
+	credential_status: 'not_in_scope';
+	config_status: 'committed';
+}
+
+export interface ConfigPatchResult extends AtlasConfigView {
+	receipt?: ConfigChangeReceipt | null;
+}
+
+function configMutationOwner(): { id: string; ownerToken: string } {
+	try {
+		const raw = localStorage.getItem('atlas.agent-surface.reconnect.v1');
+		const parsed = raw ? (JSON.parse(raw) as { id?: unknown; ownerToken?: unknown }) : null;
+		if (typeof parsed?.id === 'string' && typeof parsed.ownerToken === 'string') {
+			return { id: parsed.id, ownerToken: parsed.ownerToken };
+		}
+	} catch {
+		// Invalid reconnect state is equivalent to no authenticated owner.
+	}
+	throw new ApiError(
+		403,
+		'An active owned agent surface is required to change configuration.',
+		'surface_owner_missing',
+		'Open the agent bar to establish a surface session, then try again.'
+	);
+}
+
 /** Masked ATLAS config from the gateway. Secrets are env: refs only. */
 export async function getConfig(): Promise<AtlasConfigView> {
 	return apiFetch('/v1/config');
@@ -1595,11 +1643,19 @@ export async function getConfig(): Promise<AtlasConfigView> {
  */
 export async function patchConfig(
 	expectedRevision: number,
-	changes: Record<string, unknown>
-): Promise<AtlasConfigView> {
+	changes: Record<string, unknown>,
+	reason = 'cockpit configuration update'
+): Promise<ConfigPatchResult> {
+	const owner = configMutationOwner();
 	return apiFetch('/v1/config', {
 		method: 'PATCH',
-		body: JSON.stringify({ expected_revision: expectedRevision, changes })
+		headers: { 'x-atlas-surface-owner': owner.ownerToken },
+		body: JSON.stringify({
+			expected_revision: expectedRevision,
+			changes,
+			surface_session_id: owner.id,
+			reason
+		})
 	});
 }
 
