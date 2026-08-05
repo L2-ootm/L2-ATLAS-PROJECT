@@ -16,10 +16,10 @@ func TestCrossSurfaceReferenceMissionsUseGatewayClientContract(t *testing.T) {
 	var fixture struct {
 		Surfaces []string `json:"surfaces"`
 		Missions []struct {
-			ID string `json:"id"`
+			ID                 string `json:"id"`
 			SurfaceProjections map[string][]struct {
-				EventIndex int `json:"event_index"`
-				Kind string `json:"kind"`
+				EventIndex int    `json:"event_index"`
+				Kind       string `json:"kind"`
 			} `json:"surface_projections"`
 		} `json:"missions"`
 	}
