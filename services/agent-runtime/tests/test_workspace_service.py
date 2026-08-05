@@ -24,6 +24,8 @@ from atlas_runtime.workspace_service import WorkspaceError
 def test_global_root_derives_from_db_home(db, tmp_path, monkeypatch) -> None:
     home = tmp_path / ".atlas"
     home.mkdir()
+    monkeypatch.delenv("ATLAS_DB", raising=False)
+    monkeypatch.delenv("ATLAS_HOME", raising=False)
     monkeypatch.setattr(db_module, "DEFAULT_DB_PATH", home / "atlas.db")
     root = ws.resolve_workspace(db, kind="global")
     assert pathlib.Path(root) == home.resolve()
