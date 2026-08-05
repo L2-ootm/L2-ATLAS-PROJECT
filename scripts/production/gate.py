@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -200,10 +201,41 @@ def _source_cli(python: str, *arguments: str, json_out: bool = True) -> tuple[st
     return (python, "-c", code, *arguments, *suffix)
 
 
+def resolve_node_executable() -> Path:
+    """Resolve Node to an explicit executable; never dispatch through a shim."""
+    found = shutil.which("node")
+    if not found:
+        raise GateError("allowlisted Node executable was not found")
+    node = _resolved(Path(found))
+    if not node.is_file():
+        raise GateError("resolved Node executable is not a file")
+    if os.name == "nt" and node.suffix.lower() not in {".exe", ".com"}:
+        raise GateError("resolved Node command is a shell wrapper")
+    if os.name != "nt" and not os.access(node, os.X_OK):
+        raise GateError("resolved Node command is not executable")
+    return node
+
+
+def resolve_npm_cli(node: Path) -> Path:
+    """Resolve npm's JavaScript CLI beside Node, bypassing npm.cmd on Windows."""
+    candidates = (
+        node.parent / "node_modules" / "npm" / "bin" / "npm-cli.js",
+        node.parent.parent / "lib" / "node_modules" / "npm" / "bin" / "npm-cli.js",
+        Path("/usr/local/lib/node_modules/npm/bin/npm-cli.js"),
+        Path("/usr/lib/node_modules/npm/bin/npm-cli.js"),
+    )
+    for candidate in candidates:
+        resolved = _resolved(candidate)
+        if resolved.is_file():
+            return resolved
+    raise GateError("npm-cli.js was not found beside the allowlisted Node executable")
+
+
 def build_commands(config: GateConfig) -> tuple[Command, ...]:
     repo = _resolved(config.repo)
     python = sys.executable
-    node = "node"
+    node_path = resolve_node_executable()
+    node = str(node_path)
     if config.mode == "source":
 
         def cli(*args: str, json_out: bool = True) -> tuple[str, ...]:
@@ -300,7 +332,13 @@ def build_commands(config: GateConfig) -> tuple[Command, ...]:
             "-q",
             "services/agent-runtime/tests",
         ),
-        "node-cli": ("npm", "test", "--prefix", "packages/atlas-cli"),
+        "node-cli": (
+            node,
+            str(resolve_npm_cli(node_path)),
+            "test",
+            "--prefix",
+            "packages/atlas-cli",
+        ),
         "rust-gateway": (
             "cargo",
             "test",

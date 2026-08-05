@@ -19,6 +19,8 @@ Get-Content (Join-Path $run 'evidence/production-gate.json') | ConvertFrom-Json 
 
 For installed mode, set `Mode='installed'` and add absolute `InstallRoot`, `InstalledLauncher`, and `GatewayBinary` paths below `$run`. The launcher must be either the installed `.js` entry point (executed as a fixed `node <launcher>` argv vector) or a direct native executable; `.cmd`, `.ps1`, and other shell wrappers are rejected. First use `-DryRun` to create the marked isolated root, install the package into that isolated prefix, and then run with `-Resume`. A resume is accepted only when the root marker exists; once execution has begun, its plan fingerprint must also match. Completed primary gates are skipped, but teardown is always rerun.
 
+On Windows, the `node-cli` test never invokes `npm.cmd`. The gate resolves the native Node executable and runs the adjacent `node_modules/npm/bin/npm-cli.js` as a fixed argv vector, preserving the no-shell command boundary.
+
 ## Meaningful-step checklist
 
 - Confirm the gate root is new, absolute, outside the repository, and named `atlas-production-gate-<hex>`.

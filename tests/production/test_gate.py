@@ -109,6 +109,10 @@ def test_command_catalog_rejects_unknown_and_contains_no_shell_strings(tmp_path:
     assert commands[-2].expectation == "stopped"
     rust = next(item for item in commands if item.label == "test:rust-gateway")
     assert "native/atlas-core-rs/Cargo.toml" in rust.argv
+    npm_test = next(item for item in commands if item.label == "test:node-cli")
+    assert Path(npm_test.argv[0]).name.lower() in {"node", "node.exe"}
+    assert npm_test.argv[1].replace("\\", "/").endswith("npm/bin/npm-cli.js")
+    assert not any(part.lower().endswith("npm.cmd") for part in npm_test.argv)
 
 
 def test_runner_never_uses_a_shell(tmp_path: Path, monkeypatch):
@@ -128,6 +132,33 @@ def test_runner_never_uses_a_shell(tmp_path: Path, monkeypatch):
     assert gate.default_runner(command, {}) == 0
     assert observed["argv"] == command.argv
     assert observed["shell"] is False
+
+
+def test_node_and_npm_cli_resolve_to_explicit_files_without_cmd(
+    tmp_path: Path, monkeypatch
+):
+    node = tmp_path / ("node.exe" if gate.os.name == "nt" else "node")
+    node.touch()
+    if gate.os.name != "nt":
+        node.chmod(0o755)
+    npm_cli = node.parent / "node_modules" / "npm" / "bin" / "npm-cli.js"
+    npm_cli.parent.mkdir(parents=True)
+    npm_cli.touch()
+    monkeypatch.setattr(
+        gate.shutil, "which", lambda name: str(node) if name == "node" else None
+    )
+    resolved_node = gate.resolve_node_executable()
+    assert resolved_node == node.resolve()
+    assert gate.resolve_npm_cli(resolved_node) == npm_cli.resolve()
+
+
+@pytest.mark.skipif(gate.os.name != "nt", reason="Windows shim rejection")
+def test_node_cmd_shim_is_rejected_on_windows(tmp_path: Path, monkeypatch):
+    shim = tmp_path / "node.cmd"
+    shim.touch()
+    monkeypatch.setattr(gate.shutil, "which", lambda _name: str(shim))
+    with pytest.raises(gate.GateError, match="shell wrapper"):
+        gate.resolve_node_executable()
 
 
 @pytest.mark.parametrize(
@@ -395,7 +426,8 @@ def test_installed_js_launcher_runs_through_allowlisted_node_without_shell(
     )
     commands = gate.build_commands(installed)
     lifecycle = [command for command in commands if command.label == "start-core"][0]
-    assert lifecycle.argv[:2] == ("node", str(launcher))
+    assert Path(lifecycle.argv[0]).name.lower() in {"node", "node.exe"}
+    assert lifecycle.argv[1] == str(launcher)
     assert lifecycle.argv[2:] == ("up", "--services", "gateway,cockpit", "--json")
     evidence = gate.execute_gate(installed, dry_run=True)
     assert evidence["status"] == "dry_run"
