@@ -212,11 +212,19 @@ if [ "$SKIP_NATIVE_BUILD" = false ]; then
     )
     (
         cd "$REPO/services/atlas-tui"
-        GOOS=darwin GOARCH="$GOARCH" go build -trimpath -ldflags '-s -w' -o "$TUI_BUILD" .
+        GOOS=darwin GOARCH="$GOARCH" go build -trimpath \
+            -ldflags "-s -w -X main.version=$VERSION -X main.commit=$BUILD_SHA" \
+            -o "$TUI_BUILD" .
     )
 else
     GATEWAY_BUILD="$REPO/native/atlas-core-rs/target/release/atlas-gateway"
     TUI_BUILD="$REPO/services/atlas-tui/atlas-tui"
+fi
+
+TUI_IDENTITY="$($TUI_BUILD --version)"
+if [ "$TUI_IDENTITY" != "atlas-tui $VERSION ($BUILD_SHA)" ]; then
+    echo "Go TUI identity mismatch: $TUI_IDENTITY" >&2
+    exit 1
 fi
 
 if [ "$SKIP_WEB_BUILD" = false ]; then

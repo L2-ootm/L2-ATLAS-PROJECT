@@ -107,7 +107,11 @@ if (-not $SkipNativeBuild) {
         $env:ATLAS_BUILD_SHA = $previousBuildSha
     }
     Push-Location (Join-Path $repo 'services\atlas-tui')
-    try { go build -trimpath -ldflags '-s -w' -o $tuiBuild .; if ($LASTEXITCODE) { throw 'go build failed' } }
+    try {
+        $tuiLdflags = "-s -w -X main.version=$Version -X main.commit=$buildSha"
+        go build -trimpath -ldflags $tuiLdflags -o $tuiBuild .
+        if ($LASTEXITCODE) { throw 'go build failed' }
+    }
     finally { Pop-Location }
 } else {
     $gatewayBuild = Join-Path $repo 'native\atlas-core-rs\target\release\atlas-gateway.exe'
@@ -128,6 +132,10 @@ foreach ($relative in $required) {
 }
 foreach ($output in @($gatewayBuild, $tuiBuild)) {
     if (-not (Test-Path -LiteralPath $output)) { throw "required native build output missing: $output" }
+}
+$tuiIdentity = (& $tuiBuild --version).Trim()
+if ($LASTEXITCODE -ne 0 -or $tuiIdentity -ne "atlas-tui $Version ($buildSha)") {
+    throw "Go TUI identity mismatch: $tuiIdentity"
 }
 & node (Join-Path $repo 'scripts\ci\verify-gateway-identity.js') `
     --binary $gatewayBuild --release-version $Version --build-sha $buildSha `

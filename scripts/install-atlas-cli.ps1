@@ -112,7 +112,10 @@ $tuiBinary = Join-Path $tuiBinDir 'atlas-tui.exe'
 if (Get-Command go -ErrorAction SilentlyContinue) {
     New-Item -ItemType Directory -Force -Path $tuiBinDir | Out-Null
     Invoke-OptionalStep "Building atlas-tui -> $tuiBinary" $tui {
-        & go build -trimpath -ldflags "-s -w" -o $tuiBinary .
+        $tuiVersion = (Get-Content -Raw -LiteralPath (Join-Path $root 'packages\atlas-cli\package.json') | ConvertFrom-Json).version
+        $tuiCommit = (& git -C $root rev-parse HEAD).Trim()
+        $tuiLdflags = "-s -w -X main.version=$tuiVersion -X main.commit=$tuiCommit"
+        & go build -trimpath -ldflags $tuiLdflags -o $tuiBinary .
         if ($LASTEXITCODE -ne 0) { throw "go build (atlas-tui) exit $LASTEXITCODE" }
     }
 } else {
