@@ -8,7 +8,18 @@ use axum::http::{header, Request, StatusCode};
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use std::path::PathBuf;
+use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 use tower::util::ServiceExt;
+
+/// The production skills cache is process-global. These two tests exercise one
+/// cache lifecycle each, so keep them isolated from one another without
+/// serializing the remaining API suite.
+static SKILLS_CACHE_TEST_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+
+fn skills_cache_test_lock() -> &'static tokio::sync::Mutex<()> {
+    SKILLS_CACHE_TEST_LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
+}
 
 const MIGRATION_0001: &str = include_str!("../../../../../infra/migrations/0001_core.sql");
 // 0006 adds runs.agent_runtime (TEXT NOT NULL DEFAULT 'native'), which RUN_COLS
@@ -1355,6 +1366,36 @@ fn test_app_with_start_and_exec_capture(
     })
 }
 
+/// Wait for a detached CLI fixture to publish a complete argv capture.
+///
+/// A detached child is intentionally not joined by the request handler. Under
+/// the parallel workspace runner, Windows process startup can exceed the old
+/// two-second polling window even though the child starts successfully.
+async fn wait_for_argv_capture(path: &std::path::Path, expected_lines: usize) -> String {
+    let wait = async {
+        loop {
+            if let Ok(argv) = std::fs::read_to_string(path) {
+                if argv.lines().count() == expected_lines {
+                    return argv;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    };
+
+    tokio::time::timeout(Duration::from_secs(30), wait)
+        .await
+        .unwrap_or_else(|_| {
+            let observed = std::fs::read_to_string(path)
+                .map(|argv| format!("{} lines: {argv:?}", argv.lines().count()))
+                .unwrap_or_else(|error| format!("unavailable: {error}"));
+            panic!(
+                "detached argv capture {} did not reach {expected_lines} lines within 30s ({observed})",
+                path.display()
+            )
+        })
+}
+
 #[tokio::test]
 async fn start_run_forwards_agent_claude_code() {
     let dir = tempfile::tempdir().unwrap();
@@ -1470,17 +1511,7 @@ async fn start_run_and_retry_execute_use_persisted_policy_without_extra_exec_arg
         assert_eq!(status, StatusCode::CREATED, "endpoint={endpoint}");
         assert_eq!(body["executing"], true);
 
-        let mut exec_argv = None;
-        for _ in 0..200 {
-            if let Ok(argv) = std::fs::read_to_string(&exec_argv_path) {
-                if argv.lines().count() == 4 {
-                    exec_argv = Some(argv);
-                    break;
-                }
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-        }
-        let exec_argv = exec_argv.expect("detached run exec argv was not captured");
+        let exec_argv = wait_for_argv_capture(&exec_argv_path, 4).await;
         assert_eq!(
             exec_argv.lines().collect::<Vec<_>>(),
             vec!["run", "exec", "--", "r1"],
@@ -1703,6 +1734,7 @@ else:
 
 #[tokio::test]
 async fn skills_catalog_cache_collapses_reads_and_invalidates_after_commit() {
+    let _cache_guard = skills_cache_test_lock().lock().await;
     let dir = tempfile::tempdir().unwrap();
     let stub_dir = tempfile::tempdir().unwrap();
     let (router, counter) = skills_cache_test_app(seeded_db(&dir), &stub_dir);
@@ -1738,10 +1770,17 @@ async fn skills_catalog_cache_collapses_reads_and_invalidates_after_commit() {
 
 #[tokio::test]
 async fn failed_skill_write_preserves_cache_and_maps_conflict() {
+    let _cache_guard = skills_cache_test_lock().lock().await;
     let dir = tempfile::tempdir().unwrap();
     let stub_dir = tempfile::tempdir().unwrap();
     let (router, counter) = skills_cache_test_app(seeded_db(&dir), &stub_dir);
-    let _ = get_json(&router, "/api/skills").await;
+    let (_, initial) = get_json(&router, "/api/skills").await;
+    let cache_observed_at = Instant::now();
+    let cache_ttl = Duration::from_secs(
+        initial["cache_ttl_seconds"]
+            .as_u64()
+            .expect("skills response exposes its cache TTL"),
+    );
 
     let (status, body) = put_json(
         &router,
@@ -1757,8 +1796,22 @@ async fn failed_skill_write_preserves_cache_and_maps_conflict() {
     assert_eq!(body["error"]["code"], "skill_tier_conflict");
 
     let (_, cached) = get_json(&router, "/api/skills").await;
-    assert_eq!(cached["cache_status"], "fresh");
-    assert_eq!(std::fs::read_to_string(&counter).unwrap(), "1");
+    let refreshes = std::fs::read_to_string(&counter).unwrap();
+    match cached["cache_status"].as_str() {
+        Some("fresh") => assert_eq!(refreshes, "1"),
+        Some("refreshed") => {
+            // The failed write must not invalidate a live entry. Under the
+            // default parallel Windows runner, spawning the conflict fixture
+            // can legitimately outlive the advertised 30-second TTL; a
+            // refresh is then expiry, not failed-write invalidation.
+            assert!(
+                cache_observed_at.elapsed() + Duration::from_secs(1) >= cache_ttl,
+                "cache refreshed before its advertised TTL after a failed write"
+            );
+            assert_eq!(refreshes, "2");
+        }
+        other => panic!("unexpected cache status after failed write: {other:?}"),
+    }
 }
 
 async fn patch_json(router: &axum::Router, uri: &str, body: Value) -> (StatusCode, Value) {
