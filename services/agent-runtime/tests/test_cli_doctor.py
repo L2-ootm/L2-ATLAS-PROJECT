@@ -3,10 +3,13 @@
 Uses typer.testing.CliRunner, matching the project's existing CLI test harness
 convention (tests/test_cli.py, tests/test_cli_up.py).
 """
+
 from __future__ import annotations
 
 import json
 import shutil
+import subprocess
+from types import SimpleNamespace
 
 from typer.testing import CliRunner
 
@@ -25,13 +28,37 @@ _HEALTHY_PROVIDER = {
 
 
 def _patch_all_healthy(monkeypatch):
+    # Doctor reports tool versions but the real Windows shims can block on a
+    # machine-level installer/update lock. Unit tests own the contract, not the
+    # host toolchain process lifecycle.
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=0, stdout="tool 1.0\n", stderr=""
+        ),
+    )
     monkeypatch.setattr(db, "connect", lambda: object())
     monkeypatch.setattr(db, "migration_status", lambda conn: _ALL_APPLIED)
     monkeypatch.setattr(config_service, "load_config", lambda: object())
-    monkeypatch.setattr(gateway_control, "health_ok", lambda: True)
+    monkeypatch.setattr(
+        gateway_control,
+        "status",
+        lambda: {
+            "running": True,
+            "state": "running",
+            "pid": 123,
+            "supervision": {
+                "process": {"exists": True},
+                "port": {"host": "127.0.0.1", "port": 8484, "listening": True},
+            },
+        },
+    )
     monkeypatch.setattr(cockpit_control, "health_ok", lambda: True)
     monkeypatch.setattr(
-        config_service, "resolve_provider", lambda cfg=None, **kw: dict(_HEALTHY_PROVIDER)
+        config_service,
+        "resolve_provider",
+        lambda cfg=None, **kw: dict(_HEALTHY_PROVIDER),
     )
 
 
@@ -48,7 +75,16 @@ def test_doctor_all_healthy_exits_zero(monkeypatch):
 
 def test_doctor_gateway_down_exits_nonzero(monkeypatch):
     _patch_all_healthy(monkeypatch)
-    monkeypatch.setattr(gateway_control, "health_ok", lambda: False)
+    monkeypatch.setattr(
+        gateway_control,
+        "status",
+        lambda: {
+            "running": False,
+            "state": "stopped",
+            "pid": None,
+            "supervision": None,
+        },
+    )
     result = runner.invoke(app, ["doctor"])
     assert result.exit_code == 1
     assert "gateway: down" in result.output
@@ -57,7 +93,9 @@ def test_doctor_gateway_down_exits_nonzero(monkeypatch):
 def test_doctor_pending_migration_exits_nonzero_and_identifies_version(monkeypatch):
     _patch_all_healthy(monkeypatch)
     monkeypatch.setattr(
-        db, "migration_status", lambda conn: [("0001_core.sql", True), ("0003_pending.sql", False)]
+        db,
+        "migration_status",
+        lambda conn: [("0001_core.sql", True), ("0003_pending.sql", False)],
     )
     result = runner.invoke(app, ["doctor"])
     assert result.exit_code == 1
@@ -130,7 +168,9 @@ def test_doctor_db_schema_reports_applied_and_pending_counts(monkeypatch):
     """db_schema supplements check #1 with counts, without double-failing all_ok."""
     _patch_all_healthy(monkeypatch)
     monkeypatch.setattr(db, "applied_versions", lambda conn: {"0001_core.sql"})
-    monkeypatch.setattr(db, "MIGRATIONS_DIR", db.MIGRATIONS_DIR)  # real dir, has real files
+    monkeypatch.setattr(
+        db, "MIGRATIONS_DIR", db.MIGRATIONS_DIR
+    )  # real dir, has real files
     result = runner.invoke(app, ["doctor"])
     assert result.exit_code == 0, result.output
     assert "db_schema:" in result.output
@@ -151,7 +191,9 @@ def test_doctor_db_schema_tolerates_db_ahead_of_release(monkeypatch, tmp_path):
     _patch_all_healthy(monkeypatch)
     _fake_migrations(monkeypatch, tmp_path, ["0001_core.sql", "0002_x.sql"])
     monkeypatch.setattr(
-        db, "applied_versions", lambda conn: {"0001_core.sql", "0002_x.sql", "0003_future.sql"}
+        db,
+        "applied_versions",
+        lambda conn: {"0001_core.sql", "0002_x.sql", "0003_future.sql"},
     )
     result = runner.invoke(app, ["doctor", "--json"])
     assert result.exit_code == 0, result.output
@@ -165,7 +207,9 @@ def test_doctor_db_schema_tolerates_db_ahead_of_release(monkeypatch, tmp_path):
 
 def test_doctor_db_schema_names_pending_migrations(monkeypatch, tmp_path):
     _patch_all_healthy(monkeypatch)
-    _fake_migrations(monkeypatch, tmp_path, ["0001_core.sql", "0002_x.sql", "0003_y.sql"])
+    _fake_migrations(
+        monkeypatch, tmp_path, ["0001_core.sql", "0002_x.sql", "0003_y.sql"]
+    )
     monkeypatch.setattr(db, "applied_versions", lambda conn: {"0001_core.sql"})
     result = runner.invoke(app, ["doctor", "--json"])
     status = json.loads(result.output)["db_schema"]
@@ -175,7 +219,9 @@ def test_doctor_db_schema_names_pending_migrations(monkeypatch, tmp_path):
 
 def test_doctor_config_schema_reports_no_file_when_absent(monkeypatch, tmp_path):
     _patch_all_healthy(monkeypatch)
-    monkeypatch.setattr(config_service, "default_config_path", lambda: tmp_path / "missing-config.yaml")
+    monkeypatch.setattr(
+        config_service, "default_config_path", lambda: tmp_path / "missing-config.yaml"
+    )
     result = runner.invoke(app, ["doctor"])
     assert result.exit_code == 0, result.output
     assert "config_schema: no config file" in result.output
@@ -224,7 +270,13 @@ def test_doctor_json_output_includes_new_checks(monkeypatch):
     result = runner.invoke(app, ["doctor", "--json"])
     assert result.exit_code == 0, result.output
     report = json.loads(result.output)
-    for key in ("db_schema", "config_schema", "gateway_process", "toolchain", "version"):
+    for key in (
+        "db_schema",
+        "config_schema",
+        "gateway_process",
+        "toolchain",
+        "version",
+    ):
         assert key in report, f"missing key: {key}"
         assert "ok" in report[key], f"missing ok in {key}"
         assert "status" in report[key], f"missing status in {key}"

@@ -1635,8 +1635,10 @@ test('purge accepts every runtime-owned state-root artifact', () => {
 	}
 	for (const file of [
 		'.demo_seeded', 'atlas.db', 'atlas.db-shm', 'atlas.db-wal', 'auth.json',
-		'cashflow.json', 'config.yaml', 'cockpit.pid', 'discord-bot.json',
-		'freellmapi.json', 'gateway-messaging.json', 'gateway.pid', 'skill_tiers.json'
+		'cashflow.json', 'config.yaml', 'cockpit.pid', 'cockpit.service.json',
+		'discord-bot.json', 'freellmapi.json', 'freellmapi.service.json',
+		'gateway-messaging.json', 'gateway.pid',
+		'gateway.service.json', 'skill_tiers.json'
 	]) {
 		fs.writeFileSync(path.join(stateHome, file), '');
 	}

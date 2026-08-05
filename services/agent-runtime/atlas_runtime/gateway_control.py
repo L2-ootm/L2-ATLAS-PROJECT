@@ -11,23 +11,27 @@ Idempotent: start is a no-op when /health already passes. Side-effecting (spawns
 detached process), so the testable pieces (binary resolution, health probe) are
 factored out and the CLI commands stay thin.
 """
+
 from __future__ import annotations
 
 import os
 import pathlib
+import json
 import shutil
 import subprocess
 import sys
 import time
+import urllib.parse
 import urllib.request
-
-from atlas_runtime import config_service, provisioning
+from atlas_runtime import config_service, provisioning, service_supervision
 from atlas_runtime.db import MIGRATIONS_DIR
 
 # services/agent-runtime (so the gateway's spawned CLI can import atlas_runtime).
 _AGENT_RUNTIME_DIR = pathlib.Path(__file__).resolve().parents[1]
 
 GATEWAY_URL = os.environ.get("ATLAS_GATEWAY_URL", "http://127.0.0.1:8484")
+SERVICE_KEY = "gateway"
+HEALTH_SERVICE = "atlas-gateway"
 
 
 def pid_file() -> pathlib.Path:
@@ -60,12 +64,117 @@ def gateway_binary() -> str | None:
     return str(candidate) if candidate.exists() else None
 
 
-def health_ok(timeout: float = 1.0) -> bool:
+def _health_probe(timeout: float = 1.0) -> tuple[bool, str | None, str | None]:
+    """Return health, advertised service identity, and a bounded error code."""
     try:
         with urllib.request.urlopen(f"{GATEWAY_URL}/health", timeout=timeout) as resp:
-            return getattr(resp, "status", resp.getcode()) == 200
-    except Exception:
-        return False
+            if getattr(resp, "status", resp.getcode()) != 200:
+                return False, None, "http_status"
+            payload = json.loads(resp.read(16_385))
+            if not isinstance(payload, dict):
+                return False, None, "invalid_payload"
+            service = payload.get("service")
+            if not isinstance(service, str):
+                return False, None, "missing_service_identity"
+            if service != HEALTH_SERVICE:
+                return False, service, "wrong_service_identity"
+            return True, service, None
+    except Exception as exc:
+        return False, None, type(exc).__name__
+
+
+def health_ok(timeout: float = 1.0) -> bool:
+    return _health_probe(timeout)[0]
+
+
+def _endpoint() -> tuple[str, int]:
+    parsed = urllib.parse.urlparse(GATEWAY_URL)
+    return parsed.hostname or "127.0.0.1", parsed.port or 8484
+
+
+def _remove_state() -> None:
+    service_supervision.state_path(SERVICE_KEY).unlink(missing_ok=True)
+    pid_file().unlink(missing_ok=True)
+
+
+def status() -> dict[str, object]:
+    """Return a JSON-stable, identity-aware gateway status."""
+    health, advertised_service, health_error = _health_probe()
+    health_status = {
+        "ok": health,
+        "service": advertised_service,
+        "error": health_error,
+    }
+    state_file = service_supervision.state_path(SERVICE_KEY)
+    try:
+        record = service_supervision.load_launch_record(state_file)
+    except service_supervision.ServiceStateError as exc:
+        return {
+            "schema_version": service_supervision.SCHEMA_VERSION,
+            "service": SERVICE_KEY,
+            "state": "corrupt_state",
+            "running": False,
+            "managed": True,
+            "pid": service_supervision.read_legacy_pid(pid_file()),
+            "health": health_status,
+            "supervision": None,
+            "remediation": f"inspect {state_file}: {exc}",
+        }
+    if record is None:
+        legacy_pid = service_supervision.read_legacy_pid(pid_file())
+        if health:
+            state, remediation = (
+                "unmanaged",
+                "healthy gateway is not owned by this launcher",
+            )
+        elif advertised_service is not None:
+            state, remediation = (
+                "wrong_service",
+                "another HTTP service owns the gateway endpoint",
+            )
+        elif legacy_pid is not None:
+            state, remediation = (
+                "legacy_unverifiable",
+                "run `atlas gateway recover` after inspecting the PID",
+            )
+        else:
+            state, remediation = "stopped", None
+        return {
+            "schema_version": service_supervision.SCHEMA_VERSION,
+            "service": SERVICE_KEY,
+            "state": state,
+            "running": health,
+            "managed": False,
+            "pid": legacy_pid,
+            "health": health_status,
+            "supervision": None,
+            "remediation": remediation,
+        }
+
+    observed = service_supervision.observe_service(record)
+    if advertised_service is not None and not health:
+        state = "wrong_service"
+    elif observed.state == "running" and health:
+        state = "running"
+    elif observed.state == "running":
+        state = (
+            "starting"
+            if not observed.port or not observed.port.listening
+            else "unhealthy"
+        )
+    else:
+        state = observed.state
+    return {
+        "schema_version": service_supervision.SCHEMA_VERSION,
+        "service": SERVICE_KEY,
+        "state": state,
+        "running": state == "running",
+        "managed": True,
+        "pid": record.pid,
+        "health": health_status,
+        "supervision": observed.to_dict(),
+        "remediation": observed.remediation,
+    }
 
 
 def _crate_root() -> pathlib.Path | None:
@@ -115,13 +224,17 @@ def _child_env() -> dict[str, str]:
     # somewhere the next update and `atlas versions prune` delete without
     # warning. `lib/db/index.ts` opens `path.join(process.cwd(), 'dev.db')`,
     # and cwd is the workspace — so workspace/dev.db is the real file.
-    workspace, _mirrored = provisioning.resolve_workspace(provisioning.cashflow_component())
+    workspace, _mirrored = provisioning.resolve_workspace(
+        provisioning.cashflow_component()
+    )
     env.setdefault("ATLAS_CASHFLOW_DB_PATH", str(workspace / "dev.db"))
     if "ATLAS_CLI" not in env and " " not in sys.executable:
         env["ATLAS_CLI"] = f"{sys.executable} -m atlas_runtime.cli.main"
         existing = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = (
-            f"{_AGENT_RUNTIME_DIR}{os.pathsep}{existing}" if existing else str(_AGENT_RUNTIME_DIR)
+            f"{_AGENT_RUNTIME_DIR}{os.pathsep}{existing}"
+            if existing
+            else str(_AGENT_RUNTIME_DIR)
         )
     return env
 
@@ -160,41 +273,133 @@ def reap_orphan_runs(ttl_seconds: float = 90.0) -> int:
 
 def start(poll_seconds: float = 15.0) -> tuple[bool, str]:
     """Start the gateway if not already healthy. Returns (ok, message)."""
-    if health_ok():
-        return True, "gateway already running"
-    # Gateway was down: reconcile whatever the previous process left behind
-    # before new runs can start.
-    reap_orphan_runs()
-    binary = gateway_binary()
-    if not binary:
-        return (
-            False,
-            "atlas-gateway binary not found; set ATLAS_GATEWAY_BIN or build it "
-            "(cd native/atlas-core-rs && cargo build --release)",
-        )
-    kwargs: dict = {}
-    if os.name == "nt":
-        kwargs["creationflags"] = (
-            subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
-        )
-    else:
-        kwargs["start_new_session"] = True
-    proc = subprocess.Popen(
-        [binary],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        env=_child_env(),
-        **kwargs,
-    )
-    pid_path = pid_file()
-    pid_path.parent.mkdir(parents=True, exist_ok=True)
-    pid_path.write_text(str(proc.pid))
-    deadline = time.monotonic() + poll_seconds
-    while time.monotonic() < deadline:
-        if health_ok():
-            return True, f"gateway started (pid {proc.pid}) on {GATEWAY_URL}"
-        time.sleep(0.5)
-    return False, "gateway did not become healthy in time"
+    try:
+        with service_supervision.service_lock(SERVICE_KEY):
+            preflight = status()
+            if preflight["running"]:
+                return True, "gateway already running"
+            if preflight["state"] in {
+                "wrong_service",
+                "corrupt_state",
+                "identity_mismatch",
+                "unverifiable",
+                "legacy_unverifiable",
+                "unhealthy",
+                "starting",
+            }:
+                return False, (
+                    f"gateway preflight failed ({preflight['state']}); "
+                    f"{preflight.get('remediation') or 'inspect gateway status'}"
+                )
+            if preflight["state"] == "stopped" and preflight["managed"]:
+                _remove_state()
+
+            binary = gateway_binary()
+            if not binary:
+                return (
+                    False,
+                    "atlas-gateway binary not found; set ATLAS_GATEWAY_BIN or build it "
+                    "(cd native/atlas-core-rs && cargo build --release)",
+                )
+            host, port = _endpoint()
+            if service_supervision.observe_port(host, port).listening:
+                return (
+                    False,
+                    f"gateway preflight failed; {host}:{port} is already listening",
+                )
+
+            # Only after ownership, binary and endpoint preflight is it safe to
+            # mutate run state left by the previous gateway.
+            reap_orphan_runs()
+            argv = [str(pathlib.Path(binary).resolve())]
+            kwargs: dict = {}
+            if os.name == "nt":
+                kwargs["creationflags"] = (
+                    subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
+                )
+            else:
+                kwargs["start_new_session"] = True
+            log = service_supervision.open_sensitive_log(
+                service_supervision.log_path(SERVICE_KEY)
+            )
+            try:
+                proc = subprocess.Popen(
+                    argv, stdout=log, stderr=log, env=_child_env(), **kwargs
+                )
+            finally:
+                log.close()
+
+            observation = service_supervision.observe_process(proc.pid)
+            identity_deadline = time.monotonic() + min(2.0, max(0.1, poll_seconds))
+            while (
+                not observation.identity_available
+                and proc.poll() is None
+                and time.monotonic() < identity_deadline
+            ):
+                time.sleep(0.025)
+                observation = service_supervision.observe_process(proc.pid)
+            if proc.poll() is not None or not observation.identity_available:
+                if proc.poll() is None:
+                    proc.terminate()
+                tail = service_supervision.sanitized_log_tail(
+                    service_supervision.log_path(SERVICE_KEY)
+                )
+                detail = f": {tail.text}" if tail.text else ""
+                return (
+                    False,
+                    f"gateway exited before its identity could be recorded{detail}",
+                )
+
+            record = service_supervision.create_launch_record(
+                service=SERVICE_KEY,
+                pid=proc.pid,
+                executable_path=argv[0],
+                process_creation_time=observation.process_creation_time or 0,
+                argv=argv,
+                host=host,
+                port=port,
+                sensitive_log_path=service_supervision.log_path(SERVICE_KEY),
+            )
+            initial_identity = service_supervision.compare_process_identity(
+                record, observation
+            )
+            if not initial_identity.matches:
+                proc.terminate()
+                return (
+                    False,
+                    "gateway child identity did not match the requested binary "
+                    f"({initial_identity.reason})",
+                )
+            service_supervision.write_launch_record(
+                record, service_supervision.state_path(SERVICE_KEY)
+            )
+            pid_path = pid_file()
+            pid_path.write_text(str(proc.pid), encoding="utf-8")
+
+            deadline = time.monotonic() + poll_seconds
+            while time.monotonic() < deadline:
+                exit_code = proc.poll()
+                if exit_code is not None:
+                    _remove_state()
+                    tail = service_supervision.sanitized_log_tail(record.log_path)
+                    detail = f": {tail.text}" if tail.text else ""
+                    return False, f"gateway exited early (code {exit_code}){detail}"
+                probe_ok, advertised, error = _health_probe()
+                if probe_ok:
+                    return True, f"gateway started (pid {proc.pid}) on {GATEWAY_URL}"
+                if advertised is not None:
+                    return (
+                        False,
+                        f"gateway endpoint advertised {advertised!r}, not {HEALTH_SERVICE!r}",
+                    )
+                time.sleep(0.1)
+            tail = service_supervision.sanitized_log_tail(record.log_path)
+            detail = f"; log tail: {tail.text}" if tail.text else ""
+            return False, f"gateway did not become healthy in time{detail}"
+    except service_supervision.ServiceLockBusy:
+        return False, "gateway lifecycle is busy; retry shortly"
+    except (OSError, service_supervision.ServiceStateError) as exc:
+        return False, f"gateway start failed: {type(exc).__name__}: {exc}"
 
 
 def _pid_process_name(pid: int) -> str | None:
@@ -232,30 +437,94 @@ def _pid_process_name(pid: int) -> str | None:
 
 
 def stop() -> tuple[bool, str]:
-    """Stop a gateway started by this primitive (via its PID file)."""
-    pid_path = pid_file()
-    if not pid_path.exists():
-        return False, "no pid file; gateway not managed here"
+    """Stop only the exact process instance recorded by this launcher."""
     try:
-        pid = int(pid_path.read_text().strip())
-    except (ValueError, OSError):
-        pid_path.unlink(missing_ok=True)
-        return False, "invalid pid file (removed)"
-    name = _pid_process_name(pid)
-    if name is None:
-        pid_path.unlink(missing_ok=True)
-        return False, f"pid {pid} not running (stale pid file removed)"
-    if "atlas-gateway" not in name.lower():
-        pid_path.unlink(missing_ok=True)
-        return False, (
-            f"pid {pid} is {name!r}, not atlas-gateway — refusing to kill "
-            "(pid reuse; stale pid file removed)"
-        )
+        with service_supervision.service_lock(SERVICE_KEY):
+            state_file = service_supervision.state_path(SERVICE_KEY)
+            try:
+                record = service_supervision.load_launch_record(state_file)
+            except service_supervision.ServiceStateError as exc:
+                return False, f"invalid gateway service state; refusing to kill: {exc}"
+            if record is None:
+                if pid_file().exists():
+                    if service_supervision.read_legacy_pid(pid_file()) is None:
+                        pid_file().unlink(missing_ok=True)
+                        return False, "invalid pid file (removed)"
+                    return (
+                        False,
+                        "legacy pid has no process identity; refusing to kill (state retained)",
+                    )
+                return False, "no pid file; gateway not managed here"
+
+            observation = service_supervision.observe_process(record.pid)
+            identity = service_supervision.compare_process_identity(record, observation)
+            if not observation.exists:
+                _remove_state()
+                return False, f"pid {record.pid} not running (stale state removed)"
+            if not identity.matches:
+                return False, (
+                    f"pid {record.pid} identity check failed ({identity.reason}) — "
+                    "refusing to kill (state retained)"
+                )
+            try:
+                if os.name == "nt":
+                    subprocess.run(
+                        ["taskkill", "/PID", str(record.pid), "/F"],
+                        check=False,
+                        capture_output=True,
+                        timeout=10,
+                    )
+                else:
+                    os.kill(record.pid, 15)
+            except (OSError, subprocess.SubprocessError) as exc:
+                return False, (
+                    f"failed to terminate pid {record.pid}: {type(exc).__name__}; "
+                    "state retained"
+                )
+
+            deadline = time.monotonic() + 5.0
+            while time.monotonic() < deadline:
+                if not service_supervision.observe_process(record.pid).exists:
+                    _remove_state()
+                    return True, f"stopped (pid {record.pid})"
+                time.sleep(0.05)
+            return False, (
+                f"pid {record.pid} did not terminate; refusing to remove state "
+                "until termination is verified"
+            )
+    except service_supervision.ServiceLockBusy:
+        return False, "gateway lifecycle is busy; retry shortly"
+
+
+def recover() -> tuple[bool, str]:
+    """Remove only state proven stale; never terminate a process."""
     try:
-        if os.name == "nt":
-            subprocess.run(["taskkill", "/PID", str(pid), "/F"], check=False)
-        else:
-            os.kill(pid, 15)
-    finally:
-        pid_path.unlink(missing_ok=True)
-    return True, f"stopped (pid {pid})"
+        with service_supervision.service_lock(SERVICE_KEY):
+            state_file = service_supervision.state_path(SERVICE_KEY)
+            try:
+                record = service_supervision.load_launch_record(state_file)
+            except service_supervision.ServiceStateError as exc:
+                return False, f"gateway state is corrupt and was retained: {exc}"
+            if record is not None:
+                observation = service_supervision.observe_process(record.pid)
+                if observation.exists:
+                    return False, "gateway process may still exist; state retained"
+                _remove_state()
+                return True, f"removed stale gateway state for dead pid {record.pid}"
+            legacy = service_supervision.read_legacy_pid(pid_file())
+            if legacy is None:
+                existed = pid_file().exists()
+                pid_file().unlink(missing_ok=True)
+                return (
+                    True,
+                    "removed invalid pid file"
+                    if existed
+                    else "gateway state already clean",
+                )
+            observation = service_supervision.observe_process(legacy)
+            if observation.exists:
+                return False, "legacy pid may still exist; state retained"
+            pid_file().unlink(missing_ok=True)
+            return True, f"removed stale legacy pid {legacy}"
+    except service_supervision.ServiceLockBusy:
+        return False, "gateway lifecycle is busy; retry shortly"

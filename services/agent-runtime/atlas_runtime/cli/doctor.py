@@ -13,15 +13,14 @@ Independent checks (T-10.0.2-10): each of the five checks is wrapped in its
 own try/except so one failing subsystem never prevents the others from
 reporting.
 """
+
 from __future__ import annotations
 
 import importlib
 import json
 import os
 import shutil
-import socket
 import subprocess
-import urllib.parse
 from datetime import datetime, timezone
 
 import typer
@@ -30,7 +29,9 @@ import yaml
 from atlas_runtime import config_service, db
 
 
-def _doctor_cmd(json_output: bool = typer.Option(False, "--json", help="Emit the report as JSON.")) -> None:
+def _doctor_cmd(
+    json_output: bool = typer.Option(False, "--json", help="Emit the report as JSON."),
+) -> None:
     """Aggregate health check: db, config, gateway, cockpit, sidecars, provider."""
     all_ok = True
     cfg = None
@@ -68,7 +69,8 @@ def _doctor_cmd(json_output: bool = typer.Option(False, "--json", help="Emit the
     try:
         from atlas_runtime import gateway_control
 
-        if gateway_control.health_ok():
+        gateway_status = gateway_control.status()
+        if gateway_status["running"]:
             stale = gateway_control.binary_stale()
             if stale:
                 # ok=False here is deliberately NOT folded into all_ok/exit code —
@@ -222,9 +224,14 @@ def _doctor_cmd(json_output: bool = typer.Option(False, "--json", help="Emit the
         if config_path.is_file():
             raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
             if isinstance(raw, dict):
-                schema_ver = raw.get("schema_version", config_service.CONFIG_SCHEMA_VERSION)
+                schema_ver = raw.get(
+                    "schema_version", config_service.CONFIG_SCHEMA_VERSION
+                )
                 revision = raw.get("revision", 0)
-                ver_ok = isinstance(schema_ver, int) and 1 <= schema_ver <= config_service.CONFIG_SCHEMA_VERSION
+                ver_ok = (
+                    isinstance(schema_ver, int)
+                    and 1 <= schema_ver <= config_service.CONFIG_SCHEMA_VERSION
+                )
                 echo(
                     "config_schema",
                     f"v{schema_ver} rev={revision} (supported 1..{config_service.CONFIG_SCHEMA_VERSION})",
@@ -244,39 +251,25 @@ def _doctor_cmd(json_output: bool = typer.Option(False, "--json", help="Emit the
     try:
         from atlas_runtime import gateway_control
 
-        pid_file = gateway_control.pid_file()
-        pid_alive = False
-        pid_info = "no pid file"
-        if pid_file.is_file():
-            try:
-                pid = int(pid_file.read_text(encoding="utf-8").strip())
-                if os.name == "nt":
-                    tasklist = subprocess.run(
-                        ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
-                        capture_output=True, timeout=5,
-                    )
-                    pid_alive = str(pid) in (tasklist.stdout or b"").decode("utf-8", errors="replace")
-                else:
-                    os.kill(pid, 0)
-                    pid_alive = True
-                pid_info = f"pid={pid}, alive={pid_alive}"
-            except (ValueError, OSError):
-                pid_info = "pid file unreadable or invalid"
-
-        port_ok = False
-        port_info = "port not reachable"
-        try:
-            parsed = urllib.parse.urlparse(gateway_control.GATEWAY_URL)
-            host = parsed.hostname or "127.0.0.1"
-            port = parsed.port or 8484
-            with socket.create_connection((host, port), timeout=1):
-                port_ok = True
-                port_info = f"{host}:{port} listening"
-        except OSError:
-            pass
-
-        inconsistent = pid_alive and not port_ok
-        echo("gateway_process", f"{pid_info}, {port_info}", ok=not inconsistent)
+        gateway_status = gateway_control.status()
+        supervision = gateway_status.get("supervision")
+        process = supervision.get("process") if isinstance(supervision, dict) else None
+        port = supervision.get("port") if isinstance(supervision, dict) else None
+        pid = gateway_status.get("pid")
+        pid_info = (
+            f"pid={pid}, alive={bool(process and process.get('exists'))}"
+            if pid
+            else "no managed pid"
+        )
+        port_info = (
+            f"{port.get('host')}:{port.get('port')} listening"
+            if port and port.get("listening")
+            else "port not owned by a verified gateway"
+        )
+        consistent = gateway_status.get("state") in {"running", "stopped", "unmanaged"}
+        echo("gateway_process", f"{pid_info}, {port_info}", ok=consistent)
+        if not consistent:
+            all_ok = False
     except Exception as exc:  # noqa: BLE001
         echo("gateway_process", f"error - {exc}", ok=False)
 
@@ -284,23 +277,40 @@ def _doctor_cmd(json_output: bool = typer.Option(False, "--json", help="Emit the
     # both); Rust/cargo is optional (only needed to rebuild the gateway).
     try:
         toolchain_info: dict[str, str] = {}
-        for tool_name, cmd in (("python3", "python3"), ("python", "python"), ("node", "node"), ("cargo", "cargo")):
+        for tool_name, cmd in (
+            ("python3", "python3"),
+            ("python", "python"),
+            ("node", "node"),
+            ("cargo", "cargo"),
+        ):
             found = shutil.which(cmd)
             if not found:
                 continue
             try:
-                probe = subprocess.run([found, "--version"], capture_output=True, text=True, timeout=5)
-                toolchain_info[tool_name] = probe.stdout.strip() if probe.returncode == 0 else f"found at {found}"
+                probe = subprocess.run(
+                    [found, "--version"], capture_output=True, text=True, timeout=5
+                )
+                toolchain_info[tool_name] = (
+                    probe.stdout.strip()
+                    if probe.returncode == 0
+                    else f"found at {found}"
+                )
             except Exception:  # noqa: BLE001
                 toolchain_info[tool_name] = f"found at {found}"
 
         python_ok = bool(toolchain_info.get("python") or toolchain_info.get("python3"))
         node_ok = bool(toolchain_info.get("node"))
         parts = [f"{name}={value}" for name, value in toolchain_info.items()]
-        missing = [name for name, ok in (("python", python_ok), ("node", node_ok)) if not ok]
+        missing = [
+            name for name, ok in (("python", python_ok), ("node", node_ok)) if not ok
+        ]
 
         if missing:
-            echo("toolchain", f"missing: {', '.join(missing)} ({'; '.join(parts)})", ok=False)
+            echo(
+                "toolchain",
+                f"missing: {', '.join(missing)} ({'; '.join(parts)})",
+                ok=False,
+            )
             all_ok = False
         else:
             echo("toolchain", "; ".join(parts), ok=True)
@@ -309,19 +319,33 @@ def _doctor_cmd(json_output: bool = typer.Option(False, "--json", help="Emit the
 
     # 13. RTK — optional but recommended for 60-90% token savings on shell commands.
     try:
-        rtk_disabled = os.environ.get("ATLAS_RTK_DISABLED", "").strip().lower() in {"1", "true", "yes"}
+        rtk_disabled = os.environ.get("ATLAS_RTK_DISABLED", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+        }
         rtk_found = shutil.which("rtk") is not None
         if rtk_disabled:
             echo("rtk", "disabled (ATLAS_RTK_DISABLED=1)", ok=True)
         elif rtk_found:
             try:
-                probe = subprocess.run(["rtk", "--version"], capture_output=True, text=True, timeout=5)
-                version_str = probe.stdout.strip().split("\n")[0] if probe.returncode == 0 else "found"
+                probe = subprocess.run(
+                    ["rtk", "--version"], capture_output=True, text=True, timeout=5
+                )
+                version_str = (
+                    probe.stdout.strip().split("\n")[0]
+                    if probe.returncode == 0
+                    else "found"
+                )
                 echo("rtk", f"{version_str} (60-90% token savings)", ok=True)
             except Exception:  # noqa: BLE001
                 echo("rtk", "found (version unknown)", ok=True)
         else:
-            echo("rtk", "not found (optional — install for 60-90% token savings)", ok=True)
+            echo(
+                "rtk",
+                "not found (optional — install for 60-90% token savings)",
+                ok=True,
+            )
     except Exception as exc:  # noqa: BLE001
         echo("rtk", f"error - {exc}", ok=True)
 
@@ -329,7 +353,11 @@ def _doctor_cmd(json_output: bool = typer.Option(False, "--json", help="Emit the
     # handed off to us (ATLAS_RUNTIME_VERSION, set by launcher.js). Purely
     # informational context; unset means doctor was invoked directly (dev).
     runtime_version = os.environ.get("ATLAS_RUNTIME_VERSION", "").strip()
-    echo("version", runtime_version or "unknown (invoked outside the npm launcher)", ok=True)
+    echo(
+        "version",
+        runtime_version or "unknown (invoked outside the npm launcher)",
+        ok=True,
+    )
 
     if json_output:
         typer.echo(json.dumps(report))
