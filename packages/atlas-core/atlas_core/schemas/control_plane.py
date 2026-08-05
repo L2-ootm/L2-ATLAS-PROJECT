@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -11,6 +12,18 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from atlas_core.schemas.agent_contract import PermissionMode
 
 _ENV_REFERENCE = re.compile(r"^env:[A-Za-z_][A-Za-z0-9_]*$")
+_CONTROL_PLANE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._:-]{0,95}$")
+_CONFIG_PATH_RE = re.compile(r"^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$")
+_MAX_CONFIG_RECEIPT_CHANGES = 64
+_MAX_CONFIG_RECEIPT_PATH_LENGTH = 128
+_MAX_CONFIG_RECEIPT_VALUE_LENGTH = 512
+_SECRET_VALUE_RE = re.compile(
+    r"(?:\bBearer\s+\S+|\bsk-[A-Za-z0-9_-]{8,}|\bgh[oprsu]_[A-Za-z0-9]{8,})",
+    re.IGNORECASE,
+)
+_SECRET_PATH_SEGMENTS = frozenset(
+    {"api_key", "credential", "credentials", "owner_token", "password", "secret", "token"}
+)
 
 
 class _FrozenControlPlaneModel(BaseModel):
@@ -105,7 +118,7 @@ PermissionSourceLayer = Literal[
     "default",
 ]
 
-_POLICY_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._:-]{0,95}$")
+_POLICY_ID_RE = _CONTROL_PLANE_ID_RE
 _PRESET_RANK: dict[str, int] = {
     "manual": 0,
     "smart": 1,
@@ -303,8 +316,23 @@ class AtlasConfig(_FrozenControlPlaneModel):
 class ConfigPatchRequest(_FrozenControlPlaneModel):
     expected_revision: int = Field(ge=0)
     changes_json: str
-    source_surface: str | None = None
-    source_session_id: str | None = None
+    reason: str = Field(default="configuration update", min_length=1, max_length=240)
+    # These values are caller assertions until the gateway authenticates session
+    # ownership. Receipts deliberately keep them separate from authenticated_actor.
+    source_surface: str | None = Field(default=None, min_length=1, max_length=96)
+    source_session_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=96,
+        pattern=_CONTROL_PLANE_ID_RE.pattern,
+    )
+
+    @field_validator("reason", "source_surface")
+    @classmethod
+    def reject_multiline_audit_text(cls, value: str | None) -> str | None:
+        if value is not None and ("\n" in value or "\r" in value):
+            raise ValueError("config patch audit text must be single-line")
+        return value
 
     @field_validator("changes_json")
     @classmethod
@@ -362,6 +390,122 @@ class ControlPlaneSnapshot(AtlasConfig):
     mock_mode: bool = True
 
 
+ConfigReceiptValue = bool | int | float | str | None
+
+
+class ConfigReloadMetadata(_FrozenControlPlaneModel):
+    """When one committed config value becomes observable."""
+
+    restart_required: bool
+    visibility: Literal["restart", "next_read_or_new_execution"]
+
+
+class ConfigChangeReceipt(_FrozenControlPlaneModel):
+    """Bounded, secret-safe receipt for one committed configuration mutation.
+
+    ``before`` and ``after`` contain typed config leaf values after the audit
+    boundary has masked secrets. Credential storage and model-registry refresh
+    are intentionally not represented by this reversible receipt.
+    """
+
+    schema_version: Literal[1] = 1
+    kind: Literal["config_change"] = "config_change"
+    event_id: str = Field(
+        min_length=1,
+        max_length=96,
+        pattern=_CONTROL_PLANE_ID_RE.pattern,
+    )
+    committed_revision: int = Field(ge=1)
+    changed_paths: tuple[str, ...] = Field(
+        min_length=1,
+        max_length=_MAX_CONFIG_RECEIPT_CHANGES,
+    )
+    before: dict[str, ConfigReceiptValue] = Field(
+        min_length=1,
+        max_length=_MAX_CONFIG_RECEIPT_CHANGES,
+    )
+    after: dict[str, ConfigReceiptValue] = Field(
+        min_length=1,
+        max_length=_MAX_CONFIG_RECEIPT_CHANGES,
+    )
+    reload: dict[str, ConfigReloadMetadata] = Field(
+        min_length=1,
+        max_length=_MAX_CONFIG_RECEIPT_CHANGES,
+    )
+    authenticated_actor: str = Field(
+        min_length=1,
+        max_length=96,
+        pattern=_CONTROL_PLANE_ID_RE.pattern,
+    )
+    asserted_source_surface: str = Field(min_length=1, max_length=96)
+    asserted_source_session_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=96,
+        pattern=_CONTROL_PLANE_ID_RE.pattern,
+    )
+    reason: str = Field(min_length=1, max_length=240)
+    timestamp: str
+    credential_status: Literal["not_in_scope"] = "not_in_scope"
+    config_status: Literal["committed"] = "committed"
+
+    @field_validator("reason", "asserted_source_surface")
+    @classmethod
+    def reject_multiline_receipt_text(cls, value: str) -> str:
+        if "\n" in value or "\r" in value:
+            raise ValueError("config receipt audit text must be single-line")
+        return value
+
+    @field_validator("timestamp")
+    @classmethod
+    def validate_timestamp(cls, value: str) -> str:
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError("timestamp must be ISO 8601") from exc
+        if parsed.tzinfo is None:
+            raise ValueError("timestamp must include a timezone")
+        return value
+
+    @model_validator(mode="after")
+    def validate_bounded_masked_diff(self) -> ConfigChangeReceipt:
+        if len(set(self.changed_paths)) != len(self.changed_paths):
+            raise ValueError("changed_paths must not contain duplicates")
+        path_set = set(self.changed_paths)
+        if any(
+            len(path) > _MAX_CONFIG_RECEIPT_PATH_LENGTH
+            or not _CONFIG_PATH_RE.fullmatch(path)
+            for path in path_set
+        ):
+            raise ValueError("changed_paths must contain dotted config paths")
+        if set(self.before) != path_set or set(self.after) != path_set:
+            raise ValueError("before and after keys must exactly match changed_paths")
+        if set(self.reload) != path_set:
+            raise ValueError("reload keys must exactly match changed_paths")
+        for values in (self.before, self.after):
+            for path, value in values.items():
+                if isinstance(value, str) and len(value) > _MAX_CONFIG_RECEIPT_VALUE_LENGTH:
+                    raise ValueError(
+                        "config receipt string values must be at most "
+                        f"{_MAX_CONFIG_RECEIPT_VALUE_LENGTH} characters"
+                    )
+                if isinstance(value, str) and _SECRET_VALUE_RE.search(value):
+                    raise ValueError("config receipt values must be secret-masked")
+                if path.rsplit(".", 1)[-1] in _SECRET_PATH_SEGMENTS and value not in {
+                    None,
+                    "",
+                    "[REDACTED]",
+                } and not (isinstance(value, str) and _ENV_REFERENCE.fullmatch(value)):
+                    raise ValueError("sensitive config receipt paths must be secret-masked")
+        return self
+
+
+class ConfigPatchResult(ControlPlaneSnapshot):
+    """Additive PATCH response; legacy snapshot fields remain at top level."""
+
+    receipt: ConfigChangeReceipt | None = None
+
+
 class ControlPlaneError(ValueError):
     """Expected control-plane failure with a stable, secret-safe payload."""
 
@@ -398,7 +542,11 @@ __all__ = [
     "AtlasConfig",
     "AuthStatus",
     "CockpitConfig",
+    "ConfigChangeReceipt",
     "ConfigPatchRequest",
+    "ConfigPatchResult",
+    "ConfigReceiptValue",
+    "ConfigReloadMetadata",
     "ContextConfig",
     "ControlPlaneError",
     "ControlPlaneSnapshot",

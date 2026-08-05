@@ -10,7 +10,10 @@ from atlas_core.schemas import AuditEvent
 from atlas_core.schemas.control_plane import (
     AtlasConfig,
     AuthStatus,
+    ConfigChangeReceipt,
     ConfigPatchRequest,
+    ConfigPatchResult,
+    ConfigReloadMetadata,
     ControlPlaneSnapshot,
     ProviderModelStatus,
     SettingStatus,
@@ -60,6 +63,7 @@ def test_patch_request_requires_nonnegative_revision_and_json_object() -> None:
     assert request.changes() == {
         "provider.model": "anthropic/claude-sonnet-4",
     }
+    assert request.reason == "configuration update"
 
     with pytest.raises(ValidationError):
         ConfigPatchRequest(expected_revision=-1, changes_json="{}")
@@ -67,6 +71,139 @@ def test_patch_request_requires_nonnegative_revision_and_json_object() -> None:
         ConfigPatchRequest(expected_revision=0, changes_json="[]")
     with pytest.raises(ValidationError):
         ConfigPatchRequest(expected_revision=0, changes_json="{bad json")
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("reason", ""),
+        ("reason", "x" * 241),
+        ("reason", "line one\nline two"),
+        ("source_surface", ""),
+        ("source_surface", "x" * 97),
+        ("source_session_id", "BAD SESSION"),
+    ],
+)
+def test_patch_request_bounds_untrusted_audit_text(field: str, value: str) -> None:
+    with pytest.raises(ValidationError):
+        ConfigPatchRequest(
+            expected_revision=0,
+            changes_json="{}",
+            **{field: value},
+        )
+
+
+def _config_receipt(**overrides: object) -> ConfigChangeReceipt:
+    defaults: dict[str, object] = {
+        "event_id": "63bf2f11-56cf-4e9c-80f8-1660f50917ec",
+        "committed_revision": 4,
+        "changed_paths": (
+            "context.enable_brain",
+            "provider.base_url",
+            "provider.model",
+        ),
+        "before": {
+            "context.enable_brain": False,
+            "provider.base_url": None,
+            "provider.model": "old/model",
+        },
+        "after": {
+            "context.enable_brain": True,
+            "provider.base_url": None,
+            "provider.model": "新しい/model ✨",
+        },
+        "reload": {
+            "context.enable_brain": ConfigReloadMetadata(
+                restart_required=False,
+                visibility="next_read_or_new_execution",
+            ),
+            "provider.base_url": ConfigReloadMetadata(
+                restart_required=True,
+                visibility="restart",
+            ),
+            "provider.model": ConfigReloadMetadata(
+                restart_required=False,
+                visibility="next_read_or_new_execution",
+            ),
+        },
+        "authenticated_actor": "operator",
+        "asserted_source_surface": "webui; $(not-executed)",
+        "asserted_source_session_id": "surf-1",
+        "reason": "Switch model; $(still-not-executed) — revisão",
+        "timestamp": "2026-08-05T12:30:00+00:00",
+    }
+    defaults.update(overrides)
+    return ConfigChangeReceipt(**defaults)
+
+
+def test_config_receipt_preserves_typed_values_and_json_stability() -> None:
+    receipt = _config_receipt()
+    dumped = receipt.model_dump(mode="json")
+    encoded = json.dumps(dumped, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+    restored = ConfigChangeReceipt.model_validate_json(encoded)
+    assert restored == receipt
+    assert restored.before["context.enable_brain"] is False
+    assert restored.after["context.enable_brain"] is True
+    assert restored.before["provider.base_url"] is None
+    assert restored.after["provider.model"] == "新しい/model ✨"
+
+
+def test_config_receipt_is_frozen_and_has_no_secret_or_owner_token_fields() -> None:
+    receipt = _config_receipt(
+        before={
+            "context.enable_brain": False,
+            "provider.base_url": None,
+            "provider.model": "[REDACTED]",
+        }
+    )
+    rendered = json.dumps(receipt.model_dump(mode="json"), sort_keys=True)
+
+    with pytest.raises(ValidationError):
+        receipt.reason = "changed"  # type: ignore[misc]
+    assert "owner_token" not in ConfigChangeReceipt.model_fields
+    assert "credential" not in receipt.before
+    assert "sk-live-token-canary" not in rendered
+    assert receipt.credential_status == "not_in_scope"
+    assert receipt.config_status == "committed"
+
+    with pytest.raises(ValidationError, match="secret-masked"):
+        _config_receipt(
+            after={
+                "context.enable_brain": True,
+                "provider.base_url": None,
+                "provider.model": "sk-live-token-canary",
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"reason": "line one\nline two"},
+        {"reason": "x" * 241},
+        {"asserted_source_surface": "x" * 97},
+        {"asserted_source_session_id": "../../owner"},
+        {"timestamp": "2026-08-05T12:30:00"},
+        {"before": {"context.enable_brain": False}},
+        {"changed_paths": ("context.enable_brain", "context.enable_brain")},
+    ],
+)
+def test_config_receipt_rejects_ambiguous_or_unbounded_payloads(
+    overrides: dict[str, object],
+) -> None:
+    with pytest.raises(ValidationError):
+        _config_receipt(**overrides)
+
+
+def test_config_patch_result_is_additive_and_accepts_legacy_snapshot() -> None:
+    legacy = ControlPlaneSnapshot().model_dump(mode="json")
+    result = ConfigPatchResult.model_validate(legacy)
+
+    assert result.receipt is None
+    assert result.revision == legacy["revision"]
+    assert result.provider.name == legacy["provider"]["name"]
+    assert result.model_dump(mode="json")["settings"] == legacy["settings"]
 
 
 def test_public_status_contracts_are_json_stable_and_secret_free() -> None:
