@@ -211,10 +211,15 @@ def build_commands(config: GateConfig) -> tuple[Command, ...]:
     else:
         if config.paths.install_root is None or config.installed_launcher is None:
             raise GateError("installed mode requires an isolated launcher entry point")
+        launcher_prefix = (
+            (node, str(config.installed_launcher))
+            if config.installed_launcher.suffix.lower() == ".js"
+            else (str(config.installed_launcher),)
+        )
 
         def cli(*args: str, json_out: bool = True) -> tuple[str, ...]:
             suffix = ("--json",) if json_out else ()
-            return (str(config.installed_launcher), *args, *suffix)
+            return (*launcher_prefix, *args, *suffix)
 
     commands: list[Command] = [
         Command(
@@ -470,17 +475,20 @@ def execute_gate(
             raise GateError(
                 "installed gateway binary must be below the isolated install root"
             )
+        suffix = installed_launcher.suffix.lower()
+        allowed_suffixes = {".js", ".exe", ".com"} if os.name == "nt" else {".js", ""}
+        if suffix not in allowed_suffixes:
+            raise GateError(
+                "installed launcher must be .js or a direct native executable"
+            )
         if not dry_run:
             if not installed_launcher.is_file():
                 raise GateError("installed launcher does not exist")
-            if os.name == "nt" and installed_launcher.suffix.lower() not in {
-                ".exe",
-                ".com",
-            }:
-                raise GateError(
-                    "installed launcher must be a direct executable, not a shell wrapper"
-                )
-            if os.name != "nt" and not os.access(installed_launcher, os.X_OK):
+            if (
+                suffix != ".js"
+                and os.name != "nt"
+                and not os.access(installed_launcher, os.X_OK)
+            ):
                 raise GateError("installed launcher is not executable")
     config = GateConfig(
         mode=config.mode,

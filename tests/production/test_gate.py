@@ -369,3 +369,57 @@ def test_installed_mode_requires_launcher_and_binary_below_install_root(tmp_path
             ),
             dry_run=True,
         )
+
+
+def test_installed_js_launcher_runs_through_allowlisted_node_without_shell(
+    tmp_path: Path,
+):
+    isolated = paths(tmp_path)
+    install_root = isolated.root / "install"
+    installed_paths = gate.GatePaths(
+        isolated.root,
+        isolated.atlas_home,
+        isolated.database,
+        isolated.config,
+        isolated.npm_prefix,
+        install_root,
+    )
+    launcher = install_root / "versions" / "0.1.5" / "bin" / "atlas.js"
+    binary = install_root / "versions" / "0.1.5" / "native" / "atlas-gateway.exe"
+    installed = config(
+        tmp_path,
+        mode="installed",
+        paths=installed_paths,
+        installed_launcher=launcher,
+        gateway_binary=binary,
+    )
+    commands = gate.build_commands(installed)
+    lifecycle = [command for command in commands if command.label == "start-core"][0]
+    assert lifecycle.argv[:2] == ("node", str(launcher))
+    assert lifecycle.argv[2:] == ("up", "--services", "gateway,cockpit", "--json")
+    evidence = gate.execute_gate(installed, dry_run=True)
+    assert evidence["status"] == "dry_run"
+
+
+def test_installed_shell_wrapper_is_rejected_even_in_dry_run(tmp_path: Path):
+    isolated = paths(tmp_path)
+    install_root = isolated.root / "install"
+    installed_paths = gate.GatePaths(
+        isolated.root,
+        isolated.atlas_home,
+        isolated.database,
+        isolated.config,
+        isolated.npm_prefix,
+        install_root,
+    )
+    with pytest.raises(gate.GateError, match="direct native executable"):
+        gate.execute_gate(
+            config(
+                tmp_path,
+                mode="installed",
+                paths=installed_paths,
+                installed_launcher=install_root / "atlas.cmd",
+                gateway_binary=install_root / "atlas-gateway.exe",
+            ),
+            dry_run=True,
+        )
