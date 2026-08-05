@@ -211,6 +211,10 @@ def _child_env() -> dict[str, str]:
     A spaced interpreter path falls back to the installed `atlas` on PATH.
     """
     env = os.environ.copy()
+    # The supervisor probes and records the endpoint derived from GATEWAY_URL.
+    # Keep the child on that same port even when the operator configured a
+    # non-default URL without also exporting ATLAS_GATEWAY_PORT.
+    env["ATLAS_GATEWAY_PORT"] = str(_endpoint()[1])
     root = MIGRATIONS_DIR.parent.parent  # infra/migrations -> infra -> repo root
     env.setdefault("ATLAS_REPO_ROOT", str(root))
     # The cashflow DB default must be the directory the cashflow app actually

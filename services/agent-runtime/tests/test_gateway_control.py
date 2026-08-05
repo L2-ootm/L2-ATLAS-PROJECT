@@ -168,6 +168,17 @@ def test_health_rejects_wrong_http_service(monkeypatch) -> None:
     assert gateway_control.status()["state"] == "wrong_service"
 
 
+def test_child_env_uses_the_supervised_gateway_port(pid_file, monkeypatch) -> None:
+    monkeypatch.setattr(
+        gateway_control, "GATEWAY_URL", "http://127.0.0.1:39123"
+    )
+    monkeypatch.setenv("ATLAS_GATEWAY_PORT", "8484")
+
+    child_env = gateway_control._child_env()
+
+    assert child_env["ATLAS_GATEWAY_PORT"] == "39123"
+
+
 def test_start_preflight_blocks_wrong_listener_before_reaping(monkeypatch) -> None:
     reaped: list[bool] = []
     monkeypatch.setattr(
