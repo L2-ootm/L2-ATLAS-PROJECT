@@ -47,6 +47,28 @@ function resolveRequest(url) {
 }
 
 const server = createServer((request, response) => {
+  const pathname = (() => {
+    try {
+      return new URL(request.url || "/", "http://atlas.local").pathname;
+    } catch {
+      return "";
+    }
+  })();
+  if (pathname === "/health") {
+    const body = JSON.stringify({
+      service: "atlas-cockpit",
+      status: "ok",
+      schema_version: 1,
+    });
+    response.writeHead(200, {
+      "cache-control": "no-store",
+      "content-type": "application/json; charset=utf-8",
+      "content-length": Buffer.byteLength(body),
+      "x-content-type-options": "nosniff",
+    });
+    response.end(request.method === "HEAD" ? undefined : body);
+    return;
+  }
   const file = resolveRequest(request.url);
   if (!file) {
     response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });

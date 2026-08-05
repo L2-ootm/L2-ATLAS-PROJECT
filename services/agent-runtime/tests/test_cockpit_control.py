@@ -1,239 +1,282 @@
-"""Tests for cockpit_control.py — the cockpit's twin of gateway_control.py.
-
-Covers health probing, idempotent start, the Windows console-flash regression
-guard (CREATE_NO_WINDOW, per commit 62e9456's bug class), npm.cmd resolution,
-and PID-file-based stop.
-"""
+"""Focused lifecycle and identity tests for cockpit_control."""
 from __future__ import annotations
 
+import io
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from atlas_runtime import cockpit_control
+from atlas_runtime import service_supervision as supervision
 
 
-def test_parse_port_returns_default_for_portless_url():
+def _response(body: bytes, status: int = 200) -> MagicMock:
+    response = MagicMock()
+    response.status = status
+    response.getcode.return_value = status
+    response.read.return_value = body
+    response.__enter__.return_value = response
+    response.__exit__.return_value = False
+    return response
+
+
+def _observation(pid: int, *, exists: bool = True, executable: str = "node"):
+    return supervision.ProcessObservation(
+        pid=pid,
+        exists=exists,
+        identity_available=exists,
+        executable_path=executable if exists else None,
+        process_creation_time=123456 if exists else None,
+    )
+
+
+def _record(tmp_path, pid: int = 4242):
+    record = supervision.create_launch_record(
+        service="cockpit",
+        pid=pid,
+        executable_path="node",
+        process_creation_time=123456,
+        argv=["node", "serve-dist.mjs"],
+        host="127.0.0.1",
+        port=5173,
+        sensitive_log_path=tmp_path / "cockpit.log",
+    )
+    supervision.write_launch_record(record, tmp_path / "cockpit.service.json")
+    (tmp_path / "cockpit.pid").write_text(str(pid), encoding="utf-8")
+    return record
+
+
+def test_parse_url_authority():
     assert cockpit_control._parse_port("http://127.0.0.1") == 5173
-
-
-def test_parse_port_returns_explicit_port():
     assert cockpit_control._parse_port("http://127.0.0.1:6173") == 6173
-
-
-def test_parse_port_raises_on_invalid_port():
+    assert cockpit_control._parse_host("http://127.0.0.1:5173") == "127.0.0.1"
+    assert cockpit_control._parse_host("") == "127.0.0.1"
     with pytest.raises(ValueError, match="invalid port"):
         cockpit_control._parse_port("http://127.0.0.1:abc")
 
 
-def test_parse_host_returns_explicit_host():
-    assert cockpit_control._parse_host("http://127.0.0.1:5173") == "127.0.0.1"
-
-
-def test_parse_host_defaults_when_hostless():
-    assert cockpit_control._parse_host("") == "127.0.0.1"
-
-
-def test_health_ok_returns_false_when_nothing_listening():
-    with patch("urllib.request.urlopen", side_effect=OSError("connection refused")):
+def test_health_requires_typed_production_identity(monkeypatch):
+    monkeypatch.setattr(cockpit_control, "_using_dist_server", lambda: True)
+    valid = json.dumps({"service": "atlas-cockpit", "status": "ok"}).encode()
+    with patch("urllib.request.urlopen", return_value=_response(valid)):
+        assert cockpit_control.health_ok() is True
+    wrong = json.dumps({"service": "some-other-app", "status": "ok"}).encode()
+    with patch("urllib.request.urlopen", return_value=_response(wrong)):
         assert cockpit_control.health_ok() is False
 
 
-def test_health_ok_returns_true_when_server_responds():
-    mock_resp = MagicMock()
-    mock_resp.__enter__.return_value = mock_resp
-    mock_resp.__exit__.return_value = False
-    with patch("urllib.request.urlopen", return_value=mock_resp):
+def test_health_dev_fallback_requires_stable_html_marker(monkeypatch):
+    monkeypatch.setattr(cockpit_control, "_using_dist_server", lambda: False)
+    refused = OSError("no /health")
+    valid_html = "<title>ATLAS — Cockpit</title>".encode()
+    with patch(
+        "urllib.request.urlopen",
+        side_effect=[refused, _response(valid_html)],
+    ):
         assert cockpit_control.health_ok() is True
+    with patch(
+        "urllib.request.urlopen",
+        side_effect=[refused, _response(b"<title>another app</title>")],
+    ):
+        assert cockpit_control.health_ok() is False
 
 
-def test_start_is_idempotent_when_already_healthy():
-    with patch.object(cockpit_control, "health_ok", return_value=True):
-        with patch("subprocess.Popen") as mock_popen:
-            ok, message = cockpit_control.start()
-    assert ok is True
-    assert message == "cockpit already running"
-    mock_popen.assert_not_called()
+def test_health_returns_false_when_unreachable():
+    with patch("urllib.request.urlopen", side_effect=OSError("refused")):
+        assert cockpit_control.health_ok() is False
 
 
-def test_start_on_windows_sets_console_flash_guard_flags(tmp_path, monkeypatch):
-    monkeypatch.setattr(cockpit_control, "_is_windows", lambda: True)
-    health_calls = iter([False, True])
-    monkeypatch.setattr(cockpit_control, "health_ok", lambda timeout=1.0: next(health_calls))
+def test_start_is_idempotent_for_identified_listener():
+    with patch.object(cockpit_control, "health_ok", return_value=True), patch(
+        "subprocess.Popen"
+    ) as popen:
+        assert cockpit_control.start() == (True, "cockpit already running")
+    popen.assert_not_called()
+
+
+def test_start_blocks_wrong_listener(tmp_path, monkeypatch):
     monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
-
-    mock_proc = MagicMock()
-    mock_proc.pid = 4242
-    with patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
-        ok, message = cockpit_control.start(poll_seconds=1.0)
-
-    assert ok is True
-    assert "4242" in message
-    assert mock_popen.called
-    _, kwargs = mock_popen.call_args
-    assert kwargs["cwd"] == str(cockpit_control._COCKPIT_DIR)
-    flags = kwargs["creationflags"]
-    # Module-level constants (getattr fallbacks) so this assertion also runs on
-    # POSIX CI, where subprocess lacks the Windows attributes.
-    assert flags & cockpit_control.DETACHED_PROCESS
-    assert flags & cockpit_control.CREATE_NEW_PROCESS_GROUP
-    assert flags & cockpit_control.CREATE_NO_WINDOW
+    monkeypatch.setattr(cockpit_control, "health_ok", lambda: False)
+    monkeypatch.setattr(
+        cockpit_control,
+        "status",
+        lambda: {"ready": False, "state": "wrong_listener"},
+    )
+    with patch("subprocess.Popen") as popen:
+        ok, message = cockpit_control.start()
+    assert ok is False and "wrong_listener" in message
+    popen.assert_not_called()
 
 
-def test_start_resolves_npm_cmd_on_windows(tmp_path, monkeypatch):
-    monkeypatch.setattr(cockpit_control, "_is_windows", lambda: True)
-    health_calls = iter([False, True])
-    monkeypatch.setattr(cockpit_control, "health_ok", lambda timeout=1.0: next(health_calls))
+@pytest.mark.parametrize(
+    ("windows", "expected"),
+    [(True, "npm.cmd"), (False, "npm")],
+)
+def test_start_uses_platform_preview_command(tmp_path, monkeypatch, windows, expected):
     monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
-    monkeypatch.setattr(cockpit_control, "_DIST_INDEX", tmp_path / "missing-index.html")
-
-    mock_proc = MagicMock()
-    mock_proc.pid = 1
-    with patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
-        cockpit_control.start(poll_seconds=1.0)
-
-    args, _ = mock_popen.call_args
-    assert args[0][0] == "npm.cmd"
-    # The bind host must be passed so Vite binds the interface health_ok probes
-    # (Windows IPv4/IPv6 localhost split — see _parse_host).
-    spawn_cmd = args[0]
-    assert "--host" in spawn_cmd
-    assert spawn_cmd[spawn_cmd.index("--host") + 1] == "127.0.0.1"
+    monkeypatch.setattr(cockpit_control, "_is_windows", lambda: windows)
+    monkeypatch.setattr(cockpit_control, "_DIST_INDEX", tmp_path / "missing")
+    monkeypatch.setattr(cockpit_control, "health_ok", lambda: False)
+    monkeypatch.setattr(cockpit_control, "status", lambda: {"ready": False, "state": "stopped"})
+    monkeypatch.setattr(cockpit_control, "recover", lambda: {"recovered": False})
+    monkeypatch.setattr(cockpit_control, "_observe_spawn", lambda pid: _observation(pid))
+    monkeypatch.setattr(supervision, "open_sensitive_log", lambda path: io.BytesIO())
+    health = iter([True])
+    monkeypatch.setattr(cockpit_control, "health_ok", lambda: next(health))
+    # The top-level idempotency probe must be false, then the readiness probe true.
+    health = iter([False, True])
+    monkeypatch.setattr(cockpit_control, "health_ok", lambda: next(health))
+    proc = MagicMock(pid=77)
+    proc.poll.return_value = None
+    with patch("subprocess.Popen", return_value=proc) as popen:
+        ok, _ = cockpit_control.start(poll_seconds=1)
+    assert ok is True
+    assert popen.call_args.args[0][0] == expected
+    kwargs = popen.call_args.kwargs
+    if windows:
+        assert kwargs["creationflags"] & cockpit_control.CREATE_NO_WINDOW
+    else:
+        assert kwargs["start_new_session"] is True
+    assert (tmp_path / "cockpit.service.json").is_file()
+    assert (tmp_path / "cockpit.pid").read_text() == "77"
 
 
 def test_start_prefers_dependency_free_dist_server(tmp_path, monkeypatch):
-    dist_index = tmp_path / "dist" / "index.html"
-    dist_server = tmp_path / "scripts" / "serve-dist.mjs"
-    dist_index.parent.mkdir()
-    dist_server.parent.mkdir()
-    dist_index.write_text("ok")
-    dist_server.write_text("// server")
-    monkeypatch.setattr(cockpit_control, "_DIST_INDEX", dist_index)
-    monkeypatch.setattr(cockpit_control, "_DIST_SERVER", dist_server)
-    health_calls = iter([False, True])
-    monkeypatch.setattr(cockpit_control, "health_ok", lambda timeout=1.0: next(health_calls))
+    index = tmp_path / "dist" / "index.html"
+    server = tmp_path / "scripts" / "serve-dist.mjs"
+    index.parent.mkdir()
+    server.parent.mkdir()
+    index.write_text("ok")
+    server.write_text("// server")
+    monkeypatch.setattr(cockpit_control, "_DIST_INDEX", index)
+    monkeypatch.setattr(cockpit_control, "_DIST_SERVER", server)
+    command = cockpit_control._command("127.0.0.1", 5173)
+    assert command[1:] == [str(server), "--port", "5173", "--host", "127.0.0.1"]
+    assert "npm" not in command[0].lower()
+
+
+def test_start_detects_early_child_exit_and_reports_sanitized_log(tmp_path, monkeypatch):
     monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    monkeypatch.setattr(cockpit_control, "health_ok", lambda: False)
+    monkeypatch.setattr(cockpit_control, "status", lambda: {"ready": False, "state": "stopped"})
+    monkeypatch.setattr(cockpit_control, "recover", lambda: {"recovered": False})
+    monkeypatch.setattr(cockpit_control, "_observe_spawn", lambda pid: _observation(pid, exists=False))
+    log = tmp_path / "logs" / "cockpit.log"
+    log.parent.mkdir()
+    log.write_text("token=super-secret\nboom", encoding="utf-8")
+    monkeypatch.setattr(supervision, "open_sensitive_log", lambda path: io.BytesIO())
+    proc = MagicMock(pid=88)
+    proc.poll.return_value = 1
+    with patch("subprocess.Popen", return_value=proc):
+        ok, message = cockpit_control.start(poll_seconds=0)
+    assert ok is False and "exited during startup" in message
+    assert "super-secret" not in message
+    assert "[REDACTED]" in message
 
-    mock_proc = MagicMock(pid=7)
-    with patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
-        ok, _ = cockpit_control.start(poll_seconds=1.0)
 
-    assert ok is True
-    command = mock_popen.call_args.args[0]
-    assert command[:2] == ["node", str(dist_server)]
-    assert "npm" not in " ".join(command)
-
-
-def test_start_resolves_npm_on_posix(tmp_path, monkeypatch):
-    monkeypatch.setattr(cockpit_control, "_is_windows", lambda: False)
-    health_calls = iter([False, True])
-    monkeypatch.setattr(cockpit_control, "health_ok", lambda timeout=1.0: next(health_calls))
+def test_status_reports_wrong_listener_without_state(tmp_path, monkeypatch):
     monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
-    monkeypatch.setattr(cockpit_control, "_DIST_INDEX", tmp_path / "missing-index.html")
+    monkeypatch.setattr(cockpit_control, "_health_kind", lambda: "none")
+    monkeypatch.setattr(
+        supervision,
+        "observe_port",
+        lambda *args, **kwargs: supervision.PortObservation("127.0.0.1", 5173, True),
+    )
+    result = cockpit_control.status()
+    assert result["state"] == "wrong_listener"
+    assert result["ready"] is False
 
-    mock_proc = MagicMock()
-    mock_proc.pid = 1
-    with patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
-        cockpit_control.start(poll_seconds=1.0)
 
-    args, _ = mock_popen.call_args
-    assert args[0][0] == "npm"
-
-
-def test_stop_with_no_pid_file_returns_message(tmp_path, monkeypatch):
+def test_status_reports_ready_only_for_exact_process_and_health(tmp_path, monkeypatch):
     monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
-    ok, message = cockpit_control.stop()
-    assert ok is False
-    assert message == "no pid file; cockpit not managed here"
+    _record(tmp_path)
+    monkeypatch.setattr(cockpit_control, "_health_kind", lambda: "production")
+    monkeypatch.setattr(supervision, "observe_process", lambda pid: _observation(pid))
+    monkeypatch.setattr(
+        supervision,
+        "observe_port",
+        lambda *args, **kwargs: supervision.PortObservation("127.0.0.1", 5173, True),
+    )
+    result = cockpit_control.status()
+    assert result["state"] == "ready"
+    assert result["ready"] is True
+    assert result["identity"]["matches"] is True
 
 
-def test_stop_skips_signal_and_unlinks_when_pid_already_gone(tmp_path, monkeypatch):
+def test_stop_without_state_preserves_legacy_compatibility(tmp_path, monkeypatch):
     monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
-    pid_file = tmp_path / "cockpit.pid"
-    pid_file.write_text("99999")
-    monkeypatch.setattr(cockpit_control, "_pid_alive", lambda pid: False)
-    with patch("subprocess.run") as mock_run, patch("os.kill") as mock_kill:
+    assert cockpit_control.stop() == (False, "no pid file; cockpit not managed here")
+
+
+def test_stop_removes_invalid_legacy_pid(tmp_path, monkeypatch):
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    pid = tmp_path / "cockpit.pid"
+    pid.write_text("not-a-pid")
+    assert cockpit_control.stop() == (False, "invalid pid file (removed)")
+    assert not pid.exists()
+
+
+def test_stop_refuses_live_legacy_pid_without_identity(tmp_path, monkeypatch):
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    (tmp_path / "cockpit.pid").write_text("4242")
+    monkeypatch.setattr(supervision, "observe_process", lambda pid: _observation(pid))
+    with patch.object(cockpit_control, "_signal_posix_process_tree") as kill:
         ok, message = cockpit_control.stop()
-    assert ok is False
-    assert "already gone" in message
-    assert "99999" in message
-    assert not pid_file.exists()
-    mock_run.assert_not_called()
-    mock_kill.assert_not_called()
+    assert ok is False and "refusing" in message
+    assert (tmp_path / "cockpit.pid").exists()
+    kill.assert_not_called()
 
 
-def test_stop_signals_when_pid_is_alive(tmp_path, monkeypatch):
+def test_stop_refuses_reused_pid_and_retains_state(tmp_path, monkeypatch):
     monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
-    pid_file = tmp_path / "cockpit.pid"
-    pid_file.write_text("4242")
-    monkeypatch.setattr(cockpit_control, "_pid_alive", lambda pid: True)
-    monkeypatch.setattr(cockpit_control, "_wait_for_exit", lambda pid: True)
-    monkeypatch.setattr(cockpit_control, "_is_windows", lambda: False)
-    with patch("os.kill") as mock_kill:
+    _record(tmp_path)
+    monkeypatch.setattr(supervision, "observe_process", lambda pid: _observation(pid, executable="other"))
+    with patch.object(cockpit_control, "_signal_posix_process_tree") as kill:
         ok, message = cockpit_control.stop()
-    assert ok is True
-    assert "4242" in message
-    mock_kill.assert_called_once_with(4242, 15)
-    assert not pid_file.exists()
+    assert ok is False and "executable_mismatch" in message
+    assert (tmp_path / "cockpit.service.json").exists()
+    kill.assert_not_called()
 
 
-def test_stop_windows_kills_entire_process_tree(tmp_path, monkeypatch):
+def test_stop_signals_exact_posix_process_and_verifies_exit(tmp_path, monkeypatch):
     monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
-    pid_file = tmp_path / "cockpit.pid"
-    pid_file.write_text("4242")
-    monkeypatch.setattr(cockpit_control, "_pid_alive", lambda pid: True)
-    monkeypatch.setattr(cockpit_control, "_wait_for_exit", lambda pid: True)
-    monkeypatch.setattr(cockpit_control, "_is_windows", lambda: True)
-    with patch("subprocess.run") as mock_run:
+    _record(tmp_path)
+    monkeypatch.setattr(cockpit_control, "_is_windows", lambda: False)
+    monkeypatch.setattr(supervision, "observe_process", lambda pid: _observation(pid))
+    monkeypatch.setattr(cockpit_control, "_wait_for_record_exit", lambda record: True)
+    with patch.object(cockpit_control, "_signal_posix_process_tree") as kill:
         ok, message = cockpit_control.stop()
-    assert ok is True
-    assert "4242" in message
-    assert mock_run.call_args.args[0] == ["taskkill", "/PID", "4242", "/T", "/F"]
-    assert not pid_file.exists()
+    assert ok is True and "4242" in message
+    kill.assert_called_once_with(4242)
+    assert not (tmp_path / "cockpit.service.json").exists()
+    assert not (tmp_path / "cockpit.pid").exists()
 
 
-def test_stop_retains_pid_file_when_tree_survives(tmp_path, monkeypatch):
+def test_stop_retains_state_when_termination_unverified(tmp_path, monkeypatch):
     monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
-    pid_file = tmp_path / "cockpit.pid"
-    pid_file.write_text("4242")
-    monkeypatch.setattr(cockpit_control, "_pid_alive", lambda pid: True)
-    monkeypatch.setattr(cockpit_control, "_wait_for_exit", lambda pid: False)
-    monkeypatch.setattr(cockpit_control, "_is_windows", lambda: True)
-    with patch("subprocess.run"):
+    _record(tmp_path)
+    monkeypatch.setattr(cockpit_control, "_is_windows", lambda: False)
+    monkeypatch.setattr(supervision, "observe_process", lambda pid: _observation(pid))
+    monkeypatch.setattr(cockpit_control, "_wait_for_record_exit", lambda record: False)
+    with patch.object(cockpit_control, "_signal_posix_process_tree"):
         ok, message = cockpit_control.stop()
-    assert ok is False
-    assert "still running" in message
-    assert pid_file.exists()
+    assert ok is False and "state retained" in message
+    assert (tmp_path / "cockpit.service.json").exists()
 
 
-def test_pid_alive_posix_returns_false_for_dead_pid(monkeypatch):
-    monkeypatch.setattr(cockpit_control, "_is_windows", lambda: False)
-    with patch("os.kill", side_effect=ProcessLookupError):
-        assert cockpit_control._pid_alive(123) is False
+def test_recover_removes_only_confirmed_dead_state(tmp_path, monkeypatch):
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    _record(tmp_path)
+    monkeypatch.setattr(supervision, "observe_process", lambda pid: _observation(pid, exists=False))
+    assert cockpit_control.recover()["recovered"] is True
+    assert not (tmp_path / "cockpit.service.json").exists()
 
 
-def test_pid_alive_posix_returns_true_for_live_pid(monkeypatch):
-    monkeypatch.setattr(cockpit_control, "_is_windows", lambda: False)
-    with patch("os.kill", return_value=None):
-        assert cockpit_control._pid_alive(123) is True
-
-
-def test_pid_alive_windows_checks_tasklist_output(monkeypatch):
-    monkeypatch.setattr(cockpit_control, "_is_windows", lambda: True)
-    mock_result = MagicMock()
-    # subprocess.run(capture_output=True) without text=True yields bytes; the
-    # code decodes with errors="replace" to survive CP1252 console output.
-    mock_result.stdout = b"node.exe                      4242 Console"
-    with patch("subprocess.run", return_value=mock_result) as mock_run:
-        assert cockpit_control._pid_alive(4242) is True
-        args = mock_run.call_args[0][0]
-        assert args[0] == "tasklist"
-        assert "PID eq 4242" in args
-
-
-def test_pid_alive_windows_returns_false_when_pid_absent(monkeypatch):
-    monkeypatch.setattr(cockpit_control, "_is_windows", lambda: True)
-    mock_result = MagicMock()
-    mock_result.stdout = b"INFO: No tasks are running which match the specified criteria."
-    with patch("subprocess.run", return_value=mock_result):
-        assert cockpit_control._pid_alive(4242) is False
+def test_recover_refuses_live_process(tmp_path, monkeypatch):
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    _record(tmp_path)
+    monkeypatch.setattr(supervision, "observe_process", lambda pid: _observation(pid))
+    result = cockpit_control.recover()
+    assert result == {"recovered": False, "reason": "process_exists", "pid": 4242}
+    assert (tmp_path / "cockpit.service.json").exists()
