@@ -28,7 +28,16 @@ DEFAULT_PORTS = frozenset({3000, 3001, 5173, 8081, 8484})
 TEST_LABELS = frozenset(
     {"planning", "python-core", "python-runtime", "node-cli", "rust-gateway"}
 )
-REQUIRED_LABELS = ("planning-integrity", "gateway-identity", "doctor", "status")
+REQUIRED_LABELS = (
+    "planning-integrity",
+    "prepare-config",
+    "prepare-database",
+    "gateway-identity",
+    "start-core",
+    "status-ready",
+    "start-idempotent",
+    "doctor",
+)
 CANARY_NAME = "ATLAS_GATE_SECRET_CANARY"
 SECRET_PATTERNS = (
     re.compile(r"(?i)(?:api[_-]?key|authorization|owner[_-]?token|password)\s*[:=]"),
@@ -47,6 +56,7 @@ class Command:
     label: str
     argv: tuple[str, ...]
     cwd: Path
+    expectation: str = "zero"
 
 
 @dataclass(frozen=True)
@@ -68,6 +78,7 @@ class GateConfig:
     gateway_binary: Path
     release_version: str
     test_labels: tuple[str, ...]
+    installed_launcher: Path | None = None
     resume: bool = False
 
 
@@ -132,6 +143,8 @@ def validate_paths(paths: GatePaths, *, repo: Path, resume: bool) -> GatePaths:
         if value in current_values:
             raise GateError(f"{label} matches a live environment path")
         normalized[label] = value
+    if normalized["ATLAS_CONFIG"] != normalized["ATLAS_HOME"] / "config.yaml":
+        raise GateError("ATLAS_CONFIG must be <isolated ATLAS_HOME>/config.yaml")
     return GatePaths(
         root=root,
         atlas_home=normalized["ATLAS_HOME"],
@@ -181,16 +194,29 @@ def validate_test_labels(labels: Sequence[str]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(labels))
 
 
-def _source_cli(python: str, *arguments: str) -> tuple[str, ...]:
+def _source_cli(python: str, *arguments: str, json_out: bool = True) -> tuple[str, ...]:
     code = "from atlas_runtime.cli.main import app; app()"
-    return (python, "-c", code, *arguments, "--json")
+    suffix = ("--json",) if json_out else ()
+    return (python, "-c", code, *arguments, *suffix)
 
 
 def build_commands(config: GateConfig) -> tuple[Command, ...]:
     repo = _resolved(config.repo)
     python = sys.executable
     node = "node"
-    commands = [
+    if config.mode == "source":
+
+        def cli(*args: str, json_out: bool = True) -> tuple[str, ...]:
+            return _source_cli(python, *args, json_out=json_out)
+    else:
+        if config.paths.install_root is None or config.installed_launcher is None:
+            raise GateError("installed mode requires an isolated launcher entry point")
+
+        def cli(*args: str, json_out: bool = True) -> tuple[str, ...]:
+            suffix = ("--json",) if json_out else ()
+            return (str(config.installed_launcher), *args, *suffix)
+
+    commands: list[Command] = [
         Command(
             "gate-01-planning",
             REQUIRED_LABELS[0],
@@ -204,8 +230,29 @@ def build_commands(config: GateConfig) -> tuple[Command, ...]:
             repo,
         ),
         Command(
-            "gate-02-identity",
+            "gate-02-config",
             REQUIRED_LABELS[1],
+            (
+                python,
+                str(repo / "scripts/production/prepare_config.py"),
+                "--path",
+                str(config.paths.config),
+                "--gateway-port",
+                str(config.ports[0]),
+                "--cockpit-port",
+                str(config.ports[1]),
+            ),
+            repo,
+        ),
+        Command(
+            "gate-03-database",
+            REQUIRED_LABELS[2],
+            cli("db", "init", json_out=False),
+            repo,
+        ),
+        Command(
+            "gate-04-identity",
+            REQUIRED_LABELS[3],
             (
                 node,
                 str(repo / "scripts/ci/verify-gateway-identity.js"),
@@ -216,22 +263,28 @@ def build_commands(config: GateConfig) -> tuple[Command, ...]:
             ),
             repo,
         ),
+        Command(
+            "gate-05-start",
+            REQUIRED_LABELS[4],
+            cli("up", "--services", "gateway,cockpit"),
+            repo,
+        ),
+        Command(
+            "gate-06-ready",
+            REQUIRED_LABELS[5],
+            cli("gateway", "status"),
+            repo,
+            "ready",
+        ),
+        Command(
+            "gate-07-idempotent",
+            REQUIRED_LABELS[6],
+            cli("up", "--services", "gateway,cockpit"),
+            repo,
+            "idempotent",
+        ),
+        Command("gate-08-doctor", REQUIRED_LABELS[7], cli("doctor"), repo),
     ]
-    if config.mode == "source":
-        doctor = _source_cli(python, "doctor")
-        status = _source_cli(python, "gateway", "status")
-    else:
-        if config.paths.install_root is None:
-            raise GateError("installed mode requires an isolated install root")
-        atlas_js = config.paths.install_root / "bin" / "atlas.js"
-        doctor = (node, str(atlas_js), "doctor", "--json")
-        status = (node, str(atlas_js), "gateway", "status", "--json")
-    commands.extend(
-        [
-            Command("gate-03-doctor", REQUIRED_LABELS[2], doctor, repo),
-            Command("gate-04-status", REQUIRED_LABELS[3], status, repo),
-        ]
-    )
     test_catalog = {
         "planning": (python, "-m", "pytest", "-q", "tests/test_planning_integrity.py"),
         "python-core": (python, "-m", "pytest", "-q", "packages/atlas-core/tests"),
@@ -247,15 +300,35 @@ def build_commands(config: GateConfig) -> tuple[Command, ...]:
             "cargo",
             "test",
             "--manifest-path",
-            "native/atlas-gateway/Cargo.toml",
+            "native/atlas-core-rs/Cargo.toml",
+            "-p",
+            "atlas-gateway",
         ),
     }
-    for index, label in enumerate(config.test_labels, start=5):
+    for index, label in enumerate(config.test_labels, start=9):
         commands.append(
             Command(
                 f"gate-{index:02d}-test", f"test:{label}", test_catalog[label], repo
             )
         )
+    commands.extend(
+        (
+            Command("gate-90-stop", "stop-ordered", cli("down"), repo),
+            Command(
+                "gate-91-stopped",
+                "status-stopped",
+                cli("gateway", "status"),
+                repo,
+                "stopped",
+            ),
+            Command(
+                "gate-92-recover",
+                "recover-state",
+                cli("gateway", "recover", json_out=False),
+                repo,
+            ),
+        )
+    )
     return tuple(commands)
 
 
@@ -272,6 +345,7 @@ def safe_environment(config: GateConfig) -> dict[str, str]:
             "ATLAS_GATEWAY_URL": f"http://127.0.0.1:{config.ports[0]}",
             "ATLAS_COCKPIT_URL": f"http://127.0.0.1:{config.ports[1]}",
             "ATLAS_FREELLMAPI_URL": f"http://127.0.0.1:{config.ports[2]}/v1",
+            "ATLAS_GATEWAY_BIN": str(config.gateway_binary),
             CANARY_NAME: f"canary-{uuid.uuid4().hex}",
         }
     )
@@ -312,7 +386,7 @@ def default_runner(command: Command, env: dict[str, str]) -> int:
         check=False,
         shell=False,
     )
-    if completed.returncode != 0 or command.label != "status":
+    if completed.returncode != 0 or command.expectation == "zero":
         return completed.returncode
     try:
         payload = json.loads(completed.stdout.decode("utf-8"))
@@ -320,8 +394,34 @@ def default_runner(command: Command, env: dict[str, str]) -> int:
         return 1
     if not isinstance(payload, dict):
         return 1
-    ready = payload.get("ready", payload.get("running", False))
-    return 0 if ready is True else 1
+    if command.expectation == "ready":
+        ready = payload.get("ready", payload.get("running", False))
+        return 0 if ready is True else 1
+    if command.expectation == "stopped":
+        state = payload.get("state")
+        stopped = payload.get("running") is False and state in {
+            None,
+            "stopped",
+            "not_managed",
+            "not_installed",
+        }
+        return 0 if stopped else 1
+    if command.expectation == "idempotent":
+        components = payload.get("components")
+        if not isinstance(components, list):
+            return 1
+        core = [
+            item
+            for item in components
+            if isinstance(item, dict)
+            and item.get("component") in {"gateway", "cockpit"}
+        ]
+        idempotent = len(core) == 2 and all(
+            item.get("ok") is True and item.get("code") == "already_ready"
+            for item in core
+        )
+        return 0 if idempotent else 1
+    return 1
 
 
 def _fingerprint(config: GateConfig, commands: Sequence[Command]) -> str:
@@ -348,14 +448,49 @@ def execute_gate(
     config: GateConfig, *, dry_run: bool = False, runner: Runner = default_runner
 ) -> dict[str, object]:
     paths = validate_paths(config.paths, repo=config.repo, resume=config.resume)
+    if config.mode not in {"source", "installed"}:
+        raise GateError("mode must be source or installed")
+    gateway_binary = _resolved(config.gateway_binary)
+    if not config.gateway_binary.is_absolute():
+        raise GateError("gateway binary must be an explicit absolute path")
+    if not dry_run and not gateway_binary.is_file():
+        raise GateError("gateway binary does not exist")
+    installed_launcher = config.installed_launcher
+    if config.mode == "installed":
+        if paths.install_root is None or installed_launcher is None:
+            raise GateError("installed mode requires install root and launcher")
+        if not installed_launcher.is_absolute():
+            raise GateError("installed launcher must be an explicit absolute path")
+        installed_launcher = _resolved(installed_launcher)
+        if not _is_descendant(installed_launcher, paths.install_root):
+            raise GateError(
+                "installed launcher must be below the isolated install root"
+            )
+        if not _is_descendant(gateway_binary, paths.install_root):
+            raise GateError(
+                "installed gateway binary must be below the isolated install root"
+            )
+        if not dry_run:
+            if not installed_launcher.is_file():
+                raise GateError("installed launcher does not exist")
+            if os.name == "nt" and installed_launcher.suffix.lower() not in {
+                ".exe",
+                ".com",
+            }:
+                raise GateError(
+                    "installed launcher must be a direct executable, not a shell wrapper"
+                )
+            if os.name != "nt" and not os.access(installed_launcher, os.X_OK):
+                raise GateError("installed launcher is not executable")
     config = GateConfig(
         mode=config.mode,
         repo=_resolved(config.repo),
         paths=paths,
         ports=validate_ports(config.ports),
-        gateway_binary=_resolved(config.gateway_binary),
+        gateway_binary=gateway_binary,
         release_version=config.release_version,
         test_labels=validate_test_labels(config.test_labels),
+        installed_launcher=installed_launcher,
         resume=config.resume,
     )
     commands = build_commands(config)
@@ -403,7 +538,44 @@ def execute_gate(
     }
     steps = evidence["steps"]
     assert isinstance(steps, list)
-    for command in commands:
+    primary = tuple(
+        command for command in commands if not command.id.startswith("gate-9")
+    )
+    teardown = tuple(command for command in commands if command.id.startswith("gate-9"))
+    if dry_run:
+        for command in commands:
+            steps.append(
+                {
+                    "id": command.id,
+                    "label": command.label,
+                    "status": "planned",
+                    "duration_ms": 0,
+                }
+            )
+
+    def run_one(command: Command) -> int:
+        started = time.monotonic()
+        try:
+            returncode = runner(command, env)
+        except Exception as exc:  # noqa: BLE001 - teardown must survive runner faults
+            returncode = 127
+            failure_kind = type(exc).__name__
+        else:
+            failure_kind = None
+        duration = max(0, round((time.monotonic() - started) * 1000))
+        step = {
+            "id": command.id,
+            "label": command.label,
+            "status": "passed" if returncode == 0 else "failed",
+            "duration_ms": duration,
+        }
+        if failure_kind:
+            step["failure_kind"] = failure_kind
+        steps.append(step)
+        return returncode
+
+    failure_label: str | None = None
+    for command in () if dry_run else primary:
         if command.id in passed:
             steps.append(
                 {
@@ -414,44 +586,32 @@ def execute_gate(
                 }
             )
             continue
-        if dry_run:
-            steps.append(
-                {
-                    "id": command.id,
-                    "label": command.label,
-                    "status": "planned",
-                    "duration_ms": 0,
-                }
-            )
-            continue
-        started = time.monotonic()
-        try:
-            returncode = runner(command, env)
-        except (OSError, subprocess.SubprocessError) as exc:
-            returncode = 127
-            failure_kind = type(exc).__name__
-        else:
-            failure_kind = None
-        duration = max(0, round((time.monotonic() - started) * 1000))
-        status = "passed" if returncode == 0 else "failed"
-        step = {
-            "id": command.id,
-            "label": command.label,
-            "status": status,
-            "duration_ms": duration,
-        }
-        if failure_kind:
-            step["failure_kind"] = failure_kind
-        steps.append(step)
+        returncode = run_one(command)
         if returncode != 0:
-            evidence["status"] = "failed"
-            evidence["finished_at"] = utc_now()
-            atomic_json(evidence_path, evidence, canary=canary)
-            raise GateError(f"hard gate failed: {command.label}")
+            failure_label = command.label
+            break
         passed.add(command.id)
         state["passed"] = sorted(passed)
         atomic_json(state_path, state, canary=canary)
-    evidence["status"] = "dry_run" if dry_run else "passed"
+
+    for command in () if dry_run else teardown:
+        if run_one(command) != 0 and failure_label is None:
+            failure_label = command.label
+
+    if failure_label:
+        # Teardown stops the services. A resumed failed run must replay the
+        # lifecycle from start even if a later test was the original failure.
+        passed = {
+            item
+            for item in passed
+            if item.startswith(("gate-01", "gate-02", "gate-03", "gate-04"))
+        }
+        state["passed"] = sorted(passed)
+        atomic_json(state_path, state, canary=canary)
+
+    evidence["status"] = (
+        "dry_run" if dry_run else "failed" if failure_label else "passed"
+    )
     evidence["finished_at"] = utc_now()
     atomic_json(evidence_path, evidence, canary=canary)
     cleanup_paths = (
@@ -475,6 +635,8 @@ def execute_gate(
         ],
     }
     atomic_json(root / "cleanup-manifest.json", cleanup, canary=canary)
+    if failure_label:
+        raise GateError(f"hard gate failed: {failure_label}")
     return evidence
 
 
@@ -488,6 +650,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--npm-prefix", type=Path, required=True)
     parser.add_argument("--install-root", type=Path)
+    parser.add_argument("--installed-launcher", type=Path)
     parser.add_argument("--gateway-binary", type=Path, required=True)
     parser.add_argument("--release-version", required=True)
     parser.add_argument("--port", type=int, action="append", required=True)
@@ -516,6 +679,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         gateway_binary=args.gateway_binary,
         release_version=args.release_version,
         test_labels=tuple(args.test_command),
+        installed_launcher=args.installed_launcher,
         resume=args.resume,
     )
     try:

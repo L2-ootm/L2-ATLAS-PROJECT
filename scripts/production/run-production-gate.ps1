@@ -12,6 +12,7 @@ param(
     [Parameter(Mandatory)][int[]]$Port,
     [ValidateSet('planning', 'python-core', 'python-runtime', 'node-cli', 'rust-gateway')][string[]]$TestCommand = @(),
     [string]$InstallRoot,
+    [string]$InstalledLauncher,
     [switch]$Resume,
     [switch]$DryRun
 )
@@ -27,6 +28,7 @@ $gateArgs = @(
 foreach ($value in $Port) { $gateArgs += @('--port', [string]$value) }
 foreach ($label in $TestCommand) { $gateArgs += @('--test-command', $label) }
 if ($InstallRoot) { $gateArgs += @('--install-root', $InstallRoot) }
+if ($InstalledLauncher) { $gateArgs += @('--installed-launcher', $InstalledLauncher) }
 if ($Resume) { $gateArgs += '--resume' }
 if ($DryRun) { $gateArgs += '--dry-run' }
 
