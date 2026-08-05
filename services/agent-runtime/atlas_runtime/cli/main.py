@@ -1824,11 +1824,17 @@ def gateway_start() -> None:
 
 
 @gateway_app.command("status")
-def gateway_status() -> None:
-    """Print 'online' or 'offline' based on the gateway /health endpoint."""
+def gateway_status(
+    json_out: bool = typer.Option(False, "--json", help="Emit machine-readable JSON."),
+) -> None:
+    """Print the ownership-aware gateway lifecycle status."""
     from atlas_runtime import gateway_control
 
-    typer.echo("online" if gateway_control.health_ok() else "offline")
+    payload = gateway_control.status()
+    if json_out:
+        typer.echo(json.dumps(payload))
+    else:
+        typer.echo("online" if payload.get("running") else "offline")
 
 
 @gateway_app.command("stop")
@@ -1842,11 +1848,28 @@ def gateway_stop() -> None:
         raise typer.Exit(1)
 
 
+@gateway_app.command("recover")
+def gateway_recover() -> None:
+    """Remove safely-proven stale gateway state without killing a process."""
+    from atlas_runtime import gateway_control
+
+    ok, message = gateway_control.recover()
+    typer.echo(message)
+    if not ok:
+        raise typer.Exit(1)
+
+
 # (key, label, control-module name, default-checked-when-non-interactive, start() kwargs)
 _UP_SERVICE_REGISTRY = (
     ("gateway", "Gateway (core API)", "gateway_control", True, {}),
     ("cockpit", "Cockpit (web UI)", "cockpit_control", True, {}),
-    ("freellmapi", "FreeLLMAPI sidecar (free-tier LLM gateway)", "freellmapi_control", True, {}),
+    (
+        "freellmapi",
+        "FreeLLMAPI sidecar (free-tier LLM gateway)",
+        "freellmapi_control",
+        True,
+        {"poll_seconds": 10.0},
+    ),
     ("cashflow", "Cashflow module", "cashflow_control", False, {}),
     ("discord", "Discord bot sidecar", "discord_control", False, {}),
 )
@@ -1906,13 +1929,14 @@ def _up_cmd(
     for key, _, _, _, start_kwargs in _UP_SERVICE_REGISTRY:
         is_core = key in _UP_CORE_KEYS
         if running[key]:
-            ok, message = True, "already running"
+            ok, message, code = True, "already running", "already_ready"
         elif key not in chosen:
-            ok, message = True, "skipped"
+            ok, message, code = True, "skipped", "skipped"
         elif not is_core and not core_ok:
-            ok, message = True, "skipped — gateway/cockpit not healthy"
+            ok, message, code = True, "skipped — gateway/cockpit not healthy", "dependency_unready"
         else:
             ok, message = modules[key].start(**start_kwargs)
+            code = "started" if ok else "start_failed"
             if key == "gateway" and ok and gateway_control.binary_stale():
                 typer.echo(
                     "gateway: WARNING binary predates its Rust sources — "
@@ -1921,7 +1945,7 @@ def _up_cmd(
             if is_core and not ok:
                 core_ok = False
                 failed = True
-        results.append({"component": key, "ok": ok, "message": message})
+        results.append({"component": key, "ok": ok, "code": code, "message": message})
         if not json_out:
             typer.echo(f"{key}: {message}")
 
@@ -1937,18 +1961,28 @@ app.command(
 )(_up_cmd)
 
 
-def _stop_result_is_idempotent_ok(message: str) -> bool:
-    normalized = message.lower()
-    return any(
-        marker in normalized
-        for marker in (
-            "not running",
-            "not managed here",
-            "no pid",
-            "no pid file",
-            "already gone",
-        )
-    )
+_STOPPED_SERVICE_STATES = frozenset({"stopped", "not_managed", "not_installed"})
+
+
+def _structured_service_state(module: object) -> str:
+    """Normalize lifecycle status without interpreting human-facing messages."""
+    status_fn = getattr(module, "status", None)
+    if callable(status_fn):
+        try:
+            payload = status_fn()
+        except Exception:
+            return "unknown"
+        if isinstance(payload, dict):
+            state = payload.get("state")
+            if isinstance(state, str) and state:
+                return state
+            if payload.get("ready") is True:
+                return "ready"
+            if payload.get("running") is True:
+                return "running"
+            if payload.get("running") is False:
+                return "stopped"
+    return "unknown"
 
 
 def _down_cmd(
@@ -1964,19 +1998,29 @@ def _down_cmd(
     )
 
     stop_plan = (
-        ("freellmapi", freellmapi_control.stop),
-        ("cashflow", cashflow_control.stop),
-        ("discord", discord_control.stop),
-        ("cockpit", cockpit_control.stop),
-        ("gateway", gateway_control.stop),
+        ("freellmapi", freellmapi_control),
+        ("cashflow", cashflow_control),
+        ("discord", discord_control),
+        ("cockpit", cockpit_control),
+        ("gateway", gateway_control),
     )
     results = []
     failed = False
-    for component, stop in stop_plan:
-        ok, message = stop()
-        effective_ok = ok or _stop_result_is_idempotent_ok(message)
+    for component, module in stop_plan:
+        before = _structured_service_state(module)
+        ok, message = module.stop()
+        after = _structured_service_state(module)
+        already_stopped = before in _STOPPED_SERVICE_STATES and after in _STOPPED_SERVICE_STATES
+        effective_ok = ok or already_stopped
         failed = failed or not effective_ok
-        result = {"component": component, "ok": effective_ok, "message": message}
+        code = "stopped" if ok else "already_stopped" if already_stopped else "stop_failed"
+        result = {
+            "component": component,
+            "ok": effective_ok,
+            "code": code,
+            "state": after,
+            "message": message,
+        }
         results.append(result)
         if not json_out:
             typer.echo(f"{component}: {message}")

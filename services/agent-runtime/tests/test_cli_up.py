@@ -30,7 +30,16 @@ def _patch_no_op_sidecar(monkeypatch):
     for module in _UP_MODULES:
         monkeypatch.setattr(module, "health_ok", lambda timeout=1.0: False)
     monkeypatch.setattr(gateway_control, "binary_stale", lambda: False)
-    monkeypatch.setattr(freellmapi_control, "start", lambda: (True, "freellmapi already running"))
+    monkeypatch.setattr(
+        freellmapi_control,
+        "start",
+        lambda **_kwargs: (True, "freellmapi already running"),
+    )
+
+
+def _patch_structured_statuses(monkeypatch, state: str = "running") -> None:
+    for module in _UP_MODULES:
+        monkeypatch.setattr(module, "status", lambda current=state: {"state": current})
 
 
 def test_up_exits_zero_and_echoes_both_messages(monkeypatch):
@@ -75,7 +84,11 @@ def test_up_starts_freellmapi_after_gateway_and_cockpit_healthy(monkeypatch):
     _patch_no_op_sidecar(monkeypatch)
     monkeypatch.setattr(gateway_control, "start", lambda: (True, "gateway started"))
     monkeypatch.setattr(cockpit_control, "start", lambda: (True, "cockpit started"))
-    monkeypatch.setattr(freellmapi_control, "start", lambda: (True, "freellmapi started (pid 123)"))
+    monkeypatch.setattr(
+        freellmapi_control,
+        "start",
+        lambda **_kwargs: (True, "freellmapi started (pid 123)"),
+    )
     result = runner.invoke(app, ["up"])
     assert result.exit_code == 0, result.output
     assert "freellmapi: freellmapi started (pid 123)" in result.output
@@ -156,7 +169,30 @@ def test_up_json_reports_each_component(monkeypatch):
     assert '"component": "gateway"' in result.output
 
 
+def test_gateway_status_json_uses_structured_control_status(monkeypatch):
+    monkeypatch.setattr(
+        gateway_control,
+        "status",
+        lambda: {"service": "gateway", "state": "identity_mismatch", "running": False},
+    )
+
+    result = runner.invoke(app, ["gateway", "status", "--json"])
+
+    assert result.exit_code == 0, result.output
+    assert '"state": "identity_mismatch"' in result.output
+
+
+def test_gateway_recover_surfaces_control_result(monkeypatch):
+    monkeypatch.setattr(gateway_control, "recover", lambda: (True, "stale state removed"))
+
+    result = runner.invoke(app, ["gateway", "recover"])
+
+    assert result.exit_code == 0, result.output
+    assert "stale state removed" in result.output
+
+
 def test_down_stops_sidecars_then_cockpit_then_gateway(monkeypatch):
+    _patch_structured_statuses(monkeypatch)
     call_order: list[str] = []
 
     monkeypatch.setattr(
@@ -193,6 +229,7 @@ def test_down_stops_sidecars_then_cockpit_then_gateway(monkeypatch):
 
 
 def test_down_json_reports_each_component(monkeypatch):
+    _patch_structured_statuses(monkeypatch)
     monkeypatch.setattr(freellmapi_control, "stop", lambda: (True, "not running"))
     monkeypatch.setattr(cashflow_control, "stop", lambda: (True, "not running"))
     monkeypatch.setattr(discord_control, "stop", lambda: (True, "not running"))
@@ -207,6 +244,17 @@ def test_down_json_reports_each_component(monkeypatch):
     assert '"component": "gateway"' in result.output
 
 
+def test_down_idempotence_uses_structured_state_not_message(monkeypatch):
+    _patch_structured_statuses(monkeypatch, "stopped")
+    for module in _UP_MODULES:
+        monkeypatch.setattr(module, "stop", lambda: (False, "localized/nonstandard text"))
+
+    result = runner.invoke(app, ["down", "--json"])
+
+    assert result.exit_code == 0, result.output
+    assert '"code": "already_stopped"' in result.output
+
+
 def _patch_all_stops(monkeypatch, order):
     for name, module in (
         ("freellmapi", freellmapi_control),
@@ -219,6 +267,7 @@ def _patch_all_stops(monkeypatch, order):
 
 
 def test_restart_runs_down_then_up(monkeypatch):
+    _patch_structured_statuses(monkeypatch)
     order: list[str] = []
     _patch_all_stops(monkeypatch, order)
     _patch_no_op_sidecar(monkeypatch)
@@ -232,6 +281,7 @@ def test_restart_runs_down_then_up(monkeypatch):
 
 
 def test_restart_aborts_up_when_down_fails(monkeypatch):
+    _patch_structured_statuses(monkeypatch)
     started: list[str] = []
     monkeypatch.setattr(freellmapi_control, "stop", lambda: (True, "stopped"))
     monkeypatch.setattr(cashflow_control, "stop", lambda: (True, "stopped"))
@@ -245,6 +295,7 @@ def test_restart_aborts_up_when_down_fails(monkeypatch):
 
 
 def test_restart_forwards_services_selection(monkeypatch):
+    _patch_structured_statuses(monkeypatch)
     order: list[str] = []
     _patch_all_stops(monkeypatch, order)
     _patch_no_op_sidecar(monkeypatch)
