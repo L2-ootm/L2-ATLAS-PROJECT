@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, X } from 'lucide-react';
 import { Page } from '../components/Page';
@@ -21,14 +21,16 @@ interface LedgerEvent extends AuditEvent {
 }
 
 type Load =
-	| { s: 'loading' }
+	| { s: 'no_owner_session'; reason: 'missing_session' | 'missing_owner_token' }
+	| { s: 'loading'; ownerKey: string }
 	| {
 			s: 'ready';
+			ownerKey: string;
 			events: LedgerEvent[];
 			nextCursor: string | null;
 			warnings: number;
 	  }
-	| { s: 'error' };
+	| { s: 'error'; ownerKey: string };
 
 function evidenceState(event: { data: unknown }): string | null {
 	if (!event.data || typeof event.data !== 'object') return null;
@@ -70,7 +72,7 @@ function eventTone(ev: AuditEvent): string {
 }
 
 export default function Ledger() {
-	const [load, setLoad] = useState<Load>({ s: 'loading' });
+	const [load, setLoad] = useState<Load>({ s: 'no_owner_session', reason: 'missing_session' });
 	const [query, setQuery] = useState('');
 	const [typeFilter, setTypeFilter] = useState('ALL');
 	const [policyOnly, setPolicyOnly] = useState(false);
@@ -81,20 +83,41 @@ export default function Ledger() {
 	const { session } = useAgentSurface();
 	const sessionId = session?.id;
 	const ownerToken = session?.owner_token;
+	const ownerKey = sessionId && ownerToken ? `${sessionId}\u0000${ownerToken}` : null;
+	const activeOwnerKey = useRef(ownerKey);
+	const requestSequence = useRef(0);
+	activeOwnerKey.current = ownerKey;
 
-	const loadPage = useCallback(async (after?: string) => {
-		if (!sessionId || !ownerToken) {
-			setLoad({ s: 'error' });
+	const loadPage = useCallback(async (after?: string, signal?: AbortSignal) => {
+		const requestId = ++requestSequence.current;
+		if (!sessionId) {
+			setRefetching(false);
+			setLoad({ s: 'no_owner_session', reason: 'missing_session' });
 			return;
 		}
+		if (!ownerToken) {
+			setRefetching(false);
+			setLoad({ s: 'no_owner_session', reason: 'missing_owner_token' });
+			return;
+		}
+		const requestOwnerKey = `${sessionId}\u0000${ownerToken}`;
+		if (!after) setLoad({ s: 'loading', ownerKey: requestOwnerKey });
 		setRefetching(true);
 		try {
 			const page = await listAuditEvidence(sessionId, ownerToken, {
 				after,
-				limit: 200
+				limit: 200,
+				signal
 			});
 			setLoad((current) => {
-				const prior = after && current.s === 'ready' ? current.events : [];
+				if (
+					signal?.aborted ||
+					requestId !== requestSequence.current ||
+					activeOwnerKey.current !== requestOwnerKey
+				) return current;
+				const prior = after && current.s === 'ready' && current.ownerKey === requestOwnerKey
+					? current.events
+					: [];
 				const events = page.events.map((event: EvidenceAuditEvent, index): LedgerEvent => ({
 					...event,
 					// logProjection only needs a local ordinal for burst grouping and
@@ -108,31 +131,56 @@ export default function Ledger() {
 				const combined = [...prior, ...events];
 				return {
 					s: 'ready',
+					ownerKey: requestOwnerKey,
 					events: combined,
 					nextCursor: page.next_cursor,
 					warnings: combined.filter((event) => evidenceState(event) !== null).length
 				};
 			});
 		} catch {
-			setLoad({ s: 'error' });
+			if (
+				!signal?.aborted &&
+				requestId === requestSequence.current &&
+				activeOwnerKey.current === requestOwnerKey
+			) setLoad({ s: 'error', ownerKey: requestOwnerKey });
 		} finally {
-			setRefetching(false);
+			if (
+				requestId === requestSequence.current &&
+				activeOwnerKey.current === requestOwnerKey
+			) setRefetching(false);
 		}
 	}, [ownerToken, sessionId]);
 
 	useEffect(() => {
-		void loadPage();
+		const controller = new AbortController();
+		void loadPage(undefined, controller.signal);
+		return () => {
+			controller.abort();
+			requestSequence.current += 1;
+		};
 	}, [loadPage, epoch]);
 
+	// Never render data belonging to a previous owner while the new owner's
+	// request is starting. The effect above performs the fetch; this derived
+	// state makes the ownership transition truthful in the same render.
+	const visibleLoad = useMemo<Load>(() => !sessionId
+		? { s: 'no_owner_session', reason: 'missing_session' }
+		: !ownerToken
+			? { s: 'no_owner_session', reason: 'missing_owner_token' }
+			: 'ownerKey' in load && load.ownerKey === ownerKey
+				? load
+				: { s: 'loading', ownerKey: ownerKey! },
+	[load, ownerKey, ownerToken, sessionId]);
+
 	const eventTypes = useMemo(() => {
-		if (load.s !== 'ready') return ['ALL'];
+		if (visibleLoad.s !== 'ready') return ['ALL'];
 		const set = new Set<string>();
-		for (const ev of load.events) set.add(ev.event_type);
+		for (const ev of visibleLoad.events) set.add(ev.event_type);
 		return ['ALL', ...[...set].sort()];
-	}, [load]);
+	}, [visibleLoad]);
 	const projected = useMemo(
-		() => (load.s === 'ready' ? projectAuditEvents(load.events) : []),
-		[load]
+		() => (visibleLoad.s === 'ready' ? projectAuditEvents(visibleLoad.events) : []),
+		[visibleLoad]
 	);
 
 	const filtered = useMemo(() => {
@@ -153,7 +201,7 @@ export default function Ledger() {
 		});
 	}, [policyOnly, projected, query, typeFilter]);
 
-	const total = load.s === 'ready' ? load.events.length : null;
+	const total = visibleLoad.s === 'ready' ? visibleLoad.events.length : null;
 
 	return (
 		<Page
@@ -161,7 +209,7 @@ export default function Ledger() {
 			title="Ledger"
 			actions={
 				<span style={mono(11, 'var(--l2-fg-3)')}>
-					{refetching && load.s === 'ready' ? 'REFRESHING · ' : ''}
+					{refetching && visibleLoad.s === 'ready' ? 'REFRESHING · ' : ''}
 					{total === null ? '—' : `${filtered.length} ROWS · ${total} EVENTS`}
 				</span>
 			}
@@ -192,7 +240,7 @@ export default function Ledger() {
 			</div>
 
 			{/* Partial/unreadable evidence remains visible and explicitly counted. */}
-			{load.s === 'ready' && load.warnings > 0 && (
+			{visibleLoad.s === 'ready' && visibleLoad.warnings > 0 && (
 				<div
 					role="alert"
 					style={{
@@ -203,7 +251,7 @@ export default function Ledger() {
 					}}
 				>
 					<span>
-						INCOMPLETE TRAIL — {load.warnings} ROWS CONTAIN PARTIAL OR UNAVAILABLE EVIDENCE
+						INCOMPLETE TRAIL — {visibleLoad.warnings} ROWS CONTAIN PARTIAL OR UNAVAILABLE EVIDENCE
 					</span>
 					<button
 						type="button"
@@ -225,11 +273,14 @@ export default function Ledger() {
 			{/* ledger table */}
 			<GlassPanel style={{ overflow: 'hidden' }}>
 				<Header />
-				{load.s === 'loading' && <SkeletonRows />}
-				{load.s === 'error' && <Offline />}
-				{load.s === 'ready' &&
+				{visibleLoad.s === 'no_owner_session' && (
+					<NoOwnerSession reason={visibleLoad.reason} sessionId={sessionId} />
+				)}
+				{visibleLoad.s === 'loading' && <SkeletonRows />}
+				{visibleLoad.s === 'error' && <Offline onRetry={() => void loadPage()} />}
+				{visibleLoad.s === 'ready' &&
 					(filtered.length === 0 ? (
-						<Empty hasAny={load.events.length > 0} onClear={() => { setQuery(''); setTypeFilter('ALL'); setPolicyOnly(false); }} />
+						<Empty hasAny={visibleLoad.events.length > 0} onClear={() => { setQuery(''); setTypeFilter('ALL'); setPolicyOnly(false); }} />
 					) : (
 						<div style={{ maxHeight: '64vh', overflowY: 'auto' }}>
 							{filtered.slice(0, 400).map((item, i) => (
@@ -244,11 +295,11 @@ export default function Ledger() {
 					))}
 			</GlassPanel>
 
-			{load.s === 'ready' && load.nextCursor && (
+			{visibleLoad.s === 'ready' && visibleLoad.nextCursor && (
 				<button
 					type="button"
 					aria-label="Load more audit events"
-					onClick={() => void loadPage(load.nextCursor ?? undefined)}
+					onClick={() => void loadPage(visibleLoad.nextCursor ?? undefined)}
 					disabled={refetching}
 					style={{ ...ghostBtn, width: '100%', marginTop: 10 }}
 				>
@@ -369,7 +420,7 @@ function Empty({ hasAny, onClear }: { hasAny: boolean; onClear: () => void }) {
 				{hasAny ? 'No events match these filters' : 'No audit events yet'}
 			</div>
 			<div style={{ color: 'var(--l2-fg-3)', fontSize: 13, marginBottom: hasAny ? 14 : 0 }}>
-				{hasAny ? 'Loosen the filters to see the full ledger.' : 'Launch a run — every action it takes is accounted for here.'}
+				{hasAny ? 'Loosen the filters to see the full ledger.' : 'This owned session has not recorded any audit evidence yet.'}
 			</div>
 			{hasAny && (
 				<button onClick={onClear} style={ghostBtn}>CLEAR FILTERS</button>
@@ -378,14 +429,34 @@ function Empty({ hasAny, onClear }: { hasAny: boolean; onClear: () => void }) {
 	);
 }
 
-function Offline() {
+function NoOwnerSession({ reason, sessionId }: {
+	reason: 'missing_session' | 'missing_owner_token';
+	sessionId?: string;
+}) {
+	const missingToken = reason === 'missing_owner_token';
 	return (
-		<div style={{ padding: '24px 18px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-			<span style={{ width: 7, height: 7, marginTop: 4, borderRadius: '50%', background: 'var(--l2-error)', boxShadow: '0 0 9px rgba(255,0,85,0.55)', flex: 'none' }} />
-			<div>
-				<div style={{ color: 'var(--l2-fg-1)', fontSize: 14, marginBottom: 4 }}>Gateway unavailable</div>
-				<div style={mono(11.5, 'var(--l2-fg-3)')}>NO RESPONSE FROM 127.0.0.1:8484 — START THE GATEWAY</div>
+		<div role="status" aria-live="polite" style={{ padding: '32px 24px', textAlign: 'center' }}>
+			<div style={{ fontFamily: 'var(--l2-font-serif)', fontSize: 20, color: 'var(--l2-fg-1)', marginBottom: 6 }}>
+				{missingToken ? 'Session ownership unavailable' : 'No owning session yet'}
 			</div>
+			<div style={{ color: 'var(--l2-fg-3)', fontSize: 13, lineHeight: 1.55 }}>
+				{missingToken
+					? `Session ${sessionId?.slice(0, 8) ?? 'unknown'} has no owner token. Resume or reopen it in Chat or Console to view its evidence.`
+					: 'Start or resume a session in Chat or Console to view its evidence. Ledger will not create one automatically.'}
+			</div>
+		</div>
+	);
+}
+
+function Offline({ onRetry }: { onRetry: () => void }) {
+	return (
+		<div role="alert" style={{ padding: '24px 18px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+			<span style={{ width: 7, height: 7, marginTop: 4, borderRadius: '50%', background: 'var(--l2-error)', boxShadow: '0 0 9px rgba(255,0,85,0.55)', flex: 'none' }} />
+			<div style={{ flex: 1 }}>
+				<div style={{ color: 'var(--l2-fg-1)', fontSize: 14, marginBottom: 4 }}>Gateway unavailable</div>
+				<div style={mono(11.5, 'var(--l2-fg-3)')}>THE OWNED AUDIT REQUEST FAILED — CHECK THE GATEWAY AND RETRY</div>
+			</div>
+			<button type="button" onClick={onRetry} style={ghostBtn}>RETRY</button>
 		</div>
 	);
 }
