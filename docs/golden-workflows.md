@@ -35,7 +35,7 @@ Reads the workspace through the `workspace` tool (a top-level `list` and a READM
 (`golden/repo-triage-<date>.md`), and upserts a `repo-triage-<date>` wiki page with
 provenance. A missing README degrades gracefully to a "No README found" note.
 
-Sample output: [sample-data/repo-triage-sample.md](../.planning/phases/10.0.5-golden-workflows-quality-gate/sample-data/repo-triage-sample.md)
+Sample output: [sample-data/repo-triage-sample.md](../.planning/milestones/v1.0.5-phases/10.0.5-golden-workflows-quality-gate/sample-data/repo-triage-sample.md)
 (real output generated against this repository).
 
 ## Research Brief
@@ -45,7 +45,7 @@ construction, never `web_fetch`) for a topic, writes a brief artifact
 (`golden/research-brief-<topic>-<date>.md`) and a `research-brief-<topic>` wiki page.
 An empty search degrades to an honest "No wiki entries matched" line.
 
-Sample output: [sample-data/research-brief-sample.md](../.planning/phases/10.0.5-golden-workflows-quality-gate/sample-data/research-brief-sample.md)
+Sample output: [sample-data/research-brief-sample.md](../.planning/milestones/v1.0.5-phases/10.0.5-golden-workflows-quality-gate/sample-data/research-brief-sample.md)
 
 ## Self-Review
 
@@ -57,7 +57,7 @@ file is never written inline. Execute it with `atlas tools approve <id>`, or dis
 it with `atlas tools reject <id>` (approval surface documented in [docs/tools.md](tools.md)).
 
 Sample output (the *proposed*, not-yet-written note):
-[sample-data/self-review-sample.md](../.planning/phases/10.0.5-golden-workflows-quality-gate/sample-data/self-review-sample.md)
+[sample-data/self-review-sample.md](../.planning/milestones/v1.0.5-phases/10.0.5-golden-workflows-quality-gate/sample-data/self-review-sample.md)
 
 ## Running the workflows
 

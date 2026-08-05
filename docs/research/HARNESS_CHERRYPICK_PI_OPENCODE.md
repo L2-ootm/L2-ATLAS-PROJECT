@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-20
 **Author:** session intake (item #5 of the six-item in-flight scope; phase
-`.planning/phases/10.0.3-harness-cherrypick/`)
+`.planning/milestones/v1.0.5-phases/10.0.3-harness-cherrypick/`)
 **Stance:** *Borrow the direction, write our own code.* Patterns and page/feature ideas are not
 copyrightable; direct code/asset reuse is license-gated and must be verified per source (mirror the
 Odysseus baseline stance in STATE). **No repos were cloned**; this is a research intake.

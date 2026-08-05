@@ -32,7 +32,7 @@ atlas golden run repo_triage --workspace .
 Show: a triage **artifact** is recorded, a **Codex** (wiki) page is written, and the
 **Ledger** shows the `golden_workflow_started/completed` + `tool_requested/tool_completed`
 events from the workspace reads. Sample output:
-`.planning/phases/10.0.5-golden-workflows-quality-gate/sample-data/repo-triage-sample.md`.
+`.planning/milestones/v1.0.5-phases/10.0.5-golden-workflows-quality-gate/sample-data/repo-triage-sample.md`.
 
 ## 3. Golden Workflow 2 — Research Brief (45s)
 

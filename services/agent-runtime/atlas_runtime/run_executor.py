@@ -9,7 +9,7 @@ today; the gateway is currently record-only).
 In-process daemon thread at single-operator scale: the existing
 `threading.Lock` + SQLite WAL serialize writes. See
 `.planning/prep/next-steps-db-runner-async-supabase.md` (§2) for the decision and
-`.planning/phases/10.0.3-command-center/PLAN.md` (WP-1).
+`.planning/milestones/v1.0.5-phases/10.0.3-command-center/PLAN.md` (WP-1).
 
 Lifecycle ownership (per AgentRuntime contract): `execute()` emits audit and
 returns a RunOutcome; THIS module owns the terminal transition

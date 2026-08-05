@@ -3,7 +3,7 @@
 Deterministic-orchestrator helpers shared by all three golden workflows
 (Repo Triage, Research Brief, Self-Review). The mock LLM provider produces
 no structural output (canned text only, no tool calls) — see
-`.planning/phases/10.0.5-golden-workflows-quality-gate/10.0.5-CONTEXT.md`
+`.planning/milestones/v1.0.5-phases/10.0.5-golden-workflows-quality-gate/10.0.5-CONTEXT.md`
 "CRITICAL — mock provider produces no structural output". Golden workflows
 therefore perform real reads via the tool layer and write artifacts/wiki
 entries/audit events directly, independent of the LLM.
