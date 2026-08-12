@@ -97,6 +97,14 @@
   --atlas-mythic:        #3D68FF;  /* MYTHIC BLUE — constellation lines */
   --atlas-celestial:     #4F8BFF;  /* CELESTIAL BLUE — the globe / primary accent */
   --atlas-cyan:          #46F0E0;  /* SIGNAL CYAN — live telemetry */
+  /* SIGNAL EMERALD — agent presence: a healthy/live agent turn, actor, or gate.
+     Was referenced ~40 times across app.css and the routes without ever being
+     defined here, so every bare `var(--atlas-emerald)` computed to the
+     guaranteed-invalid value (inherited text color, or transparent for
+     backgrounds). The literal is the one the two fallback call sites already
+     carried, and matches the rgba(70,240,160,…) tints used beside it. */
+  --atlas-emerald:       #46F0A0;
+  --atlas-emerald-glow:  rgba(70, 240, 160, 0.45);
   --atlas-violet:        #A17BFF;  /* SIGNAL VIOLET — memory / secondary signal */
   --atlas-bronze:        #B08A57;  /* TITAN BRONZE — filigree, brand only */
   --atlas-bronze-deep:   #6E5535;
