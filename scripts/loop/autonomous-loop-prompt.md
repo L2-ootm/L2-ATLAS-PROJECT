@@ -32,6 +32,13 @@ Prefer, in order:
 Do **not** attempt several tasks. One task, finished and proven, beats three
 started.
 
+**Active program (2026-08-12):** `docs/plans/2026-08-12-knowledge-graph-control-plan.md`
+— WP-1 is shipped; WP-2 (gateway `/v1/brain/*` routes) is next, then WP-3/WP-4.
+`docs/plans/2026-08-12-atlas-memory-v2-design-and-execution-plan.md` (WP-1..7)
+is the other live program; prefer the knowledge-graph one unless its next work
+package is blocked. Rewrite this paragraph when the active program changes —
+a stale pointer here is worse than none.
+
 ## 3. Do the work
 
 - Read before editing. Make minimal, coherent changes in existing project style.
