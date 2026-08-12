@@ -27,9 +27,24 @@ def _offline(monkeypatch) -> None:
     )
 
 
-def test_status_shape(tmp_path, monkeypatch) -> None:
+def _isolated(tmp_path, monkeypatch) -> None:
+    """Cut every path this module reads over to `tmp_path`.
+
+    Overriding `STATE_FILE` alone only isolates the LEGACY metadata file.
+    `_service_state_path()` and `_legacy_pid_path()` both resolve through
+    `service_supervision`, which reads ATLAS_HOME at call time — so without
+    this the tests observed the operator's real `~/.atlas` and reported
+    whatever their actual freellmapi happened to be doing. That made three
+    assertions pass or fail depending on whether the sidecar was running on
+    the developer's machine, which is not a gate.
+    """
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path / "atlas-home"))
     monkeypatch.setattr(fc, "STATE_FILE", tmp_path / "freellmapi.json")
     _offline(monkeypatch)
+
+
+def test_status_shape(tmp_path, monkeypatch) -> None:
+    _isolated(tmp_path, monkeypatch)
     st = fc.status()
     assert {
         "running",
@@ -110,9 +125,8 @@ def test_get_api_key_reads_sidecar_db(tmp_path, monkeypatch) -> None:
 
 
 def test_start_without_checkout_gives_remediation(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(fc, "STATE_FILE", tmp_path / "freellmapi.json")
+    _isolated(tmp_path, monkeypatch)
     monkeypatch.setattr(fc, "resolve_dir", lambda: None)
-    _offline(monkeypatch)
     ok, msg = fc.start()
     assert ok is False
     assert "ATLAS_FREELLMAPI_DIR" in msg
@@ -120,9 +134,8 @@ def test_start_without_checkout_gives_remediation(tmp_path, monkeypatch) -> None
 
 
 def test_start_without_build_gives_remediation(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(fc, "STATE_FILE", tmp_path / "freellmapi.json")
+    _isolated(tmp_path, monkeypatch)
     monkeypatch.setattr(fc, "resolve_dir", lambda: tmp_path)
-    _offline(monkeypatch)
     ok, msg = fc.start()
     assert ok is False
     assert "npm run build" in msg
