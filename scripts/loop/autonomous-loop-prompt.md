@@ -33,7 +33,8 @@ Do **not** attempt several tasks. One task, finished and proven, beats three
 started.
 
 **Active program (2026-08-12):** `docs/plans/2026-08-12-knowledge-graph-control-plan.md`
-— WP-1 is shipped; WP-2 (gateway `/v1/brain/*` routes) is next, then WP-3/WP-4.
+— read §0 first, the target is a *registry of member graphs* composing one brain.
+WP-1 is shipped; **WP-2 (agent reads across every member) is next**, then WP-3.
 `docs/plans/2026-08-12-atlas-memory-v2-design-and-execution-plan.md` (WP-1..7)
 is the other live program; prefer the knowledge-graph one unless its next work
 package is blocked. Rewrite this paragraph when the active program changes —
