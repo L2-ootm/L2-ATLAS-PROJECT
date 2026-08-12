@@ -21,7 +21,17 @@ DEFAULT_MAX_RUNS = 12
 MAX_RUNS = 100
 MAX_PARSE_FAILURES = 3
 
-Verdict = Literal["done", "continue"]
+# `abstain` means the judge did not evaluate this run — unavailable, not
+# configured, errored, or handed an empty response. It is NOT a third control
+# outcome: the loop treats it exactly as `continue` (fail-open, still bounded
+# by max_runs), which is the behaviour that was already there. What changes is
+# that the record now says so. Previously all four of those paths wrote
+# `continue`, so a judged "keep going" and a judge that never ran were the same
+# row in `run_judgements` and the same `goal_judgement` event — and a loop
+# could burn its whole run budget while appearing to have been assessed every
+# turn. Distinguishing them is the prerequisite for any quality authority
+# reading this table (see docs/qa/harness-quality-review-2026-08-09.md, Q-002).
+Verdict = Literal["done", "continue", "abstain"]
 Judge = Callable[[str, str, dict[str, str]], tuple[Verdict, str, bool, str, str]]
 
 
@@ -164,6 +174,10 @@ def evaluate_after_run(
     emit(
         conn, lock, run_id=run_id, event_type="goal_judgement",
         data={"verdict": verdict, "reason": reason, "state": state,
+              # Explicit rather than left for readers to infer from `verdict`:
+              # a surface that has not been taught about `abstain` still gets
+              # an unambiguous signal that no assessment happened.
+              "judged": verdict != "abstain",
               "runs_used": runs_used, "max_runs": int(loop["max_runs"]),
               "model_provider": provider, "model_id": model},
     )
@@ -235,11 +249,11 @@ def _foundation_judge(
 ) -> tuple[Verdict, str, bool, str, str]:
     """Call Hermes's text auxiliary client while inheriting the live chat runtime."""
     if not response.strip():
-        return "continue", "empty response (nothing to evaluate)", False, runtime.get("provider", ""), runtime.get("model", "")
+        return "abstain", "empty response (nothing to evaluate)", False, runtime.get("provider", ""), runtime.get("model", "")
     from atlas_runtime.subagent_service import _foundation_on_path  # noqa: PLC0415
 
     if not _foundation_on_path():
-        return "continue", "judge unavailable", False, runtime.get("provider", ""), runtime.get("model", "")
+        return "abstain", "judge unavailable", False, runtime.get("provider", ""), runtime.get("model", "")
     from agent.auxiliary_client import get_auxiliary_extra_body, resolve_provider_client  # type: ignore # noqa: PLC0415
     from hermes_cli.goals import (  # type: ignore # noqa: PLC0415
         JUDGE_SYSTEM_PROMPT,
@@ -257,7 +271,7 @@ def _foundation_judge(
         main_runtime=runtime,
     )
     if client is None or not model:
-        return "continue", "no judge client configured", False, provider, model or ""
+        return "abstain", "no judge client configured", False, provider, model or ""
     prompt = JUDGE_USER_PROMPT_TEMPLATE.format(
         goal=objective[:2000], response=response[:12000],
         current_time=datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z"),
@@ -271,7 +285,7 @@ def _foundation_judge(
         )
         raw = result.choices[0].message.content or ""
     except Exception as exc:  # fail-open, bounded by max_runs
-        return "continue", f"judge error: {type(exc).__name__}", False, provider, model
+        return "abstain", f"judge error: {type(exc).__name__}", False, provider, model
     done, reason, parse_failed = _parse_judge_response(raw)
     return ("done" if done else "continue"), reason, parse_failed, provider, model
 

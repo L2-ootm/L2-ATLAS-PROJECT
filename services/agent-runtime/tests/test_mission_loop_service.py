@@ -146,3 +146,81 @@ def test_worker_chain_creates_two_runs_then_stops_on_done(db, lock, monkeypatch)
         "SELECT COUNT(*) FROM run_judgements WHERE mission_id=?", (mission_id,)
     ).fetchone()[0] == 2
     assert mission_loop_service.get_loop(db, mission_id)["state"] == "done"
+
+
+def test_unavailable_judge_abstains_without_changing_the_loop(db, lock) -> None:
+    """Q-002: an unavailable judge used to record `continue`, so a loop could
+    spend its whole budget looking as if every run had been assessed.
+
+    The control flow is deliberately unchanged — still fail-open, still
+    bounded — only the record now distinguishes 'not done' from 'not judged'.
+    """
+    mission_id = _mission(db, lock)
+    mission_loop_service.configure_loop(db, lock, mission_id=mission_id, max_runs=3)
+    run = _finish(db, lock, mission_id)
+
+    decision = mission_loop_service.evaluate_after_run(
+        db, lock, mission_id=mission_id, run_id=run.id, run_status="succeeded",
+        judge=lambda *_: ("abstain", "judge unavailable", False, "p", "m"),
+    )
+
+    # Behaviour identical to a `continue`: the mission reopens and the run is
+    # counted against the budget.
+    assert decision.action == "continue"
+    assert db.execute("SELECT status FROM missions WHERE id=?", (mission_id,)).fetchone()[0] == "pending"
+    assert mission_loop_service.get_loop(db, mission_id)["runs_used"] == 1
+    # The record is what changed.
+    assert db.execute(
+        "SELECT verdict FROM run_judgements WHERE run_id=?", (run.id,)
+    ).fetchone()[0] == "abstain"
+
+
+def test_abstain_is_reported_on_the_judgement_event(db, lock) -> None:
+    import json
+
+    mission_id = _mission(db, lock)
+    mission_loop_service.configure_loop(db, lock, mission_id=mission_id, max_runs=3)
+    run = _finish(db, lock, mission_id)
+    mission_loop_service.evaluate_after_run(
+        db, lock, mission_id=mission_id, run_id=run.id, run_status="succeeded",
+        judge=lambda *_: ("abstain", "judge error: TimeoutError", False, "p", "m"),
+    )
+
+    raw = db.execute(
+        "SELECT data FROM audit_events WHERE run_id=? AND event_type='goal_judgement'", (run.id,)
+    ).fetchone()[0]
+    payload = json.loads(raw)
+
+    assert payload["verdict"] == "abstain"
+    assert payload["judged"] is False
+    # A surface that only knows about 'done'/'continue' must not read an
+    # abstention as a completion.
+    assert payload["state"] == "active"
+
+
+def test_a_real_judgement_still_reports_as_judged(db, lock) -> None:
+    import json
+
+    mission_id = _mission(db, lock)
+    mission_loop_service.configure_loop(db, lock, mission_id=mission_id, max_runs=3)
+    run = _finish(db, lock, mission_id)
+    mission_loop_service.evaluate_after_run(
+        db, lock, mission_id=mission_id, run_id=run.id, run_status="succeeded",
+        judge=lambda *_: ("continue", "more work", False, "p", "m"),
+    )
+
+    payload = json.loads(db.execute(
+        "SELECT data FROM audit_events WHERE run_id=? AND event_type='goal_judgement'", (run.id,)
+    ).fetchone()[0])
+    assert payload["judged"] is True
+
+
+def test_empty_response_abstains_rather_than_judging_nothing(db, lock, monkeypatch) -> None:
+    """`_foundation_judge` is exercised directly: with no response text there
+    is nothing to assess, which is an abstention, not a verdict."""
+    verdict, reason, parse_failed, _, _ = mission_loop_service._foundation_judge(
+        "ship it", "   ", {"provider": "p", "model": "m"}
+    )
+    assert verdict == "abstain"
+    assert parse_failed is False
+    assert "empty response" in reason
