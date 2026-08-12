@@ -54,7 +54,19 @@ export function displayConsoleEvents(events: ConsoleChatEvent[]): DisplayConsole
 			if (!event.text) continue;
 			const last = out[out.length - 1];
 			if (last?.type === 'status') {
-				last.text = `${last.text ?? ''} · ${event.text}`;
+				// Several distinct run events project to the SAME status words:
+				// surfaceConsoleEvent falls back to `runtime <name>` for any
+				// tool_call-kind payload with no transition or privacy warning,
+				// so two unrelated events both render "runtime native". Joining
+				// them verbatim produced "RUNTIME NATIVE · RUNTIME NATIVE",
+				// which reads as the thing having happened twice. A repeated
+				// segment carries no information, so it is dropped rather than
+				// printed — the events still exist in the audit trail.
+				const segments = (last.text ?? '').split(' · ');
+				if (!segments.includes(event.text)) {
+					segments.push(event.text);
+					last.text = segments.join(' · ');
+				}
 				continue;
 			}
 		}
