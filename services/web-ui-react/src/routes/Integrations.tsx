@@ -7,6 +7,7 @@ import {
 	checkHealth,
 	getToolManifests,
 	listChannels,
+	listMcpServers,
 	listModules,
 	messagingGatewayStatus,
 	discordStatus,
@@ -53,14 +54,15 @@ export default function Integrations() {
 	const nav = useNavigate();
 
 	const refresh = useCallback(async () => {
-		const [h, tools, channels, modules, msg, dis, cash] = await Promise.allSettled([
+		const [h, tools, channels, modules, msg, dis, cash, mcp] = await Promise.allSettled([
 			checkHealth(),
 			getToolManifests(),
 			listChannels(),
 			listModules(),
 			messagingGatewayStatus(),
 			discordStatus(),
-			cashflowStatus()
+			cashflowStatus(),
+			listMcpServers()
 		]);
 
 		const gatewayOnline = h.status === 'fulfilled';
@@ -82,9 +84,14 @@ export default function Integrations() {
 		const discord = discordKnown ? dis.value : { running: false, ready: false, guild_count: 0, pid: null };
 		const cashflow = cashflowKnown ? cash.value : { running: false, backend: 'local' };
 
+		const mcpKnown = mcp.status === 'fulfilled';
+		const mcpList = mcpKnown ? mcp.value : [];
+
 		const enabledChannels = channelList.filter((c) => c.enabled).length;
 		const writeTools = toolList.filter((t) => t.risk_level !== 'read').length;
 		const activeModules = moduleList.filter((m) => m.status === 'active').length;
+		const enabledMcp = mcpList.filter((s) => s.enabled).length;
+		const failingMcp = mcpList.filter((s) => s.enabled && s.last_status === 'error').length;
 
 		const rows: IntegrationRow[] = [
 			gatewayRow(true, h.value),
@@ -123,6 +130,22 @@ export default function Integrations() {
 				posture: 'optional module',
 				detail: !cashflowKnown ? 'module status unavailable' : cashflow.running ? `running · ${cashflow.backend} backend` : 'stopped',
 				to: '/cashflow'
+			},
+			{
+				// Registered ≠ reachable: a server is only "online" here once it is
+				// enabled, and "degraded" the moment a probe recorded an error. A
+				// registry full of disabled declarations is the normal resting state.
+				name: 'MCP Servers',
+				kind: 'model context protocol',
+				state: !mcpKnown ? 'unknown' : failingMcp > 0 ? 'degraded' : enabledMcp > 0 ? 'online' : 'offline',
+				posture: 'operator-enabled',
+				detail: !mcpKnown
+					? 'registry unavailable'
+					: mcpList.length === 0
+					? 'none registered'
+					: `${enabledMcp}/${mcpList.length} enabled` +
+					  (failingMcp > 0 ? ` · ${failingMcp} failing last probe` : ''),
+				to: '/system'
 			},
 			{
 				name: 'Optional Modules',

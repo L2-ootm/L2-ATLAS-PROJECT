@@ -14,9 +14,28 @@ vi.mock('../lib/api', async () => {
 		listModules: vi.fn(),
 		messagingGatewayStatus: vi.fn(),
 		discordStatus: vi.fn(),
-		cashflowStatus: vi.fn()
+		cashflowStatus: vi.fn(),
+		listMcpServers: vi.fn()
 	};
 });
+
+function mcpServer(overrides: Partial<api.McpServer>): api.McpServer {
+	return {
+		name: 'demo',
+		module_id: '',
+		transport: 'stdio',
+		command: 'npx',
+		args: [],
+		url: '',
+		description: '',
+		enabled: false,
+		source: 'module',
+		last_status: 'unknown',
+		last_checked_at: null,
+		last_error: '',
+		...overrides
+	};
+}
 
 beforeEach(() => {
 	vi.mocked(api.checkHealth).mockResolvedValue({ status: 'ok', db: 'ok' });
@@ -26,6 +45,7 @@ beforeEach(() => {
 	vi.mocked(api.messagingGatewayStatus).mockResolvedValue({ running: false, pid: null });
 	vi.mocked(api.discordStatus).mockResolvedValue({ running: false, ready: false, guild_count: 0, pid: null });
 	vi.mocked(api.cashflowStatus).mockResolvedValue({ running: false, backend: 'local' });
+	vi.mocked(api.listMcpServers).mockResolvedValue([]);
 });
 
 function renderPage() {
@@ -54,5 +74,27 @@ describe('Integrations status integrity', () => {
 
 		const discordDetail = await screen.findByText('sidecar stopped');
 		expect(discordDetail.closest('[role="button"]')).toHaveTextContent('OFFLINE');
+	});
+
+	it('does not call a registered-but-disabled MCP server online', async () => {
+		vi.mocked(api.listMcpServers).mockResolvedValue([
+			mcpServer({ name: 'outreach-web' }),
+			mcpServer({ name: 'outreach-crm-bridge' })
+		]);
+		renderPage();
+
+		const detail = await screen.findByText('0/2 enabled');
+		expect(detail.closest('[role="button"]')).toHaveTextContent('OFFLINE');
+	});
+
+	it('degrades when an enabled MCP server failed its last probe', async () => {
+		vi.mocked(api.listMcpServers).mockResolvedValue([
+			mcpServer({ name: 'good', enabled: true, last_status: 'ok' }),
+			mcpServer({ name: 'bad', enabled: true, last_status: 'error', last_error: 'boom' })
+		]);
+		renderPage();
+
+		const detail = await screen.findByText('2/2 enabled · 1 failing last probe');
+		expect(detail.closest('[role="button"]')).toHaveTextContent('DEGRADED');
 	});
 });
