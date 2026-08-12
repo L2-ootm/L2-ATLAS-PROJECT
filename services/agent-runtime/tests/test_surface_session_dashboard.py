@@ -138,6 +138,30 @@ def test_dashboard_multi_level_actor_tree(db, lock, run_id) -> None:
     assert entry["actors"][0]["depth"] == 1
 
 
+def test_dashboard_actor_brief_carries_role_identity(db, lock, run_id) -> None:
+    """A team run writes the roster member's role_label to actors.role
+    (team_run_worker). Surfaces name a collaborator from it, so dropping it
+    here is what forces every actor to be shown as a truncated id or as its
+    goal sentence."""
+    s = _create(db, lock)
+    svc.transition_session(db, lock, s.id, "active")
+    _insert_actor(
+        db, actor_id="named", parent_run_id=run_id, session_id=s.id,
+        role="Precision Reviewer",
+    )
+    _insert_actor(
+        db, actor_id="anon", parent_run_id=run_id, session_id=s.id,
+        role="", parent_actor_id=None,
+    )
+
+    briefs = {a["id"]: a for a in svc.list_sessions_dashboard(db)["sessions"][0]["actors"]}
+
+    assert briefs["named"]["role"] == "Precision Reviewer"
+    # An empty role is the absence of a name, and reports as the schema default
+    # rather than as an empty string a surface would have to special-case.
+    assert briefs["anon"]["role"] == "worker"
+
+
 # ---------------------------------------------------------------------------
 # Pagination
 # ---------------------------------------------------------------------------

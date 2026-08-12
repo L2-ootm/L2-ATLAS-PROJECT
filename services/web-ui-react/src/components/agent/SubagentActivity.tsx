@@ -2,7 +2,7 @@ import { GitBranch, Radio } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { ConsoleChatEvent } from '../../lib/api';
-import { subagentsFromConsoleEvents, type SubagentActivity } from '../../lib/subagents';
+import { actorDisplayName, subagentsFromConsoleEvents, type SubagentActivity } from '../../lib/subagents';
 import { SubagentDetailModal } from './SubagentDetailModal';
 
 const terminal = new Set(['completed', 'failed', 'cancelled', 'orphaned']);
@@ -48,12 +48,14 @@ export function SubagentRail({ events }: { events: ConsoleChatEvent[] }) {
  */
 function SubagentRow({ actor, onSelect }: { actor: SubagentActivity; onSelect: () => void }) {
 	const live = !terminal.has(actor.phase);
+	const name = actorDisplayName(actor);
 	return (
 		<button type="button" className="chat-actor-row" data-phase={actor.phase} onClick={onSelect}>
 			<span className="chat-actor-row__signal"><Radio size={13} />{live && <i />}</span>
 			<span className="chat-actor-row__copy">
-				<strong>{actor.goal || `Agent ${actor.id.slice(0, 8)}`}</strong>
-				<small>{actor.tool || (live ? 'allocating context' : 'no active tool')} · {actor.toolCount} calls</small>
+				<strong>{name}</strong>
+				{actor.goal && actor.goal !== name && <small>{actor.goal}</small>}
+				<em>{actor.tool || (live ? 'allocating context' : 'no active tool')} · {actor.toolCount} calls</em>
 			</span>
 			<span className="chat-actor-row__phase">{actor.phase}</span>
 		</button>

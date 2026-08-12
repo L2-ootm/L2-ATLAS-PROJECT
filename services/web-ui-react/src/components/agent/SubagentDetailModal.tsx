@@ -1,5 +1,5 @@
 import { Activity, Bot, Clock3, Radio, Waypoints, X } from 'lucide-react';
-import { shortActorId, type SubagentActivity, type SubagentStreamItem } from '../../lib/subagents';
+import { actorDisplayName, shortActorId, type SubagentActivity, type SubagentStreamItem } from '../../lib/subagents';
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'orphaned']);
 
@@ -45,7 +45,7 @@ export function SubagentDetailModal({
 				<header className="chat-actor-detail__header">
 					<div>
 						<span>AGENT {shortActorId(actor.id)}</span>
-						<h2 id="subagent-detail-title">Live activity</h2>
+						<h2 id="subagent-detail-title">{actorDisplayName(actor)}</h2>
 					</div>
 					<button type="button" onClick={onClose} aria-label="Close actor details" autoFocus>
 						<X size={15} />

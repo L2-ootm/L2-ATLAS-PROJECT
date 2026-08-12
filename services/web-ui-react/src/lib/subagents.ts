@@ -9,6 +9,9 @@ export interface SubagentActivity {
 	phase: SubagentPhase;
 	goal: string;
 	model: string;
+	/** Roster identity — a team member's `role_label`, or 'worker' for an
+	 * ad-hoc spawn. Empty when the producer carries no identity at all. */
+	role: string;
 	tool: string;
 	toolCount: number;
 	depth: number;
@@ -45,6 +48,7 @@ function activity(value: unknown): SubagentActivity | null {
 		phase,
 		goal: typeof data.goal === 'string' ? data.goal : '',
 		model: typeof data.model === 'string' ? data.model : '',
+		role: typeof data.role === 'string' ? data.role : '',
 		tool: typeof data.tool === 'string' ? data.tool : '',
 		toolCount: Number.isFinite(Number(data.tool_count)) ? Number(data.tool_count) : 0,
 		depth: Number.isFinite(Number(data.depth)) ? Number(data.depth) : 1,
@@ -117,4 +121,32 @@ export interface SubagentStreamItem {
 
 export function shortActorId(id: string): string {
 	return id.replace(/^actor-/, '').slice(0, 8).toUpperCase();
+}
+
+/** `worker` is the schema default `actors.role` carries when nobody named the
+ * participant (0022_actors.sql), so it is an absence of identity, not one. */
+const ANONYMOUS_ROLES = new Set(['', 'worker', 'subagent', 'agent', 'actor']);
+
+export function hasNamedRole(actor: Pick<SubagentActivity, 'role'>): boolean {
+	return !ANONYMOUS_ROLES.has(actor.role.trim().toLowerCase());
+}
+
+/**
+ * The participant's NAME — never its goal.
+ *
+ * A team run writes the roster member's `role_label` to `actors.role`
+ * (team_run_worker), so a collaborator has a real name the operator chose.
+ * Surfaces previously labelled every actor with its goal sentence, which made
+ * a five-member team read as five paragraphs instead of five named agents, and
+ * left ad-hoc spawns showing a raw id. Goal remains the secondary line: it is
+ * what the agent is doing, which changes, while the name does not.
+ */
+export function actorDisplayName(actor: Pick<SubagentActivity, 'id' | 'role' | 'goal'>): string {
+	const role = actor.role.trim();
+	if (!ANONYMOUS_ROLES.has(role.toLowerCase())) return role;
+	// A dispatch slot exists before the child's first heartbeat — it has no
+	// actor id of its own and no roster identity, so the requested goal is the
+	// only handle the operator has on it.
+	if (actor.id.startsWith('dispatch:')) return actor.goal.trim() || 'Allocating actor';
+	return `Actor ${shortActorId(actor.id)}`;
 }

@@ -154,6 +154,9 @@ export interface ActorBrief {
 	status: ActorStatus;
 	model: string | null;
 	mode: 'joined' | 'detached';
+	/** Roster identity for a team member; 'worker' for an ad-hoc spawn.
+	 * Optional because a pre-0.1.6 gateway omits the field entirely. */
+	role?: string | null;
 	depth: number;
 	heartbeat_age_seconds: number | null;
 	health: HealthStatus;

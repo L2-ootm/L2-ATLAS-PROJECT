@@ -331,6 +331,11 @@ def _actor_brief(actor: dict, now: datetime.datetime, ttl_seconds: float) -> dic
         "model": actor.get("model"),
         "mode": actor.get("mode"),
         "depth": actor.get("depth"),
+        # `actors.role` is the participant's identity, not a permission: a team
+        # run writes the roster member's `role_label` here (team_run_worker),
+        # and an ad-hoc spawn leaves the 'worker' default. Surfaces need it to
+        # name a collaborator instead of falling back to a truncated actor id.
+        "role": actor.get("role") or "worker",
         "heartbeat_age_seconds": age,
         "health": health,
         "created_at": actor.get("created_at"),

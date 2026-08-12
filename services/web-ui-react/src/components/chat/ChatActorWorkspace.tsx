@@ -5,7 +5,7 @@ import type { SurfaceEvent } from '../../lib/surfaceContracts';
 import { listSurfaceSessionsDashboard } from '../../lib/api';
 import type { ActorBrief } from '../../lib/surfaceContracts';
 import {
-	shortActorId,
+	actorDisplayName,
 	subagentLifecycleFromSurfaceEvents,
 	subagentsFromSurfaceEvents,
 	type SubagentActivity,
@@ -66,6 +66,7 @@ function restoredActor(actor: ActorBrief): SubagentActivity {
 		phase: actor.status === 'running' ? 'working' : actor.status,
 		goal: actor.goal,
 		model: actor.model ?? '',
+		role: actor.role ?? '',
 		tool: actor.status === 'orphaned' ? 'Supervisor reconciled orphan' : 'Restored from SQLite',
 		toolCount: 0,
 		depth: actor.depth,
@@ -134,6 +135,7 @@ function provisionalActors(events: SurfaceEvent[], durable: SubagentActivity[]):
 			phase: call.failed ? 'failed' : call.done ? 'completed' : 'queued',
 			goal,
 			model: '',
+			role: '',
 			tool: call.done ? 'Dispatch receipt settled' : 'Allocating actor context',
 			toolCount: 0,
 			depth: 1,
@@ -368,8 +370,8 @@ function ActorSignalField({
 							className="chat-actor-signal-node"
 							data-phase={actor.phase}
 							onClick={() => onSelect(actor.id)}
-							title={`${actor.goal || actor.id} · ${signal?.phase || actor.phase}`}
-							aria-label={`Inspect signal node ${index + 1}`}
+							title={`${actorDisplayName(actor)}${actor.goal ? ` — ${actor.goal}` : ''} · ${signal?.phase || actor.phase}`}
+							aria-label={`Inspect ${actorDisplayName(actor)}`}
 						>
 							<span /><small>{String(index + 1).padStart(2, '0')}</small>
 						</button>
@@ -397,6 +399,7 @@ function ActorGroup({
 			<div className="chat-actor-group__label"><span>{label}</span><span>{actors.length}</span></div>
 			{actors.map((actor) => {
 				const signal = latestSignal(events, actor);
+				const name = actorDisplayName(actor);
 				return (
 				<button
 					key={`${actor.id}-${signal?.seq ?? actor.phase}`}
@@ -407,8 +410,9 @@ function ActorGroup({
 				>
 					<span className="chat-actor-row__signal"><Radio size={13} /><i /></span>
 					<span className="chat-actor-row__copy">
-						<strong>{actor.goal || `Actor ${shortActorId(actor.id)}`}</strong>
-						<small>{signal?.phase || actor.tool || actor.model || 'Allocating context'} · {actor.toolCount} calls</small>
+						<strong>{name}</strong>
+						{actor.goal && actor.goal !== name && <small>{actor.goal}</small>}
+						<em>{signal?.phase || actor.tool || actor.model || 'Allocating context'} · {actor.toolCount} calls</em>
 					</span>
 					<span className="chat-actor-row__phase">{actor.phase}</span>
 				</button>

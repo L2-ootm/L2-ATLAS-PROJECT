@@ -23,6 +23,7 @@ const restoredActor: SubagentActivity = {
 	phase: 'completed',
 	goal: 'Inspect runtime',
 	model: 'test',
+	role: 'worker',
 	tool: 'read_file',
 	toolCount: 4,
 	depth: 1,

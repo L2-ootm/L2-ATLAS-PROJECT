@@ -777,6 +777,12 @@ class NativeAtlasAgent(AgentRuntime):
                         "depth": int(meta.get("depth") or 1),
                         "goal": str(meta.get("goal") or preview or "")[:1000],
                         "model": str(meta.get("model") or model),
+                        # Keeps this payload shape aligned with
+                        # actor_service._emit_lifecycle so one surface projection
+                        # folds both producers. Donor delegation carries no
+                        # roster identity, so this is normally empty and the
+                        # surface names the participant from its goal instead.
+                        "role": str(meta.get("role") or "")[:120],
                         "toolsets": _json_safe_preview(meta.get("toolsets") or [], 1000),
                         "tool": current_tool,
                         "tool_count": tool_count,

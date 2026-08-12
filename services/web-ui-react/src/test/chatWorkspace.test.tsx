@@ -47,7 +47,10 @@ describe('chat actor workspace', () => {
 			/>
 		);
 		fireEvent.click(screen.getByText('Inspect the runtime'));
-		expect(screen.getByRole('heading', { name: 'Live activity' })).toBeInTheDocument();
+		// The dialog is titled by WHO the actor is, not by what the panel does.
+		// An unnamed ad-hoc spawn falls back to its short id; a team member
+		// would show its roster role_label here instead.
+		expect(screen.getByRole('heading', { name: 'Actor 12345678' })).toBeInTheDocument();
 		expect(screen.getByText('read_file')).toBeInTheDocument();
 		expect(screen.getByText(/actor_worker\.py/)).toBeInTheDocument();
 	});
@@ -59,9 +62,11 @@ describe('chat actor workspace', () => {
 			phase: 'working',
 			goal: `Actor ${index}`
 		}));
-		render(<ChatActorWorkspace events={events} busy={false} provider="openrouter" modelId="primary" />);
+		const { container } = render(<ChatActorWorkspace events={events} busy={false} provider="openrouter" modelId="primary" />);
 		expect(screen.getByText(/11 actors are parallel/)).toBeInTheDocument();
-		expect(screen.getAllByRole('button', { name: /Actor \d/ })).toHaveLength(11);
+		// Row count, not button count: the signal field also renders one
+		// actor-named button per actor, so a role query now matches both.
+		expect(container.querySelectorAll('.chat-actor-row')).toHaveLength(11);
 	});
 
 	it('shows an allocating actor immediately from a delegate dispatch before its heartbeat', () => {
@@ -81,7 +86,7 @@ describe('chat actor workspace', () => {
 		render(<OrchestrationCallCard
 			event={{ type: 'tool_call', tool_name: 'delegate_task', tool_call_id: 'delegate-1', input: { tasks: [{ goal: 'Inspect runtime' }] } }}
 			actors={[{
-				id: 'actor-1', parentId: null, phase: 'completed', goal: 'Inspect runtime', model: 'test', tool: 'read_file',
+				id: 'actor-1', parentId: null, phase: 'completed', goal: 'Inspect runtime', model: 'test', role: 'worker', tool: 'read_file',
 				toolCount: 4, depth: 1, background: false, durationSeconds: 2, childRunId: 'child-run'
 			}]}
 		/>);
