@@ -69,6 +69,11 @@ freellmapi_app = typer.Typer(name="freellmapi", help="FreeLLMAPI sidecar endpoin
 app.add_typer(freellmapi_app, name="freellmapi")
 graph_app = typer.Typer(name="graph", help="Project knowledge graph for the cockpit Graphify view.")
 app.add_typer(graph_app, name="graph")
+brain_app = typer.Typer(
+    name="brain",
+    help="Durable knowledge graph: inspect, curate, and forget what ATLAS knows.",
+)
+app.add_typer(brain_app, name="brain")
 run_app = typer.Typer(name="run", help="Execute an already-started run (background-safe).")
 app.add_typer(run_app, name="run")
 focus_app = typer.Typer(name="focus", help="Command Center: the operator's Current Focus.")
@@ -624,6 +629,317 @@ def graph_set_scope_root(
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1)
     typer.echo(json.dumps(scope))
+
+
+# ---------------------------------------------------------------------------
+# brain subcommands — operator control over the durable knowledge graph
+#
+# The graph the agent writes through the `atlas_graph` tool is the same one
+# these commands read and curate. Everything prints JSON so the gateway can
+# dispatch to them (D-022) and so a human can pipe them.
+# ---------------------------------------------------------------------------
+
+
+def _brain_node_view(node) -> dict:
+    """Flatten a BrainNode for JSON output, decoding metadata for readability."""
+    try:
+        metadata = json.loads(node.metadata_json or "{}")
+    except (TypeError, ValueError):
+        metadata = {}
+    return {
+        "id": node.id,
+        "entity_type": node.entity_type,
+        "label": node.label,
+        "project_id": node.project_id,
+        "source_id": node.source_id,
+        "updated_at": node.updated_at,
+        "confidence": node.confidence,
+        "metadata": metadata,
+    }
+
+
+@brain_app.command("stats")
+def brain_stats() -> None:
+    """Inventory the whole graph: counts by entity type, relation, and project."""
+    from atlas_runtime import brain_service
+
+    typer.echo(json.dumps(brain_service.stats(_get_connection())))
+
+
+@brain_app.command("list")
+def brain_list(
+    entity_type: Optional[str] = typer.Option(
+        None, "--type", help="Only nodes of this entity type"
+    ),
+    project: Optional[str] = typer.Option(
+        None, "--project", help="Project scope (default: the global scope)"
+    ),
+    limit: int = typer.Option(50, "--limit", help="Max nodes to return (cap 100)"),
+) -> None:
+    """List nodes in a scope, most recently updated first."""
+    from atlas_runtime import brain_service
+
+    nodes = brain_service.list_nodes(
+        _get_connection(), project_id=project, entity_type=entity_type, limit=limit
+    )
+    typer.echo(json.dumps([_brain_node_view(n) for n in nodes]))
+
+
+@brain_app.command("search")
+def brain_search(
+    query: str = typer.Argument(..., help="Substring matched against label and metadata"),
+    project: Optional[str] = typer.Option(None, "--project", help="Project scope"),
+    limit: int = typer.Option(20, "--limit", help="Max nodes to return (cap 100)"),
+) -> None:
+    """Search nodes by label or metadata substring."""
+    from atlas_runtime import brain_service
+
+    nodes = brain_service.search(
+        _get_connection(), query, project_id=project, limit=limit
+    )
+    typer.echo(json.dumps([_brain_node_view(n) for n in nodes]))
+
+
+@brain_app.command("show")
+def brain_show(
+    node_id: str = typer.Argument(..., help="Node id, e.g. concept:retry-safety"),
+) -> None:
+    """Show one node with every edge incident to it, inbound and outbound."""
+    from atlas_runtime import brain_service
+
+    conn = _get_connection()
+    node = brain_service.explain(conn, node_id)
+    if node is None:
+        typer.echo(f"Error: unknown node {node_id!r}", err=True)
+        raise typer.Exit(1)
+    typer.echo(
+        json.dumps(
+            {
+                "node": _brain_node_view(node),
+                "edges": list(brain_service.edges_for(conn, node_id)),
+            }
+        )
+    )
+
+
+@brain_app.command("add")
+def brain_add(
+    label: str = typer.Option(..., "--label", help="Human-readable node label"),
+    entity_type: str = typer.Option(
+        "concept", "--type", help="Entity type slug, e.g. concept|decision|system"
+    ),
+    summary: Optional[str] = typer.Option(None, "--summary", help="Short summary"),
+    confidence: float = typer.Option(0.9, "--confidence", help="Confidence 0..1"),
+    project: Optional[str] = typer.Option(None, "--project", help="Project scope"),
+) -> None:
+    """Add or converge on a node. The id is derived from type+label, so running
+    this twice updates rather than duplicates."""
+    from atlas_runtime import brain_service, graph_bridge
+    from atlas_core.schemas.brain import BrainNode
+
+    now = _brain_now()
+    metadata = {"summary": summary[:2000]} if summary else {}
+    try:
+        node = BrainNode(
+            id=graph_bridge.node_id_for(entity_type, label),
+            entity_type=entity_type,
+            label=label,
+            project_id=project,
+            source_id="operator:cli",
+            source_version=now,
+            updated_at=now,
+            confidence=confidence,
+            metadata_json=json.dumps(metadata),
+        )
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    with _get_lock():
+        brain_service.upsert_node(_get_connection(), node)
+    typer.echo(json.dumps(_brain_node_view(node)))
+
+
+@brain_app.command("link")
+def brain_link(
+    source: str = typer.Option(..., "--from", help="Source node id"),
+    target: str = typer.Option(..., "--to", help="Target node id"),
+    relation: str = typer.Option("relates_to", "--relation", help="Relation slug"),
+    project: Optional[str] = typer.Option(None, "--project", help="Project scope"),
+) -> None:
+    """Link two existing nodes. Idempotent — safe to re-run."""
+    from atlas_runtime import brain_service
+    from atlas_core.schemas.brain import BrainEdge
+
+    try:
+        with _get_lock():
+            brain_service.upsert_edge(
+                _get_connection(),
+                BrainEdge(
+                    source_id=source, target_id=target, relation=relation, project_id=project
+                ),
+            )
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(
+        json.dumps({"source_id": source, "target_id": target, "relation": relation})
+    )
+
+
+@brain_app.command("update")
+def brain_update(
+    node_id: str = typer.Argument(..., help="Node id to correct"),
+    label: Optional[str] = typer.Option(None, "--label", help="Corrected label"),
+    entity_type: Optional[str] = typer.Option(None, "--type", help="Corrected entity type"),
+    summary: Optional[str] = typer.Option(None, "--summary", help="Replacement summary"),
+    confidence: Optional[float] = typer.Option(None, "--confidence", help="New confidence 0..1"),
+) -> None:
+    """Correct a node. Changing label or type re-keys it and rewrites its edges,
+    so the id stays derivable from type+label."""
+    from atlas_runtime import brain_service, graph_bridge
+
+    if label is None and entity_type is None and summary is None and confidence is None:
+        typer.echo("Error: pass at least one of --label --type --summary --confidence", err=True)
+        raise typer.Exit(1)
+    conn = _get_connection()
+    current = brain_service.explain(conn, node_id)
+    if current is None:
+        typer.echo(f"Error: unknown node {node_id!r}", err=True)
+        raise typer.Exit(1)
+    new_id = None
+    if label is not None or entity_type is not None:
+        candidate = graph_bridge.node_id_for(
+            entity_type or current.entity_type, label or current.label
+        )
+        new_id = candidate if candidate != node_id else None
+    try:
+        with _get_lock():
+            updated = brain_service.update_node(
+                conn,
+                node_id,
+                label=label,
+                entity_type=entity_type,
+                confidence=confidence,
+                metadata={"summary": summary[:2000]} if summary else None,
+                source_id="operator:cli",
+                new_id=new_id,
+            )
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(
+        json.dumps(
+            {"node": _brain_node_view(updated), "renamed_from": node_id if new_id else None}
+        )
+    )
+
+
+@brain_app.command("forget")
+def brain_forget(
+    node_id: str = typer.Argument(..., help="Node id to delete"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Confirm the deletion"),
+) -> None:
+    """Delete a node and its edges. Prints exactly what was removed — keep that
+    output if you might want it back."""
+    from atlas_runtime import brain_service
+
+    if not yes:
+        typer.echo("Error: refusing to delete without --yes", err=True)
+        raise typer.Exit(1)
+    with _get_lock():
+        removed = brain_service.delete_node(_get_connection(), node_id)
+    if removed is None:
+        typer.echo(f"Error: unknown node {node_id!r}", err=True)
+        raise typer.Exit(1)
+    typer.echo(json.dumps(removed))
+
+
+@brain_app.command("unlink")
+def brain_unlink(
+    source: str = typer.Option(..., "--from", help="Source node id"),
+    target: str = typer.Option(..., "--to", help="Target node id"),
+    relation: str = typer.Option("relates_to", "--relation", help="Relation slug"),
+) -> None:
+    """Remove one relation. Already-gone counts as success."""
+    from atlas_runtime import brain_service
+
+    with _get_lock():
+        deleted = brain_service.delete_edge(_get_connection(), source, target, relation)
+    typer.echo(json.dumps({"deleted": deleted}))
+
+
+@brain_app.command("path")
+def brain_path(
+    source: str = typer.Option(..., "--from", help="Start node id"),
+    target: str = typer.Option(..., "--to", help="End node id"),
+    project: Optional[str] = typer.Option(None, "--project", help="Project scope"),
+    depth: int = typer.Option(4, "--depth", help="Max hops (1-4)"),
+) -> None:
+    """Shortest relation chain between two nodes, or an empty path if unrelated."""
+    from atlas_runtime import brain_service
+
+    try:
+        chain = brain_service.find_path(
+            _get_connection(), source, target, project_id=project, max_depth=depth
+        )
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(json.dumps({"path": list(chain), "found": bool(chain)}))
+
+
+@brain_app.command("export")
+def brain_export(
+    out: Optional[str] = typer.Option(None, "--out", help="Write to this file instead of stdout"),
+) -> None:
+    """Export the whole graph as JSON — a backup you own and can re-import."""
+    from atlas_runtime import brain_service
+
+    payload = brain_service.export_graph(_get_connection())
+    text = json.dumps(payload, ensure_ascii=False, indent=2)
+    if out:
+        out_path = pathlib.Path(out).expanduser()
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(text, encoding="utf-8")
+        typer.echo(json.dumps({"written": str(out_path), "counts": {
+            "nodes": len(payload["nodes"]), "edges": len(payload["edges"])
+        }}))
+        return
+    typer.echo(text)
+
+
+@brain_app.command("import")
+def brain_import(
+    source_file: str = typer.Argument(..., help="A file produced by `atlas brain export`"),
+) -> None:
+    """Merge an exported graph in. Upserts, so re-importing is a no-op."""
+    from atlas_runtime import brain_service
+
+    path = pathlib.Path(source_file).expanduser()
+    if not path.is_file():
+        typer.echo(f"Error: file not found: {source_file}", err=True)
+        raise typer.Exit(1)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (ValueError, OSError) as exc:
+        typer.echo(f"Error: could not read {source_file}: {exc}", err=True)
+        raise typer.Exit(1)
+    if not isinstance(payload, dict):
+        typer.echo("Error: export payload must be a JSON object", err=True)
+        raise typer.Exit(1)
+    try:
+        with _get_lock():
+            result = brain_service.import_graph(_get_connection(), payload)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(json.dumps(result))
+
+
+def _brain_now() -> str:
+    import datetime
+
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
 # ---------------------------------------------------------------------------
