@@ -37,9 +37,15 @@ print(json.dumps({
     "secret_leaks": report.secret_leaks,
     "unapproved_side_effects": report.unapproved_side_effects,
     "completion_honesty": report.completion_honesty,
+    # `verdict` is the authority; `promoted` is derived from it. They are both
+    # printed so an `abstain` (incomplete evidence) is never read as the same
+    # thing as a `fail` (an observed defect) just because both are not-green.
+    "verdict": report.verdict,
+    "coverage_missing": list(report.coverage_missing),
+    "reasons": list(report.reasons),
     "promoted": report.promoted,
 }, sort_keys=True))
-raise SystemExit(0 if report.promoted else 1)
+raise SystemExit(0 if report.verdict == "pass" else 1)
 '@
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
