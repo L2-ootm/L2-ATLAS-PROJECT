@@ -23,6 +23,7 @@ from __future__ import annotations
 import inspect
 import json
 import logging
+import re
 import sqlite3
 import threading
 import time
@@ -299,7 +300,123 @@ def _default_factory(
         kwargs["tool_progress_callback"] = tool_progress_callback
     agent = AIAgent(**kwargs)
     _harden_compaction(agent)
+    _scrub_foundation_prompt(agent)
     return agent
+
+
+# Foundation tools whose *prompt guidance* advertises capabilities ATLAS either
+# owns itself or has switched off. Muted only while the system prompt is being
+# composed — the tools stay registered and dispatchable, so nothing the model
+# can already call disappears; it just stops being told it is a Hermes agent.
+#
+#   memory          — ATLAS passes skip_memory=True, which nulls the store
+#                     (agent/agent_init.py:1073,1094) but leaves MEMORY_GUIDANCE
+#                     promising "persistent memory across sessions". Advertising
+#                     a disabled capability is the defect, not the cure.
+#   session_search  — ATLAS owns session recall through MemoryRouter.
+#   skill_manage    — SKILLS_GUIDANCE, branded Hermes throughout.
+#   skills_list     — gates build_skills_system_prompt, which emitted ~17K chars
+#   skill_view        (72% of the measured prompt) of Hermes skill catalogue.
+#                     Both tools remain callable, so skill discovery is still
+#                     live — it just happens on demand instead of costing every
+#                     turn of every run.
+_FOUNDATION_PROMPT_MUTED_TOOLS = frozenset(
+    {"memory", "session_search", "skill_manage", "skills_list", "skill_view"}
+)
+
+# The name of the vendored harness. Any stable-tier block that says it is
+# talking about the harness rather than about ATLAS.
+_FOUNDATION_BRAND_RE = re.compile(r"hermes", re.IGNORECASE)
+
+# The foundation joins its stable-tier blocks with a blank line
+# (agent/system_prompt.py:315), so paragraphs are the natural unit to filter on.
+_STABLE_BLOCK_SEPARATOR = "\n\n"
+
+
+def _strip_foundation_branding(stable: str) -> str:
+    """Drop every stable-tier block that names the vendored harness.
+
+    Filtering by *structure* rather than by matching the frozen text of
+    ``HERMES_AGENT_HELP_GUIDANCE`` / ``MEMORY_GUIDANCE`` /
+    ``SESSION_SEARCH_GUIDANCE`` / ``SKILLS_GUIDANCE`` is deliberate: constants
+    get reworded upstream, and an exact match that silently stops matching would
+    reopen the leak with nothing failing. The invariant ATLAS actually wants is
+    "no block in the harness's own tier may present itself as the harness", and
+    that is what this enforces — including against blocks that are inline code
+    rather than constants, such as the active-profile hint
+    (agent/system_prompt.py:215-240) that emits ~/.hermes paths verbatim.
+
+    Only the *stable* tier is filtered. ATLAS's own contract arrives in the
+    context tier and may name the foundation deliberately.
+    """
+    if not stable:
+        return stable
+    kept = [
+        block
+        for block in stable.split(_STABLE_BLOCK_SEPARATOR)
+        if block.strip() and not _FOUNDATION_BRAND_RE.search(block)
+    ]
+    return _STABLE_BLOCK_SEPARATOR.join(kept).strip()
+
+
+def _scrub_foundation_prompt(agent: Any) -> None:
+    """Compose the system prompt as ATLAS rather than as the vendored harness.
+
+    Measured on 2026-08-12 against a real agent instance: the foundation's
+    composed prompt was 23,697 chars, of which the ATLAS contract — passed in as
+    ``system_message`` and therefore landing in the *context* tier, after the
+    whole stable tier (agent/system_prompt.py:260-261,336) — began at offset
+    23,585. ATLAS identity arrived in the last 0.5% of the prompt, behind 35
+    occurrences of "hermes" and a ~17K-char catalogue of Hermes skills. That is
+    the operator-observed crossing, and it is an ordering defect first.
+
+    Two corrections, both at the ATLAS boundary (D-001 / DIV-001 — the foundation
+    is never edited):
+
+    1. **Order.** The caller's contract is the authority for the run, so it is
+       composed first, then the (scrubbed) stable tier, then volatile.
+    2. **Branding.** Hermes-branded guidance is suppressed at its own gates by
+       muting ``valid_tool_names`` for the duration of the call, with a
+       structural block filter (:func:`_strip_foundation_branding`) behind it.
+
+    Wrapping ``_build_system_prompt`` — rather than assigning
+    ``_cached_system_prompt`` once — is required: context compression rebuilds
+    the prompt mid-session (agent/conversation_compression.py:338,372) and a
+    one-shot assignment would be silently undone. The three production callers
+    (conversation_loop.py:300 and the two compression sites) all go through this
+    bound method, so the wrapper covers every rebuild path.
+
+    Byte-stability is preserved — the wrapper is a pure function of the same
+    inputs, so the prefix-cache invariant that ``_contract_system_message``
+    protects still holds across turns.
+    """
+    build_parts = getattr(agent, "_build_system_prompt_parts", None)
+    if build_parts is None:
+        return
+
+    def _atlas_system_prompt(system_message: Optional[str] = None) -> str:
+        original = getattr(agent, "valid_tool_names", None)
+        muted = original
+        if isinstance(original, (set, frozenset)):
+            muted = {n for n in original if n not in _FOUNDATION_PROMPT_MUTED_TOOLS}
+        try:
+            if muted is not original:
+                agent.valid_tool_names = muted
+            parts = build_parts(system_message=system_message)
+        finally:
+            if muted is not original:
+                agent.valid_tool_names = original
+        ordered = (
+            parts.get("context", ""),
+            _strip_foundation_branding(parts.get("stable", "")),
+            parts.get("volatile", ""),
+        )
+        return "\n\n".join(part for part in ordered if part)
+
+    try:
+        agent._build_system_prompt = _atlas_system_prompt
+    except Exception as exc:  # noqa: BLE001 — never block a run on hardening
+        logger.debug("Could not install the ATLAS system-prompt composer: %s", exc)
 
 
 def _harden_compaction(agent: Any) -> None:

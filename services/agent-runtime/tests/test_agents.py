@@ -925,6 +925,109 @@ def test_harden_compaction_tolerates_compression_disabled() -> None:
     _harden_compaction(_Agent())  # must not raise
 
 
+# --- foundation prompt scrub (the Hermes crossing) -------------------------
+
+
+class _PromptAgent:
+    """A stand-in shaped like the foundation's prompt builder.
+
+    Mirrors the two properties WP-0 depends on: the caller's system_message
+    lands in the *context* tier (after everything stable), and the Hermes
+    guidance blocks are gated on ``valid_tool_names``.
+    """
+
+    _HELP = "Load the `hermes-agent` skill. Docs: https://hermes-agent.nousresearch.com/docs"
+    _MEMORY = "You have persistent memory across sessions."
+    _SKILLS = "A skill is a folder under ~/.hermes/skills/."
+    _PROFILE = (
+        "Active Hermes profile: default. Other profiles (if any) live under "
+        "~/.hermes/profiles/<name>/. Each profile has its own skills/, plugins/, "
+        "cron/, and memories/."
+    )
+
+    def __init__(self, tools: set[str] | None = None) -> None:
+        self.valid_tool_names = set(
+            tools if tools is not None else {"memory", "skills_list", "terminal"}
+        )
+
+    def _build_system_prompt_parts(self, system_message: str | None = None) -> dict[str, str]:
+        stable = ["You are ATLAS, the operator agent inside L2 ATLAS.", self._HELP]
+        if "memory" in self.valid_tool_names:
+            stable.append(self._MEMORY)
+        if "skills_list" in self.valid_tool_names:
+            stable.append(self._SKILLS)
+        stable.append("Host: Windows (10)")
+        stable.append(self._PROFILE)
+        return {
+            "stable": "\n\n".join(stable),
+            "context": system_message or "",
+            "volatile": "Conversation started: Wednesday, August 12, 2026",
+        }
+
+    def _build_system_prompt(self, system_message: str | None = None) -> str:
+        parts = self._build_system_prompt_parts(system_message)
+        return "\n\n".join(p for p in (parts["stable"], parts["context"], parts["volatile"]) if p)
+
+
+def test_scrub_foundation_prompt_hoists_the_atlas_contract() -> None:
+    """ATLAS identity must not arrive after the whole harness stable tier.
+
+    Measured before the fix on a real agent: the contract began at offset
+    23,585 of a 23,697-char prompt.
+    """
+    from atlas_runtime.agents.native import _scrub_foundation_prompt
+
+    agent = _PromptAgent()
+    assert agent._build_system_prompt("CONTRACT").index("CONTRACT") > 0
+
+    _scrub_foundation_prompt(agent)
+    assert agent._build_system_prompt("CONTRACT").startswith("CONTRACT")
+
+
+def test_scrub_foundation_prompt_removes_harness_branding() -> None:
+    from atlas_runtime.agents.native import _scrub_foundation_prompt
+
+    agent = _PromptAgent()
+    _scrub_foundation_prompt(agent)
+    prompt = agent._build_system_prompt("CONTRACT")
+
+    assert "hermes" not in prompt.lower()
+    assert "~/.hermes" not in prompt
+    # Environment guidance ATLAS genuinely wants is not collateral damage.
+    assert "Host: Windows (10)" in prompt
+    assert "You are ATLAS" in prompt
+
+
+def test_scrub_foundation_prompt_keeps_the_tools_dispatchable() -> None:
+    """Muting is prompt-scoped: nothing the model can call may disappear."""
+    from atlas_runtime.agents.native import _scrub_foundation_prompt
+
+    agent = _PromptAgent()
+    before = set(agent.valid_tool_names)
+    _scrub_foundation_prompt(agent)
+    agent._build_system_prompt("CONTRACT")
+
+    assert agent.valid_tool_names == before
+
+
+def test_scrub_foundation_prompt_is_byte_stable_across_rebuilds() -> None:
+    """Compression rebuilds the prompt mid-session; the prefix must not drift."""
+    from atlas_runtime.agents.native import _scrub_foundation_prompt
+
+    agent = _PromptAgent()
+    _scrub_foundation_prompt(agent)
+    assert agent._build_system_prompt("CONTRACT") == agent._build_system_prompt("CONTRACT")
+
+
+def test_scrub_foundation_prompt_tolerates_an_older_foundation() -> None:
+    from atlas_runtime.agents.native import _scrub_foundation_prompt
+
+    class _Agent:
+        pass
+
+    _scrub_foundation_prompt(_Agent())  # must not raise
+
+
 # --- native tool failure reporting -----------------------------------------
 
 
