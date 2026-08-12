@@ -49,9 +49,10 @@ ToolCall, Artifact, Source, WikiPage, MemoryProvenance, DiscordApproval.
 ### 4. Gateway (`native/atlas-core-rs/`)
 
 Rust REST gateway (axum + rusqlite). Read-only against SQLite; writes go through
-the `atlas` CLI contract. 79 paths / 86 endpoints covering missions, runs, wiki,
-discord, projects, focus, goals, operations, modules, cashflow, console, auth,
-provider, channels, tools, surface-sessions, freellmapi, config, graph, and host.
+the `atlas` CLI contract. Endpoints cover missions, runs, wiki, discord,
+projects, focus, goals, operations, modules (incl. collection records), mcp,
+cashflow, console, auth, provider, channels, tools, surface-sessions,
+freellmapi, config, graph, and host.
 
 ### 5. Cockpit (`services/web-ui-react/`)
 
@@ -62,6 +63,15 @@ Missions, Runs, Wiki, Discord, Graph, Console, Projects, System.
 
 - **L2-BOT** (`services/discord-bot/`) — vendored Discord bot for read/write operations
 - **Cashflow** (`services/cashflow/`) — optional financial tracking module
+
+### 7. Modules (`modules/`, `<ATLAS home>/modules/`)
+
+Manifest-declared optional capabilities, off by default. A module declares
+commands, cockpit pages, doctrine (injected into runs while active), typed
+record collections, workflows and MCP servers; ATLAS executes all of it — no
+module code runs. The agent reaches every active module through one generic
+`atlas_module` tool. Contract:
+`docs/plans/2026-08-12-module-capabilities-v2-and-outreach-design.md`.
 
 ## Data Flow
 

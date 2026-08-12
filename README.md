@@ -159,14 +159,19 @@ by hand.
     <td width="33%" valign="top">
       <img src="docs/media/atlas-feature-modules.png" alt="Module framework">
       <br><strong>Modules you can keep</strong><br>
-      Releases include built-in modules. Your own modules live under
-      <code>ATLAS_HOME/modules</code> and remain in place when ATLAS updates.
+      A module declares commands, pages, doctrine, typed records and MCP servers
+      in one manifest. Yours live under <code>ATLAS_HOME/modules</code> and
+      remain in place when ATLAS updates.
     </td>
   </tr>
 </table>
 
 - **Persistent knowledge** — wiki/codex ingestion, provenance, a queryable knowledge
   graph the agent can read and write, and configurable graph scopes.
+- **Optional modules with real capability** — activating a module gives the agent its
+  doctrine (injected into runs, budgeted), its typed records, its workflows and its
+  MCP servers; deactivating retracts all of it without deleting the data. Bundled:
+  GSD/L2 execution doctrine and evidence-gated Outreach.
 - **Native direction** — the gateway and new infrastructure are Rust-first; the Hermes
   plugin surface and LLM adapters remain Python where that boundary is useful.
 
