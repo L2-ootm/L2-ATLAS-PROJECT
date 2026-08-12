@@ -8,6 +8,7 @@ can follow by reading the file.
 | Skill | Use when |
 |---|---|
 | `module-builder.md` | creating, validating, or wiring an ATLAS module |
+| `self-extension.md` | a missing capability is what is blocking the work |
 | `loop-discipline.md` | any multi-step build/change on ATLAS or an operator project |
 | `handoff.md` | ending a session that changed project state |
 | `gsd/` | Goal-Slice-Deliver execution doctrine (8 skills: init, discuss, plan, execute, verify, ship, progress, debug) |
