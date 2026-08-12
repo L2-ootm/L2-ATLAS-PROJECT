@@ -962,9 +962,22 @@ export async function unregisterProject(
 /** A block on a schema-driven module page (rendered by ATLAS-owned components —
  * the visual constraint; no module code executes). */
 export interface ModulePageBlock {
-	kind: string; // 'heading' | 'markdown' | 'metrics' | 'actions' | future kinds
+	// v1: heading | markdown | metrics | actions
+	// v2: tabs | records | stat_row | divider (unknown kinds degrade to a placeholder)
+	kind: string;
 	text?: string;
-	items?: Array<{ label: string; value?: string; command?: string }>;
+	items?: Array<{
+		label: string;
+		value?: string;
+		command?: string;
+		collection?: string;
+		where?: Record<string, string>;
+	}>;
+	/** kind='tabs' */
+	tabs?: Array<{ id: string; label: string; blocks: ModulePageBlock[] }>;
+	/** kind='records' */
+	collection?: string;
+	columns?: string[];
 }
 
 export interface ModulePage {
@@ -972,6 +985,34 @@ export interface ModulePage {
 	title: string;
 	icon: string;
 	blocks: ModulePageBlock[];
+}
+
+/** A field in a module collection schema (capability v2). */
+export interface ModuleField {
+	name: string;
+	type: string;
+	title?: string;
+	required?: boolean;
+	options?: string[];
+}
+
+/** A typed record collection declared by a module (capability v2). */
+export interface ModuleCollection {
+	id: string;
+	title: string;
+	icon?: string;
+	description?: string;
+	label_field: string;
+	fields: ModuleField[];
+}
+
+/** One stored record in a module collection. */
+export interface ModuleRecord {
+	id: string;
+	data: Record<string, unknown>;
+	status: string;
+	created_at: string;
+	updated_at: string;
 }
 
 /** Parsed module.yaml manifest (null for legacy seeded modules). */
@@ -983,6 +1024,11 @@ export interface ModuleManifest {
 	capabilities: {
 		commands: Array<{ name: string; description: string; template: string }>;
 		pages: ModulePage[];
+		// v2 capabilities — absent on modules built against the v1 contract.
+		context?: Array<{ id: string; title: string; inject: string }>;
+		collections?: ModuleCollection[];
+		workflows?: Array<{ id: string; title: string; description: string }>;
+		mcp?: Array<{ name: string; description: string; enabled: boolean }>;
 	};
 }
 
@@ -1027,6 +1073,54 @@ export async function listModules(): Promise<{ modules: Module[]; count: number 
 			return { modules: [], count: 0 };
 		}
 		throw err;
+	}
+}
+
+/** Records in one collection of an active module (capability v2, read-only).
+ *
+ * Writes deliberately do not go through the cockpit: schema validation lives in
+ * module_data_service, reachable via the agent's `atlas_module` tool and the
+ * CLI. A pre-0034 gateway or an inactive module renders empty. */
+export async function listModuleRecords(
+	moduleId: string,
+	collection: string,
+	limit = 200
+): Promise<ModuleRecord[]> {
+	try {
+		const out = await apiFetch<{ records: ModuleRecord[]; count: number }>(
+			`/v1/modules/${encodeURIComponent(moduleId)}/collections/${encodeURIComponent(
+				collection
+			)}/records?limit=${limit}`
+		);
+		return out.records ?? [];
+	} catch {
+		return [];
+	}
+}
+
+/** A registered MCP server (module-declared or operator-added). */
+export interface McpServer {
+	name: string;
+	module_id: string;
+	transport: string;
+	command: string;
+	args: string[];
+	url: string;
+	description: string;
+	enabled: boolean;
+	source: string;
+	last_status: string;
+	last_checked_at: string | null;
+	last_error: string;
+}
+
+/** The MCP registry. Pre-0034 gateways render empty. */
+export async function listMcpServers(): Promise<McpServer[]> {
+	try {
+		const out = await apiFetch<{ servers: McpServer[]; count: number }>('/v1/mcp');
+		return out.servers ?? [];
+	} catch {
+		return [];
 	}
 }
 

@@ -3708,6 +3708,38 @@ async fn module_activate(State(state): State<AppState>, AxPath(id): AxPath<Strin
     module_set_active(&state, &id, "activate").await
 }
 
+/// Query params for the module record feed (capability v2).
+#[derive(Deserialize)]
+struct ModuleRecordsQuery {
+    limit: Option<i64>,
+}
+
+/// Records in one collection of an active module — the cockpit's CRM feed.
+/// Read-only by design: writes go through the agent (`atlas_module`) or the CLI,
+/// which keeps schema validation in exactly one place (module_data_service).
+async fn module_records_list(
+    State(state): State<AppState>,
+    AxPath((id, collection)): AxPath<(String, String)>,
+    Query(q): Query<ModuleRecordsQuery>,
+) -> ApiResult {
+    require_arg(&id, "module id must be non-empty")?;
+    require_arg(&collection, "collection id must be non-empty")?;
+    let path = state.db_path.clone();
+    let limit = q.limit.unwrap_or(200);
+    let records =
+        blocking(move || db::list_module_records(&path, &id, &collection, limit)).await?;
+    let count = records.len();
+    Ok(Json(json!({ "records": records, "count": count })))
+}
+
+/// The MCP server registry (module-declared and operator-added).
+async fn mcp_servers_list(State(state): State<AppState>) -> ApiResult {
+    let path = state.db_path.clone();
+    let servers = blocking(move || db::list_mcp_servers(&path)).await?;
+    let count = servers.len();
+    Ok(Json(json!({ "servers": servers, "count": count })))
+}
+
 async fn module_deactivate(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
     module_set_active(&state, &id, "deactivate").await
 }
@@ -4226,6 +4258,11 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/commands", get(commands_list))
         .route("/v1/modules/{id}/activate", post(module_activate))
         .route("/v1/modules/{id}/deactivate", post(module_deactivate))
+        .route(
+            "/v1/modules/{id}/collections/{collection}/records",
+            get(module_records_list),
+        )
+        .route("/v1/mcp", get(mcp_servers_list))
         .route("/cashflow/full", get(cashflow_full))
         .route("/v1/cashflow/status", get(cashflow_status))
         .route("/v1/cashflow/summary", get(cashflow_summary))

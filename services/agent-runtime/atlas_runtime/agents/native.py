@@ -778,6 +778,19 @@ class NativeAtlasAgent(AgentRuntime):
                 from atlas_runtime import team_bridge  # noqa: PLC0415
 
                 team_bridge.ensure_team_bridge()
+                # Active-module capabilities (records, workflows, on-demand
+                # doctrine) and the run scratchpad. Both are single generic
+                # tools, so newly installed modules need no runtime change.
+                from atlas_runtime import module_bridge, scratchpad_bridge  # noqa: PLC0415
+
+                module_bridge.ensure_module_bridge()
+                scratchpad_bridge.ensure_scratchpad_bridge()
+                # MCP servers the operator (or an active module) enabled are
+                # projected onto the foundation config before the harness reads
+                # it. Best-effort and never fatal, like function_router above.
+                from atlas_runtime import mcp_service  # noqa: PLC0415
+
+                mcp_service.apply_managed_servers()
                 reasoning_effort = _resolve_reasoning_effort()
 
                 def _emit_delta(text: str, final: bool) -> None:

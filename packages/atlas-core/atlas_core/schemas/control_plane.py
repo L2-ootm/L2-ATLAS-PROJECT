@@ -103,6 +103,12 @@ class ContextConfig(_FrozenControlPlaneModel):
     # into agent runs. Off = runs start from the bare prompt; per-run override
     # via ATLAS_SKIP_CONTEXT=1 or `atlas --no-context`.
     inject_operator_context: bool = True
+    # Doctrine declared by ACTIVE modules (capabilities.context) injected into
+    # the run brief. Separately budgeted from `token_budget` so an activated
+    # module can never crowd out retrieval; 0 disables module injection while
+    # leaving the module's tool surface reachable.
+    inject_module_context: bool = True
+    module_token_budget: int = Field(default=1800, ge=0)
 
 
 PermissionPreset = Literal["manual", "smart", "full_autonomy"]

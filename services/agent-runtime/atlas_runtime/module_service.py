@@ -9,9 +9,17 @@ Two module sources share one registry (docs/plans/2026-07-16-module-framework-de
   - seeded built-ins (e.g. cashflow) — rows without a manifest;
   - manifest modules — directories containing `module.yaml`, discovered from
     `<repo>/modules/` (bundled) and `<ATLAS home>/modules/` (user/agent
-    installed). v1 capabilities are declarative only: slash `commands`
-    (served to every surface via the gateway) and schema-driven WebUI
-    `pages`. No module code executes anywhere in v1.
+    installed).
+
+Capabilities are declarative in every version — a module is data, ATLAS is the
+only thing that executes (docs/plans/2026-08-12-module-capabilities-v2-and-outreach-design.md):
+
+  v1  commands  — slash commands served to every surface via the gateway
+      pages     — schema-driven WebUI pages rendered by ATLAS-owned components
+  v2  context   — doctrine files injected into the run brief while active
+      collections — typed record schemas backed by module_records (0034)
+      workflows — named plays the agent fetches and executes
+      mcp       — MCP servers projected onto the foundation when enabled
 
 Conventions follow project_service.py:
   - Pydantic-first reads (rows hydrate the frozen model).
@@ -38,13 +46,39 @@ logger = logging.getLogger(__name__)
 
 MODULE_FILE = "module.yaml"
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+# Field/collection/workflow ids allow underscores — they are data keys, not URL
+# slugs, and snake_case reads better in a record payload.
+_KEY_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+_MCP_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
+# Credential-shaped env keys must carry a ${VAR} reference, never a value.
+_SECRET_KEY_RE = re.compile(r"(?i)(token|key|secret|password|passwd|credential)")
+_ENV_REF_ONLY_RE = re.compile(r"^\$\{[A-Za-z_][A-Za-z0-9_]*\}$")
 
 # Built-in slash command names (both UI catalogs); module commands never shadow them.
 RESERVED_COMMANDS = frozenset(
     {"init", "review", "dream", "distill", "goal", "mission", "deep-research"}
 )
 
-PAGE_BLOCK_KINDS = ("heading", "markdown", "metrics", "actions")
+PAGE_BLOCK_KINDS = (
+    # v1
+    "heading", "markdown", "metrics", "actions",
+    # v2 (docs/plans/2026-08-12-module-capabilities-v2-and-outreach-design.md)
+    "tabs", "records", "stat_row", "divider",
+)
+
+# Capability v2 vocabularies. Unknown values are rejected at sync time so a
+# typo fails loudly at install instead of silently disabling a capability.
+FIELD_TYPES = (
+    "text", "longtext", "enum", "number", "date", "bool", "url", "tags", "ref",
+)
+INJECT_MODES = ("always", "matched", "on_demand")
+MCP_TRANSPORTS = ("stdio", "http")
+
+# Prompt-budget guardrails for injected module doctrine. Memory v2 spent a whole
+# work package getting the prompt down; a module must not be able to undo that.
+DEFAULT_CONTEXT_TOKENS = 700
+MAX_CONTEXT_TOKENS = 1500
+DEFAULT_MODULE_CONTEXT_BUDGET = 1800
 
 
 class ModuleError(ValueError):
@@ -155,9 +189,7 @@ def validate_manifest(data: Any, *, source: str = "") -> dict[str, Any]:
         blocks = raw.get("blocks") or []
         if not isinstance(blocks, list):
             raise ValueError(f"{source}: page {pid!r} blocks must be a list")
-        for block in blocks:
-            if not isinstance(block, dict) or "kind" not in block:
-                raise ValueError(f"{source}: page {pid!r} has a block without kind")
+        _validate_blocks(blocks, source=source, page_id=pid)
         pages.append(
             {
                 "id": pid,
@@ -172,8 +204,245 @@ def validate_manifest(data: Any, *, source: str = "") -> dict[str, Any]:
         "name": name,
         "version": version,
         "description": description,
-        "capabilities": {"commands": commands, "pages": pages},
+        "author": str(data.get("author") or "").strip(),
+        "capabilities": {
+            "commands": commands,
+            "pages": pages,
+            "context": _validate_context(caps.get("context"), source=source),
+            "collections": _validate_collections(caps.get("collections"), source=source),
+            "workflows": _validate_workflows(caps.get("workflows"), source=source),
+            "mcp": _validate_mcp(caps.get("mcp"), source=source),
+        },
     }
+
+
+def _validate_blocks(blocks: list[Any], *, source: str, page_id: str) -> None:
+    """Recursively check page blocks. `tabs` nests blocks, so this recurses.
+
+    Unknown kinds are allowed through (the renderers degrade them to a labeled
+    placeholder, which is how an older build survives a newer manifest); a block
+    without a `kind` is not, because nothing can render it.
+    """
+    for block in blocks:
+        if not isinstance(block, dict) or "kind" not in block:
+            raise ValueError(f"{source}: page {page_id!r} has a block without kind")
+        if block.get("kind") == "tabs":
+            tabs = block.get("tabs") or []
+            if not isinstance(tabs, list) or not tabs:
+                raise ValueError(f"{source}: page {page_id!r} tabs block needs a tabs list")
+            for tab in tabs:
+                if not isinstance(tab, dict) or not str(tab.get("id") or "").strip():
+                    raise ValueError(f"{source}: page {page_id!r} tab needs an id")
+                nested = tab.get("blocks") or []
+                if not isinstance(nested, list):
+                    raise ValueError(f"{source}: page {page_id!r} tab blocks must be a list")
+                _validate_blocks(nested, source=source, page_id=page_id)
+
+
+def _validate_context(raw_list: Any, *, source: str) -> list[dict[str, Any]]:
+    """Doctrine files injected into the run brief while the module is active."""
+    out: list[dict[str, Any]] = []
+    for raw in raw_list or []:
+        if not isinstance(raw, dict):
+            raise ValueError(f"{source}: context entries must be mappings")
+        cid = str(raw.get("id") or "").strip()
+        if not _KEY_RE.match(cid):
+            raise ValueError(f"{source}: invalid context id {cid!r}")
+        path = str(raw.get("path") or "").strip().replace("\\", "/")
+        if not path:
+            raise ValueError(f"{source}: context {cid!r} needs a path")
+        if path.startswith("/") or ".." in path.split("/"):
+            # The path is joined onto the module directory; escaping it would
+            # let a manifest inject any file on disk into the prompt.
+            raise ValueError(f"{source}: context {cid!r} path must stay inside the module")
+        inject = str(raw.get("inject") or "always").strip()
+        if inject not in INJECT_MODES:
+            raise ValueError(f"{source}: context {cid!r} inject must be one of {INJECT_MODES}")
+        terms = [str(t).strip().lower() for t in (raw.get("terms") or []) if str(t).strip()]
+        if inject == "matched" and not terms:
+            raise ValueError(f"{source}: context {cid!r} inject=matched needs terms")
+        max_tokens = int(raw.get("max_tokens") or DEFAULT_CONTEXT_TOKENS)
+        out.append(
+            {
+                "id": cid,
+                "title": str(raw.get("title") or cid).strip(),
+                "path": path,
+                "inject": inject,
+                "terms": terms,
+                "max_tokens": max(1, min(max_tokens, MAX_CONTEXT_TOKENS)),
+            }
+        )
+    return out
+
+
+def _validate_field(raw: Any, *, source: str, collection_id: str) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        raise ValueError(f"{source}: collection {collection_id!r} fields must be mappings")
+    fname = str(raw.get("name") or "").strip()
+    if not _KEY_RE.match(fname):
+        raise ValueError(f"{source}: collection {collection_id!r} invalid field name {fname!r}")
+    ftype = str(raw.get("type") or "text").strip()
+    if ftype not in FIELD_TYPES:
+        raise ValueError(
+            f"{source}: collection {collection_id!r} field {fname!r} has unknown type {ftype!r}"
+        )
+    field: dict[str, Any] = {
+        "name": fname,
+        "type": ftype,
+        "title": str(raw.get("title") or fname.replace("_", " ").title()).strip(),
+        "required": bool(raw.get("required", False)),
+    }
+    if ftype == "enum":
+        options = [str(o).strip() for o in (raw.get("options") or []) if str(o).strip()]
+        if not options:
+            raise ValueError(
+                f"{source}: collection {collection_id!r} enum field {fname!r} needs options"
+            )
+        field["options"] = options
+    if ftype == "ref":
+        ref = str(raw.get("ref_collection") or "").strip()
+        if not _KEY_RE.match(ref):
+            raise ValueError(
+                f"{source}: collection {collection_id!r} ref field {fname!r} needs ref_collection"
+            )
+        field["ref_collection"] = ref
+    if ftype == "number":
+        for bound in ("min", "max"):
+            if raw.get(bound) is not None:
+                field[bound] = float(raw[bound])
+    if raw.get("default") is not None:
+        field["default"] = raw["default"]
+    if raw.get("description"):
+        field["description"] = str(raw["description"]).strip()
+    return field
+
+
+def _validate_collections(raw_list: Any, *, source: str) -> list[dict[str, Any]]:
+    """Typed record collections — the module's own persistent data model."""
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for raw in raw_list or []:
+        if not isinstance(raw, dict):
+            raise ValueError(f"{source}: collection entries must be mappings")
+        cid = str(raw.get("id") or "").strip()
+        if not _KEY_RE.match(cid):
+            raise ValueError(f"{source}: invalid collection id {cid!r}")
+        if cid in seen:
+            raise ValueError(f"{source}: duplicate collection id {cid!r}")
+        seen.add(cid)
+        fields = [
+            _validate_field(f, source=source, collection_id=cid) for f in (raw.get("fields") or [])
+        ]
+        if not fields:
+            raise ValueError(f"{source}: collection {cid!r} declares no fields")
+        names = {f["name"] for f in fields}
+        label_field = str(raw.get("label_field") or fields[0]["name"]).strip()
+        if label_field not in names:
+            raise ValueError(f"{source}: collection {cid!r} label_field {label_field!r} not a field")
+        out.append(
+            {
+                "id": cid,
+                "title": str(raw.get("title") or cid.replace("_", " ").title()).strip(),
+                "icon": str(raw.get("icon") or "").strip(),
+                "description": str(raw.get("description") or "").strip(),
+                "label_field": label_field,
+                "sort": str(raw.get("sort") or "-updated_at").strip(),
+                "fields": fields,
+            }
+        )
+    return out
+
+
+def _validate_workflows(raw_list: Any, *, source: str) -> list[dict[str, Any]]:
+    """Named plays: ordered steps the agent fetches and executes itself."""
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for raw in raw_list or []:
+        if not isinstance(raw, dict):
+            raise ValueError(f"{source}: workflow entries must be mappings")
+        wid = str(raw.get("id") or "").strip()
+        if not _KEY_RE.match(wid):
+            raise ValueError(f"{source}: invalid workflow id {wid!r}")
+        if wid in seen:
+            raise ValueError(f"{source}: duplicate workflow id {wid!r}")
+        seen.add(wid)
+        steps = [str(s).strip() for s in (raw.get("steps") or []) if str(s).strip()]
+        if not steps:
+            raise ValueError(f"{source}: workflow {wid!r} declares no steps")
+        out.append(
+            {
+                "id": wid,
+                "title": str(raw.get("title") or wid.replace("_", " ").title()).strip(),
+                "description": str(raw.get("description") or "").strip(),
+                "inputs": [str(i).strip() for i in (raw.get("inputs") or []) if str(i).strip()],
+                "steps": steps,
+                "done_when": str(raw.get("done_when") or "").strip(),
+            }
+        )
+    return out
+
+
+def _validate_mcp(raw_list: Any, *, source: str) -> list[dict[str, Any]]:
+    """MCP servers the module wants available to the agent.
+
+    Declared, never auto-enabled: an install must not silently start talking to
+    a third-party process. Env values hold `${VAR}` references, not secrets —
+    a literal-looking credential is rejected here rather than committed to a
+    manifest that ships in a repo.
+    """
+    from atlas_core.schemas.core import SECRET_PATTERNS  # noqa: PLC0415
+
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for raw in raw_list or []:
+        if not isinstance(raw, dict):
+            raise ValueError(f"{source}: mcp entries must be mappings")
+        mname = str(raw.get("name") or "").strip()
+        if not _MCP_NAME_RE.match(mname):
+            raise ValueError(f"{source}: invalid mcp server name {mname!r}")
+        if mname in seen:
+            raise ValueError(f"{source}: duplicate mcp server {mname!r}")
+        seen.add(mname)
+        transport = str(raw.get("transport") or "stdio").strip()
+        if transport not in MCP_TRANSPORTS:
+            raise ValueError(f"{source}: mcp {mname!r} transport must be one of {MCP_TRANSPORTS}")
+        command = str(raw.get("command") or "").strip()
+        url = str(raw.get("url") or "").strip()
+        if transport == "stdio" and not command:
+            raise ValueError(f"{source}: mcp {mname!r} (stdio) needs a command")
+        if transport == "http" and not url:
+            raise ValueError(f"{source}: mcp {mname!r} (http) needs a url")
+        env_raw = raw.get("env") or {}
+        if not isinstance(env_raw, dict):
+            raise ValueError(f"{source}: mcp {mname!r} env must be a mapping")
+        env = {str(k): str(v) for k, v in env_raw.items()}
+        for key, value in env.items():
+            # A credential-shaped key must carry a reference, not a value. This
+            # catches the common mistake directly; SECRET_PATTERNS then catches
+            # a secret smuggled under an innocuous key name.
+            if _SECRET_KEY_RE.search(key) and not _ENV_REF_ONLY_RE.match(value):
+                raise ValueError(
+                    f"{source}: mcp {mname!r} env {key!r} looks like a literal secret — "
+                    "use ${ENV_VAR} indirection"
+                )
+            if any(pattern.search(f"{key}={value}") for pattern in SECRET_PATTERNS):
+                raise ValueError(
+                    f"{source}: mcp {mname!r} env {key!r} looks like a literal secret — "
+                    "use ${ENV_VAR} indirection"
+                )
+        out.append(
+            {
+                "name": mname,
+                "transport": transport,
+                "command": command,
+                "args": [str(a) for a in (raw.get("args") or [])],
+                "env": env,
+                "url": url,
+                "description": str(raw.get("description") or "").strip(),
+                "enabled": bool(raw.get("enabled", False)),
+            }
+        )
+    return out
 
 
 def discover_modules(
@@ -319,6 +588,156 @@ def module_commands(conn: sqlite3.Connection) -> list[dict[str, str]]:
     return commands
 
 
+# ---------------------------------------------------------------------------
+# Capability v2 reads — every one filters on active AND present, so deactivating
+# a module removes its capability from every surface without deleting anything.
+# ---------------------------------------------------------------------------
+
+
+def active_manifests(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    """Parsed manifests of active, present modules, ordered by id.
+
+    Each manifest carries `source_path` (set at discovery) so callers can resolve
+    declared files relative to the module directory.
+    """
+    out: list[dict[str, Any]] = []
+    rows = conn.execute(
+        "SELECT manifest_json FROM modules"
+        " WHERE status='active' AND missing=0 AND manifest_json != ''"
+        " ORDER BY id"
+    ).fetchall()
+    for (manifest_json,) in rows:
+        try:
+            manifest = json.loads(manifest_json)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(manifest, dict) and manifest.get("id"):
+            out.append(manifest)
+    return out
+
+
+def capability(manifest: dict[str, Any], key: str) -> list[dict[str, Any]]:
+    """capabilities[key] as a list — tolerant of v1 manifests missing the key."""
+    caps = manifest.get("capabilities") or {}
+    value = caps.get(key) or []
+    return value if isinstance(value, list) else []
+
+
+def find_collection(
+    manifest: dict[str, Any], collection_id: str
+) -> Optional[dict[str, Any]]:
+    """The collection schema with this id, or None."""
+    for coll in capability(manifest, "collections"):
+        if coll.get("id") == collection_id:
+            return coll
+    return None
+
+
+def active_manifest(conn: sqlite3.Connection, module_id: str) -> Optional[dict[str, Any]]:
+    """Manifest of `module_id` when it is active and present; else None.
+
+    The single gate every capability read goes through — an inactive module is
+    indistinguishable from an absent one at the capability layer.
+    """
+    row = conn.execute(
+        "SELECT manifest_json FROM modules"
+        " WHERE id=? AND status='active' AND missing=0 AND manifest_json != ''",
+        (module_id,),
+    ).fetchone()
+    if row is None or not row[0]:
+        return None
+    try:
+        manifest = json.loads(row[0])
+    except json.JSONDecodeError:
+        return None
+    return manifest if isinstance(manifest, dict) else None
+
+
+def read_context_file(manifest: dict[str, Any], entry: dict[str, Any]) -> str:
+    """Read one declared doctrine file. Missing/unreadable -> empty string.
+
+    The path was validated at sync time to stay inside the module directory;
+    it is re-resolved here and checked again, because the manifest row in the
+    DB could have been written by an older, laxer validator.
+    """
+    root = Path(str(manifest.get("source_path") or ""))
+    if not root.is_dir():
+        return ""
+    target = (root / str(entry.get("path") or "")).resolve()
+    try:
+        if not target.is_file() or root.resolve() not in target.parents:
+            return ""
+        return target.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def active_context_blocks(
+    conn: sqlite3.Connection,
+    *,
+    terms: tuple[str, ...] = (),
+    token_budget: int = DEFAULT_MODULE_CONTEXT_BUDGET,
+) -> list[dict[str, Any]]:
+    """Doctrine blocks to inject for the active modules, under a token budget.
+
+    `inject: always` blocks come first (they are what the operator said must
+    always be present), then `matched` blocks whose declared terms overlap the
+    run's terms. `on_demand` never auto-injects — the agent fetches it with
+    `atlas_module op=context`. Each block is truncated to its own `max_tokens`
+    and the whole set to `token_budget`; content is redacted by the caller's
+    context assembly, same as every other dynamic source.
+    """
+    from atlas_runtime.memory_router import estimate_tokens  # noqa: PLC0415
+
+    lowered = {t.lower() for t in terms}
+    always: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    matched: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for manifest in active_manifests(conn):
+        for entry in capability(manifest, "context"):
+            mode = entry.get("inject", "always")
+            if mode == "always":
+                always.append((manifest, entry))
+            elif mode == "matched" and lowered & set(entry.get("terms") or []):
+                matched.append((manifest, entry))
+
+    blocks: list[dict[str, Any]] = []
+    used = 0
+    for manifest, entry in always + matched:
+        text = read_context_file(manifest, entry).strip()
+        if not text:
+            continue
+        limit = int(entry.get("max_tokens") or DEFAULT_CONTEXT_TOKENS)
+        # 4 chars/token is the estimator's own ratio (memory_router).
+        if estimate_tokens(text) > limit:
+            text = text[: limit * 4].rstrip() + "\n\n_(truncated at the module context budget)_"
+        tokens = estimate_tokens(text)
+        if blocks and used + tokens > token_budget:
+            continue
+        used += tokens
+        blocks.append(
+            {
+                "module_id": manifest.get("id", ""),
+                "module_name": manifest.get("name", ""),
+                "id": entry.get("id", ""),
+                "title": entry.get("title", ""),
+                "text": text,
+                "tokens": tokens,
+            }
+        )
+    return blocks
+
+
+def module_mcp_declarations(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    """MCP server declarations from active modules, tagged with their module."""
+    out: list[dict[str, Any]] = []
+    for manifest in active_manifests(conn):
+        for server in capability(manifest, "mcp"):
+            entry = dict(server)
+            entry["module_id"] = manifest.get("id", "")
+            out.append(entry)
+    return out
+
+
 SCAFFOLD_MANIFEST = """\
 id: {module_id}
 name: {name}
@@ -330,7 +749,38 @@ capabilities:
     - name: {module_id}
       description: run the {name} flow
       template: |
-        You are executing the {name} module command. $ARGUMENTS
+        You are executing the {name} module command. Read the module doctrine
+        with atlas_module(op="context", module="{module_id}") first.
+        Operator input: $ARGUMENTS
+  context:
+    - id: doctrine
+      title: {name} doctrine
+      path: context/doctrine.md
+      inject: always
+      max_tokens: 500
+  collections:
+    - id: items
+      title: Items
+      label_field: title
+      fields:
+        - name: title
+          type: text
+          required: true
+        - name: status
+          type: enum
+          options: [open, doing, done]
+          default: open
+        - name: notes
+          type: longtext
+  workflows:
+    - id: run
+      title: Run the {name} flow
+      description: Replace these steps with the real play.
+      steps:
+        - Read the module doctrine and the open items.
+        - Do the work; record what changed as records.
+        - Report what is verified and what is still assumed.
+      done_when: Every open item has an outcome recorded.
   pages:
     - id: main
       title: {name}
@@ -338,14 +788,37 @@ capabilities:
       blocks:
         - kind: heading
           text: {name}
-        - kind: markdown
-          text: >
-            This page was scaffolded by `atlas module create`. Edit
-            module.yaml to change blocks, commands, and actions.
-        - kind: actions
-          items:
-            - label: Run {name}
-              command: /{module_id}
+        - kind: tabs
+          tabs:
+            - id: overview
+              label: Overview
+              blocks:
+                - kind: markdown
+                  text: >
+                    Scaffolded by `atlas module create`. Edit module.yaml to
+                    change doctrine, collections, workflows, commands and pages.
+                - kind: actions
+                  items:
+                    - label: Run {name}
+                      command: /{module_id}
+            - id: items
+              label: Items
+              blocks:
+                - kind: records
+                  collection: items
+                  columns: [title, status]
+"""
+
+SCAFFOLD_DOCTRINE = """\
+# {name} doctrine
+
+Injected into every run while this module is active, so keep it short and
+operational. Replace this with the rules that must hold whenever the agent
+works on {name}:
+
+- What this module is for, in one sentence.
+- The constraints that must never be violated.
+- The definition of done.
 """
 
 
@@ -372,4 +845,11 @@ def create_module_scaffold(
     validate_manifest(yaml.safe_load(manifest), source="scaffold")
     target.mkdir(parents=True)
     (target / MODULE_FILE).write_text(manifest, encoding="utf-8")
+    # The scaffold declares a doctrine file, so it must also create one:
+    # a manifest pointing at a missing file injects nothing and looks broken.
+    context_dir = target / "context"
+    context_dir.mkdir(parents=True, exist_ok=True)
+    (context_dir / "doctrine.md").write_text(
+        SCAFFOLD_DOCTRINE.format(name=display), encoding="utf-8"
+    )
     return target

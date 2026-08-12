@@ -1,9 +1,9 @@
 {
   "version": 1,
   "metrics": {
-    "precision": 0.80,
-    "recall": 0.80,
-    "faithfulness": 0.90,
+    "precision": 0.8,
+    "recall": 0.8,
+    "faithfulness": 0.9,
     "provenance": 1.0,
     "freshness": 1.0,
     "token_budget": 8192,
@@ -11,8 +11,8 @@
     "poisoned_source_resistance": 1.0
   },
   "prompt_cache_prefix_hashes": {
-    "generic": "08bd857df2cac49e2e2ab6f1514da082475a10764254d855e90d039b43d38d48",
-    "openai-compatible": "4f7275d73d01d7c384728eaf26829fb415997f5bc83c545f01718d76c2754101",
-    "anthropic-compatible": "1b5e3fc119dd9ae0589da8f34ce5ef3793f0d2dc8792c2749515d4bd38fc455a"
+    "generic": "206096339384987dfe616023444b22db32fae4fd5270e9ae206e44b74867d19c",
+    "openai-compatible": "1bcb63f77eaea384ff7946a5c54f3e4679c7a54ab6b68fe230daacf38d1f35cb",
+    "anthropic-compatible": "dc300857ea5baa6f9699558d175b035ff901f128f5daad8ce43e5f30579d217a"
   }
 }

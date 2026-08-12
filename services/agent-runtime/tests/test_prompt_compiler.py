@@ -206,7 +206,10 @@ def test_declared_atlas_tools_match_what_the_bridges_register():
     from atlas_runtime.prompt_compiler import AGENT_FACING_TOOLS
 
     registered = set()
-    for module in ("actor_bridge", "graph_bridge", "team_bridge"):
+    for module in (
+        "actor_bridge", "graph_bridge", "team_bridge",
+        "module_bridge", "scratchpad_bridge",
+    ):
         source = (
             Path(__file__).parent.parent / "atlas_runtime" / f"{module}.py"
         ).read_text(encoding="utf-8")

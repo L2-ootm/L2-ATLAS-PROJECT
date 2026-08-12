@@ -1,0 +1,440 @@
+id: outreach
+name: Outreach
+version: 0.1.0
+description: >
+  Evidence-gated outbound — research, scoring, gates, drafting, follow-up and a
+  CRM the agent maintains. ATLAS drafts and records; a human sends.
+author: L2 Systems
+
+capabilities:
+  # -------------------------------------------------------------------------
+  # Doctrine injected into runs while this module is active. `always` files are
+  # the rules that must hold in every outreach run; `matched` files appear when
+  # the run is about that part of the work; `on_demand` is fetched by the agent
+  # with atlas_module(op="context").
+  # -------------------------------------------------------------------------
+  context:
+    - id: doctrine
+      title: Outreach doctrine
+      path: context/doctrine.md
+      inject: always
+      max_tokens: 800
+    - id: compliance
+      title: Outreach compliance constraints
+      path: context/compliance.md
+      inject: always
+      max_tokens: 500
+    - id: qualification
+      title: Qualification, scoring and gates
+      path: context/qualification.md
+      inject: matched
+      terms: [qualify, score, gate, tier, pipeline, prospect, evidence]
+      max_tokens: 800
+    - id: messaging
+      title: Message craft
+      path: context/messaging.md
+      inject: matched
+      terms: [message, draft, dm, email, reply, sequence, followup, discovery]
+      max_tokens: 800
+    - id: research
+      title: Research protocol
+      path: context/research.md
+      inject: on_demand
+    - id: rhythm
+      title: Operating rhythm
+      path: context/operating-rhythm.md
+      inject: on_demand
+
+  # -------------------------------------------------------------------------
+  # The CRM. Seven collections, each one thing the pipeline actually needs to
+  # remember between runs.
+  # -------------------------------------------------------------------------
+  collections:
+    - id: prospects
+      title: Prospects
+      icon: users
+      description: The registry. One record per organization or creator.
+      label_field: name
+      fields:
+        - {name: name, type: text, required: true, title: Name}
+        - {name: handle, type: text, title: Handle}
+        - {name: org, type: text, title: Organization}
+        - {name: niche, type: text, title: Niche}
+        - {name: tier, type: enum, options: [S, A, B], default: B}
+        - {name: relationship, type: enum, options: [warm, known, cold], default: cold}
+        - name: stage
+          type: enum
+          options: [research, ready, sent, replied, discovery, validation, pilot, nurture, closed]
+          default: research
+        - {name: score, type: number, min: 0, max: 100, description: "0-100, five 20-point components"}
+        - {name: current_offer, type: longtext, description: What they already sell}
+        - {name: gap_hypothesis, type: longtext, description: The specific unfilled gap}
+        - {name: why_now, type: text}
+        - {name: channel, type: text, description: The legitimate reachable channel}
+        - {name: decision_maker, type: text}
+        - {name: evidence_level, type: enum, options: [verified, reported, hypothesis], default: hypothesis}
+        - {name: next_action, type: text}
+        - {name: next_action_at, type: date}
+        - {name: last_touch_at, type: date}
+        - {name: owner, type: text}
+        - {name: open_questions, type: longtext, description: Honest unknowns, not guesses}
+        - {name: invalidated, type: longtext, description: Theses proven wrong — never re-pitch these}
+        - {name: links, type: tags}
+        - {name: notes, type: longtext}
+      sort: -updated_at
+
+    - id: signals
+      title: Signals
+      icon: search
+      description: Evidence. Every fact about a prospect, with its confidence class.
+      label_field: label
+      fields:
+        - {name: label, type: text, required: true}
+        - {name: prospect, type: ref, ref_collection: prospects, required: true}
+        - {name: detail, type: longtext}
+        - {name: confidence, type: enum, options: [verified, reported, hypothesis], default: hypothesis}
+        - {name: url, type: url}
+        - {name: captured_at, type: date}
+        - {name: kind, type: enum, options: [offer, demand, audience, gap, timing, reach, risk], default: offer}
+
+    - id: touches
+      title: Touches
+      icon: send
+      description: Append-only contact ledger. One record per message, in or out.
+      label_field: summary
+      fields:
+        - {name: summary, type: text, required: true}
+        - {name: prospect, type: ref, ref_collection: prospects, required: true}
+        - {name: channel, type: enum, options: [dm, email, call, comment, intro, other], default: dm}
+        - {name: direction, type: enum, options: [outbound, inbound], default: outbound}
+        - {name: at, type: date}
+        - {name: variant, type: text, description: Message variant id, for reply-rate comparison}
+        - {name: body, type: longtext}
+        - name: outcome
+          type: enum
+          options: [drafted, sent, open, curious-vague, price-first, defer, objection, "no", none]
+          default: drafted
+        - {name: next_move, type: text}
+
+    - id: gates
+      title: Gates
+      icon: shield-check
+      description: Gate decisions with the evidence that decided them.
+      label_field: label
+      fields:
+        - {name: label, type: text, required: true}
+        - {name: prospect, type: ref, ref_collection: prospects, required: true}
+        - name: gate
+          type: enum
+          options: [g0-intent, g1-demand, g2-offer, g3-distribution, g4-build, g5-recurring]
+          default: g1-demand
+        - {name: decision, type: enum, options: [pass, hold, fail], default: hold}
+        - {name: evidence, type: longtext, description: What decided it — signal ids or URLs}
+        - {name: rationale, type: text}
+        - {name: decided_at, type: date}
+
+    - id: sequences
+      title: Sequences
+      icon: list-ordered
+      description: Reusable multi-step plays. Steps are human-sent, agent-drafted.
+      label_field: name
+      fields:
+        - {name: name, type: text, required: true}
+        - {name: audience, type: text}
+        - {name: channel, type: enum, options: [dm, email, call, comment, intro, other], default: dm}
+        - {name: steps, type: longtext, description: One step per line — day offset, intent, constraint}
+        - {name: status, type: enum, options: [draft, active, retired], default: draft}
+        - {name: reply_rate, type: number, min: 0, max: 100}
+        - {name: notes, type: longtext}
+
+    - id: objections
+      title: Objection library
+      icon: message-circle
+      description: What comes back, what it means, and the move that follows.
+      label_field: trigger
+      fields:
+        - {name: trigger, type: text, required: true, description: What they actually say}
+        - {name: intent, type: text, description: What it means underneath}
+        - {name: response, type: longtext}
+        - {name: next_move, type: text}
+        - {name: tone, type: enum, options: [positive, neutral, caution, stop], default: neutral}
+
+    - id: experiments
+      title: Experiments
+      icon: flask-conical
+      description: One variable, one metric, one decision rule. Weekly review feeds this.
+      label_field: hypothesis
+      fields:
+        - {name: hypothesis, type: text, required: true}
+        - {name: variable, type: text, description: The single thing being changed}
+        - {name: metric, type: text}
+        - {name: decision_rule, type: text, description: What result means keep vs kill}
+        - {name: status, type: enum, options: [planned, running, decided], default: planned}
+        - {name: result, type: longtext}
+        - {name: decided_at, type: date}
+
+  # -------------------------------------------------------------------------
+  # Named plays. The agent fetches these with atlas_module(op="workflow") and
+  # executes them itself — they are procedure, not automation.
+  # -------------------------------------------------------------------------
+  workflows:
+    - id: research_prospect
+      title: Research a prospect to gate-ready
+      description: Turn a name into six evidence-backed answers, or an honest stop.
+      inputs: [prospect]
+      steps:
+        - Read context/research.md (atlas_module op=context context_id=research).
+        - Query the prospects collection first — never create a duplicate record.
+        - Read their own surfaces (site, store, bio, pinned posts) before any commentary.
+        - Write each fact as a signals record as you find it, with confidence and URL.
+        - Actively try to invalidate the thesis — do they already sell this?
+        - Score the prospect (five 20-point components) and set tier and stage.
+        - Set next_action and next_action_at on the prospect record.
+        - Report verified / reported / unknown separately, then the single next step.
+      done_when: >
+        Six answers exist as signals, the prospect is scored and staged, and
+        next_action is set — or the prospect is in nurture with the reason recorded.
+
+    - id: gate_prospect
+      title: Run the evidence gate
+      description: Decide send or hold, on evidence, and record the decision.
+      inputs: [prospect]
+      steps:
+        - Load the prospect and every signal attached to it.
+        - Check the six pre-send questions; name any that has no verified answer.
+        - Apply gate 0 and gate 1 criteria from context/qualification.md.
+        - Write a gates record — pass, hold or fail — with the deciding evidence.
+        - On pass, set stage=ready. On hold, set the specific missing evidence as next_action.
+        - Never pass a gate on hypothesis-class evidence alone.
+      done_when: A gates record exists and the prospect's stage reflects it.
+
+    - id: draft_opening
+      title: Draft the opening message
+      description: One observation, one question, under 60 words. A human sends it.
+      inputs: [prospect]
+      steps:
+        - Refuse to draft unless the prospect is stage=ready with a passed gate.
+        - Pick the single most specific verified observation from the signals.
+        - Draft one message, under 60 words, no attachment, no pitch, one question.
+        - Run the substitution test — would it read the same for another prospect?
+        - Write it as a touches record with outcome=drafted and a variant id.
+        - Hand it to the operator to send; state plainly that ATLAS does not send.
+      done_when: A drafted touch exists and the operator has been told it is ready to send.
+
+    - id: handle_reply
+      title: Handle a reply
+      description: Classify, respond to the class, record what changed.
+      inputs: [prospect, reply_text]
+      steps:
+        - Record the inbound message as a touches record (direction=inbound).
+        - Classify it — open, curious-vague, price-first, defer, objection, no.
+        - Check the objections collection for a matching trigger before improvising.
+        - Draft the response the class calls for; keep it to one message.
+        - Extract any new fact as a signals record.
+        - Advance or hold the stage, and set the next action with a date.
+      done_when: The reply is recorded, classified, answered in draft, and the stage is current.
+
+    - id: daily_queue
+      title: Build today's queue
+      description: What is due, what is stalled, what is waiting on a human.
+      steps:
+        - Read context/operating-rhythm.md (atlas_module op=context context_id=rhythm).
+        - Inbound touches with no follow-up recorded come first.
+        - Then prospects whose next_action_at is today or past, by tier then score.
+        - Then research debt — research-stage prospects with no signal in 7 days.
+        - Then drafts waiting on the operator to send.
+        - Report as an ordered queue of concrete actions, not a status dump.
+      done_when: The operator has an ordered list where every item names one action.
+
+    - id: weekly_review
+      title: Weekly review
+      description: Numbers from the records, learnings, kills, one experiment.
+      steps:
+        - Count sends, replies and reply rate from the touches ledger, by variant.
+        - List gates cleared and gates held, with the reason for each hold.
+        - List invalidated theses learned this week — these become permanent constraints.
+        - List kills, with the criterion each one met. No kills is a warning, not a win.
+        - Propose exactly one experiment for next week and write it as an experiments record.
+      done_when: An experiments record exists and every number cited traces to records.
+
+  # -------------------------------------------------------------------------
+  # MCP servers this module can use. Disabled by default and deliberately
+  # unconfigured: verify the package/endpoint and provide the key, then
+  # `atlas mcp enable <name>`. Env values are ${VAR} references, never secrets.
+  # -------------------------------------------------------------------------
+  mcp:
+    - name: outreach-web
+      transport: stdio
+      command: npx
+      args: ["-y", "firecrawl-mcp"]
+      env: {FIRECRAWL_API_KEY: "${FIRECRAWL_API_KEY}"}
+      enabled: false
+      description: >
+        TEMPLATE — web research for prospect evidence (site, store, offer pages).
+        Verify the package name and set FIRECRAWL_API_KEY before enabling.
+    - name: outreach-crm-bridge
+      transport: http
+      url: http://127.0.0.1:8787/mcp
+      enabled: false
+      description: >
+        TEMPLATE — a local MCP endpoint for a future external CRM/email system.
+        Point it at the real endpoint before enabling; nothing runs until you do.
+
+  # -------------------------------------------------------------------------
+  # Slash commands. Available in the WebUI palette, chat, and the terminal.
+  # -------------------------------------------------------------------------
+  commands:
+    - name: outreach
+      description: pipeline situation + today's ordered queue
+      template: |
+        Run the outreach daily queue. Fetch the play with
+        atlas_module(op="workflow", module="outreach", workflow_id="daily_queue")
+        and follow it exactly against the live records. Report an ordered queue
+        where every item names one concrete next action, then stop — do not
+        start executing the queue unless told to. Operator input: $ARGUMENTS
+
+    - name: outreach-research
+      description: research a prospect to gate-ready, recording evidence as you go
+      template: |
+        Research this prospect for the outreach module:  $ARGUMENTS
+        Fetch atlas_module(op="workflow", module="outreach", workflow_id="research_prospect")
+        and follow it. Write signals as you find them, not at the end. Separate
+        VERIFIED from REPORTED from UNKNOWN in the final report.
+
+    - name: outreach-gate
+      description: run the evidence gate and record pass/hold/fail
+      template: |
+        Run the outreach evidence gate for: $ARGUMENTS
+        Fetch atlas_module(op="workflow", module="outreach", workflow_id="gate_prospect")
+        and follow it. A gate cannot pass on hypothesis-class evidence.
+
+    - name: outreach-draft
+      description: draft the opening message (a human sends it)
+      template: |
+        Draft the outreach opening message for: $ARGUMENTS
+        Fetch atlas_module(op="workflow", module="outreach", workflow_id="draft_opening")
+        and follow it. One observation, one question, under 60 words. Record it
+        as a drafted touch and hand it to the operator — ATLAS does not send.
+
+    - name: outreach-reply
+      description: classify and answer a reply, then advance the record
+      template: |
+        Handle this outreach reply: $ARGUMENTS
+        Fetch atlas_module(op="workflow", module="outreach", workflow_id="handle_reply")
+        and follow it.
+
+    - name: outreach-review
+      description: weekly review — numbers, learnings, kills, one experiment
+      template: |
+        Run the outreach weekly review. Fetch
+        atlas_module(op="workflow", module="outreach", workflow_id="weekly_review")
+        and follow it. Every number must trace to records; say so when one does
+        not exist yet. Operator input: $ARGUMENTS
+
+    - name: outreach-crm
+      description: inspect or repair the CRM records
+      template: |
+        Work on the outreach CRM records: $ARGUMENTS
+        Use atlas_module(op="stats", module="outreach") for the inventory and
+        op=query per collection. Fix what is inconsistent — prospects with no
+        next action, touches with no outcome, signals with no confidence class —
+        and report what you changed. Ask before deleting anything.
+
+  # -------------------------------------------------------------------------
+  # Cockpit surface. Rendered by ATLAS-owned components from this schema.
+  # -------------------------------------------------------------------------
+  pages:
+    - id: main
+      title: Outreach
+      icon: send
+      blocks:
+        - kind: heading
+          text: Outreach — evidence-gated outbound
+        - kind: stat_row
+          items:
+            - {label: Prospects, collection: prospects}
+            - {label: Ready, collection: prospects, where: {stage: ready}}
+            - {label: Sent, collection: prospects, where: {stage: sent}}
+            - {label: Replied, collection: prospects, where: {stage: replied}}
+            - {label: Discovery, collection: prospects, where: {stage: discovery}}
+        - kind: tabs
+          tabs:
+            - id: today
+              label: Today
+              blocks:
+                - kind: markdown
+                  text: >
+                    The queue is derived, not stored: ask the agent for it. Inbound
+                    replies outrank everything, then prospects whose next action is
+                    due, then research debt, then drafts waiting on you to send.
+                - kind: actions
+                  items:
+                    - {label: Build today's queue, command: /outreach}
+                    - {label: Weekly review, command: /outreach-review}
+                    - {label: Repair the CRM, command: /outreach-crm}
+            - id: pipeline
+              label: Pipeline
+              blocks:
+                - kind: records
+                  collection: prospects
+                  columns: [name, tier, stage, score, next_action, next_action_at]
+                - kind: actions
+                  items:
+                    - {label: Research a prospect, command: /outreach-research }
+                    - {label: Run the gate, command: /outreach-gate }
+                    - {label: Draft the opening, command: /outreach-draft }
+            - id: signals
+              label: Signals
+              blocks:
+                - kind: records
+                  collection: signals
+                  columns: [label, prospect, kind, confidence, url]
+            - id: touches
+              label: Touches
+              blocks:
+                - kind: records
+                  collection: touches
+                  columns: [at, prospect, channel, direction, outcome, summary]
+                - kind: actions
+                  items:
+                    - {label: Handle a reply, command: /outreach-reply }
+            - id: gates
+              label: Gates
+              blocks:
+                - kind: records
+                  collection: gates
+                  columns: [prospect, gate, decision, decided_at, rationale]
+            - id: plays
+              label: Plays
+              blocks:
+                - kind: records
+                  collection: sequences
+                  columns: [name, channel, status, reply_rate]
+                - kind: divider
+                - kind: records
+                  collection: objections
+                  columns: [trigger, intent, tone, next_move]
+                - kind: divider
+                - kind: records
+                  collection: experiments
+                  columns: [hypothesis, variable, metric, status]
+            - id: doctrine
+              label: Doctrine
+              blocks:
+                - kind: markdown
+                  text: >
+                    **The rule:** no message goes out until six questions are
+                    answered from evidence — current offer, specific gap, why now,
+                    why L2, smallest test, the one-line ask. Stages are earned by
+                    evidence, never by elapsed time.
+                - kind: markdown
+                  text: >
+                    **Hard constraints:** a human sends; no mass cold-DM automation;
+                    no scraping behind a login; no invented numbers; no guarantees;
+                    opt-out is permanent. Full text in `context/compliance.md` —
+                    it is injected into every run while this module is active.
+                - kind: markdown
+                  text: >
+                    **Gates:** 0 partner intent → 1 demand evidence → 2 offer test →
+                    3 distribution test → 4 build authorization → 5 recurring
+                    authorization. A gate that passes on a hypothesis is a hold.

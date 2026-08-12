@@ -2247,6 +2247,91 @@ async fn modules_list_includes_manifest_fields() {
     assert!(cashflow["manifest"].is_null());
 }
 
+// --- Module capability v2: records + MCP registry (0034) ---------------------
+
+const MIGRATION_0034: &str =
+    include_str!("../../../../../infra/migrations/0034_module_capabilities.sql");
+
+/// Manifest modules + 0034 with two records and two MCP servers.
+fn seeded_db_module_records(dir: &tempfile::TempDir) -> PathBuf {
+    let path = seeded_db_manifest_modules(dir);
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    conn.execute_batch(MIGRATION_0034).unwrap();
+    conn.execute(
+        "INSERT INTO module_records(module_id, collection, id, data_json, status, created_at, updated_at) \
+         VALUES ('demo-mod', 'prospects', 'acme', '{\"name\":\"Acme\"}', 'active', '2026-08-12T00:00:00Z', '2026-08-12T00:00:00Z')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO module_records(module_id, collection, id, data_json, status, created_at, updated_at, deleted_at) \
+         VALUES ('demo-mod', 'prospects', 'gone', '{\"name\":\"Gone\"}', 'active', '2026-08-12T00:00:00Z', '2026-08-12T00:00:00Z', '2026-08-12T01:00:00Z')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO mcp_servers(name, module_id, transport, command, args_json, env_json, url, description, enabled, source, created_at, updated_at) \
+         VALUES ('demo-search', 'demo-mod', 'stdio', 'npx', '[\"-y\",\"demo\"]', '{}', '', 'demo', 0, 'module', '2026-08-12T00:00:00Z', '2026-08-12T00:00:00Z')",
+        [],
+    )
+    .unwrap();
+    drop(conn);
+    path
+}
+
+#[tokio::test]
+async fn module_records_served_for_active_modules_excluding_deleted() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = seeded_db_module_records(&dir);
+    let router = test_app(path);
+    let (status, body) =
+        get_json(&router, "/v1/modules/demo-mod/collections/prospects/records").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["count"], 1, "soft-deleted rows must not be served");
+    assert_eq!(body["records"][0]["id"], "acme");
+    assert_eq!(body["records"][0]["data"]["name"], "Acme");
+}
+
+#[tokio::test]
+async fn module_records_hidden_when_the_module_is_inactive() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = seeded_db_module_records(&dir);
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    conn.execute("UPDATE modules SET status='inactive' WHERE id='demo-mod'", [])
+        .unwrap();
+    drop(conn);
+    let router = test_app(path);
+    let (status, body) =
+        get_json(&router, "/v1/modules/demo-mod/collections/prospects/records").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["count"], 0, "deactivation hides records on every surface");
+}
+
+#[tokio::test]
+async fn module_records_empty_before_the_migration() {
+    // pre-0034 database: no table — empty list, never a 500.
+    let dir = tempfile::tempdir().unwrap();
+    let path = seeded_db_manifest_modules(&dir);
+    let router = test_app(path);
+    let (status, body) =
+        get_json(&router, "/v1/modules/demo-mod/collections/prospects/records").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["count"], 0);
+}
+
+#[tokio::test]
+async fn mcp_registry_is_served() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = seeded_db_module_records(&dir);
+    let router = test_app(path);
+    let (status, body) = get_json(&router, "/v1/mcp").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["count"], 1);
+    assert_eq!(body["servers"][0]["name"], "demo-search");
+    assert_eq!(body["servers"][0]["enabled"], false);
+    assert_eq!(body["servers"][0]["args"][0], "-y");
+}
+
 // --- Focus read + write surface (WP-2 — Command Center Current Focus) --------
 
 const MIGRATION_0009: &str = include_str!("../../../../../infra/migrations/0009_focus.sql");

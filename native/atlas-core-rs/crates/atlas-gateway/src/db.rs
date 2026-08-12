@@ -890,6 +890,86 @@ pub fn list_module_commands(path: &Path) -> Result<Vec<Value>, DbError> {
     Ok(commands)
 }
 
+/// Records in one collection of an ACTIVE module (capability v2, migration 0034).
+///
+/// The active/missing filter is the same gate the Python service applies: a
+/// deactivated module's records stay in the database and disappear from every
+/// surface. Reads go straight to SQLite (writes still dispatch to the CLI), and
+/// a pre-0034 database degrades to an empty list rather than a 500.
+pub fn list_module_records(
+    path: &Path,
+    module_id: &str,
+    collection: &str,
+    limit: i64,
+) -> Result<Vec<Value>, DbError> {
+    let conn = open_ro(path)?;
+    let active: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM modules \
+             WHERE id = ?1 AND status='active' AND missing=0",
+            [module_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    if active == 0 {
+        return Ok(vec![]);
+    }
+    let sql = "SELECT id, data_json, status, created_at, updated_at \
+               FROM module_records \
+               WHERE module_id = ?1 AND collection = ?2 AND deleted_at IS NULL \
+               ORDER BY updated_at DESC LIMIT ?3";
+    let Ok(mut stmt) = conn.prepare(sql) else {
+        return Ok(vec![]);
+    };
+    let rows = stmt
+        .query_map(rusqlite::params![module_id, collection, limit.clamp(1, 500)], |row| {
+            let data_json: String = row.get(1)?;
+            Ok(json!({
+                "id": row.get::<_, String>(0)?,
+                "data": serde_json::from_str::<Value>(&data_json).unwrap_or(Value::Null),
+                "status": row.get::<_, String>(2)?,
+                "created_at": row.get::<_, String>(3)?,
+                "updated_at": row.get::<_, String>(4)?,
+            }))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+/// The MCP server registry (0034). Env values are `${VAR}` references, never
+/// secrets, so the whole row is safe to serve.
+pub fn list_mcp_servers(path: &Path) -> Result<Vec<Value>, DbError> {
+    let conn = open_ro(path)?;
+    let sql = "SELECT name, module_id, transport, command, args_json, env_json, url, \
+               description, enabled, source, last_status, last_checked_at, last_error \
+               FROM mcp_servers ORDER BY name ASC";
+    let Ok(mut stmt) = conn.prepare(sql) else {
+        return Ok(vec![]);
+    };
+    let rows = stmt
+        .query_map([], |row| {
+            let args: String = row.get(4)?;
+            let env: String = row.get(5)?;
+            Ok(json!({
+                "name": row.get::<_, String>(0)?,
+                "module_id": row.get::<_, String>(1)?,
+                "transport": row.get::<_, String>(2)?,
+                "command": row.get::<_, String>(3)?,
+                "args": serde_json::from_str::<Value>(&args).unwrap_or(Value::Null),
+                "env": serde_json::from_str::<Value>(&env).unwrap_or(Value::Null),
+                "url": row.get::<_, String>(6)?,
+                "description": row.get::<_, String>(7)?,
+                "enabled": row.get::<_, i64>(8)? != 0,
+                "source": row.get::<_, String>(9)?,
+                "last_status": row.get::<_, String>(10)?,
+                "last_checked_at": row.get::<_, Option<String>>(11)?,
+                "last_error": row.get::<_, String>(12)?,
+            }))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
 fn module_row_legacy(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
     Ok(json!({
         "id": row.get::<_, String>(0)?,

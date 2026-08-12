@@ -34,8 +34,8 @@ _CATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Services & Sidecars", ("gateway", "cashflow", "freellmapi", "discord", "module", "terminal")),
     ("Providers & Models", ("provider", "models", "auth", "config", "components")),
     ("Data & Knowledge", ("db", "project", "graph", "brain", "wiki", "retention")),
-    ("Integrations", ("channels", "tools", "surface", "skills", "rtk")),
-    ("Dev / Internal", ("foundation",)),
+    ("Integrations", ("channels", "tools", "surface", "skills", "mcp", "rtk")),
+    ("Dev / Internal", ("foundation", "scratch")),
 )
 # Never shown as a browsable entry (this command IS the browser).
 _EXCLUDE = frozenset({"help"})

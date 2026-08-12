@@ -153,15 +153,23 @@ def test_scaffold_creates_valid_module(db, lock, tmp_path) -> None:
 
 
 def test_bundled_modules_are_exactly_the_first_party_set(db, lock) -> None:
-    """The base install ships only first-party modules (GSD/L2), no toys.
+    """The base install ships only first-party modules, no toys.
 
-    The bundled example module was removed deliberately; the GSD/L2 framework
-    module is a real product surface and is the one sanctioned bundled entry.
-    Anything else appearing here is scope creep — extend this list only with
-    an explicit product decision.
+    The bundled example module was removed deliberately. GSD/L2 (execution
+    doctrine) and Outreach (evidence-gated outbound) are real product surfaces
+    and are the sanctioned bundled entries. Anything else appearing here is
+    scope creep — extend this list only with an explicit product decision.
     """
     summary = module_service.sync_modules(
         db, lock, roots=[module_service.bundled_modules_dir()]
     )
-    assert summary["discovered"] == ["gsd"]
+    assert summary["discovered"] == ["gsd", "outreach"]
     assert summary["problems"] == []
+
+
+def test_bundled_modules_start_inactive(db, lock) -> None:
+    """Shipping a module must never switch it on — the base install stays lean."""
+    module_service.sync_modules(db, lock, roots=[module_service.bundled_modules_dir()])
+    for module_id in ("gsd", "outreach"):
+        module = module_service.get_module(db, module_id)
+        assert module is not None and module.status == "inactive"

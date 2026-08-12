@@ -140,6 +140,45 @@ def _knowledge_terms(focus_title: str | None, tree: list[dict]) -> list[str]:
     return terms
 
 
+def _module_doctrine_lines(
+    conn: sqlite3.Connection, *, terms: tuple[str, ...], token_budget: int
+) -> tuple[list[str], list[str]]:
+    """Render active-module doctrine as a delimited, redacted brief section.
+
+    Never raises: a broken or half-installed module must not be able to stop a
+    run from getting its context. Returns ([] , []) when nothing is injectable.
+    """
+    try:
+        from atlas_runtime import module_service  # noqa: PLC0415
+
+        blocks = module_service.active_context_blocks(
+            conn, terms=terms, token_budget=token_budget
+        )
+    except Exception:  # noqa: BLE001 — context assembly is best-effort here
+        return [], []
+    if not blocks:
+        return [], []
+
+    lines = [
+        "## Active Module Doctrine",
+        "_Operator-activated modules. These are instructions for work in their "
+        "domain — follow them; use `atlas_module` for the module's records, "
+        "workflows and on-demand context._",
+        "",
+    ]
+    sources: list[str] = []
+    for block in blocks:
+        module_id = block["module_id"]
+        lines.append(
+            f"<module-doctrine module=\"{module_id}\" id=\"{block['id']}\" trust=\"operator\">"
+        )
+        lines.append(redact(block["text"]))
+        lines.append("</module-doctrine>")
+        lines.append("")
+        sources.append(f"module:{module_id}:{block['id']}")
+    return lines, sources
+
+
 def assemble_context(
     conn: sqlite3.Connection,
     *,
@@ -213,6 +252,19 @@ def assemble_context(
     # and redacted by the MemoryRouter. Terms come from the Focus + open goals; the
     # wiki retriever no-ops when there is no focus (empty terms).
     terms = _knowledge_terms(focus.title, tree) if focus is not None else []
+
+    # Active-module doctrine (capability v2). Modules the operator switched on
+    # get to state the rules that must hold whenever the agent works in their
+    # domain — outreach compliance, for instance. Separately budgeted from the
+    # retrieval budget so activating a module never starves recall, and marked
+    # as instructions (unlike retrieved evidence) because activation IS the
+    # operator's authorization. Deactivating a module removes this next run.
+    if ctx_cfg.inject_module_context and ctx_cfg.module_token_budget:
+        module_lines, module_sources = _module_doctrine_lines(
+            conn, terms=tuple(terms), token_budget=ctx_cfg.module_token_budget
+        )
+        lines.extend(module_lines)
+        sources.extend(module_sources)
     query = RouterQuery(
         terms=tuple(terms),
         has_focus=focus is not None,

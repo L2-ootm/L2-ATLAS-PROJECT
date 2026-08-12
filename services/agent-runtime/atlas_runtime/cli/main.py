@@ -63,6 +63,12 @@ gateway_app = typer.Typer(name="gateway", help="Gateway lifecycle: start, status
 app.add_typer(gateway_app, name="gateway")
 module_app = typer.Typer(name="module", help="Optional modules: list, activate, deactivate.")
 app.add_typer(module_app, name="module")
+module_records_app = typer.Typer(name="records", help="Module collection records (the module's own data).")
+module_app.add_typer(module_records_app, name="records")
+mcp_app = typer.Typer(name="mcp", help="MCP servers: registry, enablement, foundation projection.")
+app.add_typer(mcp_app, name="mcp")
+scratch_app = typer.Typer(name="scratch", help="Agent scratchpad: inspect, pin, sweep working memory.")
+app.add_typer(scratch_app, name="scratch")
 cashflow_app = typer.Typer(name="cashflow", help="Cashflow module process: start, status, stop.")
 app.add_typer(cashflow_app, name="cashflow")
 freellmapi_app = typer.Typer(name="freellmapi", help="FreeLLMAPI sidecar endpoint: install, start, status, stop.")
@@ -2459,14 +2465,23 @@ def module_sync(
 
     from atlas_runtime import module_service
 
-    summary = module_service.sync_modules(_get_connection(), _get_lock())
+    from atlas_runtime import mcp_service
+
+    conn, lock = _get_connection(), _get_lock()
+    summary = module_service.sync_modules(conn, lock)
+    # A module's MCP declarations are part of its manifest, so discovering the
+    # manifest and registering its servers is one operation from the operator's
+    # side. Registration never enables anything (mcp_service.sync_module_servers).
+    summary["mcp"] = mcp_service.sync_module_servers(conn, lock)
     if json_output:
         typer.echo(_json.dumps(summary, indent=2))
         return
     typer.echo(f"discovered: {', '.join(summary['discovered']) or '(none)'}")
     if summary["missing"]:
         typer.echo(f"missing: {', '.join(summary['missing'])}")
-    for problem in summary["problems"]:
+    if summary["mcp"]["registered"]:
+        typer.echo(f"mcp registered: {', '.join(summary['mcp']['registered'])}")
+    for problem in summary["problems"] + summary["mcp"]["problems"]:
         typer.echo(f"problem: {problem}", err=True)
 
 
@@ -2498,6 +2513,410 @@ def module_create(
     if activate:
         mod = module_service.set_active(conn, lock, module_id=module_id, active=True)
         typer.echo(f"{mod.id} {mod.status}")
+
+
+@module_app.command("info")
+def module_info(
+    module_id: str = typer.Argument(..., help="Module id."),
+    json_output: bool = typer.Option(False, "--json", help="Emit the capability surface as JSON."),
+) -> None:
+    """Show a module's full capability surface (v2: context, collections, workflows, mcp)."""
+    import json as _json
+
+    from atlas_runtime import module_service
+
+    conn = _get_connection()
+    manifest = module_service.active_manifest(conn, module_id)
+    if manifest is None:
+        # Fall back to the stored manifest so `info` still explains an inactive module.
+        manifest = module_service.get_manifest(conn, module_id)
+        if manifest is None:
+            typer.echo(f"Error: no manifest for module {module_id!r}", err=True)
+            raise typer.Exit(1)
+        typer.echo("status: inactive (capabilities are not reachable until activated)")
+    if json_output:
+        typer.echo(_json.dumps(manifest, indent=2))
+        return
+    caps = module_service.capability
+    typer.echo(f"{manifest['id']} v{manifest.get('version', '0')} — {manifest.get('name', '')}")
+    if manifest.get("description"):
+        typer.echo(manifest["description"])
+    for label, key in (
+        ("commands", "commands"), ("context", "context"),
+        ("collections", "collections"), ("workflows", "workflows"), ("mcp", "mcp"),
+    ):
+        entries = caps(manifest, key)
+        if not entries:
+            continue
+        typer.echo(f"\n{label}:")
+        for entry in entries:
+            name = entry.get("name") or entry.get("id") or "?"
+            detail = entry.get("description") or entry.get("title") or ""
+            typer.echo(f"  {name}\t{detail}")
+
+
+@module_app.command("context")
+def module_context(
+    module_id: str = typer.Argument(..., help="Module id."),
+    context_id: str = typer.Argument(None, help="Context file id (default: all)."),
+) -> None:
+    """Print a module's declared doctrine — exactly what a run would be given."""
+    from atlas_runtime import module_service
+
+    conn = _get_connection()
+    manifest = module_service.active_manifest(conn, module_id) or module_service.get_manifest(
+        conn, module_id
+    )
+    if manifest is None:
+        typer.echo(f"Error: no manifest for module {module_id!r}", err=True)
+        raise typer.Exit(1)
+    printed = False
+    for entry in module_service.capability(manifest, "context"):
+        if context_id and entry["id"] != context_id:
+            continue
+        printed = True
+        typer.echo(f"--- {entry['id']} ({entry.get('inject', 'always')}) ---")
+        typer.echo(module_service.read_context_file(manifest, entry) or "(file missing on disk)")
+    if not printed:
+        typer.echo("(no matching context declared)")
+
+
+@module_records_app.command("list")
+def module_records_list(
+    module_id: str = typer.Argument(..., help="Module id."),
+    collection: str = typer.Argument(..., help="Collection id."),
+    search: str = typer.Option("", "--search", help="Free-text filter."),
+    limit: int = typer.Option(50, "--limit", help="Max rows."),
+    json_output: bool = typer.Option(False, "--json", help="Emit records as JSON."),
+) -> None:
+    """List records in a module collection."""
+    import json as _json
+
+    from atlas_runtime import module_data_service
+
+    try:
+        records = module_data_service.query_records(
+            _get_connection(), module_id, collection, search=search, limit=limit
+        )
+    except module_data_service.ModuleDataError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    if json_output:
+        typer.echo(_json.dumps(records, indent=2))
+        return
+    for record in records:
+        summary = ", ".join(f"{k}={v}" for k, v in list(record["data"].items())[:4])
+        typer.echo(f"{record['id']}\t{summary}")
+
+
+@module_records_app.command("get")
+def module_records_get(
+    module_id: str = typer.Argument(..., help="Module id."),
+    collection: str = typer.Argument(..., help="Collection id."),
+    record_id: str = typer.Argument(..., help="Record id."),
+) -> None:
+    """Print one record as JSON."""
+    import json as _json
+
+    from atlas_runtime import module_data_service
+
+    try:
+        module_data_service.resolve_collection(_get_connection(), module_id, collection)
+    except module_data_service.ModuleDataError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    record = module_data_service.get_record(_get_connection(), module_id, collection, record_id)
+    if record is None:
+        typer.echo(f"Error: no record {record_id!r}", err=True)
+        raise typer.Exit(1)
+    typer.echo(_json.dumps(record, indent=2))
+
+
+@module_records_app.command("set")
+def module_records_set(
+    module_id: str = typer.Argument(..., help="Module id."),
+    collection: str = typer.Argument(..., help="Collection id."),
+    data_json: str = typer.Argument(..., help='Field values as JSON, e.g. {"name":"Acme"}.'),
+    record_id: str = typer.Option(None, "--id", help="Record id (default: derived from the label field)."),
+) -> None:
+    """Create or update a record (create merges on an existing id, so retries converge)."""
+    import json as _json
+
+    from atlas_runtime import module_data_service
+
+    try:
+        data = _json.loads(data_json)
+    except ValueError as exc:
+        typer.echo(f"Error: invalid JSON: {exc}", err=True)
+        raise typer.Exit(1)
+    conn, lock = _get_connection(), _get_lock()
+    try:
+        record = module_data_service.create_record(
+            conn, lock, module_id=module_id, collection_id=collection,
+            data=data, record_id=record_id,
+        )
+    except module_data_service.ModuleDataError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(record["id"])
+
+
+@module_records_app.command("rm")
+def module_records_rm(
+    module_id: str = typer.Argument(..., help="Module id."),
+    collection: str = typer.Argument(..., help="Collection id."),
+    record_id: str = typer.Argument(..., help="Record id."),
+) -> None:
+    """Soft-delete a record (the payload is retained for undo)."""
+    from atlas_runtime import module_data_service
+
+    try:
+        module_data_service.delete_record(
+            _get_connection(), _get_lock(),
+            module_id=module_id, collection_id=collection, record_id=record_id,
+        )
+    except module_data_service.ModuleDataError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"{record_id} deleted")
+
+
+# ---------------------------------------------------------------------------
+# mcp subcommands — MCP server registry and foundation projection
+# ---------------------------------------------------------------------------
+
+
+@mcp_app.command("list")
+def mcp_list(
+    json_output: bool = typer.Option(False, "--json", help="Emit the registry as JSON."),
+) -> None:
+    """List registered MCP servers as 'name<TAB>state<TAB>source<TAB>target'."""
+    import json as _json
+
+    from atlas_runtime import mcp_service
+
+    servers = mcp_service.list_servers(_get_connection())
+    if json_output:
+        typer.echo(_json.dumps(servers, indent=2))
+        return
+    for server in servers:
+        target = server["url"] or " ".join([server["command"], *server["args"]]).strip()
+        state = "enabled" if server["enabled"] else "disabled"
+        owner = f"module:{server['module_id']}" if server["module_id"] else server["source"]
+        typer.echo(f"{server['name']}\t{state}\t{owner}\t{target}")
+
+
+@mcp_app.command("add")
+def mcp_add(
+    name: str = typer.Argument(..., help="Server name ([a-z0-9._-])."),
+    command: str = typer.Option("", "--command", help="Executable for a stdio server."),
+    arg: list[str] = typer.Option([], "--arg", help="Argument for the command (repeatable)."),
+    url: str = typer.Option("", "--url", help="Endpoint for an http server."),
+    env: list[str] = typer.Option(
+        [], "--env", help="KEY=${VAR} env reference (repeatable). Never a literal secret."
+    ),
+    description: str = typer.Option("", "--description", help="What this server is for."),
+    enable: bool = typer.Option(False, "--enable", help="Enable it immediately."),
+) -> None:
+    """Register an operator-owned MCP server in the ATLAS registry."""
+    from atlas_runtime import mcp_service
+
+    env_map: dict[str, str] = {}
+    for item in env:
+        key, _, value = item.partition("=")
+        if not key or not value:
+            typer.echo(f"Error: --env expects KEY=VALUE (got {item!r})", err=True)
+            raise typer.Exit(1)
+        env_map[key.strip()] = value.strip()
+    try:
+        server = mcp_service.upsert_server(
+            _get_connection(), _get_lock(),
+            name=name,
+            transport="http" if url else "stdio",
+            command=command, args=list(arg), env=env_map, url=url,
+            description=description, source="operator", enabled=enable,
+        )
+    except mcp_service.McpError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"{server['name']} {'enabled' if server['enabled'] else 'disabled'}")
+
+
+@mcp_app.command("enable")
+def mcp_enable(name: str = typer.Argument(..., help="Server name.")) -> None:
+    """Enable a server and project it onto the foundation."""
+    _mcp_set_enabled(name, True)
+
+
+@mcp_app.command("disable")
+def mcp_disable(name: str = typer.Argument(..., help="Server name.")) -> None:
+    """Disable a server and retract it from the foundation."""
+    _mcp_set_enabled(name, False)
+
+
+def _mcp_set_enabled(name: str, enabled: bool) -> None:
+    from atlas_runtime import mcp_service
+
+    conn, lock = _get_connection(), _get_lock()
+    try:
+        server = mcp_service.set_enabled(conn, lock, name=name, enabled=enabled)
+    except mcp_service.McpError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    report = mcp_service.apply_managed_servers(conn)
+    typer.echo(f"{server['name']} {'enabled' if server['enabled'] else 'disabled'}")
+    if not report["applied"]:
+        typer.echo(f"projection skipped: {report['reason']}", err=True)
+    for skipped, reason in report["skipped"].items():
+        typer.echo(f"skipped {skipped}: {reason}", err=True)
+
+
+@mcp_app.command("remove")
+def mcp_remove(name: str = typer.Argument(..., help="Server name.")) -> None:
+    """Delete a registry entry (module-declared servers return on the next sync)."""
+    from atlas_runtime import mcp_service
+
+    conn, lock = _get_connection(), _get_lock()
+    removed = mcp_service.remove_server(conn, lock, name=name)
+    mcp_service.apply_managed_servers(conn)
+    typer.echo(f"{name} {'removed' if removed else 'not found'}")
+
+
+@mcp_app.command("sync")
+def mcp_sync(
+    json_output: bool = typer.Option(False, "--json", help="Emit the sync summary as JSON."),
+) -> None:
+    """Register MCP declarations from active modules, then project onto the foundation."""
+    import json as _json
+
+    from atlas_runtime import mcp_service
+
+    conn, lock = _get_connection(), _get_lock()
+    summary = mcp_service.sync_module_servers(conn, lock)
+    summary["projection"] = mcp_service.apply_managed_servers(conn)
+    if json_output:
+        typer.echo(_json.dumps(summary, indent=2))
+        return
+    typer.echo(f"registered: {', '.join(summary['registered']) or '(none)'}")
+    if summary["retired"]:
+        typer.echo(f"retired: {', '.join(summary['retired'])}")
+    for problem in summary["problems"]:
+        typer.echo(f"problem: {problem}", err=True)
+    projection = summary["projection"]
+    typer.echo(
+        f"projection: written={len(projection['written'])} removed={len(projection['removed'])}"
+        + (f" ({projection['reason']})" if projection["reason"] else "")
+    )
+
+
+@mcp_app.command("test")
+def mcp_test(
+    name: str = typer.Argument(..., help="Server name."),
+    timeout: float = typer.Option(20.0, "--timeout", help="Connect timeout in seconds."),
+) -> None:
+    """Connect to a server and list the tools it exposes."""
+    from atlas_runtime import mcp_service
+
+    try:
+        result = mcp_service.probe_server(
+            _get_connection(), _get_lock(), name=name, timeout=timeout
+        )
+    except mcp_service.McpError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"{result['name']} {result['status']}")
+    for tool in result["tools"]:
+        typer.echo(f"  {tool}")
+    if result["error"]:
+        typer.echo(result["error"], err=True)
+        raise typer.Exit(1)
+
+
+# ---------------------------------------------------------------------------
+# scratch subcommands — the agent scratchpad, from the operator's side
+# ---------------------------------------------------------------------------
+
+
+@scratch_app.command("list")
+def scratch_list(
+    kind: str = typer.Option("", "--kind", help="Filter by kind."),
+    scope: str = typer.Option("", "--scope", help="Filter by scope."),
+    search: str = typer.Option("", "--search", help="Substring filter."),
+    limit: int = typer.Option(25, "--limit", help="Max entries."),
+) -> None:
+    """List scratchpad entries as 'id<TAB>kind<TAB>ttl<TAB>title'."""
+    from atlas_runtime import scratchpad_service
+
+    entries = scratchpad_service.list_entries(
+        _get_connection(), kind=kind, scope=scope, search=search, limit=limit
+    )
+    for entry in entries:
+        pin = "*" if entry["pinned"] else " "
+        typer.echo(f"{pin}{entry['id']}\t{entry['kind']}\t{entry['ttl_policy']}\t{entry['title']}")
+
+
+@scratch_app.command("get")
+def scratch_get(entry_id: str = typer.Argument(..., help="Entry id.")) -> None:
+    """Print a scratchpad entry's body."""
+    from atlas_runtime import scratchpad_service
+
+    entry = scratchpad_service.get_entry(_get_connection(), entry_id)
+    if entry is None:
+        typer.echo(f"Error: no scratchpad entry {entry_id!r}", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"# {entry['title']} ({entry['kind']}, ttl={entry['ttl_policy']})")
+    typer.echo(entry["body"])
+
+
+@scratch_app.command("pin")
+def scratch_pin(
+    entry_id: str = typer.Argument(..., help="Entry id."),
+    unpin: bool = typer.Option(False, "--unpin", help="Unpin instead."),
+) -> None:
+    """Pin an entry so no sweep removes it (the keep-this promotion)."""
+    from atlas_runtime import scratchpad_service
+
+    try:
+        entry = scratchpad_service.set_pinned(
+            _get_connection(), _get_lock(), entry_id=entry_id, pinned=not unpin
+        )
+    except scratchpad_service.ScratchpadError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"{entry['id']} {'pinned' if entry['pinned'] else 'unpinned'}")
+
+
+@scratch_app.command("rm")
+def scratch_rm(entry_id: str = typer.Argument(..., help="Entry id.")) -> None:
+    """Delete a scratchpad entry."""
+    from atlas_runtime import scratchpad_service
+
+    removed = scratchpad_service.remove_entry(_get_connection(), _get_lock(), entry_id=entry_id)
+    typer.echo(f"{entry_id} {'removed' if removed else 'not found'}")
+
+
+@scratch_app.command("sweep")
+def scratch_sweep(
+    startup: bool = typer.Option(
+        False, "--startup",
+        help="Also drop next_startup entries and orphaned run/session entries.",
+    ),
+) -> None:
+    """Delete expired entries (pinned entries always survive)."""
+    from atlas_runtime import scratchpad_service
+
+    removed = scratchpad_service.sweep(_get_connection(), _get_lock(), startup=startup)
+    typer.echo(" ".join(f"{k}={v}" for k, v in removed.items()))
+
+
+@scratch_app.command("stats")
+def scratch_stats() -> None:
+    """Counts by kind and TTL policy."""
+    import json as _json
+
+    from atlas_runtime import scratchpad_service
+
+    typer.echo(_json.dumps(scratchpad_service.stats(_get_connection()), indent=2))
 
 
 # ---------------------------------------------------------------------------

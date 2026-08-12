@@ -96,6 +96,19 @@ def serve(host: str = "127.0.0.1", port: int = 8585, *, db_path: Optional[str] =
 
     logging_config.configure_logging()
     server = make_server(host, port, db_path=db_path)
+    # Startup is the only moment `next_startup` scratchpad entries can be swept,
+    # and the only moment run/session-scoped entries from a dead process are
+    # provably orphaned. Best-effort: a sweep failure must not stop the daemon.
+    try:
+        from atlas_runtime import scratchpad_service
+
+        scratchpad_service.sweep(
+            server.conn,  # type: ignore[attr-defined]
+            server.lock,  # type: ignore[attr-defined]
+            startup=True,
+        )
+    except Exception:  # noqa: BLE001
+        pass
     try:
         server.serve_forever()
     finally:
