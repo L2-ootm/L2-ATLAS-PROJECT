@@ -60,6 +60,7 @@ import { useVisualSettings } from '../lib/visualSettings';
 import { isNearBottom } from '../lib/scrollFollow';
 import { subagentsFromConsoleEvents } from '../lib/subagents';
 import { turnReceiptSignature } from '../lib/turnReceipt';
+import { resolveSpeaker, speakerContinues, type ChatSpeaker } from '../lib/chatSpeaker';
 import { GOAL_STATUS_MESSAGE, parseMissionSlashIntent } from '../lib/missionSlash';
 import { GO_PAGES, parseAgentArgument, renderCommandHelp, type AtlasCommand } from '../lib/atlasCommands';
 import { loadAtlasCommandCatalog } from '../lib/commandCatalog';
@@ -731,14 +732,22 @@ export default function Chat() {
 										</div>
 									</div>
 								)}
-								{messages.map((message) => {
+								{messages.map((message, index) => {
+									const continues = speakerContinues(messages[index - 1], message);
 									if (message.role === 'agent' && (message.events?.length || message.status === 'pending')) {
 										const receipt = turnReceiptSignature(message);
 										const hideStatus = receipt !== null && receipt === lastReceipt;
 										if (receipt !== null) lastReceipt = receipt;
-										return <ChatAgentTurn key={message.id} message={message} hideStatus={hideStatus} />;
+										return (
+											<ChatAgentTurn
+												key={message.id}
+												message={message}
+												hideStatus={hideStatus}
+												continues={continues}
+											/>
+										);
 									}
-									return <ChatBubble key={message.id} message={message} />;
+									return <ChatBubble key={message.id} message={message} continues={continues} />;
 								})}
 							</TopoScroll>
 							{unpinned && (
@@ -793,7 +802,53 @@ function TurnText({ text, streaming }: { text: string; streaming: boolean }) {
 	return <StreamReveal text={text} done={!streaming} onSettled={() => setSettled(true)} />;
 }
 
-function ChatAgentTurn({ message, hideStatus }: { message: ConsoleMessage; hideStatus: boolean }) {
+/**
+ * Identity line printed above a response.
+ *
+ * The transcript no longer draws a box around the agent's answer, so this line
+ * is what attributes it — necessary the moment more than one agent can speak
+ * into the same transcript. It is deliberately quiet: a glyph, the name, and
+ * the state. Everything that changes during the turn (LIVE, elapsed) lives
+ * here rather than on the prose, so the prose itself stays still while it
+ * streams.
+ */
+function SpeakerLine({
+	speaker,
+	time,
+	live,
+	failed,
+	copyText
+}: {
+	speaker: ChatSpeaker;
+	time: string;
+	live: boolean;
+	failed?: boolean;
+	copyText?: string;
+}) {
+	return (
+		<div className="atlas-speaker" data-kind={speaker.kind} style={{ '--speaker-accent': speaker.accent } as React.CSSProperties}>
+			<span className="atlas-speaker__glyph" aria-hidden="true">
+				{speaker.kind === 'atlas' ? <Bot size={12} strokeWidth={1.8} /> : <span>{speaker.initials}</span>}
+				{live && <i className="atlas-speaker__pulse" />}
+			</span>
+			<span className="atlas-speaker__name">{speaker.name}</span>
+			{failed && <span className="atlas-speaker__state" data-state="failed">FAILED</span>}
+			{live && <span className="atlas-speaker__state" data-state="live">LIVE</span>}
+			<span className="atlas-speaker__time">{time}</span>
+			{copyText ? <CopyMessageButton text={copyText} /> : null}
+		</div>
+	);
+}
+
+function ChatAgentTurn({
+	message,
+	hideStatus,
+	continues
+}: {
+	message: ConsoleMessage;
+	hideStatus: boolean;
+	continues: boolean;
+}) {
 	const events = useMemo(() => message.events ?? [], [message.events]);
 	const displayEvents = useMemo(() => displayConsoleEvents(events), [events]);
 	const actors = useMemo(() => subagentsFromConsoleEvents(events), [events]);
@@ -806,20 +861,30 @@ function ChatAgentTurn({ message, hideStatus }: { message: ConsoleMessage; hideS
 	}, [events]);
 	const summary = events.find((e) => e.type === 'result');
 	const pending = message.status === 'pending';
+	const speaker = resolveSpeaker(message);
 	return (
 		<div
-			style={turnStyle}
-			className={['atlas-copy-hover-scope', pending ? 'atlas-inference-wake' : ''].filter(Boolean).join(' ')}
+			className={[
+				'atlas-turn',
+				'atlas-copy-hover-scope',
+				continues ? 'is-continuation' : '',
+				pending ? 'is-live atlas-inference-wake' : ''
+			].filter(Boolean).join(' ')}
+			data-kind={speaker.kind}
 			data-topo={message.status === 'failed' ? 'bad' : 'good'}
+			style={{ '--speaker-accent': speaker.accent } as React.CSSProperties}
 		>
-			<div style={turnHeaderStyle}>
-				<Bot size={13} strokeWidth={1.7} style={{ color: 'rgba(70,240,160,0.95)' }} />
-				<span style={monoLabelStyle}>{message.label}</span>
-				<span style={{ ...timeTextStyle }}>{message.time}</span>
-				{pending && <span style={liveBadgeStyle}>LIVE</span>}
-				<CopyMessageButton text={message.body} />
-			</div>
-			{events.length === 0 && pending && <div style={{ color: 'var(--l2-fg-3)', fontSize: 13 }}>Working…</div>}
+			{!continues && (
+				<SpeakerLine
+					speaker={speaker}
+					time={message.time}
+					live={pending}
+					failed={message.status === 'failed'}
+					copyText={message.body}
+				/>
+			)}
+			<div className="atlas-turn__body">
+			{events.length === 0 && pending && <div className="atlas-turn__warming">Thinking…</div>}
 			<SubagentRail events={events} />
 			{displayEvents.map((event) => {
 				if (event.type === 'task') return null;
@@ -874,11 +939,23 @@ function ChatAgentTurn({ message, hideStatus }: { message: ConsoleMessage; hideS
 					{summary.total_cost_usd != null && <span>${summary.total_cost_usd.toFixed(4)}</span>}
 				</div>
 			)}
+			</div>
 		</div>
 	);
 }
 
-function ChatBubble({ message }: { message: ConsoleMessage }) {
+/**
+ * The two non-streaming line kinds.
+ *
+ * Asymmetry is the point, and it is the one thing the redesign keeps from
+ * modern chat convention: the operator's turn is a bounded quotation (short,
+ * right-aligned, boxed) while an agent's turn is the document itself
+ * (unbounded, left, no frame). A box around a long answer forces the reader to
+ * parse a container before the content and caps the useful measure; a box
+ * around a one-line question is what makes it scannable. So only one of them
+ * gets a box, and it is not the agent's.
+ */
+function ChatBubble({ message, continues }: { message: ConsoleMessage; continues: boolean }) {
 	const operator = message.role === 'operator';
 	const failed = message.status === 'failed';
 	if (message.role === 'system') {
@@ -890,36 +967,32 @@ function ChatBubble({ message }: { message: ConsoleMessage }) {
 			</div>
 		);
 	}
-	return (
-		<div style={{ display: 'flex', justifyContent: operator ? 'flex-end' : 'flex-start' }}>
-			<div
-				data-topo={failed ? 'bad' : operator ? 'info' : 'good'}
-				className={message.role === 'agent' ? 'atlas-copy-hover-scope' : undefined}
-				style={{
-					maxWidth: 'min(720px, 88%)',
-					borderRadius: 2,
-					border: failed
-						? '1px solid rgba(255,77,125,0.32)'
-						: operator
-							? '1px solid rgba(79,139,255,0.32)'
-							: '1px solid rgba(70,240,160,0.22)',
-					background: failed ? 'rgba(255,77,125,0.06)' : operator ? 'rgba(79,139,255,0.10)' : 'rgba(70,240,160,0.055)',
-					padding: '12px 13px',
-					animation: 'atlas-window-in 260ms var(--l2-ease)'
-				}}
-			>
-				<div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
-					<span style={monoLabelStyle}>{message.label}</span>
-					<span style={timeTextStyle}>{message.time}</span>
-					{message.role === 'agent' && <CopyMessageButton text={message.body} />}
+	const speaker = resolveSpeaker(message);
+	if (operator) {
+		return (
+			<div className="atlas-operator-line">
+				<div className="atlas-operator-bubble" data-topo={failed ? 'bad' : 'info'}>
+					{message.body}
 				</div>
-				{message.role === 'agent' ? (
-					<ChatMarkdown text={message.body} />
-				) : (
-					<div style={{ color: 'var(--l2-fg-1)', fontSize: 13.5, lineHeight: 1.55, overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
-						{message.body}
-					</div>
-				)}
+				<span className="atlas-operator-time">{message.time}</span>
+			</div>
+		);
+	}
+	// A settled agent answer with no event stream (a local note, a replayed
+	// turn) renders in the same unboxed voice as a live one — the frame must
+	// not be what tells the operator whether a run happened.
+	return (
+		<div
+			className={['atlas-turn', 'atlas-copy-hover-scope', continues ? 'is-continuation' : ''].filter(Boolean).join(' ')}
+			data-kind={speaker.kind}
+			data-topo={failed ? 'bad' : 'good'}
+			style={{ '--speaker-accent': speaker.accent } as React.CSSProperties}
+		>
+			{!continues && (
+				<SpeakerLine speaker={speaker} time={message.time} live={false} failed={failed} copyText={message.body} />
+			)}
+			<div className="atlas-turn__body">
+				<ChatMarkdown text={message.body} />
 			</div>
 		</div>
 	);
@@ -983,18 +1056,6 @@ const timeTextStyle: React.CSSProperties = {
 	color: 'var(--l2-fg-3)'
 };
 
-const liveBadgeStyle: React.CSSProperties = {
-	marginLeft: 'auto',
-	fontFamily: 'var(--l2-mono)',
-	fontSize: 9,
-	letterSpacing: '0.16em',
-	color: 'var(--atlas-emerald)',
-	border: '1px solid rgba(70,240,160,0.35)',
-	borderRadius: 1,
-	padding: '2px 6px',
-	animation: 'atlas-pulse-soft 1.4s var(--l2-ease) infinite'
-};
-
 const transcriptStyle: React.CSSProperties = {
 	display: 'flex',
 	flexDirection: 'column',
@@ -1012,21 +1073,6 @@ const emptyStateStyle: React.CSSProperties = {
 	gap: 10,
 	margin: 'auto',
 	padding: '80px 0'
-};
-
-const turnStyle: React.CSSProperties = {
-	display: 'grid',
-	gap: 10,
-	border: '1px solid rgba(70,240,160,0.16)',
-	background: 'rgba(70,240,160,0.035)',
-	borderRadius: 2,
-	padding: '12px 14px'
-};
-
-const turnHeaderStyle: React.CSSProperties = {
-	display: 'flex',
-	alignItems: 'center',
-	gap: 8
 };
 
 const turnErrorStyle: React.CSSProperties = {

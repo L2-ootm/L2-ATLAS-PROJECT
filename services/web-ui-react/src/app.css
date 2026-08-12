@@ -1572,6 +1572,118 @@ body,
 .chat-transcript-scroll { width: 100%; height: 100%; min-height: 0; }
 .chat-transcript-scroll > .atlas-topo-scroll-viewport { min-height: 0; overscroll-behavior: contain; }
 
+/* ==========================================================================
+   TRANSCRIPT — attributed, unboxed responses
+   --------------------------------------------------------------------------
+   An agent answer is the document, not a card inside one: no frame, no tint,
+   full measure. What replaces the frame is attribution (`.atlas-speaker`) plus
+   a live-only spine. The old always-on green box carried no information — it
+   looked identical whether the agent was streaming, settled or dead. Here
+   colour and motion appear only while something is actually happening, so
+   visual weight always means state.
+
+   `--speaker-accent` is set per turn by resolveSpeaker(), which is what lets
+   several named collaborators share one transcript legibly.
+   ========================================================================== */
+
+.atlas-turn { position: relative; display: grid; gap: 9px; padding-left: 13px; }
+/* Turns from the same speaker sit closer and skip the repeated identity. */
+.atlas-turn.is-continuation { margin-top: -6px; }
+.atlas-turn__body { display: grid; gap: 10px; min-width: 0; }
+.atlas-turn__warming { color: var(--l2-fg-3); font-size: 13px; }
+
+/* The spine: the turn's only chrome. Faint once settled so a long transcript
+   still shows where each speaker's block starts and ends; bright and moving
+   while live. */
+/* `.atlas-inference-wake` paints its own scanning gradient on THIS SAME
+   pseudo-element, so every rule below is scoped away from it. Setting a
+   background here unconditionally would overwrite the scan and leave a live
+   turn with no spine at all. */
+.atlas-turn:not(.atlas-inference-wake)::before {
+	content: '';
+	position: absolute;
+	left: 0; top: 3px; bottom: 3px;
+	width: 1px;
+	background: color-mix(in srgb, var(--speaker-accent, var(--atlas-emerald)) 22%, transparent);
+	transition: background 220ms var(--l2-ease), width 220ms var(--l2-ease);
+}
+.atlas-turn.is-live:not(.atlas-inference-wake)::before {
+	width: 2px;
+	background: color-mix(in srgb, var(--speaker-accent, var(--atlas-emerald)) 65%, transparent);
+}
+.atlas-turn[data-topo='bad']:not(.atlas-inference-wake)::before { background: rgba(255,77,125,.5); }
+/* The wake's own padding-left is 12px; hold the transcript's 13px so grouped
+   turns don't shift 1px sideways the moment a run opens or closes. */
+.atlas-turn.atlas-inference-wake { padding-left: 13px; }
+/* The shared wake gradient is hardcoded emerald because it predates named
+   speakers. In the transcript it must carry the SPEAKER's colour — otherwise
+   a delegate thinking out loud scans in the primary agent's green and the
+   identity the speaker line just established is contradicted one line later.
+   Scoped to `.atlas-turn` so every other wake surface keeps the default. */
+.atlas-turn.atlas-inference-wake::before {
+	background:
+		linear-gradient(
+			180deg,
+			transparent 0%,
+			color-mix(in srgb, var(--speaker-accent, var(--atlas-emerald)) 85%, transparent) 42%,
+			var(--speaker-accent, var(--atlas-emerald)) 50%,
+			color-mix(in srgb, var(--speaker-accent, var(--atlas-emerald)) 85%, transparent) 58%,
+			transparent 100%
+		)
+		0 0 / 100% 55% no-repeat,
+		color-mix(in srgb, var(--speaker-accent, var(--atlas-emerald)) 16%, transparent);
+}
+
+/* ── speaker identity line ───────────────────────────────────────────────── */
+.atlas-speaker { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.atlas-speaker__glyph {
+	position: relative; flex: 0 0 auto;
+	width: 19px; height: 19px; display: grid; place-items: center;
+	border: 1px solid color-mix(in srgb, var(--speaker-accent, var(--atlas-emerald)) 36%, transparent);
+	background: color-mix(in srgb, var(--speaker-accent, var(--atlas-emerald)) 9%, transparent);
+	color: var(--speaker-accent, var(--atlas-emerald));
+	font-family: var(--l2-font-mono); font-size: 8px; letter-spacing: .04em;
+}
+/* Presence lives on the glyph, not on a badge: it is next to the name, which
+   is where the reader already is. */
+.atlas-speaker__pulse {
+	position: absolute; right: -3px; top: -3px;
+	width: 5px; height: 5px; border-radius: 50%;
+	background: var(--speaker-accent, var(--atlas-emerald));
+	box-shadow: 0 0 7px var(--speaker-accent, var(--atlas-emerald));
+	animation: atlas-pulse-soft 1.4s var(--l2-ease) infinite;
+}
+.atlas-speaker__name {
+	min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+	color: var(--l2-fg-1);
+	font-family: var(--l2-font-mono); font-size: 10.5px; font-weight: 500;
+	letter-spacing: .11em; text-transform: uppercase;
+}
+.atlas-speaker__state {
+	flex: 0 0 auto; padding: 1px 5px;
+	border: 1px solid currentColor;
+	font-family: var(--l2-font-mono); font-size: 8px; letter-spacing: .15em;
+}
+.atlas-speaker__state[data-state='live'] { color: var(--speaker-accent, var(--atlas-emerald)); }
+.atlas-speaker__state[data-state='failed'] { color: var(--l2-error, #ff4d7d); }
+.atlas-speaker__time { flex: 0 0 auto; color: var(--l2-fg-4); font-family: var(--l2-font-mono); font-size: 9px; }
+.atlas-speaker .atlas-copy-turn-btn { margin-left: auto; }
+
+/* ── operator turn ───────────────────────────────────────────────────────── */
+.atlas-operator-line { display: flex; align-items: flex-end; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+.atlas-operator-bubble {
+	max-width: min(620px, 82%);
+	padding: 9px 13px;
+	border: 1px solid rgba(79,139,255,.26);
+	background: rgba(79,139,255,.09);
+	color: var(--l2-fg-1);
+	font-size: 13.5px; line-height: 1.55;
+	overflow-wrap: anywhere; white-space: pre-wrap;
+	animation: atlas-window-in 220ms var(--l2-ease);
+}
+.atlas-operator-bubble[data-topo='bad'] { border-color: rgba(255,77,125,.32); background: rgba(255,77,125,.06); }
+.atlas-operator-time { flex: 0 0 auto; padding-bottom: 2px; color: var(--l2-fg-4); font-family: var(--l2-font-mono); font-size: 9px; }
+
 .chat-actor-workspace {
 	min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0,1fr) auto;
 	border-left: 1px solid rgba(79,139,255,.15);
@@ -1626,9 +1738,12 @@ body,
 .chat-actor-row[data-phase="failed"] .chat-actor-row__signal,
 .chat-actor-row[data-phase="orphaned"] .chat-actor-row__signal { color: var(--l2-error); }
 .chat-actor-row__copy { min-width: 0; display: grid; gap: 3px; }
-.chat-actor-row__copy strong, .chat-actor-row__copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-actor-row__copy strong, .chat-actor-row__copy small, .chat-actor-row__copy em { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Name (strong) → goal (small) → live telemetry (em). The name is the stable
+   identity; the goal and the telemetry both change under it. */
 .chat-actor-row__copy strong { color: var(--l2-fg-1); font-size: 10.5px; font-weight: 500; }
-.chat-actor-row__copy small { color: var(--l2-fg-4); font-family: var(--l2-font-mono); font-size: 7.5px; }
+.chat-actor-row__copy small { color: var(--l2-fg-3); font-size: 9px; }
+.chat-actor-row__copy em { color: var(--l2-fg-4); font-family: var(--l2-font-mono); font-size: 7.5px; font-style: normal; }
 .chat-actor-row__phase { color: var(--l2-fg-4); font-family: var(--l2-font-mono); font-size: 7px; letter-spacing: .11em; text-transform: uppercase; }
 .chat-actor-empty { min-height: 190px; display: grid; place-items: center; align-content: center; gap: 9px; padding: 24px; text-align: center; color: var(--l2-fg-4); }
 .chat-actor-empty svg { color: rgba(79,139,255,.58); }
