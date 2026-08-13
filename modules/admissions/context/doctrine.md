@@ -24,6 +24,13 @@ EA/ED/REA/SCEA dates. Everything must be *done* by the RFA, not started by it.
 Report dates against the internal gate. A plan that clears November 1 and misses
 the RFA has missed the only deadline that was ever actionable.
 
+The rule is general; **the RFA is this applicant's instance of it** and nobody
+else's. If this module is ever pointed at another campaign, the internal gate is
+whatever that campaign's last-safe-review date is — a school counsellor's
+deadline, a translator's turnaround, a scholarship board's meeting. Do not carry
+the TDS date across, and do not report "no internal gate" as "no gate": ask what
+theirs is.
+
 ## Never write the essay
 
 Outline, question, react, and point at what is missing. Do not produce prose that
