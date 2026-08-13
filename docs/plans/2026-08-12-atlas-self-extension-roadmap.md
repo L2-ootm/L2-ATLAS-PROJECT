@@ -370,6 +370,57 @@ read `description: |` as the literal string `"|"` (the ultra pack was indexed
 under one meaningless token). Both fixed. The lesson repeats: the delivery test
 is worth more than the doctrine file.
 
+### WP-E-2 — The enforced turn (shipped 2026-08-13)
+
+WP-E-1 ended with an honest limit: the gate *reports*. It reconstructs what a
+run did, writes `unverified`, and the run ends. The finding reaches the next
+run's context; the change it describes is still unchecked, and a human is the
+only thing that closes the loop. This is the first place ATLAS acts on its own
+verdict instead of filing it.
+
+A run that ends `unverified` now gets exactly one more turn whose only job is to
+run a check. The demand names the mutations the trail actually recorded, because
+a generic "please verify" invites a generic "I verified" — the prose claim the
+gate was built to distrust — and it restates what does not count, so the answer
+cannot be `git status` and a sentence.
+
+Four constraints, each answering a specific way this could go wrong:
+
+| constraint | the failure it prevents |
+|---|---|
+| exactly one turn, never a loop | a model that will not verify is a finding, not a reason to argue on the operator's budget |
+| the response is discarded | the run summary stays the answer the run produced, not a postscript about testing |
+| shares the run's deadline | taking the turn cannot push a run past its max runtime |
+| never fatal | a corrective that can fail a working run is worse than no corrective |
+
+The third constraint is why the deadline moved: it is now computed once for the
+whole run rather than per turn, so turns divide a budget instead of each getting
+a fresh one.
+
+**The refactor this document asked for.** `native.execute`'s single opaque
+`run_conversation` call is now `_run_turn` — a turn is something ATLAS can spend
+deliberately rather than the one call a run consists of. The re-plan checkpoint
+needs exactly that seam, which was the argument for doing it here.
+
+**Native only, deliberately.** Classification stays cross-runtime in
+`run_executor`; acting on it needs a turn against a live harness session, and
+`claude_code`/`codex` do not expose one. The gate judges every runtime; only
+native is corrected today, and the roadmap should not imply otherwise.
+
+**What writing the tests found**, in the pattern this program keeps repeating:
+`verification_retry` was not a declared `AuditEvent` type, so the emit failed
+silently (fail-open, as designed) — the correction would have run and left no
+record of itself. An existing exhaustiveness test then caught that it had no
+surface-kind mapping. And the budget test was first written against a 1 ms
+`max_runtime_s`, which raced the clock rather than asserting the rule; it now
+drives `_enforce_verification` with an explicitly expired deadline and proves
+the budget is what stopped it by re-running the same state with time left. A
+test that passes for the wrong reason is the fixture problem in a new costume.
+
+**Still not addressed:** the read-only blind spot recorded above. A run that
+changes nothing and asserts something false is `no_mutations`, has no
+verification turn to spend, and this work does not touch it.
+
 ## WP-F — Safety rails (non-negotiable, gates every level above L1)
 
 - **Never self-modifiable:** the permission broker, the hardline policy, the
@@ -406,15 +457,13 @@ is worth more than the doctrine file.
    doctrine that applies, and cannot mint a disposable without saying why. The
    next work package should come from what breaks, not from this list.
 5. **WP-E (loop discipline)** — ~~enforced verification step~~ done 2026-08-13
-   (WP-E-1 above): the loop now judges the claim without being asked. Still
-   open: the **plan artifact** (a run mode that produces a plan and stops for
-   approval) and the **re-plan checkpoint** (a budget trigger that forces a
-   re-think mid-run). `kind='plan'` read-back remains the substrate for both.
-   The obvious next increment on the gate itself is the enforced turn: when a
-   run ends `unverified`, spend one more turn demanding the check rather than
-   only recording its absence. That needs `native.execute`'s single opaque
-   `run_conversation` call refactored into a reusable `_run_turn`, which is also
-   what the re-plan checkpoint needs — one refactor, two features.
+   (WP-E-1 above): the loop now judges the claim without being asked.
+   ~~the enforced turn~~ done 2026-08-13 (WP-E-2 below): it now acts on the
+   judgment. Still open: the **plan artifact** (a run mode that produces a plan
+   and stops for approval) and the **re-plan checkpoint** (a budget trigger that
+   forces a re-think mid-run). `kind='plan'` read-back remains the substrate for
+   both, and `_run_turn` — the seam WP-E-2 cut — is what the re-plan checkpoint
+   needs to spend its turn.
 6. **WP-C (promotion pipeline)** — only after there are disposables worth
    promoting and a test gate to promote them through. The evidence for
    promotion is now collectable and durable: a disposable rebuilt three times
