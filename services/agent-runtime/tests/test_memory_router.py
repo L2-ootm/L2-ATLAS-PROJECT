@@ -304,6 +304,55 @@ def test_default_router_brain_toggle():
 
 
 # ---------------------------------------------------------------------------
+# Scratchpad read-back (WP-D-1)
+# ---------------------------------------------------------------------------
+
+
+def test_scratchpad_retriever_returns_the_sessions_open_entries(db, lock):
+    from atlas_runtime import scratchpad_service
+
+    scratchpad_service.write_entry(
+        db, lock, title="Migration plan", body="1. read 0034\n2. write the retriever",
+        kind="plan", scope="session", session_id="sess-a", ttl_policy="session",
+    )
+    scratchpad_service.write_entry(
+        db, lock, title="Not mine", body="other session", kind="plan",
+        scope="session", session_id="sess-b", ttl_policy="session",
+    )
+    snippets = mr.ScratchpadRetriever(session_id="sess-a").retrieve(db, mr.RouterQuery())
+    assert [s.source for s in snippets] == ["scratch:migration-plan"]
+    assert "write the retriever" in snippets[0].text
+
+
+def test_scratchpad_retriever_is_off_without_a_session_or_run(db):
+    assert mr.ScratchpadRetriever().retrieve(db, mr.RouterQuery()) == []
+
+
+def test_scratchpad_retriever_enforces_its_own_budget(db, lock):
+    from atlas_runtime import scratchpad_service
+
+    for index in range(5):
+        scratchpad_service.write_entry(
+            db, lock, title=f"entry {index}", body="x" * 800, kind="note",
+            scope="session", session_id="sess-a", ttl_policy="session",
+        )
+    snippets = mr.ScratchpadRetriever(session_id="sess-a", token_budget=120).retrieve(
+        db, mr.RouterQuery()
+    )
+    # At least one always survives (continuity beats an empty section), but the
+    # budget stops the scratchpad from crowding out recall.
+    assert 1 <= len(snippets) < 5
+
+
+def test_default_router_scratchpad_is_opt_in_and_leads():
+    assert not any(
+        isinstance(r, mr.ScratchpadRetriever) for r in mr.default_router().retrievers
+    )
+    on = mr.default_router(scratchpad_session_id="sess-a")
+    assert isinstance(on.retrievers[0], mr.ScratchpadRetriever)
+
+
+# ---------------------------------------------------------------------------
 # Structured vs. legacy runs.summary (Phase 3 Track A, F8)
 #
 # complete_run() now writes a structured RunSummary JSON payload (see
@@ -640,3 +689,24 @@ def test_history_strips_compiled_context_and_drops_summary_dump(db, surface_sess
         )
     )
     assert messages == [{"role": "user", "content": "what did I just ask?"}]
+
+
+def test_self_keyed_retriever_survives_the_abstain_guard(db, lock):
+    """A run with no Focus and no mission still gets its scratchpad back."""
+    from atlas_runtime import scratchpad_service
+
+    scratchpad_service.write_entry(
+        db, lock, title="Held plan", body="continue from step 3", kind="plan",
+        scope="session", session_id="sess-a", ttl_policy="session",
+    )
+    envelope = mr.MemoryRouter(
+        retrievers=[mr.ScratchpadRetriever(session_id="sess-a")]
+    ).assemble_envelope(db, mr.RouterQuery())
+    assert not envelope.abstained
+    assert "continue from step 3" in envelope.markdown
+
+    # Without a self-keyed retriever the guard still abstains as before.
+    empty = mr.MemoryRouter(retrievers=[mr.RecentRunsRetriever()]).assemble_envelope(
+        db, mr.RouterQuery()
+    )
+    assert empty.abstained and empty.markdown == ""

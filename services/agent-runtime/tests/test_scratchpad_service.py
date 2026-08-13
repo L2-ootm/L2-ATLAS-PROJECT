@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import pathlib
 import sqlite3
 import threading
 
@@ -182,3 +183,139 @@ def test_tool_errors_are_returned_not_raised(bound) -> None:
 
     unknown_op = _call(bound, op="detonate")
     assert unknown_op["ok"] is False
+
+
+# --- read-back (WP-D-1) -----------------------------------------------------
+
+
+def test_open_entries_prefer_plans_and_follow_the_session(db, lock) -> None:
+    scratchpad_service.write_entry(
+        db, lock, title="loose note", kind="note", scope="session",
+        session_id="sess-1", ttl_policy="session",
+    )
+    scratchpad_service.write_entry(
+        db, lock, title="the plan", kind="plan", scope="session",
+        session_id="sess-1", ttl_policy="session",
+    )
+    scratchpad_service.write_entry(
+        db, lock, title="someone else's plan", kind="plan", scope="session",
+        session_id="sess-2", ttl_policy="session",
+    )
+    # A resumed run has a NEW run id and the SAME session — read-back keys on the
+    # session, so the entries written before the reset still come back.
+    entries = scratchpad_service.open_entries(db, session_id="sess-1", run_id="run-new")
+    assert [e["id"] for e in entries] == ["the-plan", "loose-note"]
+
+
+def test_open_entries_include_pinned_global_but_not_unpinned(db, lock) -> None:
+    scratchpad_service.write_entry(
+        db, lock, title="doctrine", kind="finding", scope="global",
+        ttl_policy="permanent", pinned=True,
+    )
+    scratchpad_service.write_entry(
+        db, lock, title="stray", kind="finding", scope="global", ttl_policy="permanent"
+    )
+    ids = [e["id"] for e in scratchpad_service.open_entries(db, session_id="sess-1")]
+    assert ids == ["doctrine"]
+
+
+def test_open_entries_need_an_owner(db, lock) -> None:
+    scratchpad_service.write_entry(
+        db, lock, title="x", scope="session", session_id="sess-1", ttl_policy="session"
+    )
+    assert scratchpad_service.open_entries(db) == []
+
+
+# --- disposable tools (WP-B) ------------------------------------------------
+
+
+def test_materialize_writes_a_file_and_returns_the_invocation(db, lock, tmp_path) -> None:
+    result = scratchpad_service.materialize_tool(
+        db, lock, title="Count rows", body="print(1)\n", run_id="run-1",
+        session_id="sess-1", root=tmp_path,
+    )
+    written = pathlib.Path(result["path"])
+    assert written.read_text(encoding="utf-8") == "print(1)\n"
+    assert written.parent == tmp_path.resolve()
+    assert result["invocation"] == f"python {written}"
+    assert result["kind"] == "tool" and result["ttl_policy"] == "next_startup"
+
+
+def test_materialize_is_capped_per_run(db, lock, tmp_path) -> None:
+    for index in range(scratchpad_service.MAX_TOOLS_PER_RUN):
+        scratchpad_service.materialize_tool(
+            db, lock, title=f"tool {index}", body="x", run_id="run-1", root=tmp_path
+        )
+    with pytest.raises(scratchpad_service.ScratchpadError, match="already materialized"):
+        scratchpad_service.materialize_tool(
+            db, lock, title="one too many", body="x", run_id="run-1", root=tmp_path
+        )
+    # Updating an existing tool is not minting a new one, so it stays allowed.
+    again = scratchpad_service.materialize_tool(
+        db, lock, title="tool 0", body="y", run_id="run-1", root=tmp_path
+    )
+    assert pathlib.Path(again["path"]).read_text(encoding="utf-8") == "y"
+    # ...and another run gets its own budget.
+    scratchpad_service.materialize_tool(
+        db, lock, title="fresh", body="x", run_id="run-2", root=tmp_path
+    )
+
+
+def test_materialize_rejects_an_empty_body_and_unknown_language(db, lock, tmp_path) -> None:
+    with pytest.raises(scratchpad_service.ScratchpadError, match="needs a body"):
+        scratchpad_service.materialize_tool(
+            db, lock, title="empty", body="   ", root=tmp_path
+        )
+    with pytest.raises(scratchpad_service.ScratchpadError, match="language"):
+        scratchpad_service.materialize_tool(
+            db, lock, title="x", body="y", language="brainfuck", root=tmp_path
+        )
+
+
+def test_sweep_and_remove_delete_the_managed_file(db, lock, tmp_path) -> None:
+    result = scratchpad_service.materialize_tool(
+        db, lock, title="doomed", body="x", run_id="run-1", root=tmp_path
+    )
+    path = pathlib.Path(result["path"])
+    removed = scratchpad_service.sweep(db, lock, startup=True, root=tmp_path)
+    assert removed["files"] == 1 and not path.exists()
+
+    kept = scratchpad_service.materialize_tool(
+        db, lock, title="explicit", body="x", root=tmp_path
+    )
+    scratchpad_service.remove_entry(db, lock, entry_id=kept["id"], root=tmp_path)
+    assert not pathlib.Path(kept["path"]).exists()
+
+
+def test_sweep_never_unlinks_a_file_outside_the_scratch_root(db, lock, tmp_path) -> None:
+    # `path` is agent-supplied on op=write: an entry may point at a repo file,
+    # and the sweep must treat that as a reference, not as an artifact it owns.
+    outsider = tmp_path / "not-ours.txt"
+    outsider.write_text("keep me", encoding="utf-8")
+    scratchpad_service.write_entry(
+        db, lock, title="reference", scope="global", ttl_policy="next_startup",
+        path=str(outsider),
+    )
+    removed = scratchpad_service.sweep(db, lock, startup=True, root=tmp_path / "tools")
+    assert removed["startup"] == 1 and removed["files"] == 0
+    assert outsider.exists()
+
+
+def test_pinned_tools_survive_the_startup_sweep_with_their_file(db, lock, tmp_path) -> None:
+    result = scratchpad_service.materialize_tool(
+        db, lock, title="keeper", body="x", root=tmp_path
+    )
+    scratchpad_service.set_pinned(db, lock, entry_id=result["id"], pinned=True)
+    scratchpad_service.sweep(db, lock, startup=True, root=tmp_path)
+    assert scratchpad_service.get_entry(db, result["id"]) is not None
+    assert pathlib.Path(result["path"]).exists()
+
+
+def test_tool_materialize_op_returns_a_runnable_command(bound, monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    result = _call(
+        bound, op="materialize", title="Probe", body="echo hi", language="bash"
+    )
+    assert result["ok"] and result["invocation"].startswith("bash ")
+    assert result["entry"]["run_id"] == "run-9" and result["entry"]["kind"] == "tool"
+    assert pathlib.Path(result["entry"]["path"]).is_relative_to(tmp_path)

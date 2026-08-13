@@ -34,7 +34,7 @@ from typing import Any, Protocol, runtime_checkable
 from atlas_core.schemas.core import SECRET_PATTERNS
 from atlas_core.schemas.run_summary import RunSummary
 
-from atlas_runtime import brain_service, goal_service
+from atlas_runtime import brain_service, goal_service, scratchpad_service
 
 # Wiki FTS retrieval budget (ported from context_service's original inline logic).
 _KNOWLEDGE_MAX_PAGES = 5
@@ -732,6 +732,97 @@ class SkillRetriever:
 
 
 # ---------------------------------------------------------------------------
+# Scratchpad read-back (WP-D-1) — the agent's own open working memory
+# ---------------------------------------------------------------------------
+
+_SCRATCHPAD_MAX = 5
+_SCRATCHPAD_TOKEN_BUDGET = 700
+_SCRATCHPAD_EXCERPT_CHARS = 360
+
+
+class ScratchpadRetriever:
+    """Hand a resuming run its own open scratchpad entries.
+
+    Without this, `atlas_scratchpad` is write-only in practice: the model has to
+    *remember* to ask for the plan it wrote before the context reset that made it
+    forget. Read-back closes the loop — the plan, findings and disposable tools
+    belonging to this session come back automatically at the top of the brief.
+
+    Session-keyed, not run-keyed: a resumed run has a new run id and the same
+    session, which is precisely the case this exists for. The ids are injected at
+    construction (not read from `RouterQuery`) so enabling read-back cannot
+    change what any other retriever does.
+
+    Self-budgeted like `ConversationHistoryRetriever`: continuity may not crowd
+    out recall.
+    """
+
+    # Not term- or mission-driven: the router must not abstain on its behalf.
+    self_keyed = True
+
+    def __init__(
+        self,
+        *,
+        session_id: str = "",
+        run_id: str = "",
+        limit: int = _SCRATCHPAD_MAX,
+        token_budget: int = _SCRATCHPAD_TOKEN_BUDGET,
+    ) -> None:
+        self._session_id = session_id or ""
+        self._run_id = run_id or ""
+        self._limit = limit
+        self._token_budget = token_budget
+
+    def section_lines(self, query: RouterQuery) -> list[str]:
+        return [
+            "## Open Scratchpad",
+            "_Working memory you wrote earlier in this session. Continue from it "
+            "instead of re-deriving it; `atlas_scratchpad` reads the full body, "
+            "updates it, or removes it once spent._",
+        ]
+
+    def retrieve(self, conn: sqlite3.Connection, query: RouterQuery) -> list[MemorySnippet]:
+        if not (self._session_id or self._run_id):
+            return []
+        if not _table_exists(conn, "scratchpad_entries"):
+            return []
+        try:
+            entries = scratchpad_service.open_entries(
+                conn,
+                session_id=self._session_id,
+                run_id=self._run_id,
+                limit=self._limit,
+            )
+        except sqlite3.Error:  # a half-migrated DB must not break the brief
+            return []
+        out: list[MemorySnippet] = []
+        used = 0
+        for index, entry in enumerate(entries):
+            excerpt = " ".join(str(entry["body"]).split())[:_SCRATCHPAD_EXCERPT_CHARS]
+            marks = [entry["kind"], f"ttl={entry['ttl_policy']}"]
+            if entry["pinned"]:
+                marks.append("pinned")
+            if entry["path"]:
+                marks.append(f"file: {entry['path']}")
+            text = f"- **{entry['title']}** `{entry['id']}` _({' · '.join(marks)})_"
+            if excerpt:
+                text += f"\n  {excerpt}"
+            tokens = estimate_tokens(text)
+            if out and used + tokens > self._token_budget:
+                break
+            out.append(
+                MemorySnippet(
+                    text=text,
+                    score=float(-index),  # preserve the service's resume ordering
+                    source=f"scratch:{entry['id']}",
+                    approx_tokens=tokens,
+                )
+            )
+            used += tokens
+        return out
+
+
+# ---------------------------------------------------------------------------
 # Router
 # ---------------------------------------------------------------------------
 
@@ -787,7 +878,13 @@ class MemoryRouter:
     ) -> RetrievalEnvelope:
         """Return selected evidence plus a compatibility markdown projection."""
         retriever_names = tuple(type(item).__name__ for item in self.retrievers)
-        if not query.terms and not query.mission_id:
+        # Abstain when there is nothing to match on — EXCEPT for self-keyed
+        # retrievers, which do not search by term or mission at all. Scratchpad
+        # read-back is keyed on the session identity injected at construction,
+        # and a run with no Current Focus is exactly the run most likely to need
+        # the plan it wrote before the reset.
+        self_keyed = any(getattr(item, "self_keyed", False) for item in self.retrievers)
+        if not query.terms and not query.mission_id and not self_keyed:
             return RetrievalEnvelope(
                 query=query.terms,
                 retrievers=retriever_names,
@@ -855,18 +952,29 @@ def default_router(
     enable_semantic: bool = True,
     enable_skills: bool = True,
     enable_brain: bool = True,
+    scratchpad_session_id: str = "",
+    scratchpad_run_id: str = "",
 ) -> MemoryRouter:
-    """The default retriever set, in brief order: session history → runs →
-    prior failures → observations → wiki knowledge → brain graph → relevant
-    skills.
+    """The default retriever set, in brief order: open scratchpad → session
+    history → runs → prior failures → observations → wiki knowledge → brain
+    graph → relevant skills.
 
     `enable_semantic` toggles the semantic blend (pure FTS5 when off);
     `enable_skills` toggles the skill-matching section; `enable_brain` toggles
-    the Brain evidence-graph section. `ConversationHistoryRetriever` is first —
-    it no-ops without a `RouterQuery.session_id` and enforces its own token
-    budget, so it never displaces the other sections when unused."""
+    the Brain evidence-graph section. `ConversationHistoryRetriever` is first of
+    the retrieved sections — it no-ops without a `RouterQuery.session_id` and
+    enforces its own token budget, so it never displaces the other sections when
+    unused. `scratchpad_*` enable read-back (WP-D-1); both empty = no section,
+    which is why every caller that does not know its session is unaffected."""
     knowledge: Retriever = HybridKnowledgeRetriever() if enable_semantic else WikiFtsRetriever()
-    retrievers: list[Retriever] = [
+    retrievers: list[Retriever] = []
+    if scratchpad_session_id or scratchpad_run_id:
+        retrievers.append(
+            ScratchpadRetriever(
+                session_id=scratchpad_session_id, run_id=scratchpad_run_id
+            )
+        )
+    retrievers += [
         ConversationHistoryRetriever(),
         RecentRunsRetriever(),
         FailurePatternRetriever(),

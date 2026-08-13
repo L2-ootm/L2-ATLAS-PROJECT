@@ -275,3 +275,40 @@ def test_a_shallow_tree_renders_whole_with_no_omission_notice() -> None:
     rendered = "\n".join(lines)
     assert "level-2" in rendered
     assert "omitted" not in rendered
+
+
+# --- scratchpad read-back (WP-D-1) ------------------------------------------
+
+
+def test_assemble_hands_back_the_sessions_open_scratchpad(db, lock):
+    from atlas_runtime import scratchpad_service
+
+    scratchpad_service.write_entry(
+        db, lock, title="Resume plan", body="finish the retriever wiring",
+        kind="plan", scope="session", session_id="sess-ctx", ttl_policy="session",
+    )
+    ctx = cs.assemble_context(db, session_id="sess-ctx")
+    assert "## Open Scratchpad" in ctx.markdown
+    assert "finish the retriever wiring" in ctx.markdown
+    assert "scratch:resume-plan" in ctx.sources
+
+
+def test_assemble_without_a_session_has_no_scratchpad_section(db, lock):
+    from atlas_runtime import scratchpad_service
+
+    scratchpad_service.write_entry(
+        db, lock, title="Someone's plan", body="not for this brief", kind="plan",
+        scope="session", session_id="sess-other", ttl_policy="session",
+    )
+    assert "## Open Scratchpad" not in cs.assemble_context(db).markdown
+
+
+def test_scratchpad_read_back_is_redacted(db, lock):
+    from atlas_runtime import scratchpad_service
+
+    scratchpad_service.write_entry(
+        db, lock, title="Creds note", body="api_key=sk-leakscratch4242",
+        kind="finding", scope="session", session_id="sess-ctx", ttl_policy="session",
+    )
+    markdown = cs.assemble_context(db, session_id="sess-ctx").markdown
+    assert "sk-leakscratch4242" not in markdown and "[REDACTED]" in markdown

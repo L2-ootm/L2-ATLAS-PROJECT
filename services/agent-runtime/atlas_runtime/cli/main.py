@@ -2868,6 +2868,39 @@ def scratch_get(entry_id: str = typer.Argument(..., help="Entry id.")) -> None:
     typer.echo(entry["body"])
 
 
+@scratch_app.command("materialize")
+def scratch_materialize(
+    title: str = typer.Argument(..., help="What the disposable tool does."),
+    from_file: str = typer.Option("", "--from-file", help="Read the script body from a file."),
+    body: str = typer.Option("", "--body", help="Script body (inline)."),
+    language: str = typer.Option("python", "--lang", help="python|bash|powershell|node|sql|text."),
+    ttl: str = typer.Option("next_startup", "--ttl", help="Expiry policy."),
+    entry_id: str = typer.Option("", "--id", help="Explicit entry id (default: slug of title)."),
+) -> None:
+    """Write a disposable script to the ATLAS scratch dir and register its TTL."""
+    import pathlib as _pathlib
+
+    from atlas_runtime import scratchpad_service
+
+    if from_file:
+        try:
+            body = _pathlib.Path(from_file).read_text(encoding="utf-8")
+        except OSError as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(1)
+    try:
+        result = scratchpad_service.materialize_tool(
+            _get_connection(), _get_lock(),
+            title=title, body=body, language=language, ttl_policy=ttl,
+            entry_id=entry_id or None, scope="global", owner="operator",
+        )
+    except scratchpad_service.ScratchpadError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"{result['id']}\t{result['path']}")
+    typer.echo(f"run: {result['invocation']}")
+
+
 @scratch_app.command("pin")
 def scratch_pin(
     entry_id: str = typer.Argument(..., help="Entry id."),

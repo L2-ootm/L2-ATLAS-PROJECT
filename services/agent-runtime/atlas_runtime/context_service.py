@@ -186,6 +186,8 @@ def assemble_context(
     project_id: str | None = None,
     max_runs: int = 5,
     include_operator_context: bool | None = None,
+    session_id: str | None = None,
+    run_id: str | None = None,
 ) -> AgentContext:
     """Build the secret-redacted operator context brief.
 
@@ -196,6 +198,10 @@ def assemble_context(
     (the loop-engineering spine). None resolves ATLAS_SKIP_CONTEXT, then the
     `context.inject_operator_context` config knob — so a run can opt out without
     the agent being permanently welded to the Current Focus.
+
+    `session_id`/`run_id` enable scratchpad read-back (WP-D-1): a run that
+    resumes a session is handed the working memory it wrote before the reset.
+    Omitting both simply omits that section.
     """
     ctx_cfg = config_service.load_config().context
     if include_operator_context is None:
@@ -276,6 +282,8 @@ def assemble_context(
         enable_semantic=ctx_cfg.enable_semantic,
         enable_skills=ctx_cfg.enable_skills,
         enable_brain=ctx_cfg.enable_brain,
+        scratchpad_session_id=session_id or "",
+        scratchpad_run_id=run_id or "",
     )
     # No explicit threshold: it applies only to retrievers that report a real
     # normalised relevance (MemorySnippet.relevance). Passing a positive value

@@ -6,7 +6,7 @@ later; a draft written here can be picked up by the next run on the same
 session. Entries carry a TTL so the scratchpad does not become a junk drawer
 (`scratchpad_service` for the policy semantics).
 
-Ops: write | append | read | list | remove | pin | sweep.
+Ops: write | append | read | list | remove | pin | sweep | materialize.
 
 The run and session ids are resolved from the harness binding, not from model
 input — an agent cannot claim to be another run, and the default `ttl=session`
@@ -34,14 +34,24 @@ TOOL_SCHEMA = {
         "it, op=read or op=list to recover it after a context reset, op=remove "
         "when it is spent, op=pin to keep it beyond its TTL. Prefer writing the "
         "plan here before a long task and re-reading it when you resume. "
-        "Entries default to the current run/session and expire with it."
+        "Entries default to the current run/session and expire with it. "
+        "op=materialize writes a one-off script to an ATLAS-owned scratch "
+        "directory and returns the command to run it with your terminal tool — "
+        "when a missing capability blocks you, first check whether it already "
+        "exists (atlas_module, your tool list, the MCP registry); if it does "
+        "not and the work is bounded, build it as a disposable rather than "
+        "reporting a dead end, and record why in a kind=finding entry. "
+        "Disposables expire on the next startup unless pinned."
     ),
     "parameters": {
         "type": "object",
         "properties": {
             "op": {
                 "type": "string",
-                "enum": ["write", "append", "read", "list", "remove", "pin", "sweep"],
+                "enum": [
+                    "write", "append", "read", "list", "remove", "pin", "sweep",
+                    "materialize",
+                ],
                 "description": "Scratchpad operation.",
             },
             "id": {
@@ -73,6 +83,14 @@ TOOL_SCHEMA = {
                 "type": "string",
                 "description": "Optional file this entry refers to (e.g. a generated script).",
             },
+            "language": {
+                "type": "string",
+                "enum": [
+                    "python", "bash", "sh", "powershell", "node", "javascript",
+                    "sql", "text",
+                ],
+                "description": "Script language (op=materialize, default python).",
+            },
             "pinned": {"type": "boolean", "description": "Pin state (op=pin)."},
             "search": {"type": "string", "description": "Substring filter (op=list)."},
             "limit": {"type": "number", "description": "Max entries (op=list, default 25)."},
@@ -84,7 +102,7 @@ TOOL_SCHEMA = {
 _KNOWN_ARGS = frozenset(
     {
         "op", "id", "title", "body", "kind", "scope", "ttl", "expires_in_hours",
-        "path", "pinned", "search", "limit",
+        "path", "pinned", "search", "limit", "language",
     }
 )
 
@@ -155,6 +173,34 @@ def atlas_scratchpad_tool(
                 append=(op == "append"),
             )
             return json.dumps({"ok": True, "op": op, "entry": entry})
+
+        if op == "materialize":
+            # A disposable tool: a file on disk plus a row that owns its expiry.
+            # It runs through the terminal tool the agent already has, under the
+            # same permission broker — this op grants no new execution path.
+            result = scratchpad_service.materialize_tool(
+                conn, lock,
+                title=str(args.get("title") or entry_id or ""),
+                body=str(args.get("body") or ""),
+                language=str(args.get("language") or "python"),
+                entry_id=entry_id or None,
+                ttl_policy=str(args.get("ttl") or "next_startup"),
+                expires_in_hours=args.get("expires_in_hours"),
+                run_id=run_id or None,
+                session_id=session_id or None,
+                owner=run_id or session_id or "agent",
+            )
+            invocation = result.pop("invocation")
+            result.pop("root", None)
+            return json.dumps(
+                {
+                    "ok": True, "op": op, "entry": result, "invocation": invocation,
+                    "note": (
+                        "Run it with your terminal tool. It is deleted on the next "
+                        "startup unless you pin it."
+                    ),
+                }
+            )
 
         if op == "read":
             if not entry_id:
@@ -243,7 +289,8 @@ def ensure_scratchpad_bridge() -> bool:
                 handler=atlas_scratchpad_tool,
                 description=(
                     "Durable agent working memory: write/append/read/list/remove/"
-                    "pin/sweep plans, findings and drafts with a TTL"
+                    "pin/sweep plans, findings and drafts with a TTL, and "
+                    "materialize disposable one-off scripts"
                 ),
             )
             _registered = True

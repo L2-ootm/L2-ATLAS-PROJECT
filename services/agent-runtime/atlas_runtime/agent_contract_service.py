@@ -131,6 +131,19 @@ def _context_envelope(agent_context, policy: ContractVersion) -> ContextEnvelope
     )
 
 
+def _session_for_run(conn: sqlite3.Connection, run_id: str) -> str | None:
+    """The session a run belongs to, or None for a run with no session row.
+
+    Best-effort by design: an unresolvable session only costs the brief its
+    scratchpad read-back section, and must never stop a contract compiling.
+    """
+    try:
+        row = conn.execute("SELECT session_id FROM runs WHERE id=?", (run_id,)).fetchone()
+    except sqlite3.Error:
+        return None
+    return str(row[0]) if row and row[0] else None
+
+
 def _surface_and_workspace(
     conn: sqlite3.Connection,
     run_id: str,
@@ -225,7 +238,12 @@ def prepare_run_contract(
     catalog = build_shipped_catalog()
     prompt_ref = _version(PROMPT_VERSION, _CORE_PATH.read_bytes())
     context_ref = _version(CONTEXT_POLICY_VERSION, b"ATLAS_CONTEXT_POLICY_V1")
-    context = assemble_context(conn, mission_id=mission_id)
+    # The session this run belongs to (soft link, migration 0001). It is what
+    # makes scratchpad read-back work across a resume: the run id is new every
+    # time, the session id is what the earlier working memory was filed under.
+    context = assemble_context(
+        conn, mission_id=mission_id, session_id=_session_for_run(conn, run_id), run_id=run_id
+    )
     envelope = _context_envelope(context, context_ref)
     surface, workspace = _surface_and_workspace(conn, run_id)
     instruction_sources, instruction_contents = load_workspace_instructions(workspace)
