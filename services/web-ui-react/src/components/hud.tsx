@@ -129,8 +129,9 @@ function getBadgeStyle(s: string): BadgeStyle {
 //
 // Sits beside StatusBadge because the two answer different questions: status is
 // whether the run finished, this is whether anything checked what it changed.
-// `no_mutations` renders nothing — a read-only run has nothing to answer for,
-// and a badge on every run would train the eye to skip the ones that matter.
+// `no_mutations` and `exempt` render nothing — a read-only run and a
+// documentation edit have nothing to answer for, and a badge on every run would
+// train the eye to skip the ones that matter.
 const VERDICT_STYLE: Record<string, BadgeStyle & { label: string; title: string }> = {
 	verified: {
 		background: 'rgba(70,240,224,0.10)',

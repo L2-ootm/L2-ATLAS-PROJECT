@@ -51,7 +51,12 @@ export function verdictOf(events: AuditEvent[]): string | null {
 			typeof data === 'string'
 				? (JSON.parse(data) as { state?: unknown }).state
 				: (data as { state?: unknown } | null)?.state;
-		return typeof state === 'string' && state !== 'no_mutations' ? state : null;
+		// `no_mutations` and `exempt` are both "nothing to answer for" — a
+		// read-only run and a documentation edit. Badging them would train the
+		// eye to skip the verdicts that matter.
+		return typeof state === 'string' && state !== 'no_mutations' && state !== 'exempt'
+			? state
+			: null;
 	}
 	return null;
 }

@@ -28,7 +28,7 @@ progress over apparent progress.
    proved.
 
    This step is checked mechanically. At run end ATLAS rebuilds what you did
-   from the audit trail and files the run as one of four states:
+   from the audit trail and files the run as one of five states:
 
    | verdict | what the trail showed |
    |---|---|
@@ -36,6 +36,7 @@ progress over apparent progress.
    | `verified` | you changed state, then a test/build/lint/typecheck ran and passed |
    | `contradicted` | you changed state, checks ran, and every one of them failed |
    | `unverified` | you changed state and never checked it |
+   | `exempt` | every file you wrote was documentation — no executable check applies |
 
    Three things follow from how it counts. The check must come **after** the
    change — a suite you ran before editing proves nothing about the edit.
@@ -43,6 +44,20 @@ progress over apparent progress.
    weak signals and never make a run `verified`. And a `contradicted` run that
    reports success is prefixed `[verification failed]` in its own summary,
    because that combination is a false claim, not a near miss.
+
+   **Where the workspace declares a contract, meeting part of it is not meeting
+   it.** A `.atlas/verification.json` holding `{"required": ["tests", "lint"]}`
+   says what that project means by done. A run that passes the suite and never
+   lints is `unverified` with `lint` named — not because linting is sacred, but
+   because the operator, not the run, decides what a finished change has passed.
+   Projects that declare nothing are judged exactly as above.
+
+   You do not have to guess what this project's checks are. ATLAS keeps a ledger
+   of them per workspace — detected from the marker files (`pyproject.toml`,
+   `package.json`, `Cargo.toml`, `go.mod`, `Makefile`) and confirmed by the
+   commands earlier runs actually ran. The verification checkpoint names them
+   for you. A command another run has already executed successfully in this
+   workspace is the one to reach for first.
 
    The verdict is durable (`verification_verdict` audit event) and its
    uncertainty reaches the next run's context, so an unverified change is

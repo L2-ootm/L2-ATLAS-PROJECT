@@ -66,7 +66,7 @@ _MAX_DEMAND_CHANGES = 5
 _VERIFICATION_DEMAND = """\
 [ATLAS verification checkpoint]
 
-This run changed state and no test, build, lint or typecheck ran afterwards.
+{shortfall}
 The changes the audit trail recorded:
 
 {changes}
@@ -81,7 +81,17 @@ Run a real check on those changes now, then stop. Requirements:
   failing check is a more useful result than a missing one.
 - Do not make further changes, and do not restate your earlier answer. Only the
   commands you run in this turn are recorded against the claim.
-"""
+{hint}"""
+
+# "Prefer the project's own suite" is advice the agent cannot act on if it does
+# not know what the suite is — the first live runs answered the checkpoint by
+# guessing at a command and, when it failed, arguing that no check applied. The
+# ledger knows: it holds the checks detected from this workspace's marker files
+# and the ones previous runs actually ran. Naming them turns the demand from an
+# instruction into an offer.
+_DEMAND_DEFAULT_SHORTFALL = (
+    "This run changed state and no test, build, lint or typecheck ran afterwards."
+)
 
 # The foundation's mid-tool-call silent stream retry (chat_completion_helpers.py
 # ~2144-2186, D-001 vendored — not editable here) intentionally re-streams a
@@ -1282,6 +1292,28 @@ class NativeAtlasAgent(AgentRuntime):
         if extra > 0:
             changed += f"\n  - (+{extra} more)"
 
+        if before.missing_required:
+            shortfall = (
+                "This run changed state and did not meet this project's declared "
+                f"verification contract: it requires "
+                f"{', '.join(before.required)}; "
+                f"{', '.join(before.signals) or 'nothing'} passed, and "
+                f"{', '.join(before.missing_required)} never ran."
+            )
+        else:
+            shortfall = _DEMAND_DEFAULT_SHORTFALL
+
+        hint = ""
+        try:
+            from atlas_runtime import verification_ledger  # noqa: PLC0415
+
+            if verification_ledger.enabled():
+                known = verification_ledger.demand_hint(conn, run_id)
+                if known:
+                    hint = "\n" + known + "\n"
+        except Exception as exc:  # noqa: BLE001 — a hint is optional, the demand is not
+            logger.debug("verification demand hint unavailable for %s: %s", run_id, exc)
+
         self._safe_emit(
             conn, lock, run_id, event_type="verification_retry",
             data={
@@ -1289,6 +1321,8 @@ class NativeAtlasAgent(AgentRuntime):
                 "phase": "demanded",
                 "state_before": before.state,
                 "mutation_count": len(before.mutations),
+                "missing_required": list(before.missing_required),
+                "hinted": bool(hint),
             },
         )
 
@@ -1297,7 +1331,9 @@ class NativeAtlasAgent(AgentRuntime):
                 conn, lock,
                 run_id=run_id,
                 agent=agent,
-                turn_message=_VERIFICATION_DEMAND.format(changes=changed),
+                turn_message=_VERIFICATION_DEMAND.format(
+                    shortfall=shortfall, changes=changed, hint=hint
+                ),
                 system_message=system_message,
                 deadline=deadline,
                 cancel_token=cancel_token,

@@ -17,7 +17,7 @@
       "workspace": "global",
       "permission_mode": "deny",
       "context_present": false,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -25,7 +25,7 @@
       "workspace": "global",
       "permission_mode": "deny",
       "context_present": true,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -33,7 +33,7 @@
       "workspace": "global",
       "permission_mode": "ask",
       "context_present": false,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -41,7 +41,7 @@
       "workspace": "global",
       "permission_mode": "ask",
       "context_present": true,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -49,7 +49,7 @@
       "workspace": "global",
       "permission_mode": "allow",
       "context_present": false,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -57,7 +57,7 @@
       "workspace": "global",
       "permission_mode": "allow",
       "context_present": true,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -65,7 +65,7 @@
       "workspace": "registered_project",
       "permission_mode": "deny",
       "context_present": false,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -73,7 +73,7 @@
       "workspace": "registered_project",
       "permission_mode": "deny",
       "context_present": true,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -81,7 +81,7 @@
       "workspace": "registered_project",
       "permission_mode": "ask",
       "context_present": false,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -89,7 +89,7 @@
       "workspace": "registered_project",
       "permission_mode": "ask",
       "context_present": true,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -97,7 +97,7 @@
       "workspace": "registered_project",
       "permission_mode": "allow",
       "context_present": false,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -105,7 +105,7 @@
       "workspace": "registered_project",
       "permission_mode": "allow",
       "context_present": true,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -113,7 +113,7 @@
       "workspace": "global",
       "permission_mode": "deny",
       "context_present": false,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -121,7 +121,7 @@
       "workspace": "global",
       "permission_mode": "deny",
       "context_present": true,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -129,7 +129,7 @@
       "workspace": "global",
       "permission_mode": "ask",
       "context_present": false,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -137,7 +137,7 @@
       "workspace": "global",
       "permission_mode": "ask",
       "context_present": true,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -145,7 +145,7 @@
       "workspace": "global",
       "permission_mode": "allow",
       "context_present": false,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -153,7 +153,7 @@
       "workspace": "global",
       "permission_mode": "allow",
       "context_present": true,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -161,7 +161,7 @@
       "workspace": "registered_project",
       "permission_mode": "deny",
       "context_present": false,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -169,7 +169,7 @@
       "workspace": "registered_project",
       "permission_mode": "deny",
       "context_present": true,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -177,7 +177,7 @@
       "workspace": "registered_project",
       "permission_mode": "ask",
       "context_present": false,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -185,7 +185,7 @@
       "workspace": "registered_project",
       "permission_mode": "ask",
       "context_present": true,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -193,7 +193,7 @@
       "workspace": "registered_project",
       "permission_mode": "allow",
       "context_present": false,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -201,7 +201,7 @@
       "workspace": "registered_project",
       "permission_mode": "allow",
       "context_present": true,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -209,7 +209,7 @@
       "workspace": "global",
       "permission_mode": "deny",
       "context_present": false,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -217,7 +217,7 @@
       "workspace": "global",
       "permission_mode": "deny",
       "context_present": true,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -225,7 +225,7 @@
       "workspace": "global",
       "permission_mode": "ask",
       "context_present": false,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -233,7 +233,7 @@
       "workspace": "global",
       "permission_mode": "ask",
       "context_present": true,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -241,7 +241,7 @@
       "workspace": "global",
       "permission_mode": "allow",
       "context_present": false,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -249,7 +249,7 @@
       "workspace": "global",
       "permission_mode": "allow",
       "context_present": true,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -257,7 +257,7 @@
       "workspace": "registered_project",
       "permission_mode": "deny",
       "context_present": false,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -265,7 +265,7 @@
       "workspace": "registered_project",
       "permission_mode": "deny",
       "context_present": true,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -273,7 +273,7 @@
       "workspace": "registered_project",
       "permission_mode": "ask",
       "context_present": false,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -281,7 +281,7 @@
       "workspace": "registered_project",
       "permission_mode": "ask",
       "context_present": true,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -289,7 +289,7 @@
       "workspace": "registered_project",
       "permission_mode": "allow",
       "context_present": false,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "generic",
@@ -297,7 +297,7 @@
       "workspace": "registered_project",
       "permission_mode": "allow",
       "context_present": true,
-      "stable_prompt_sha256": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93"
+      "stable_prompt_sha256": "03d9c114f22ac0f04f3bc082792306f4944c17c5bf4c56389d2613a968a17c92"
     },
     {
       "provider": "openai-compatible",
@@ -305,7 +305,7 @@
       "workspace": "global",
       "permission_mode": "deny",
       "context_present": false,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -313,7 +313,7 @@
       "workspace": "global",
       "permission_mode": "deny",
       "context_present": true,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -321,7 +321,7 @@
       "workspace": "global",
       "permission_mode": "ask",
       "context_present": false,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -329,7 +329,7 @@
       "workspace": "global",
       "permission_mode": "ask",
       "context_present": true,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -337,7 +337,7 @@
       "workspace": "global",
       "permission_mode": "allow",
       "context_present": false,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -345,7 +345,7 @@
       "workspace": "global",
       "permission_mode": "allow",
       "context_present": true,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -353,7 +353,7 @@
       "workspace": "registered_project",
       "permission_mode": "deny",
       "context_present": false,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -361,7 +361,7 @@
       "workspace": "registered_project",
       "permission_mode": "deny",
       "context_present": true,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -369,7 +369,7 @@
       "workspace": "registered_project",
       "permission_mode": "ask",
       "context_present": false,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -377,7 +377,7 @@
       "workspace": "registered_project",
       "permission_mode": "ask",
       "context_present": true,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -385,7 +385,7 @@
       "workspace": "registered_project",
       "permission_mode": "allow",
       "context_present": false,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -393,7 +393,7 @@
       "workspace": "registered_project",
       "permission_mode": "allow",
       "context_present": true,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -401,7 +401,7 @@
       "workspace": "global",
       "permission_mode": "deny",
       "context_present": false,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -409,7 +409,7 @@
       "workspace": "global",
       "permission_mode": "deny",
       "context_present": true,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -417,7 +417,7 @@
       "workspace": "global",
       "permission_mode": "ask",
       "context_present": false,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -425,7 +425,7 @@
       "workspace": "global",
       "permission_mode": "ask",
       "context_present": true,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -433,7 +433,7 @@
       "workspace": "global",
       "permission_mode": "allow",
       "context_present": false,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -441,7 +441,7 @@
       "workspace": "global",
       "permission_mode": "allow",
       "context_present": true,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -449,7 +449,7 @@
       "workspace": "registered_project",
       "permission_mode": "deny",
       "context_present": false,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -457,7 +457,7 @@
       "workspace": "registered_project",
       "permission_mode": "deny",
       "context_present": true,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -465,7 +465,7 @@
       "workspace": "registered_project",
       "permission_mode": "ask",
       "context_present": false,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -473,7 +473,7 @@
       "workspace": "registered_project",
       "permission_mode": "ask",
       "context_present": true,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -481,7 +481,7 @@
       "workspace": "registered_project",
       "permission_mode": "allow",
       "context_present": false,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -489,7 +489,7 @@
       "workspace": "registered_project",
       "permission_mode": "allow",
       "context_present": true,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -497,7 +497,7 @@
       "workspace": "global",
       "permission_mode": "deny",
       "context_present": false,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -505,7 +505,7 @@
       "workspace": "global",
       "permission_mode": "deny",
       "context_present": true,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -513,7 +513,7 @@
       "workspace": "global",
       "permission_mode": "ask",
       "context_present": false,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -521,7 +521,7 @@
       "workspace": "global",
       "permission_mode": "ask",
       "context_present": true,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -529,7 +529,7 @@
       "workspace": "global",
       "permission_mode": "allow",
       "context_present": false,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -537,7 +537,7 @@
       "workspace": "global",
       "permission_mode": "allow",
       "context_present": true,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -545,7 +545,7 @@
       "workspace": "registered_project",
       "permission_mode": "deny",
       "context_present": false,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -553,7 +553,7 @@
       "workspace": "registered_project",
       "permission_mode": "deny",
       "context_present": true,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -561,7 +561,7 @@
       "workspace": "registered_project",
       "permission_mode": "ask",
       "context_present": false,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -569,7 +569,7 @@
       "workspace": "registered_project",
       "permission_mode": "ask",
       "context_present": true,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -577,7 +577,7 @@
       "workspace": "registered_project",
       "permission_mode": "allow",
       "context_present": false,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "openai-compatible",
@@ -585,7 +585,7 @@
       "workspace": "registered_project",
       "permission_mode": "allow",
       "context_present": true,
-      "stable_prompt_sha256": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414"
+      "stable_prompt_sha256": "0fef27d9560d7eab5f794153334f52408ec1c9f3a6ad594dbe5a69cfbc913a2d"
     },
     {
       "provider": "anthropic-compatible",
@@ -593,7 +593,7 @@
       "workspace": "global",
       "permission_mode": "deny",
       "context_present": false,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -601,7 +601,7 @@
       "workspace": "global",
       "permission_mode": "deny",
       "context_present": true,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -609,7 +609,7 @@
       "workspace": "global",
       "permission_mode": "ask",
       "context_present": false,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -617,7 +617,7 @@
       "workspace": "global",
       "permission_mode": "ask",
       "context_present": true,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -625,7 +625,7 @@
       "workspace": "global",
       "permission_mode": "allow",
       "context_present": false,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -633,7 +633,7 @@
       "workspace": "global",
       "permission_mode": "allow",
       "context_present": true,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -641,7 +641,7 @@
       "workspace": "registered_project",
       "permission_mode": "deny",
       "context_present": false,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -649,7 +649,7 @@
       "workspace": "registered_project",
       "permission_mode": "deny",
       "context_present": true,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -657,7 +657,7 @@
       "workspace": "registered_project",
       "permission_mode": "ask",
       "context_present": false,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -665,7 +665,7 @@
       "workspace": "registered_project",
       "permission_mode": "ask",
       "context_present": true,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -673,7 +673,7 @@
       "workspace": "registered_project",
       "permission_mode": "allow",
       "context_present": false,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -681,7 +681,7 @@
       "workspace": "registered_project",
       "permission_mode": "allow",
       "context_present": true,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -689,7 +689,7 @@
       "workspace": "global",
       "permission_mode": "deny",
       "context_present": false,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -697,7 +697,7 @@
       "workspace": "global",
       "permission_mode": "deny",
       "context_present": true,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -705,7 +705,7 @@
       "workspace": "global",
       "permission_mode": "ask",
       "context_present": false,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -713,7 +713,7 @@
       "workspace": "global",
       "permission_mode": "ask",
       "context_present": true,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -721,7 +721,7 @@
       "workspace": "global",
       "permission_mode": "allow",
       "context_present": false,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -729,7 +729,7 @@
       "workspace": "global",
       "permission_mode": "allow",
       "context_present": true,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -737,7 +737,7 @@
       "workspace": "registered_project",
       "permission_mode": "deny",
       "context_present": false,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -745,7 +745,7 @@
       "workspace": "registered_project",
       "permission_mode": "deny",
       "context_present": true,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -753,7 +753,7 @@
       "workspace": "registered_project",
       "permission_mode": "ask",
       "context_present": false,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -761,7 +761,7 @@
       "workspace": "registered_project",
       "permission_mode": "ask",
       "context_present": true,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -769,7 +769,7 @@
       "workspace": "registered_project",
       "permission_mode": "allow",
       "context_present": false,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -777,7 +777,7 @@
       "workspace": "registered_project",
       "permission_mode": "allow",
       "context_present": true,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -785,7 +785,7 @@
       "workspace": "global",
       "permission_mode": "deny",
       "context_present": false,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -793,7 +793,7 @@
       "workspace": "global",
       "permission_mode": "deny",
       "context_present": true,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -801,7 +801,7 @@
       "workspace": "global",
       "permission_mode": "ask",
       "context_present": false,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -809,7 +809,7 @@
       "workspace": "global",
       "permission_mode": "ask",
       "context_present": true,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -817,7 +817,7 @@
       "workspace": "global",
       "permission_mode": "allow",
       "context_present": false,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -825,7 +825,7 @@
       "workspace": "global",
       "permission_mode": "allow",
       "context_present": true,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -833,7 +833,7 @@
       "workspace": "registered_project",
       "permission_mode": "deny",
       "context_present": false,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -841,7 +841,7 @@
       "workspace": "registered_project",
       "permission_mode": "deny",
       "context_present": true,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -849,7 +849,7 @@
       "workspace": "registered_project",
       "permission_mode": "ask",
       "context_present": false,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -857,7 +857,7 @@
       "workspace": "registered_project",
       "permission_mode": "ask",
       "context_present": true,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -865,7 +865,7 @@
       "workspace": "registered_project",
       "permission_mode": "allow",
       "context_present": false,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     },
     {
       "provider": "anthropic-compatible",
@@ -873,7 +873,7 @@
       "workspace": "registered_project",
       "permission_mode": "allow",
       "context_present": true,
-      "stable_prompt_sha256": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
+      "stable_prompt_sha256": "4bdd4b619f7e6026f05d907e55c244bddbe6652e34f891b270f689ef7900f27d"
     }
   ]
 }

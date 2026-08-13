@@ -16,7 +16,12 @@ import uuid
 
 import pytest
 
-from atlas_runtime import audit_service, run_executor, verification_gate
+from atlas_runtime import (
+    audit_service,
+    run_executor,
+    verification_gate,
+    verification_ledger,
+)
 from atlas_runtime import db as db_module
 from atlas_runtime.agents.base import AgentRuntime, RunOutcome
 from atlas_runtime.run_service import start_run
@@ -132,12 +137,106 @@ def test_git_status_alone_never_promotes_a_run_to_verified():
 def test_reading_back_a_written_file_is_a_weak_signal_only():
     verdict = classify(
         [
-            _write("docs/plan.md"),
-            ObservedCall(tool="read_file", args={"path": "docs\\plan.md"}),
+            _write("src/plan.py"),
+            ObservedCall(tool="read_file", args={"path": "src\\plan.py"}),
         ]
     )
     assert verdict.state == "unverified"
     assert verdict.weak_signals == ("read_back",)
+
+
+# -- documentation exemption -------------------------------------------------
+
+
+def test_a_documentation_only_run_is_exempt_not_unverified():
+    """There is no check that proves a README. Demanding one teaches noise."""
+    verdict = classify([_write("docs/plan.md"), _write("README.md")])
+    assert verdict.state == "exempt"
+    assert len(verdict.mutations) == 2
+
+
+def test_committing_documentation_does_not_lose_the_exemption():
+    """git moves a change around; what needs checking is what was changed."""
+    verdict = classify([_write("docs/plan.md"), _shell("git commit -am 'docs'")])
+    assert verdict.state == "exempt"
+
+
+def test_one_code_file_among_the_docs_removes_the_exemption():
+    verdict = classify([_write("docs/plan.md"), _write("src/a.py")])
+    assert verdict.state == "unverified"
+
+
+def test_a_shell_mutation_beside_the_docs_removes_the_exemption():
+    verdict = classify([_write("docs/plan.md"), _shell("rm -rf build/")])
+    assert verdict.state == "unverified"
+
+
+def test_config_is_not_documentation():
+    """`.json`/`.toml` break things at runtime; prose does not."""
+    assert classify([_write("tsconfig.json")]).state == "unverified"
+    assert classify([_write("pyproject.toml")]).state == "unverified"
+
+
+def test_a_doc_run_whose_check_failed_still_contradicts_its_claim():
+    """If the run chose to check, the result of that check still counts."""
+    verdict = classify([_write("docs/plan.md"), _shell("pytest -q", failed=True)])
+    assert verdict.state == "contradicted"
+
+
+def test_describe_files_an_exempt_run_as_an_inference_not_a_finding():
+    described = verification_gate.describe(classify([_write("README.md")]))
+    assert described["inferences"] and not described["uncertainties"]
+
+
+# -- the operator's contract -------------------------------------------------
+
+
+def _contract(*required: str):
+    return verification_ledger.Contract(required=required, source=".atlas/verification.json")
+
+
+def test_half_a_contract_is_not_a_verified_run():
+    verdict = classify(
+        [_write("src/a.py"), _shell("pytest -q")], _contract("tests", "lint")
+    )
+    assert verdict.state == "unverified"
+    assert verdict.signals == ("tests",)
+    assert verdict.missing_required == ("lint",)
+
+
+def test_a_met_contract_verifies():
+    verdict = classify(
+        [_write("src/a.py"), _shell("pytest -q"), _shell("ruff check .")],
+        _contract("tests", "lint"),
+    )
+    assert verdict.state == "verified"
+    assert verdict.missing_required == ()
+
+
+def test_no_contract_keeps_the_undeclared_behaviour():
+    verdict = classify([_write("src/a.py"), _shell("pytest -q")], None)
+    assert verdict.state == "verified"
+    assert verdict.required == ()
+
+
+def test_a_contract_is_not_charged_against_a_doc_only_run():
+    verdict = classify([_write("README.md")], _contract("tests"))
+    assert verdict.state == "exempt"
+    assert verdict.missing_required == ()
+
+
+def test_an_unmet_contract_names_what_is_missing():
+    verdict = classify([_write("src/a.py"), _shell("pytest -q")], _contract("tests", "build"))
+    described = verification_gate.describe(verdict)
+    assert any("build" in u for u in described["uncertainties"])
+    assert "missing_required" in verdict.as_payload()
+    assert "build" in verification_gate.summarize(verdict.as_payload())
+
+
+def test_the_command_behind_a_signal_is_recorded():
+    """The ledger stores commands, not kinds — that is what a later run can run."""
+    verdict = classify([_write("src/a.py"), _shell("python -m pytest tests/ -q")])
+    assert verdict.signal_commands == (("tests", "python -m pytest tests/ -q"),)
 
 
 def test_reading_an_unrelated_file_is_not_a_read_back():

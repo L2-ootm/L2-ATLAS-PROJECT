@@ -46,6 +46,14 @@ describe('verdictOf', () => {
 		).toBeNull();
 	});
 
+	it('says nothing about a documentation-only run', () => {
+		// `exempt` is a real finding in the audit trail — the run changed state —
+		// but not one the operator has to act on, so it must not badge.
+		expect(
+			verdictOf([event({ event_type: 'verification_verdict', data: { state: 'exempt' } })])
+		).toBeNull();
+	});
+
 	it('is null when the run has no verdict at all', () => {
 		expect(verdictOf([event({})])).toBeNull();
 	});

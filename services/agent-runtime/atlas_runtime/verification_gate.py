@@ -14,7 +14,7 @@ that record the gate answers one question per run:
 
     did this run change state, and did it then check that the change worked?
 
-Four verdicts, all facts rather than judgements:
+Five verdicts, all facts rather than judgements:
 
   no_mutations   nothing observable changed — there was nothing to verify.
   verified       state changed and at least one strong check (tests, typecheck,
@@ -22,6 +22,16 @@ Four verdicts, all facts rather than judgements:
   contradicted   state changed, strong checks ran, and every one of them failed.
                  A run in this state that reports success is making a false claim.
   unverified     state changed and no strong check ran at all.
+  exempt         state changed, but only prose did — every file this run wrote
+                 was documentation. There is no executable check to demand, so
+                 demanding one would teach agents that the checkpoint is noise.
+
+Two of those are graded against `verification_ledger`, which holds the
+operator's declared contract for the workspace. When a project states what
+"done" requires (`.atlas/verification.json`), passing *a* check is no longer
+enough: the gate compares what ran against what was declared, and a run that
+covers half the contract is `unverified` with the missing half named. Projects
+that declare nothing keep exactly the behaviour above.
 
 Deliberately NOT done here: the verdict does not change `RunOutcome.status`.
 A heuristic classifier on its first day must not be able to fail runs that
@@ -56,7 +66,9 @@ logger = logging.getLogger(__name__)
 
 GATE_VERSION = "2026-08-13"
 
-VerdictState = Literal["no_mutations", "verified", "contradicted", "unverified"]
+VerdictState = Literal[
+    "no_mutations", "verified", "contradicted", "unverified", "exempt"
+]
 
 _MAX_LISTED = 5
 _SUMMARY_CAP = 2000
@@ -178,6 +190,30 @@ _MUTATING_CODE = re.compile(
 )
 
 
+# -- what kind of change was it ----------------------------------------------
+# Documentation is a state change with no executable check behind it. Running
+# the suite after a README edit proves nothing about the README, so a run that
+# only wrote prose is `exempt` rather than `unverified` — the same lesson
+# hermes-agent learned when it stopped applying verify-on-stop to doc-only
+# edits. Extension-based and deliberately narrow: `.json`, `.yaml` and `.toml`
+# are configuration, they break things, and they are NOT on this list.
+_DOC_SUFFIXES = frozenset(
+    {".md", ".markdown", ".mdx", ".rst", ".txt", ".adoc", ".org"}
+)
+
+# Version control moves changes around; it does not create unverified work. What
+# needs checking is whatever was committed, and the other mutations already say
+# what that was. So a git command is recorded as a mutation but does not by
+# itself deny a doc-only run its exemption.
+_VCS_COMMAND = _MUTATING_COMMANDS[1]
+
+
+def _is_doc_path(path: str) -> bool:
+    tail = path.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+    dot = tail.rfind(".")
+    return dot > 0 and tail[dot:].lower() in _DOC_SUFFIXES
+
+
 @dataclass(frozen=True)
 class ObservedCall:
     """One tool invocation as the audit trail recorded it."""
@@ -194,9 +230,18 @@ class VerificationVerdict:
     signals: tuple[str, ...] = ()
     failed_signals: tuple[str, ...] = ()
     weak_signals: tuple[str, ...] = ()
+    # (kind, command) for every check the run actually executed. The kinds are
+    # already in `signals`; the commands are what the ledger records, so a later
+    # run can be told how this project really invokes its own checks.
+    signal_commands: tuple[tuple[str, str], ...] = ()
+    failed_signal_commands: tuple[tuple[str, str], ...] = ()
+    # The operator's declared contract, and the part of it this run did not meet.
+    required: tuple[str, ...] = ()
+    missing_required: tuple[str, ...] = ()
+    contract_source: str = ""
 
     def as_payload(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "gate_version": GATE_VERSION,
             "state": self.state,
             "mutations": list(self.mutations[:_MAX_LISTED]),
@@ -205,6 +250,16 @@ class VerificationVerdict:
             "failed_signals": list(self.failed_signals),
             "weak_signals": list(self.weak_signals),
         }
+        if self.signal_commands:
+            payload["signal_commands"] = [
+                {"kind": kind, "command": command}
+                for kind, command in self.signal_commands[:_MAX_LISTED]
+            ]
+        if self.required:
+            payload["required"] = list(self.required)
+            payload["missing_required"] = list(self.missing_required)
+            payload["contract_source"] = self.contract_source
+        return payload
 
 
 # -- extraction --------------------------------------------------------------
@@ -285,18 +340,30 @@ def _signal_kinds(
 # -- classification ----------------------------------------------------------
 
 
-def classify(calls: Iterable[ObservedCall]) -> VerificationVerdict:
+def classify(
+    calls: Iterable[ObservedCall], contract: Any = None
+) -> VerificationVerdict:
     """Reduce a run's tool calls to one verdict. Pure; order matters.
 
     A verification signal only counts when it ran *after* a mutation — tests run
     before any change was made say nothing about the change.
+
+    `contract` is an optional `verification_ledger.Contract`. When one is
+    declared, passing a check is necessary but no longer sufficient: every kind
+    the operator listed has to have passed, or the run is `unverified` with the
+    remainder named. Passing None keeps the undeclared-project behaviour, which
+    is what every caller without a workspace should do.
     """
     mutations: list[str] = []
     signals: list[str] = []
+    signal_commands: list[tuple[str, str]] = []
     failed_signals: list[str] = []
+    failed_commands: list[tuple[str, str]] = []
     weak: list[str] = []
     written: set[str] = set()
     written_stems: set[str] = set()
+    doc_mutations = 0
+    code_mutations = 0
 
     for call in calls:
         command = _command_of(call)
@@ -308,15 +375,21 @@ def classify(calls: Iterable[ObservedCall]) -> VerificationVerdict:
                 strong = ("exercised",)
             if strong and mutations:
                 target = failed_signals if call.failed else signals
+                commands = failed_commands if call.failed else signal_commands
                 for kind in strong:
                     if kind not in target:
                         target.append(kind)
+                    if not any(k == kind for k, _ in commands):
+                        commands.append((kind, command[:200]))
             if not strong:
                 for kind in _signal_kinds(command, _WEAK_SIGNALS):
                     if mutations and kind not in weak:
                         weak.append(kind)
-                if any(pattern.search(command) for pattern in _MUTATING_COMMANDS):
+                matched = [p for p in _MUTATING_COMMANDS if p.search(command)]
+                if matched:
                     mutations.append(f"{call.tool}: {command[:120]}")
+                    if matched != [_VCS_COMMAND]:
+                        code_mutations += 1
             continue
 
         if call.tool in _WRITE_TOOLS:
@@ -326,6 +399,10 @@ def classify(calls: Iterable[ObservedCall]) -> VerificationVerdict:
             mutations.append(
                 f"{call.tool}: {paths[0] if paths else '(unnamed target)'}"
             )
+            if paths and all(_is_doc_path(path) for path in paths):
+                doc_mutations += 1
+            else:
+                code_mutations += 1
             continue
 
         if call.tool in _READ_TOOLS:
@@ -339,20 +416,37 @@ def classify(calls: Iterable[ObservedCall]) -> VerificationVerdict:
             code = call.args.get("code")
             if isinstance(code, str) and _MUTATING_CODE.search(code):
                 mutations.append("execute_code: code writes to disk")
+                code_mutations += 1
             continue
 
         atlas = _atlas_mutation(call)
         if atlas:
             mutations.append(atlas)
+            code_mutations += 1
+
+    required: tuple[str, ...] = tuple(getattr(contract, "required", ()) or ())
+    missing = tuple(kind for kind in required if kind not in signals)
 
     if not mutations:
         state: VerdictState = "no_mutations"
-    elif signals:
+    elif signals and not missing:
         state = "verified"
-    elif failed_signals:
-        state = "contradicted"
+    elif failed_signals or signals:
+        # A run that ran checks and failed all of them contradicts its own
+        # success claim. A run that passed some but not all of a declared
+        # contract has not contradicted anything — it is simply not done, which
+        # is what `unverified` already means.
+        state = "contradicted" if not signals else "unverified"
+    elif doc_mutations and not code_mutations:
+        state = "exempt"
     else:
         state = "unverified"
+
+    if state in ("no_mutations", "exempt"):
+        # A contract states what a *change* has to pass. Nothing executable
+        # changed, so nothing about it is outstanding — reporting the contract
+        # as unmet here would be the gate inventing a finding.
+        missing = ()
 
     return VerificationVerdict(
         state=state,
@@ -360,6 +454,11 @@ def classify(calls: Iterable[ObservedCall]) -> VerificationVerdict:
         signals=tuple(signals),
         failed_signals=tuple(failed_signals),
         weak_signals=tuple(weak),
+        signal_commands=tuple(signal_commands),
+        failed_signal_commands=tuple(failed_commands),
+        required=required,
+        missing_required=missing,
+        contract_source=str(getattr(contract, "source", "") or ""),
     )
 
 
@@ -449,8 +548,25 @@ def observed_calls(conn: sqlite3.Connection, run_id: str) -> tuple[ObservedCall,
     )
 
 
-def classify_run(conn: sqlite3.Connection, run_id: str) -> VerificationVerdict:
-    return classify(observed_calls(conn, run_id))
+def classify_run(
+    conn: sqlite3.Connection, run_id: str, *, use_contract: bool = True
+) -> VerificationVerdict:
+    """Classify a run from its trail, graded against its workspace's contract.
+
+    `use_contract=False` classifies the trail alone — for callers that want the
+    raw picture, and for tests. Contract lookup is best-effort: a workspace that
+    cannot be resolved grades as undeclared rather than raising.
+    """
+    contract = None
+    if use_contract:
+        try:
+            from atlas_runtime import verification_ledger  # noqa: PLC0415
+
+            if verification_ledger.enabled():
+                contract = verification_ledger.contract_for_run(conn, run_id)
+        except Exception as exc:  # noqa: BLE001 — an unreadable contract is no contract
+            logger.debug("verification contract lookup failed for %s: %s", run_id, exc)
+    return classify(observed_calls(conn, run_id), contract)
 
 
 # -- claim taxonomy ----------------------------------------------------------
@@ -487,6 +603,21 @@ def describe(verdict: VerificationVerdict) -> dict[str, tuple[str, ...]]:
             f"({', '.join(verdict.failed_signals)}) after {len(verdict.mutations)} "
             f"state change(s): {_listed(verdict.mutations)}"
         )
+    elif verdict.state == "exempt":
+        inferences.append(
+            f"{len(verdict.mutations)} change(s), all to documentation files; no "
+            f"executable check applies — {_listed(verdict.mutations)}"
+        )
+    elif verdict.missing_required:
+        # A declared contract turns the judgement into a comparison, so the
+        # finding can be specific: not "you did not verify" but "you verified
+        # one of the two things this project says done means".
+        uncertainties.append(
+            f"contract unmet: {verdict.contract_source or 'the workspace contract'} "
+            f"requires {', '.join(verdict.required)}; "
+            f"{', '.join(verdict.signals) or 'nothing'} passed, "
+            f"{', '.join(verdict.missing_required)} never ran"
+        )
     else:
         uncertainties.append(
             f"unverified: {len(verdict.mutations)} state change(s) with no test, build, "
@@ -514,9 +645,9 @@ def verdict_for(conn: sqlite3.Connection, run_id: str) -> Optional[dict[str, Any
 
     Every consumer reads the durable audit event rather than re-deriving or
     parsing prose, so an operator surface and the record cannot drift apart.
-    Returns None for `no_mutations` as well as for an unclassified run: callers
-    display a verdict when there is something to answer for, and a read-only run
-    is not a finding.
+    Returns None for `no_mutations` and `exempt` as well as for an unclassified
+    run: callers display a verdict when there is something to answer for, and
+    neither a read-only run nor a documentation edit is a finding.
     """
     try:
         row = conn.execute(
@@ -532,7 +663,10 @@ def verdict_for(conn: sqlite3.Connection, run_id: str) -> Optional[dict[str, Any
         payload = json.loads(row[0])
     except (TypeError, ValueError):
         return None
-    if not isinstance(payload, dict) or payload.get("state") == "no_mutations":
+    if not isinstance(payload, dict) or payload.get("state") in (
+        "no_mutations",
+        "exempt",
+    ):
         return None
     return payload
 
@@ -541,12 +675,21 @@ def summarize(payload: dict[str, Any]) -> str:
     """One operator-readable line for a verdict payload."""
     state = payload.get("state")
     changes = payload.get("mutation_count") or 0
+    missing = payload.get("missing_required") or []
     if state == "verified":
         detail = f"passed {', '.join(payload.get('signals') or []) or 'a check'}"
     elif state == "contradicted":
         detail = (
             f"every check failed ({', '.join(payload.get('failed_signals') or [])}) "
             f"after {changes} change(s)"
+        )
+    elif state == "exempt":
+        detail = f"{changes} documentation change(s); no executable check applies"
+    elif state == "unverified" and missing:
+        passed = ", ".join(payload.get("signals") or []) or "nothing"
+        detail = (
+            f"contract requires {', '.join(payload.get('required') or [])}; "
+            f"{passed} passed, {', '.join(missing)} never ran"
         )
     elif state == "unverified":
         detail = f"{changes} change(s), no test/build/lint/typecheck ran after them"
@@ -595,6 +738,19 @@ def apply(
             )
         except Exception as exc:  # noqa: BLE001 — the verdict still rides the outcome
             logger.debug("verification verdict audit emit failed for %s: %s", run_id, exc)
+
+        # The durable half: what this workspace's checks are, and which of them
+        # this run actually ran. Separate from the audit event on purpose — the
+        # event is about one run, the ledger is what the *next* run can read.
+        try:
+            from atlas_runtime import verification_ledger  # noqa: PLC0415
+
+            if verification_ledger.enabled():
+                verification_ledger.record_run(
+                    conn, lock, run_id=run_id, verdict=verdict
+                )
+        except Exception as exc:  # noqa: BLE001 — bookkeeping never fails a run
+            logger.debug("verification ledger write failed for %s: %s", run_id, exc)
 
         summary = outcome.summary
         if verdict.state == "contradicted" and outcome.status == "succeeded":
