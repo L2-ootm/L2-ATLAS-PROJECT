@@ -67,6 +67,52 @@ def active_status(config: Optional[config_service.AtlasConfig] = None) -> dict[s
     }
 
 
+def probe_reachable(
+    config: Optional[config_service.AtlasConfig] = None, *, timeout: float = 3.0
+) -> dict[str, Any]:
+    """Does the active provider's endpoint actually answer right now?
+
+    `active_status()` reads configuration: it knows whether credentials resolve,
+    never whether anything is listening. ATLAS's own contract separates
+    "configured" from "reachable" from "verified-live", so a surface that only
+    ever computes the first must not be the one an operator asks before working.
+
+    Any HTTP response counts as reachable, including 401 and 404: the question
+    is whether the endpoint answers, not whether this path is authorized. Only a
+    refused connection, DNS failure or timeout is unreachable.
+
+    Returns `probed=False` for the local-session modes (`claude_code`,
+    `oauth_import`), which have no URL to probe — an honest "unknown", never a
+    silent pass.
+    """
+    import urllib.error  # noqa: PLC0415
+    import urllib.request  # noqa: PLC0415
+
+    info = active_status(config)
+    base_url = info.get("base_url")
+    if not base_url:
+        return {
+            **info,
+            "probed": False,
+            "reachable": None,
+            "probe_detail": (
+                f"{info['auth_mode']} resolves its session locally; there is no "
+                "endpoint to probe from here"
+            ),
+        }
+    target = base_url.rstrip("/") + "/models"
+    try:
+        with urllib.request.urlopen(target, timeout=timeout) as response:
+            detail = f"endpoint answered HTTP {response.status}"
+        reachable = True
+    except urllib.error.HTTPError as exc:
+        reachable, detail = True, f"endpoint answered HTTP {exc.code}"
+    except Exception as exc:  # noqa: BLE001 — any transport failure is unreachable
+        reachable = False
+        detail = f"{type(exc).__name__}: {exc}"
+    return {**info, "probed": True, "reachable": reachable, "probe_detail": detail}
+
+
 def _codex_runtime_ready() -> bool:
     """True when the foundation's owned Codex store can execute a run. A
     present refresh_token suffices — the foundation refreshes at run time."""

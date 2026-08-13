@@ -129,6 +129,106 @@ def test_provider_test_exits_nonzero_in_mock_mode(monkeypatch, tmp_path: Path):
     assert json.loads(result.output)["ready"] is False
 
 
+# --- configured vs reachable ------------------------------------------------
+#
+# The defect these pin: `provider status` printed "[live]" and `provider test`
+# printed "credentials resolve - runs will call the provider" while the
+# configured base_url was actively refusing connections. Both are config reads.
+# ATLAS's own contract separates configured / reachable / verified-live, so its
+# provider surface may not spend the strong word on the weak evidence.
+
+
+def _freellmapi_config(tmp_path: Path, base_url: str) -> None:
+    (tmp_path / "config.yaml").write_text(
+        f"provider:\n  auth_mode: freellmapi\n  base_url: {base_url}\n", encoding="utf-8"
+    )
+
+
+def _dead_port() -> int:
+    """A port with nothing listening: bind it, read it, release it."""
+    import socket
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+def test_probe_reports_an_endpoint_that_answers(monkeypatch, tmp_path: Path):
+    import http.server
+    import threading
+
+    class _Quiet(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            self.send_response(404)  # any answer proves reachability
+            self.end_headers()
+
+        def log_message(self, *args):  # noqa: ANN002
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), _Quiet)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+        _freellmapi_config(tmp_path, f"http://127.0.0.1:{server.server_port}/v1")
+        info = provider_service.probe_reachable(timeout=5.0)
+    finally:
+        server.shutdown()
+    # 404 is reachable: the question is whether anything answers, not whether
+    # this particular path exists.
+    assert info["probed"] is True
+    assert info["reachable"] is True
+    assert "404" in info["probe_detail"]
+
+
+def test_probe_reports_a_refused_endpoint_as_unreachable(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    _freellmapi_config(tmp_path, f"http://127.0.0.1:{_dead_port()}/v1")
+    info = provider_service.probe_reachable(timeout=2.0)
+    assert info["mock_mode"] is False  # configured...
+    assert info["reachable"] is False  # ...and still not reachable
+    assert info["probe_detail"]
+
+
+def test_probe_admits_it_cannot_check_a_local_session_mode(monkeypatch, tmp_path: Path):
+    """claude_code has no endpoint. An honest unknown, never a silent pass."""
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    (tmp_path / "config.yaml").write_text(
+        "provider:\n  auth_mode: claude_code\n", encoding="utf-8"
+    )
+    info = provider_service.probe_reachable()
+    assert info["probed"] is False
+    assert info["reachable"] is None
+
+
+def test_provider_status_says_configured_not_live(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    _freellmapi_config(tmp_path, "http://127.0.0.1:9/v1")
+    result = runner.invoke(app, ["provider", "status"])
+    assert result.exit_code == 0, result.output
+    assert "[configured]" in result.output
+    assert "[live]" not in result.output
+
+
+def test_dry_provider_test_does_not_promise_a_working_provider(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    _freellmapi_config(tmp_path, "http://127.0.0.1:9/v1")
+    result = runner.invoke(app, ["provider", "test"])
+    assert result.exit_code == 0, result.output
+    assert "not probed" in result.output
+    assert "runs will call the provider" not in result.output
+
+
+def test_probing_provider_test_fails_when_the_endpoint_is_down(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    _freellmapi_config(tmp_path, f"http://127.0.0.1:{_dead_port()}/v1")
+    result = runner.invoke(app, ["provider", "test", "--probe", "--json"])
+    assert result.exit_code == 1, result.output
+    payload = json.loads(result.output)
+    assert payload["configured"] is True
+    assert payload["reachable"] is False
+    assert payload["ready"] is False
+
+
 def test_version_json(monkeypatch):
     result = runner.invoke(app, ["version", "--json"])
     assert result.exit_code == 0, result.output

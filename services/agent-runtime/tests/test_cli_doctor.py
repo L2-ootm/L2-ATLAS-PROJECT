@@ -131,9 +131,14 @@ def test_doctor_reports_claude_code_mode(monkeypatch):
     assert "claude_code:" in result.output
 
 
-def test_doctor_provider_live_for_keyless_claude_code(monkeypatch):
-    """P3: a credential-less mode (claude_code/freellmapi) is a LIVE run, not
-    mock. The provider line must reflect that rather than falsely saying mock."""
+def test_doctor_provider_configured_for_keyless_claude_code(monkeypatch):
+    """P3: a credential-less mode (claude_code/freellmapi) is a real run, not
+    mock — the line must not falsely say mock.
+
+    It must not say "live" either. Nothing in doctor probes anything, and in
+    ATLAS's own vocabulary "live" is the verified tier; this check establishes
+    only that the mode is configured.
+    """
     _patch_all_healthy(monkeypatch)
     monkeypatch.setattr(
         config_service,
@@ -148,8 +153,9 @@ def test_doctor_provider_live_for_keyless_claude_code(monkeypatch):
     )
     result = runner.invoke(app, ["doctor"])
     assert result.exit_code == 0, result.output
-    assert "provider: live" in result.output
+    assert "provider: configured (claude_code" in result.output
     assert "provider: mock" not in result.output
+    assert "provider: live" not in result.output
 
 
 def test_doctor_invalid_config_exits_nonzero_without_raising(monkeypatch):

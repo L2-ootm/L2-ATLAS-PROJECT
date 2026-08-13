@@ -166,7 +166,11 @@ def _doctor_cmd(
             if st["credentials_present"]:
                 echo("provider", "configured", ok=True)
             elif not st["mock_mode"]:
-                echo("provider", f"live ({st['auth_mode']})", ok=True)
+                # "configured", not "live": nothing here probed the endpoint,
+                # and the branch above already spends "configured" on the
+                # weaker fact of a resolvable key. `atlas provider test --probe`
+                # is what establishes reachable.
+                echo("provider", f"configured ({st['auth_mode']}, not probed)", ok=True)
             else:
                 echo("provider", "mock", ok=True)
         except Exception as exc:  # noqa: BLE001
