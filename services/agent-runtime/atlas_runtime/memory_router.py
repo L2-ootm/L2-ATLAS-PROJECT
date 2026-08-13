@@ -723,21 +723,53 @@ def _parse_skill_file(path: pathlib.Path, kind: str) -> tuple[str, str]:
     description = ""
     lines = head.splitlines()
     if lines and lines[0].strip() == "---":  # YAML frontmatter (Hermes shape)
+        block: list[str] | None = None
         for line in lines[1:]:
             if line.strip() == "---":
                 break
+            if block is not None:
+                # Inside a `description: |` block scalar: indented lines belong
+                # to it, the first unindented line ends it.
+                if line[:1] in {" ", "\t"} and line.strip():
+                    block.append(line.strip())
+                    continue
+                description = " ".join(block)  # the next key ends the block
+                block = None
             key, _, value = line.partition(":")
             if key.strip() == "name" and value.strip():
                 name = value.strip()
-            elif key.strip() == "description" and value.strip():
-                description = value.strip()
+            elif key.strip() == "description":
+                marker = value.strip()
+                if marker in {"|", ">", "|-", ">-", "|+", ">+"}:
+                    # A YAML block scalar. Taking value.strip() literally indexed
+                    # the ultra pack — the largest ATLAS skill — under the single
+                    # word "|", so no Focus could ever retrieve it.
+                    block = []
+                elif marker:
+                    description = marker
+        if block:
+            description = " ".join(block)
     if not description:
-        for line in lines:
+        for index, line in enumerate(lines):
             stripped = line.strip()
             if not stripped or stripped in {"---"} or stripped.startswith("#"):
                 continue
             match = _SKILL_USE_WHEN.match(stripped)
-            description = match.group(1).strip() if match else stripped
+            if not match:
+                description = stripped
+                break
+            # The whole "Use when" sentence, not its first line. Every ATLAS
+            # doctrine file wraps that block over two to four lines, and reading
+            # only the first threw away the half carrying the distinguishing
+            # vocabulary — `handoff.md` was indexed without the word "handoff",
+            # so a run asking for one could not be handed the doctrine for it.
+            paragraph = [match.group(1).strip()]
+            for follow in lines[index + 1 :]:
+                text = follow.strip()
+                if not text or text.startswith(("#", "-", "*", "|", "```")):
+                    break
+                paragraph.append(text)
+            description = " ".join(paragraph)
             break
     return name, description
 

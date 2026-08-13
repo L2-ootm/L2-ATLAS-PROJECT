@@ -285,6 +285,53 @@ def test_skill_retriever_sees_the_real_atlas_doctrine(tmp_path):
     assert "skill:self-extension" in [s.source for s in snippets]
 
 
+def test_skill_retriever_delivers_the_verification_rules(tmp_path):
+    """The L1 prompt states the four verdicts; `loop-discipline.md` holds the
+    detail (what counts as a check, why order matters). A run asking about
+    verification must be able to reach it."""
+    snippets = mr.SkillRetriever().retrieve(
+        None,
+        mr.RouterQuery(terms=("verify", "unverified", "tests", "claiming"), has_focus=True),
+    )
+    assert "skill:loop-discipline" in [s.source for s in snippets]
+
+
+def test_use_when_is_indexed_past_its_first_line(tmp_path):
+    """Found by the delivery test above: every ATLAS doctrine file wraps its
+    "Use when" sentence, and only line one was indexed — so `handoff.md` was
+    searchable by everything except the word "handoff"."""
+    atlas = tmp_path / "atlas"
+    atlas.mkdir()
+    (atlas / "wrapped.md").write_text(
+        "# Skill: wrapped\n\n**Use when:** a session changed state and must\n"
+        "leave a handoff the next session can trust.\n\nBody text.\n",
+        encoding="utf-8",
+    )
+    _name, description = mr._parse_skill_file(atlas / "wrapped.md", "doctrine")
+    assert "handoff" in description
+
+    snippets = mr.SkillRetriever(path=atlas, hermes_dir=tmp_path / "absent").retrieve(
+        None, mr.RouterQuery(terms=("handoff",), has_focus=True)
+    )
+    assert [s.source for s in snippets] == ["skill:wrapped"]
+
+
+def test_yaml_block_scalar_description_is_read(tmp_path):
+    """`description: |` indexed the ultra pack under the single token "|"."""
+    hermes = tmp_path / "hermes" / "ultra"
+    hermes.mkdir(parents=True)
+    (hermes / "SKILL.md").write_text(
+        "---\nname: ultra\ndescription: |\n"
+        "  Methodical, proof-based, subagent-native work.\n"
+        "  Routes to plan, review or design by intent.\nmodel: opus\n---\n\nBody.\n",
+        encoding="utf-8",
+    )
+    name, description = mr._parse_skill_file(hermes / "SKILL.md", "packaged")
+    assert name == "ultra"
+    assert "subagent-native" in description and "|" not in description
+    assert "opus" not in description  # the block ends where the indent does
+
+
 def test_hybrid_knowledge_pure_fts_without_embeddings(db, lock):
     # No wiki_vec table / no embeddings -> hybrid == pure FTS5 (no regression).
     _wiki_page(db, lock, slug="exec", title="Executor wiring", body="how to wire the executor")

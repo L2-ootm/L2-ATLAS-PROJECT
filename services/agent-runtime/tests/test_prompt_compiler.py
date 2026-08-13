@@ -150,6 +150,21 @@ def test_provider_adapter_cannot_replace_atlas_identity():
         assert text.index("[L1 ATLAS CORE]") < text.index("[L2 PROVIDER ADAPTER]")
 
 
+def test_l1_tells_the_run_that_verification_is_measured():
+    """A delivery test, not a byte test.
+
+    The goldens above pin the prompt's bytes without reading them — which is how
+    the L1 layer once described a capability version that no longer existed. The
+    verification gate is only doctrine if the run is told the rule, so assert the
+    rule's substance reaches the compiled prefix, in the gate's own vocabulary.
+    """
+    text = compile_prompt(bootstrap=_bootstrap(), context=_context()).stable_prompt.decode(
+        "utf-8"
+    )
+    assert "unverified" in text and "contradicted" in text
+    assert "tool trail" in text
+
+
 def test_surface_only_changes_bootstrap_not_stable_prompt():
     tui = compile_prompt(bootstrap=_bootstrap(surface="tui"), context=_context())
     webui = compile_prompt(bootstrap=_bootstrap(surface="webui"), context=_context())

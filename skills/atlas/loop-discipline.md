@@ -1,7 +1,9 @@
 # Skill: loop-discipline
 
 **Use when:** running any multi-step change — planning a slice, executing it,
-re-planning after contrary evidence, or verifying before you claim progress.
+re-planning after contrary evidence, or deciding whether a change is verified
+before you claim it is done. Also when a run came back unverified and you need
+to know which tests, checks and verification evidence actually count.
 
 GSD-style execution loop for any multi-step change. The point: verified
 progress over apparent progress.
@@ -24,6 +26,30 @@ progress over apparent progress.
    change and read the output. "Should work" is not a state; capabilities are
    registered / configured / reachable / verified-live — say which one you
    proved.
+
+   This step is checked mechanically. At run end ATLAS rebuilds what you did
+   from the audit trail and files the run as one of four states:
+
+   | verdict | what the trail showed |
+   |---|---|
+   | `no_mutations` | nothing observable changed — nothing to verify |
+   | `verified` | you changed state, then a test/build/lint/typecheck ran and passed |
+   | `contradicted` | you changed state, checks ran, and every one of them failed |
+   | `unverified` | you changed state and never checked it |
+
+   Three things follow from how it counts. The check must come **after** the
+   change — a suite you ran before editing proves nothing about the edit.
+   `git status` and re-reading a file you just wrote are recorded, but they are
+   weak signals and never make a run `verified`. And a `contradicted` run that
+   reports success is prefixed `[verification failed]` in its own summary,
+   because that combination is a false claim, not a near miss.
+
+   The verdict is durable (`verification_verdict` audit event) and its
+   uncertainty reaches the next run's context, so an unverified change is
+   something a later run inherits rather than something that disappears at the
+   end of this one. When you genuinely cannot verify — no suite exists, the
+   environment is missing — say so in your own words too; the gate records the
+   absence of evidence, not your reason for it.
 5. **Report honestly.** Failures and skipped verification are stated plainly,
    with the evidence. A summary that hides a red test is a defect.
 6. **Reduce entropy on contact.** If you find drift (stale docs, dead code,
