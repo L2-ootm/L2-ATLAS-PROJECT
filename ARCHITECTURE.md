@@ -51,8 +51,8 @@ ToolCall, Artifact, Source, WikiPage, MemoryProvenance, DiscordApproval.
 Rust REST gateway (axum + rusqlite). Read-only against SQLite; writes go through
 the `atlas` CLI contract. Endpoints cover missions, runs, wiki, discord,
 projects, focus, goals, operations, modules (incl. collection records), mcp,
-cashflow, console, auth, provider, channels, tools, surface-sessions,
-freellmapi, config, graph, and host.
+scratchpad, cashflow, console, auth, provider, channels, tools,
+surface-sessions, freellmapi, config, graph, and host.
 
 ### 5. Cockpit (`services/web-ui-react/`)
 
@@ -73,11 +73,21 @@ module code runs. The agent reaches every active module through one generic
 `atlas_module` tool. Contract:
 `docs/plans/2026-08-12-module-capabilities-v2-and-outreach-design.md`.
 
+### 8. Scratchpad and disposables (`scratchpad_service.py`)
+
+Durable agent working memory outside the transcript: plans, findings, drafts and
+generated one-off tools, each with a TTL and a sweep. A run resuming a session
+gets its open entries back in the brief (`ScratchpadRetriever`); a generated
+script is written under `<ATLAS home>/scratch/tools`, run out of process through
+the existing terminal tool and permission broker, and deleted with its row
+unless pinned. Nothing generated is imported into the runtime. Contract:
+`docs/plans/2026-08-12-atlas-self-extension-roadmap.md`.
+
 ## Data Flow
 
 1. Operator sets a **Focus** (current working context) with priorities and goals
-2. `assemble_context` builds a secret-redacted markdown brief from Focus, Goals,
-   Observations, Wiki, Skills, and Prior Failures
+2. `assemble_context` builds a secret-redacted markdown brief from the open
+   Scratchpad, Focus, Goals, Observations, Wiki, Skills, and Prior Failures
 3. The brief feeds the agent runtime (native or Claude Code)
 4. Agent executes, emitting audit events throughout
 5. Run completion writes a **compounding Observation** that feeds the next context

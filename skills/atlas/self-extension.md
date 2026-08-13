@@ -31,9 +31,21 @@ argued for, never a starting state.
 | Data that must survive the run | A module `collection` + records |
 | An operator entry point | A module `command` |
 | An external integration | An `mcp` declaration (operator enables it) |
-| A one-off script | A scratchpad entry, `kind=tool`, TTL `next_startup` |
+| A one-off script | `atlas_scratchpad op=materialize` — writes the file, returns the command, expires it |
 
 Use `atlas module create` for a new module; see `module-builder.md`.
+
+`op=materialize` is the whole L2 path: give it a title, a body and a language,
+get back an `invocation` line, and run that with your terminal tool under the
+normal permission rules. The file lives under `<ATLAS home>/scratch/tools`,
+never in the working tree, and it is deleted on the next startup unless someone
+pins it. You may mint five per run — hitting that cap means you are building
+around a problem instead of naming it.
+
+Your open scratchpad entries come back to you automatically at the start of a
+run that resumes the same session (the **Open Scratchpad** section of the
+brief). Write the plan before the long task; you will be handed it back rather
+than having to remember to ask.
 
 ## What you may not do
 

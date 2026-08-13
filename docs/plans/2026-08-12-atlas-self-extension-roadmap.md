@@ -18,6 +18,13 @@ Related: `2026-08-12-module-capabilities-v2-and-outreach-design.md`,
 Today ATLAS is **not close to that**. This document says how far it actually is,
 what the levels between here and there are, and what each one costs.
 
+> **Update 2026-08-12 (later the same day):** WP-D-1 and WP-B shipped, moving
+> the honest number from ~20% to ~30%. What changed: the scratchpad now writes
+> back on resume, and a run can materialize a disposable script with a managed
+> lifetime and an operator-visible surface. What did **not** change: nothing
+> mechanically enforces the build/dispose judgment (WP-A is still doctrine), and
+> there is no promotion pipeline (WP-C). See the per-row states below.
+
 ## Honest measurement: roughly 20% of the target
 
 What exists today (verified, in this repo):
@@ -29,12 +36,13 @@ What exists today (verified, in this repo):
 | Read/write its own module data mid-run | **Works** — `atlas_module` (query/create/update/delete/stats). |
 | Durable working memory across compaction | **Works** — `atlas_scratchpad` with TTL policies and a sweep. |
 | Wire an external integration | **Partial** — `mcp_service` registers and projects servers; the agent cannot yet enable one itself (operator-gated on purpose). |
-| Write actual executable code for itself | **Does not exist** — it can write files with its harness tools, but nothing registers them as ATLAS capabilities. Every real tool is Python in this repo, added by a human-run session. |
-| Judge durable vs disposable | **Does not exist** — no such decision is modeled anywhere. |
-| Disposable artifacts with managed lifetime | **Substrate only** — `scratchpad_entries` has `kind='tool'`, a `path` column and TTL policies; nothing creates, registers or executes one. |
+| Write actual executable code for itself | **Partial (2026-08-12)** — `atlas_scratchpad op=materialize` writes a bounded script to `<ATLAS home>/scratch/tools` and returns its invocation; it runs out of process through the existing terminal tool. Nothing registers it as a first-class ATLAS tool — that is L3. |
+| Judge durable vs disposable | **Doctrine only** — the four questions live in `skills/atlas/self-extension.md` and in the `atlas_scratchpad` description; nothing mechanically enforces them. |
+| Disposable artifacts with managed lifetime | **Works (2026-08-12)** — materialize + TTL + sweep deletes row *and* file, 5 tools per run, writes confined to the scratch root, operator-visible in the cockpit Disposables panel. |
+| Recover its own working memory after a reset | **Works (2026-08-12)** — `ScratchpadRetriever` hands a resuming run its open plans/findings/tools, session-keyed, self-budgeted, redacted. |
 | Verify its own extension before adopting it | **Does not exist** — no generated-capability test gate. |
 | Stop mid-task and re-plan deliberately | **Weak** — the run loop is a single forward pass with steering (`actor_bridge` inbox) and no self-initiated re-planning checkpoint. |
-| Roll back a bad self-extension | **Partial** — `atlas module deactivate` and git for repo changes; nothing scoped to a generated capability. |
+| Roll back a bad self-extension | **Partial** — `atlas module deactivate` and git for repo changes; a disposable is retired by deleting it (cockpit, CLI, or its own TTL). |
 
 Roughly: the *declarative* half of self-extension is real; the *executable*
 half, the *judgment* layer, and the *self-verification* layer are absent. 20% is
@@ -69,7 +77,9 @@ commands, pages. No new code. **Shipped 2026-08-12.**
 **L2 — Disposable executables.** The agent writes a bounded script, registers it
 as a disposable tool with a TTL and an owner, runs it out of process under the
 existing permission broker, and lets it expire. Nothing enters the repo.
-*Next.*
+**Shipped 2026-08-12** (`op=materialize`, per-run cap, file-aware sweep,
+cockpit Disposables panel). Unproven in anger: no run has yet hit a real missing
+capability and built its way through it.
 
 **L3 — Verified durable tools.** A disposable that proved its worth is promoted:
 the agent writes a manifest + a test, ATLAS runs the test, the operator
@@ -113,31 +123,37 @@ starting state. This decision gets recorded as a scratchpad entry
 it — and so a pattern of the same disposable being rebuilt becomes visible
 evidence for promotion.
 
-## WP-B — Disposable tools (L2)
+## WP-B — Disposable tools (L2) — SHIPPED 2026-08-12
 
-**Storage.** Already in place: `scratchpad_entries` with `kind='tool'`, `path`,
-`ttl_policy`, `expires_at`, `pinned` (migration 0034).
+**Storage.** `scratchpad_entries` with `kind='tool'`, `path`, `ttl_policy`,
+`expires_at`, `pinned` (migration 0034) — no new schema was needed.
 
-**Creation.** `atlas_scratchpad op=write kind=tool` plus a new
-`op=materialize`: writes the body to `<ATLAS home>/scratch/tools/<id>.<ext>`,
-records the path, and returns the invocation line. The file lives outside the
-repo — a disposable tool must never dirty the working tree.
+**Creation.** `atlas_scratchpad op=materialize` (and `atlas scratch
+materialize` for the operator) writes the body to
+`<ATLAS home>/scratch/tools/<id>.<ext>`, records the path, and returns the
+invocation line. The file lives outside the repo — a disposable tool must never
+dirty the working tree.
 
 **Execution.** Through the existing terminal tool and permission broker. No new
 execution path, no in-process import, no privilege the agent did not already
 have. This is deliberate: a disposable tool is a *saved command*, not a plugin.
 
-**Lifetime.** The TTL policies already implemented: `run`, `session`,
-`next_startup`, `hours`, `permanent`. Sweep deletes the row **and** the file.
-Default for a generated tool: `next_startup`.
+**Lifetime.** The TTL policies: `run`, `session`, `next_startup`, `hours`,
+`permanent`. Sweep deletes the row **and** the file — but only when the file
+resolves inside the scratch root, because `path` is agent-supplied and an entry
+pointing at a repo file is a reference, not an artifact ATLAS owns. Default for
+a generated tool: `next_startup`.
+
+**Bounds.** 5 tools per run (updating an existing one is not minting a new one),
+64 KB per body — past that it is a feature request, not a self-extension.
 
 **Management.** Operator: `atlas scratch list --kind tool`, `scratch get`,
-`scratch pin`, `scratch rm`, `scratch sweep [--startup]` — all shipped. Missing:
-a cockpit surface (a Disposables panel with kind/TTL/owner/size and a purge
-button) and a per-run cap so a looping agent cannot generate a hundred scripts.
+`scratch pin`, `scratch rm`, `scratch sweep [--startup]`, plus the cockpit
+Disposables panel (Control → TOOLS & POLICY) with pin, delete and sweep over
+`GET/DELETE/POST /v1/scratchpad*`.
 
-**Promotion.** `atlas scratch pin` is the manual version today. The real
-promotion path is WP-C.
+**Promotion.** `atlas scratch pin` (CLI or the panel's pin button) is the manual
+version today. The real promotion path is WP-C.
 
 ## WP-C — Verified durable tools (L3)
 
@@ -170,16 +186,23 @@ tool the model is told to use for plans and findings.
 
 Next, in order of value:
 
-1. **Read-back on resume.** A run that resumes a session should be handed its
-   own open scratchpad entries automatically (a retriever in `memory_router`),
-   not have to remember to ask. This is the single highest-value item here: it
-   turns the scratchpad from a place to write into a place that writes back.
+1. ~~**Read-back on resume.**~~ **Shipped 2026-08-12.** `ScratchpadRetriever`
+   hands a resuming run its open entries at the top of the brief, keyed on the
+   session (a resumed run has a new run id and the same session), ordered
+   pinned → plan → finding → tool → draft → note → newest, budgeted at ~700
+   tokens so continuity cannot crowd out recall, and redacted at the same
+   boundary as every other snippet. The router's abstain guard now exempts
+   self-keyed retrievers: a run with no Current Focus is exactly the run most
+   likely to need its own plan back.
 2. **File-backed bodies.** Large drafts belong on disk with the row holding the
-   path (`path` column exists). Keeps the DB small and makes artifacts openable.
+   path. Half-done: `materialize_tool` does this for `kind='tool'`; `op=write`
+   still stores every other kind inline (capped at 256 KB).
 3. **Per-actor scratchpads.** Durable actors (`actor_service`) each get a scope,
    so a subagent's working notes do not collide with the parent's.
 4. **Handoff entries.** A `kind='handoff'` written at run end and read at the
-   next run start — the in-product version of the HANDOFF.md discipline.
+   next run start — the in-product version of the HANDOFF.md discipline. Now
+   cheap: read-back already delivers it, so this is a write convention plus a
+   kind.
 
 ## WP-E — Inline execution and mid-session re-thinking
 
@@ -219,17 +242,25 @@ invokes them at the right moments without being asked.
 
 ## Sequencing
 
-1. **WP-D-1 (scratchpad read-back)** — highest value per unit of work; makes the
-   already-shipped scratchpad actually change behavior.
-2. **WP-A (the decision) + WP-B (disposables)** — together, because disposables
-   without the judgment layer are the landfill failure mode.
-3. **WP-E (loop discipline)** — plan artifact, re-plan checkpoint, enforced
-   verification step.
-4. **WP-C (promotion pipeline)** — only after there are disposables worth
-   promoting and a test gate to promote them through.
-5. **L4/L5** — not before the above have run in anger for a while. A system that
+1. ~~**WP-D-1 (scratchpad read-back)**~~ — done 2026-08-12.
+2. ~~**WP-B (disposables)**~~ — done 2026-08-12. **WP-A shipped as doctrine
+   only** (the four questions in `skills/atlas/self-extension.md` and in the
+   tool description). That is the honest state: the judgment is instructed, not
+   enforced. The per-run cap is the only mechanical bound on the landfill
+   failure mode.
+3. **Use it in anger.** Before building more machinery: let a real run hit a
+   real missing capability. The next work package should come from what breaks,
+   not from this list.
+4. **WP-E (loop discipline)** — plan artifact, re-plan checkpoint, enforced
+   verification step. `kind='plan'` read-back is the substrate; what is missing
+   is the loop invoking it without being asked.
+5. **WP-C (promotion pipeline)** — only after there are disposables worth
+   promoting and a test gate to promote them through. The evidence for
+   promotion is now collectable: a disposable rebuilt three times leaves three
+   findings behind.
+6. **L4/L5** — not before the above have run in anger for a while. A system that
    proposes changes to itself is only as good as its verification, and the
-   verification is what we are building in 1–4.
+   verification is what we are building in 3–5.
 
 ## What "done" looks like for the next slice
 
@@ -246,3 +277,9 @@ An operator asks for something ATLAS cannot do. ATLAS:
 That is L2. It is a realistic next milestone, and it is roughly 40% of the
 target — which is the honest way to say that the remaining 60% is judgment,
 verification and loop discipline, not code generation.
+
+**Where that stands after 2026-08-12:** steps 1, 3 and 5 are mechanism the
+product now has; steps 2 and 4 are instructions the model is asked to follow.
+Nothing verifies that it did. Calling this "L2 complete" would be the exact
+overclaim the roadmap exists to prevent — the machinery is in place and it has
+never been exercised by a run that actually needed it.
