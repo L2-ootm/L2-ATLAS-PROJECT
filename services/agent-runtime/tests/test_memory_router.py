@@ -328,6 +328,16 @@ def test_skill_retriever_delivers_the_verification_rules(tmp_path):
     assert "skill:loop-discipline" in [s.source for s in snippets]
 
 
+def test_skill_retriever_delivers_the_idempotency_doctrine(tmp_path):
+    """Doctrine that no run can reach is a document, not doctrine. A run about
+    to write a retry path or a webhook handler must be able to pull it."""
+    snippets = mr.SkillRetriever().retrieve(
+        None,
+        mr.RouterQuery(terms=("retry", "webhook", "duplicate", "idempotency"), has_focus=True),
+    )
+    assert "skill:idempotency" in [s.source for s in snippets]
+
+
 def test_use_when_is_indexed_past_its_first_line(tmp_path):
     """Found by the delivery test above: every ATLAS doctrine file wraps its
     "Use when" sentence, and only line one was indexed — so `handoff.md` was
