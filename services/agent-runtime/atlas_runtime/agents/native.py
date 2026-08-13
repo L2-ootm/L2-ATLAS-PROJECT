@@ -1344,10 +1344,39 @@ def _volatile_context_message(snapshot: Any) -> str:
     markdown = (getattr(snapshot, "context_markdown", "") or "").rstrip()
     if markdown:
         sections.append(f"## Operator Context\n{markdown}")
+    # The concrete scratch path lives here rather than in the cached L1 prefix:
+    # it is derived from ATLAS_HOME, so putting it in the stable prompt would
+    # make the prefix machine-specific and its goldens unpinnable.
+    scratch = _scratch_hint()
+    if scratch:
+        sections.append(scratch)
     if not sections:
         return ""
     body = "\n\n".join(sections)
     return f"# ATLAS Run State (current turn)\n\n{body}"
+
+
+def _scratch_hint() -> str:
+    """Name the throwaway-script directory, in the turn the agent might need it.
+
+    Three live runs chose `write_file` over `atlas_scratchpad op=materialize`,
+    so ATLAS now adopts whatever lands in this directory instead of asking for a
+    special tool. That only works if the agent knows the directory exists, and
+    the path is machine-specific, so it rides the volatile turn context.
+    """
+    try:
+        from atlas_runtime.scratchpad_service import scratch_root  # noqa: PLC0415
+
+        return (
+            "## Scratch\n"
+            f"Throwaway scripts belong in `{scratch_root()}`. Write them there "
+            "with your normal file tool and run them with your terminal tool — "
+            "ATLAS registers anything in that directory as a disposable, expires "
+            "it, and keeps the record. Nothing else needs to be called. Never put "
+            "them in the working tree."
+        )
+    except Exception:  # noqa: BLE001 — a hint must never break a turn
+        return ""
 
 
 def _contains_secret(text: str) -> bool:

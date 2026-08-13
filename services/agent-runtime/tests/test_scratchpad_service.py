@@ -418,3 +418,61 @@ def test_completing_a_run_sweeps_its_run_scoped_entries(db, lock, tmp_path, monk
     assert scratchpad_service.get_entry(db, tool["id"]) is None
     assert not pathlib.Path(tool["path"]).exists()
     assert scratchpad_service.get_entry(db, keeper["id"]) is not None
+
+
+# --- adoption (WP-B: the managed path must be the cheap path) ----------------
+
+
+def test_adopt_registers_a_file_written_directly_into_the_scratch_root(db, lock, tmp_path):
+    """Three live runs chose write_file over op=materialize, so ATLAS adopts.
+
+    The agent's natural act — write a script, run it — now produces a managed
+    disposable with a TTL and a promotion record, at no cost to the agent.
+    """
+    root = tmp_path / "scratch" / "tools"
+    root.mkdir(parents=True)
+    (root / "dupcheck.py").write_text("print('hi')\n", encoding="utf-8")
+
+    adopted = scratchpad_service.adopt_scratch_files(
+        db, lock, run_id="run-1", session_id="sess-1", root=root
+    )
+    assert [e["title"] for e in adopted] == ["adopted: dupcheck.py"]
+    assert adopted[0]["kind"] == "tool"
+    assert adopted[0]["path"] == str((root / "dupcheck.py").resolve())
+    # It says plainly that no reason was given rather than inventing one.
+    assert "no rationale was stated" in adopted[0]["rationale"]
+
+
+def test_adoption_is_idempotent_across_runs(db, lock, tmp_path):
+    root = tmp_path / "scratch" / "tools"
+    root.mkdir(parents=True)
+    (root / "tool.py").write_text("x = 1\n", encoding="utf-8")
+
+    first = scratchpad_service.adopt_scratch_files(db, lock, run_id="r1", root=root)
+    second = scratchpad_service.adopt_scratch_files(db, lock, run_id="r2", root=root)
+    assert len(first) == 1
+    assert second == [], "a second run must not re-adopt the same file"
+
+
+def test_adoption_leaves_a_promotion_record(db, lock, run_id, tmp_path):
+    """The row expires with its TTL; the audit event is what survives to WP-C."""
+    root = tmp_path / "scratch" / "tools"
+    root.mkdir(parents=True)
+    (root / "again.py").write_text("y = 2\n", encoding="utf-8")
+    scratchpad_service.adopt_scratch_files(db, lock, run_id=run_id, root=root)
+
+    rows = db.execute(
+        "SELECT COUNT(*) FROM audit_events WHERE event_type='self_extension'"
+    ).fetchone()
+    assert rows[0] == 1
+
+
+def test_adoption_never_reaches_outside_the_scratch_root(db, lock, tmp_path):
+    """Only the directory the sweep owns is adoptable — never the working tree."""
+    root = tmp_path / "scratch" / "tools"
+    root.mkdir(parents=True)
+    elsewhere = tmp_path / "repo"
+    elsewhere.mkdir()
+    (elsewhere / "source.py").write_text("real code\n", encoding="utf-8")
+
+    assert scratchpad_service.adopt_scratch_files(db, lock, run_id="r1", root=root) == []

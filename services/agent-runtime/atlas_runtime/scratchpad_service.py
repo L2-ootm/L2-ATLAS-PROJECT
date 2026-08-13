@@ -60,6 +60,9 @@ MAX_TOOL_BODY_BYTES = 64 * 1024
 # character count can tell a good decision from a bad one.
 MIN_RATIONALE_CHARS = 40
 MAX_RATIONALE_CHARS = 2000
+# An adopted file's body is stored for read-back only; the file itself is the
+# artifact and stays on disk until the sweep takes it.
+ADOPT_BODY_CAP = 8 * 1024
 
 # language -> (file extension, how the operator/agent invokes it)
 TOOL_LANGUAGES: dict[str, tuple[str, str]] = {
@@ -447,6 +450,85 @@ def materialize_tool(
     )
     invocation = f"{runner} {target}".strip() if runner else str(target)
     return {**entry, "invocation": invocation, "root": str(directory)}
+
+
+def adopt_scratch_files(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    *,
+    run_id: str = "",
+    session_id: str = "",
+    ttl_policy: str = "next_startup",
+    root: str | pathlib.Path | None = None,
+) -> list[dict[str, Any]]:
+    """Register any unmanaged file in the scratch root as a disposable.
+
+    Three live runs on 2026-08-13 showed `op=materialize` losing to `write_file`
+    every time, and the reason is not ignorance — the doctrine reached the third
+    run and it still chose `write_file`. `write_file` already persists, the model
+    already knows it, and everything materialize adds (a TTL, the sweep, a
+    rationale, promotion evidence) is value to the operator rather than to the
+    agent in the moment it picks a tool. Doctrine cannot win that trade.
+
+    So stop asking. The agent writes a script into a directory ATLAS owns using
+    the tool it already reaches for, and ATLAS does the bookkeeping afterwards:
+    the natural act becomes the managed one, at zero cost to the agent.
+
+    Adoption is deliberately confined to `scratch_root()`, which is outside the
+    repository and is the only place the sweep may delete from. A file written
+    anywhere else is the agent's business, not ATLAS's.
+
+    The recorded rationale says plainly that none was given. That is honest —
+    the decision genuinely was not stated — and it keeps adopted entries
+    distinguishable from the ones an agent justified.
+    """
+    directory = scratch_root(root)
+    try:
+        present = sorted(p for p in directory.iterdir() if p.is_file())
+    except OSError:
+        return []
+    if not present:
+        return []
+    known = {
+        str(row[0])
+        for row in conn.execute(
+            "SELECT path FROM scratchpad_entries WHERE path IS NOT NULL AND path<>''"
+        ).fetchall()
+    }
+    adopted: list[dict[str, Any]] = []
+    for target in present:
+        resolved = str(target.resolve())
+        if resolved in known:
+            continue
+        try:
+            body = target.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        entry = write_entry(
+            conn, lock,
+            title=f"adopted: {target.name}",
+            body=body[:ADOPT_BODY_CAP],
+            kind="tool",
+            scope="session" if session_id else "run",
+            ttl_policy=ttl_policy,
+            run_id=run_id,
+            session_id=session_id,
+            owner=run_id or session_id or "agent",
+            path=resolved,
+            rationale=(
+                "adopted automatically: written directly into the ATLAS scratch "
+                "root, so no rationale was stated by the run that created it"
+            ),
+        )
+        _record_self_extension(
+            conn, lock, entry=entry,
+            rationale="(adopted — no rationale stated)",
+            language=target.suffix.lstrip(".") or "text",
+            body_bytes=len(body.encode("utf-8")),
+            reused=False,
+        )
+        adopted.append(entry)
+    return adopted
 
 
 def _record_self_extension(

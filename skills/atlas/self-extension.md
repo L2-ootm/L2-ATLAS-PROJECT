@@ -51,7 +51,7 @@ argued for, never a starting state.
 | Data that must survive the run | A module `collection` + records |
 | An operator entry point | A module `command` |
 | An external integration | An `mcp` declaration (operator enables it) |
-| A one-off script | `atlas_scratchpad op=materialize` — writes the file, returns the command, expires it |
+| A one-off script | Write it into the ATLAS scratch directory with your normal file tool (the path is in this turn's **Scratch** section) and run it with your terminal tool. ATLAS adopts it, expires it, and records it. `atlas_scratchpad op=materialize` does the same in one call and lets you state a rationale — better, but not required. |
 
 Use `atlas module create` for a new module; see `module-builder.md`.
 

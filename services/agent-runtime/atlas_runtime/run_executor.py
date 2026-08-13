@@ -75,6 +75,7 @@ def execute_run(
     # applied BEFORE complete_run so the verdict reaches the summary, the
     # compounding-loop observation and the brain graph below. Fail-open.
     outcome = verification_gate.apply(conn, lock, run_id=run_id, outcome=outcome)
+    _adopt_scratch_files(conn, lock, run_id=run_id)
 
     try:
         complete_run(
@@ -104,6 +105,32 @@ def execute_run(
     except Exception:  # noqa: BLE001 — brain writes are best-effort
         pass
     return outcome
+
+
+def _adopt_scratch_files(
+    conn: sqlite3.Connection, lock: threading.Lock, *, run_id: str
+) -> None:
+    """Take ownership of scripts the run left in ATLAS's scratch root.
+
+    The agent reaches for `write_file`, not `atlas_scratchpad op=materialize` —
+    measured over three live runs, including one where the doctrine demonstrably
+    reached it. Rather than keep arguing, ATLAS does the bookkeeping for the tool
+    the agent actually uses, so the file still gets a TTL, a sweep and a
+    promotion record. Best-effort: this must never affect a run's outcome.
+    """
+    try:
+        from atlas_runtime import scratchpad_service  # noqa: PLC0415
+
+        session_row = conn.execute(
+            "SELECT session_id FROM runs WHERE id=?", (run_id,)
+        ).fetchone()
+        scratchpad_service.adopt_scratch_files(
+            conn, lock,
+            run_id=run_id,
+            session_id=str(session_row[0]) if session_row and session_row[0] else "",
+        )
+    except Exception:  # noqa: BLE001 — bookkeeping never fails a run
+        pass
 
 
 def _record_outcome_observation(
