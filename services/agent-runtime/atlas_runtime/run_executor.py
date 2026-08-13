@@ -27,7 +27,7 @@ from typing import Callable, Optional
 
 from atlas_core.schemas.brain import BrainEdge, BrainNode
 from atlas_core.schemas.core import Run
-from atlas_runtime import brain_service, goal_service, mission_service
+from atlas_runtime import brain_service, goal_service, mission_service, verification_gate
 from atlas_runtime.agents import AgentRuntime, RunOutcome, get_agent
 from atlas_runtime.db import connect
 from atlas_runtime.memory_router import redact
@@ -68,6 +68,13 @@ def execute_run(
         outcome = RunOutcome(
             status="failed", summary=f"executor: unhandled agent error: {exc}"[:_SUMMARY_CAP]
         )
+
+    # Verification gate: the run's own claim of success is an inference; the
+    # audit trail is evidence. Applied here rather than inside an agent so every
+    # runtime (native/claude_code/codex) is held to the same standard, and
+    # applied BEFORE complete_run so the verdict reaches the summary, the
+    # compounding-loop observation and the brain graph below. Fail-open.
+    outcome = verification_gate.apply(conn, lock, run_id=run_id, outcome=outcome)
 
     try:
         complete_run(

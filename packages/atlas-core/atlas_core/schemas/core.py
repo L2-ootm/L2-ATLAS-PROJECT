@@ -306,6 +306,11 @@ class AuditEvent(BaseModel):
         # the required rationale, so the decision outlives the disposable's TTL
         # and a repeatedly rebuilt tool becomes visible evidence for promotion.
         "self_extension",
+        # The run's verification receipt: what it changed, whether it checked
+        # the change, and whether that check passed. Written by
+        # verification_gate at the terminal transition — the one claim about a
+        # run that comes from the audit trail rather than from the model.
+        "verification_verdict",
     ]
     tool_name: str | None = None
     timestamp: datetime.datetime = Field(

@@ -88,6 +88,9 @@ _KIND_MAP: dict[str, EventKind] = {
     # "task": a chat surface should render it as something the agent produced
     # and can now call, next to the tool cards it already shows.
     "self_extension": "tool_result",
+    # Not "completion": surfaces treat that kind as the terminal transition
+    # itself, and the verdict is a separate record that arrives beside it.
+    "verification_verdict": "task",
 }
 
 
