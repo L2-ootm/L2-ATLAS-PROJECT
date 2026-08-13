@@ -63,6 +63,12 @@ MAX_RATIONALE_CHARS = 2000
 # An adopted file's body is stored for read-back only; the file itself is the
 # artifact and stays on disk until the sweep takes it.
 ADOPT_BODY_CAP = 8 * 1024
+# Bound the work one run does, not the number of files it may leave behind.
+# `materialize` caps minting because refusing prevents a file existing; adoption
+# happens after the fact, so refusing outright would strand files as unmanaged
+# and therefore unsweepable — strictly worse than adopting them. A backlog drains
+# over the next few runs instead, because adoption is idempotent and repeated.
+ADOPT_MAX_PER_RUN = 20
 
 # language -> (file extension, how the operator/agent invokes it)
 TOOL_LANGUAGES: dict[str, tuple[str, str]] = {
@@ -496,30 +502,40 @@ def adopt_scratch_files(
         ).fetchall()
     }
     adopted: list[dict[str, Any]] = []
+    pending = 0
     for target in present:
         resolved = str(target.resolve())
         if resolved in known:
+            continue
+        if len(adopted) >= ADOPT_MAX_PER_RUN:
+            pending += 1
             continue
         try:
             body = target.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        entry = write_entry(
-            conn, lock,
-            title=f"adopted: {target.name}",
-            body=body[:ADOPT_BODY_CAP],
-            kind="tool",
-            scope="session" if session_id else "run",
-            ttl_policy=ttl_policy,
-            run_id=run_id,
-            session_id=session_id,
-            owner=run_id or session_id or "agent",
-            path=resolved,
-            rationale=(
-                "adopted automatically: written directly into the ATLAS scratch "
-                "root, so no rationale was stated by the run that created it"
-            ),
-        )
+        try:
+            entry = write_entry(
+                conn, lock,
+                title=f"adopted: {target.name}",
+                body=body[:ADOPT_BODY_CAP],
+                kind="tool",
+                scope="session" if session_id else "run",
+                ttl_policy=ttl_policy,
+                run_id=run_id,
+                session_id=session_id,
+                owner=run_id or session_id or "agent",
+                path=resolved,
+                rationale=(
+                    "adopted automatically: written directly into the ATLAS scratch "
+                    "root, so no rationale was stated by the run that created it"
+                ),
+            )
+        except ScratchpadError as exc:
+            # One unadoptable file (at the global cap, an unusable name) must not
+            # strand the rest of the directory as unmanaged.
+            logger.warning("could not adopt %s: %s", target.name, exc)
+            continue
         _record_self_extension(
             conn, lock, entry=entry,
             rationale="(adopted — no rationale stated)",
@@ -528,6 +544,11 @@ def adopt_scratch_files(
             reused=False,
         )
         adopted.append(entry)
+    if pending:
+        logger.warning(
+            "scratch root has %d more unmanaged file(s) than one run adopts; "
+            "they will be picked up by later runs", pending,
+        )
     return adopted
 
 

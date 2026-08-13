@@ -476,3 +476,77 @@ def test_adoption_never_reaches_outside_the_scratch_root(db, lock, tmp_path):
     (elsewhere / "source.py").write_text("real code\n", encoding="utf-8")
 
     assert scratchpad_service.adopt_scratch_files(db, lock, run_id="r1", root=root) == []
+
+
+def test_adopted_file_is_actually_disposable(db, lock, run_id, tmp_path):
+    """The whole promise: adopted means it goes away.
+
+    Adoption gives files a TTL that leads to deletion, so the lifecycle has to
+    be proven end to end rather than assumed from the row's ttl_policy.
+    """
+    root = tmp_path / "scratch" / "tools"
+    root.mkdir(parents=True)
+    script = root / "throwaway.py"
+    script.write_text("print(1)\n", encoding="utf-8")
+
+    scratchpad_service.adopt_scratch_files(db, lock, run_id=run_id, root=root)
+    assert script.exists()
+
+    result = scratchpad_service.sweep(db, lock, startup=True, root=root)
+    assert result["files"] == 1, result
+    assert not script.exists(), "the sweep must take the file, not just the row"
+    assert scratchpad_service.list_entries(db) == []
+
+
+def test_pinning_an_adopted_file_keeps_it(db, lock, run_id, tmp_path):
+    """Pin is the operator's veto over the sweep — it must survive adoption too."""
+    root = tmp_path / "scratch" / "tools"
+    root.mkdir(parents=True)
+    script = root / "keeper.py"
+    script.write_text("print(2)\n", encoding="utf-8")
+
+    adopted = scratchpad_service.adopt_scratch_files(db, lock, run_id=run_id, root=root)
+    scratchpad_service.set_pinned(db, lock, entry_id=adopted[0]["id"], pinned=True)
+
+    scratchpad_service.sweep(db, lock, startup=True, root=root)
+    assert script.exists(), "a pinned adopted tool must survive the sweep"
+
+
+def test_a_swept_file_left_on_disk_is_re_adopted_not_orphaned(db, lock, run_id, tmp_path):
+    """Row and file can drift apart when a delete fails; adoption re-converges."""
+    root = tmp_path / "scratch" / "tools"
+    root.mkdir(parents=True)
+    script = root / "survivor.py"
+    script.write_text("print(3)\n", encoding="utf-8")
+
+    scratchpad_service.adopt_scratch_files(db, lock, run_id=run_id, root=root)
+    # Row gone, file left behind (the locked-file case _unlink_managed tolerates).
+    db.execute("DELETE FROM scratchpad_entries")
+    db.commit()
+
+    again = scratchpad_service.adopt_scratch_files(db, lock, run_id=run_id, root=root)
+    assert len(again) == 1, "an unmanaged file must never become permanently orphaned"
+
+
+def test_adoption_bounds_one_run_but_never_strands_a_file(db, lock, run_id, tmp_path):
+    """WP-F caps blast radius per run — but refusing outright would be worse.
+
+    A file already exists by the time adoption sees it. Not adopting it leaves it
+    unmanaged and therefore unsweepable, so the cap bounds the batch and the
+    backlog drains over later runs instead.
+    """
+    root = tmp_path / "scratch" / "tools"
+    root.mkdir(parents=True)
+    total = scratchpad_service.ADOPT_MAX_PER_RUN + 3
+    for i in range(total):
+        (root / f"tool_{i:02d}.py").write_text(f"x = {i}\n", encoding="utf-8")
+
+    first = scratchpad_service.adopt_scratch_files(db, lock, run_id=run_id, root=root)
+    assert len(first) == scratchpad_service.ADOPT_MAX_PER_RUN
+
+    second = scratchpad_service.adopt_scratch_files(db, lock, run_id=run_id, root=root)
+    assert len(second) == 3, "the backlog must drain, not be abandoned"
+
+    third = scratchpad_service.adopt_scratch_files(db, lock, run_id=run_id, root=root)
+    assert third == []
+    assert len(scratchpad_service.list_entries(db, limit=200)) == total
