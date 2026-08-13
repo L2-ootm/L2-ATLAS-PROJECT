@@ -403,6 +403,17 @@ def complete_run(
         event_type="tool_call",
         data={"transition": status, "summary": stored_summary},
     )
+    # `ttl_policy='run'` promises the entry dies when the run that wrote it ends.
+    # Nothing kept that promise before: run-scoped notes and any file they
+    # materialized survived until the next daemon startup. Fail-open — a sweep
+    # error must never turn a completed run into a failed one.
+    try:
+        from atlas_runtime import scratchpad_service  # noqa: PLC0415
+
+        scratchpad_service.sweep(conn, lock, run_id=run_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("complete_run: scratchpad sweep for %s failed: %s", run_id, exc)
+
     if delivery_actor_id is not None and delivery_claim_token is not None:
         # Import lazily to keep the ordinary run-service dependency surface
         # unchanged. The terminal run/mission write and delivery consume above

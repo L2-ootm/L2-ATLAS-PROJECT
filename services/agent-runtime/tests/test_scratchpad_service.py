@@ -319,3 +319,35 @@ def test_tool_materialize_op_returns_a_runnable_command(bound, monkeypatch, tmp_
     assert result["ok"] and result["invocation"].startswith("bash ")
     assert result["entry"]["run_id"] == "run-9" and result["entry"]["kind"] == "tool"
     assert pathlib.Path(result["entry"]["path"]).is_relative_to(tmp_path)
+
+
+def test_completing_a_run_sweeps_its_run_scoped_entries(db, lock, tmp_path, monkeypatch):
+    """ttl='run' promises the entry dies with the run — complete_run keeps it."""
+    import uuid
+
+    from atlas_runtime import run_service
+
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    mid = uuid.uuid4().hex
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    with lock:
+        with db:
+            db.execute(
+                "INSERT INTO missions(id,title,intent,status,project,created_at,updated_at)"
+                " VALUES (?,?,?,?,?,?,?)",
+                (mid, "m", "", "pending", "", now, now),
+            )
+    run = run_service.start_run(db, lock, mission_id=mid)
+
+    tool = scratchpad_service.materialize_tool(
+        db, lock, title="run tool", body="print(1)", run_id=run.id, ttl_policy="run"
+    )
+    keeper = scratchpad_service.write_entry(
+        db, lock, title="keep me", scope="run", run_id=run.id, ttl_policy="permanent"
+    )
+    run_service.complete_run(
+        db, lock, run_id=run.id, mission_id=mid, status="succeeded", generate_summary=False
+    )
+    assert scratchpad_service.get_entry(db, tool["id"]) is None
+    assert not pathlib.Path(tool["path"]).exists()
+    assert scratchpad_service.get_entry(db, keeper["id"]) is not None
