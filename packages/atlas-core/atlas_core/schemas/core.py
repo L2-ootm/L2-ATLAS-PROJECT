@@ -311,6 +311,11 @@ class AuditEvent(BaseModel):
         # verification_gate at the terminal transition — the one claim about a
         # run that comes from the audit trail rather than from the model.
         "verification_verdict",
+        # The turn ATLAS spent making an `unverified` run check itself: demanded,
+        # then completed (with the verdict before and after) or aborted. Separate
+        # from the verdict because it records what ATLAS *did* about a finding,
+        # which is the difference between a report and a correction.
+        "verification_retry",
     ]
     tool_name: str | None = None
     timestamp: datetime.datetime = Field(

@@ -23,6 +23,7 @@ from __future__ import annotations
 import inspect
 import json
 import logging
+import os
 import re
 import sqlite3
 import threading
@@ -55,6 +56,32 @@ _DEFAULT_MAX_ITERATIONS = 40
 # for no visible benefit — coalesce into ~150ms/48-char chunks instead.
 _DELTA_FLUSH_INTERVAL_S = 0.15
 _DELTA_FLUSH_CHARS = 48
+
+# The enforced verification turn (WP-E). Naming the specific changes matters:
+# a generic "please verify" invites a generic "I verified", which is the prose
+# claim the gate exists to distrust. Listing the mutations the trail actually
+# recorded gives the turn something to run a command against, and re-stating
+# what does not count keeps the answer from being `git status` and a sentence.
+_MAX_DEMAND_CHANGES = 5
+_VERIFICATION_DEMAND = """\
+[ATLAS verification checkpoint]
+
+This run changed state and no test, build, lint or typecheck ran afterwards.
+The changes the audit trail recorded:
+
+{changes}
+
+Run a real check on those changes now, then stop. Requirements:
+
+- Execute a command. Re-reading a file you wrote, `git status`, and describing
+  what you believe the change does are not checks and do not count.
+- Prefer the project's own suite, build, linter or typechecker. If none applies,
+  execute the artifact you wrote and show that it does what you claimed.
+- If the check fails, say so plainly and do not repair it in this turn. A
+  failing check is a more useful result than a missing one.
+- Do not make further changes, and do not restate your earlier answer. Only the
+  commands you run in this turn are recorded against the claim.
+"""
 
 # The foundation's mid-tool-call silent stream retry (chat_completion_helpers.py
 # ~2144-2186, D-001 vendored — not editable here) intentionally re-streams a
@@ -97,6 +124,22 @@ def _diff_cumulative_chunk(previous_text: str, chunk_text: str) -> str:
     if previous_text.startswith(chunk_text):
         return ""
     return chunk_text
+
+
+def _verification_retry_enabled() -> bool:
+    """Whether an `unverified` run gets one enforced check turn.
+
+    On by default: the gate's finding is worth more acted on than recorded, and
+    the turn is bounded to one, inside the run's existing budget. Set
+    `ATLAS_VERIFICATION_RETRY=0` for a run that must cost exactly one turn.
+    Disabling the gate disables this with it — there is no verdict to act on.
+    """
+    return os.environ.get("ATLAS_VERIFICATION_RETRY", "1").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
 
 
 def _repair_cumulative_final(final_text: str, streamed_turn_text: str) -> str:
@@ -987,13 +1030,10 @@ class NativeAtlasAgent(AgentRuntime):
             )
 
         # --- Layer 2: max-runtime watchdog (run on a daemon thread) --------
-        result_holder: dict[str, Any] = {}
-        error_holder: dict[str, BaseException] = {}
-
         # Split stable from volatile: the foundation caches `system_message`
         # verbatim in the session row and reuses it on every later turn, so
         # anything volatile placed there would be frozen at turn 1. Operator
-        # context is delivered per turn instead (see _drive below).
+        # context is delivered per turn instead (see _run_turn below).
         system_message = _contract_system_message(contract_snapshot)
         volatile_context = _volatile_context_message(contract_snapshot)
 
@@ -1013,6 +1053,90 @@ class NativeAtlasAgent(AgentRuntime):
                 # Non-fatal: proceed without history
                 conversation_history = []
 
+        # One deadline for the whole run rather than one per turn: the enforced
+        # verification turn below shares this budget, so a run cannot exceed its
+        # max runtime by taking a second turn.
+        deadline = time.monotonic() + self._max_runtime_s
+
+        # Deliver volatile operator context as a synthetic prefix on this turn's
+        # message, after the cached system prompt. That keeps the cacheable
+        # prefix byte-stable across turns while still giving the model current
+        # goals/runs/knowledge. The clean prompt is what gets persisted, so the
+        # injected context does not accumulate into every later turn's history.
+        turn_message = prompt
+        persist_user_message: Optional[str] = None
+        if volatile_context:
+            turn_message = f"{volatile_context}\n\n---\n\n{prompt}"
+            persist_user_message = prompt
+
+        result, terminal = self._run_turn(
+            conn, lock,
+            run_id=run_id,
+            agent=agent,
+            turn_message=turn_message,
+            system_message=system_message,
+            conversation_history=conversation_history,
+            persist_user_message=persist_user_message,
+            cancel_token=cancel_token,
+            deadline=deadline,
+            delta_buffer=delta_buffer,
+        )
+        if terminal is not None:
+            return terminal
+
+        # Captured before any further turn: `last_turn_text` is overwritten by
+        # the enforced verification turn, and the operator's answer is this one.
+        streamed_final = delta_buffer.last_turn_text if delta_buffer is not None else ""
+
+        self._enforce_verification(
+            conn, lock,
+            run_id=run_id,
+            agent=agent,
+            system_message=system_message,
+            cancel_token=cancel_token,
+            deadline=deadline,
+            delta_buffer=delta_buffer,
+        )
+
+        return self._map_result(
+            conn, lock, run_id, result,
+            streamed_final=streamed_final,
+            session_key=session_key,
+        )
+
+    # -- internal ----------------------------------------------------------
+
+    def _run_turn(
+        self,
+        conn: sqlite3.Connection,
+        lock: threading.Lock,
+        *,
+        run_id: str,
+        agent: Any,
+        turn_message: str,
+        system_message: Optional[str],
+        deadline: float,
+        conversation_history: Optional[list[dict[str, Any]]] = None,
+        persist_user_message: Optional[str] = None,
+        cancel_token: Optional[threading.Event] = None,
+        delta_buffer: Optional[_DeltaBuffer] = None,
+    ) -> tuple[dict[str, Any], Optional[RunOutcome]]:
+        """Drive one `run_conversation` turn under the cancel/runtime watchdog.
+
+        Returns `(result, terminal_outcome)`. A non-None terminal outcome means
+        the run ended inside this turn — cancelled, out of time, or the harness
+        raised — and the caller must return it unchanged.
+
+        Extracted so that a turn becomes something ATLAS can spend deliberately
+        rather than the one opaque call a run consists of. `_enforce_verification`
+        is the first caller that is not the operator's own prompt.
+
+        `deadline` is an absolute `time.monotonic()` value owned by the caller,
+        so successive turns share one budget instead of each getting a fresh one.
+        """
+        result_holder: dict[str, Any] = {}
+        error_holder: dict[str, BaseException] = {}
+
         def _drive() -> None:
             try:
                 run_method = agent.run_conversation
@@ -1027,13 +1151,7 @@ class NativeAtlasAgent(AgentRuntime):
                     kwargs["task_id"] = run_id
                 if conversation_history:
                     kwargs["conversation_history"] = conversation_history
-                # Deliver volatile operator context as a synthetic prefix on
-                # this turn's message, after the cached system prompt. That
-                # keeps the cacheable prefix byte-stable across turns while
-                # still giving the model current goals/runs/knowledge.
-                turn_message = prompt
-                if volatile_context:
-                    turn_message = f"{volatile_context}\n\n---\n\n{prompt}"
+                if persist_user_message is not None:
                     supports_persist = any(
                         parameter.name == "persist_user_message"
                         or parameter.kind is inspect.Parameter.VAR_KEYWORD
@@ -1043,7 +1161,7 @@ class NativeAtlasAgent(AgentRuntime):
                         # Store the clean prompt in history/transcripts so the
                         # injected context does not accumulate into every
                         # later turn's replayed history.
-                        kwargs["persist_user_message"] = prompt
+                        kwargs["persist_user_message"] = persist_user_message
                 result_holder["result"] = run_method(turn_message, **kwargs)
             except BaseException as exc:  # noqa: BLE001 — surfaced below
                 error_holder["error"] = exc
@@ -1054,7 +1172,6 @@ class NativeAtlasAgent(AgentRuntime):
         # is observed between turns. The single opaque run_conversation() call cannot
         # be interrupted mid-call (D-001: no foundation hook); cancellation takes effect
         # at this checkpoint, and the max-runtime deadline remains the hard backstop.
-        _deadline = time.monotonic() + self._max_runtime_s
         _poll = min(0.1, self._max_runtime_s) if self._max_runtime_s > 0 else 0.1
         while worker.is_alive():
             if cancel_token is not None and cancel_token.is_set():
@@ -1062,12 +1179,12 @@ class NativeAtlasAgent(AgentRuntime):
                     conn, lock, run_id, event_type="run_cancelled",
                     data={"runtime": "native", "stop_reason": "cancelled"},
                 )
-                return RunOutcome(
+                return {}, RunOutcome(
                     status="failed",
                     summary="cancelled: cooperative cancel observed at watchdog checkpoint",
                     stop_reason="cancelled",
                 )
-            remaining = _deadline - time.monotonic()
+            remaining = deadline - time.monotonic()
             if remaining <= 0:
                 break
             worker.join(min(_poll, remaining))
@@ -1076,7 +1193,7 @@ class NativeAtlasAgent(AgentRuntime):
                 conn, lock, run_id, event_type="failure",
                 data={"runtime": "native", "stop_reason": "max_runtime_exceeded"},
             )
-            return RunOutcome(
+            return {}, RunOutcome(
                 status="failed",
                 summary=f"stopped: exceeded max runtime ({self._max_runtime_s:.0f}s)",
                 stop_reason="max_runtime_exceeded",
@@ -1090,7 +1207,9 @@ class NativeAtlasAgent(AgentRuntime):
                 conn, lock, run_id, event_type="failure",
                 data={"runtime": "native", "error": str(exc)},
             )
-            return RunOutcome(status="failed", summary=f"native error: {exc}"[:_SUMMARY_CAP])
+            return {}, RunOutcome(
+                status="failed", summary=f"native error: {exc}"[:_SUMMARY_CAP]
+            )
 
         # The foundation only signals stream_delta_callback(None) at tool
         # boundaries (never after a final, no-tool-call response) — flush any
@@ -1100,13 +1219,130 @@ class NativeAtlasAgent(AgentRuntime):
         if delta_buffer is not None:
             delta_buffer.push(None)
 
-        return self._map_result(
-            conn, lock, run_id, result_holder.get("result", {}),
-            streamed_final=delta_buffer.last_turn_text if delta_buffer is not None else "",
-            session_key=session_key,
+        return result_holder.get("result", {}), None
+
+    def _enforce_verification(
+        self,
+        conn: sqlite3.Connection,
+        lock: threading.Lock,
+        *,
+        run_id: str,
+        agent: Any,
+        system_message: Optional[str],
+        deadline: float,
+        cancel_token: Optional[threading.Event] = None,
+        delta_buffer: Optional[_DeltaBuffer] = None,
+    ) -> None:
+        """Spend one more turn when the run changed state and never checked it.
+
+        The verification gate records the absence of a check. Recording it does
+        not fix it — the next run inherits a finding, and the change it describes
+        is still unchecked. This is the first place ATLAS acts on its own verdict
+        instead of only reporting it: if the trail says `unverified`, the run gets
+        exactly one additional turn whose only job is to run a real check.
+
+        Four constraints, each answering a way this could go wrong:
+
+        * **Exactly one turn, never a loop.** The demand is not re-issued if the
+          agent ignores it. A model that will not verify when asked is a finding
+          for the operator, not a reason to burn the budget arguing with it.
+        * **The trail, not the story.** The turn's response is discarded. Its
+          purpose is to put a real check into the audit trail, which is what the
+          gate reads afterwards in `run_executor`. The operator still reads the
+          answer the run actually produced, not a postscript about testing.
+        * **Inside the run's existing budget.** It shares the caller's deadline,
+          so taking this turn cannot push a run past its max runtime.
+        * **Never fatal.** Any failure here leaves the run's outcome untouched.
+          A corrective that can fail a working run is worse than no corrective —
+          the same reasoning that keeps the gate itself reporting-only.
+
+        Native only, deliberately: classification stays cross-runtime in
+        `run_executor`, but acting on it needs a turn against a live harness
+        session, which the other runtimes do not expose.
+        """
+        if cancel_token is not None and cancel_token.is_set():
+            return
+        if time.monotonic() >= deadline:
+            return
+        try:
+            from atlas_runtime import verification_gate  # noqa: PLC0415
+
+            if not verification_gate.enabled() or not _verification_retry_enabled():
+                return
+            before = verification_gate.classify_run(conn, run_id)
+        except Exception as exc:  # noqa: BLE001 — a corrective must never raise
+            logger.debug("verification retry unavailable for run %s: %s", run_id, exc)
+            return
+
+        if before.state != "unverified":
+            return
+
+        changed = "\n".join(f"  - {item}" for item in before.mutations[:_MAX_DEMAND_CHANGES])
+        extra = len(before.mutations) - _MAX_DEMAND_CHANGES
+        if extra > 0:
+            changed += f"\n  - (+{extra} more)"
+
+        self._safe_emit(
+            conn, lock, run_id, event_type="verification_retry",
+            data={
+                "runtime": "native",
+                "phase": "demanded",
+                "state_before": before.state,
+                "mutation_count": len(before.mutations),
+            },
         )
 
-    # -- internal ----------------------------------------------------------
+        try:
+            _, terminal = self._run_turn(
+                conn, lock,
+                run_id=run_id,
+                agent=agent,
+                turn_message=_VERIFICATION_DEMAND.format(changes=changed),
+                system_message=system_message,
+                deadline=deadline,
+                cancel_token=cancel_token,
+                delta_buffer=delta_buffer,
+            )
+        except Exception as exc:  # noqa: BLE001 — never fatal
+            logger.warning("verification retry turn failed for run %s: %s", run_id, exc)
+            return
+
+        if terminal is not None:
+            # The extra turn ran out of time, was cancelled, or the harness
+            # raised. The run's own answer already exists and stands; record why
+            # the correction did not land and leave the outcome alone.
+            logger.info(
+                "verification retry did not complete for run %s: %s",
+                run_id, terminal.stop_reason or terminal.status,
+            )
+            self._safe_emit(
+                conn, lock, run_id, event_type="verification_retry",
+                data={
+                    "runtime": "native",
+                    "phase": "aborted",
+                    "stop_reason": terminal.stop_reason or terminal.status,
+                },
+            )
+            return
+
+        try:
+            after = verification_gate.classify_run(conn, run_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("verification retry re-classify failed for %s: %s", run_id, exc)
+            return
+
+        self._safe_emit(
+            conn, lock, run_id, event_type="verification_retry",
+            data={
+                "runtime": "native",
+                "phase": "completed",
+                "state_before": before.state,
+                "state_after": after.state,
+                "resolved": after.state != "unverified",
+                "signals": list(after.signals),
+                "failed_signals": list(after.failed_signals),
+            },
+        )
 
     @staticmethod
     def _record_message(

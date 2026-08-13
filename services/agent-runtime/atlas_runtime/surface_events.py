@@ -91,6 +91,10 @@ _KIND_MAP: dict[str, EventKind] = {
     # Not "completion": surfaces treat that kind as the terminal transition
     # itself, and the verdict is a separate record that arrives beside it.
     "verification_verdict": "task",
+    # ATLAS spending a turn to make the run check itself is work the run is
+    # doing, so it belongs with the other "task" progress a surface shows —
+    # an operator watching a run should see why it is still going.
+    "verification_retry": "task",
 }
 
 

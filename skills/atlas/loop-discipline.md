@@ -50,6 +50,13 @@ progress over apparent progress.
    end of this one. When you genuinely cannot verify — no suite exists, the
    environment is missing — say so in your own words too; the gate records the
    absence of evidence, not your reason for it.
+
+   **An `unverified` run does not simply end.** It is given one more turn whose
+   only job is to run a check, and that turn is spent from the same budget as
+   the rest of the run. Checking your own work in the first place is therefore
+   strictly cheaper than being asked to. Only the commands you run in that turn
+   count — restating the answer changes nothing, and the demand is issued once,
+   so a run that ignores it finishes `unverified` on the record.
 5. **Report honestly.** Failures and skipped verification are stated plainly,
    with the evidence. A summary that hides a red test is a defect.
 6. **Reduce entropy on contact.** If you find drift (stale docs, dead code,
