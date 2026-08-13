@@ -339,6 +339,27 @@ validated the *reader* against real payload shapes and taught the classifier
 nothing about runs that do real work. That evidence still has to come from live
 runs, and the roadmap should not claim otherwise.
 
+**Exercised on a live run (2026-08-13, `63ceac7c`).** The standing debt in this
+document — a gate validated only against read-only history — is paid. Two live
+missions through the real provider. The first one broke it immediately: ATLAS
+wrote `adder.py`, checked it with `python -c "from adder import add; ..."`, and
+the gate said `unverified`. Two independent defects, both invisible to unit
+tests written against hand-built fixtures:
+
+1. A native run emits `tool_requested` (with arguments) and then a bare
+   `tool_call` for the same call id. The reader overwrote known arguments with
+   nothing — the gate was blind to *every* shell check any native run has ever
+   run. The fixture was an idealised two-event pair; reality has four.
+2. Only suite-shaped commands counted as verification. For a script there may be
+   no suite, and executing the artifact is the most direct check available.
+   Scoring it `unverified` would teach agents that a real check does not count
+   and push them toward ceremony. A command now counts as `exercised` when it
+   both invokes a code runner and references the stem of a file the run wrote.
+
+The general lesson is the one this program keeps re-learning: **a fixture agrees
+with whoever wrote it.** Both defects sat under a green suite of 33 tests. The
+first contact with a real trail found both in one run.
+
 **Delivery.** The L1 core prompt now names the rule in the gate's own
 vocabulary and `skills/atlas/loop-discipline.md` carries the detail, both under
 delivery tests — the discipline adopted after the previous doctrine layer
