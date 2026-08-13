@@ -936,6 +936,44 @@ pub fn list_module_records(
     Ok(rows)
 }
 
+/// The agent scratchpad (0034): plans, findings and disposable tools with their
+/// expiry. Bodies are deliberately NOT served — this is the operator's
+/// management view (what exists, how long it lives, how big it is), and a body
+/// can hold 256 KB of agent working memory. `atlas scratch get` reads one.
+pub fn list_scratchpad_entries(path: &Path, kind: &str, limit: i64) -> Result<Vec<Value>, DbError> {
+    let conn = open_ro(path)?;
+    let limit = limit.clamp(1, 500);
+    let sql = "SELECT id, scope, owner, run_id, session_id, kind, title, path, ttl_policy, \
+               expires_at, pinned, LENGTH(body), created_at, updated_at \
+               FROM scratchpad_entries \
+               WHERE (?1 = '' OR kind = ?1) \
+               ORDER BY pinned DESC, updated_at DESC LIMIT ?2";
+    let Ok(mut stmt) = conn.prepare(sql) else {
+        return Ok(vec![]);
+    };
+    let rows = stmt
+        .query_map(rusqlite::params![kind, limit], |row| {
+            Ok(json!({
+                "id": row.get::<_, String>(0)?,
+                "scope": row.get::<_, String>(1)?,
+                "owner": row.get::<_, String>(2)?,
+                "run_id": row.get::<_, Option<String>>(3)?,
+                "session_id": row.get::<_, Option<String>>(4)?,
+                "kind": row.get::<_, String>(5)?,
+                "title": row.get::<_, String>(6)?,
+                "path": row.get::<_, String>(7)?,
+                "ttl_policy": row.get::<_, String>(8)?,
+                "expires_at": row.get::<_, Option<String>>(9)?,
+                "pinned": row.get::<_, i64>(10)? != 0,
+                "chars": row.get::<_, i64>(11)?,
+                "created_at": row.get::<_, String>(12)?,
+                "updated_at": row.get::<_, String>(13)?,
+            }))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
 /// The MCP server registry (0034). Env values are `${VAR}` references, never
 /// secrets, so the whole row is safe to serve.
 pub fn list_mcp_servers(path: &Path) -> Result<Vec<Value>, DbError> {

@@ -27,6 +27,7 @@ import { ProviderSettingsPanel } from './Settings';
 import { VisualsPanel } from '../components/control/VisualsPanel';
 import { StoragePanel } from '../components/control/StoragePanel';
 import { ComponentsPanel } from '../components/control/ComponentsPanel';
+import { DisposablesPanel } from '../components/control/DisposablesPanel';
 import {
 	AboutPanel,
 	ChannelsPanel,
@@ -297,6 +298,8 @@ export default function Control() {
 					<>
 						<PolicyPanel />
 						<ToolsPanel tools={tools} />
+						{/* What ATLAS built for itself sits next to what it ships with. */}
+						<DisposablesPanel />
 						<ToolApprovalsPanel approvals={toolApprovals} />
 					</>
 				)}

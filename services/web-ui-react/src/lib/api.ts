@@ -1124,6 +1124,63 @@ export async function listMcpServers(): Promise<McpServer[]> {
 	}
 }
 
+/** One scratchpad entry as the management view sees it — no body, just what it
+ * is, how long it lives, and how big it got. */
+export interface ScratchpadEntry {
+	id: string;
+	scope: string;
+	owner: string;
+	run_id: string | null;
+	session_id: string | null;
+	kind: string;
+	title: string;
+	path: string;
+	ttl_policy: string;
+	expires_at: string | null;
+	pinned: boolean;
+	chars: number;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface ScratchpadView {
+	entries: ScratchpadEntry[];
+	count: number;
+	pinned: number;
+	tools: number;
+}
+
+/** The agent's working memory and the disposables it generated. Pre-0034
+ * gateways render empty rather than erroring. */
+export async function listScratchpad(kind = '', limit = 100): Promise<ScratchpadView> {
+	const query = new URLSearchParams({ limit: String(limit) });
+	if (kind) query.set('kind', kind);
+	try {
+		const out = await apiFetch<ScratchpadView>(`/v1/scratchpad?${query.toString()}`);
+		return { entries: out.entries ?? [], count: out.count ?? 0, pinned: out.pinned ?? 0, tools: out.tools ?? 0 };
+	} catch {
+		return { entries: [], count: 0, pinned: 0, tools: 0 };
+	}
+}
+
+/** Pin an entry so no sweep can remove it — the promotion out of disposability. */
+export async function setScratchpadPinned(id: string, pinned: boolean): Promise<void> {
+	await apiFetch(`/v1/scratchpad/${encodeURIComponent(id)}/pin`, {
+		method: 'POST',
+		body: JSON.stringify({ pinned })
+	});
+}
+
+/** Delete one entry (and the file, when ATLAS materialized it). */
+export async function deleteScratchpadEntry(id: string): Promise<void> {
+	await apiFetch(`/v1/scratchpad/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+/** Purge expired entries now. Pinned entries always survive. */
+export async function sweepScratchpad(): Promise<{ swept: boolean; detail: string }> {
+	return apiFetch('/v1/scratchpad/sweep', { method: 'POST' });
+}
+
 /** Activate or deactivate a module; returns the updated row. */
 export async function setModuleActive(id: string, active: boolean): Promise<{ module: Module }> {
 	const action = active ? 'activate' : 'deactivate';

@@ -3732,6 +3732,76 @@ async fn module_records_list(
     Ok(Json(json!({ "records": records, "count": count })))
 }
 
+/// Query params for the scratchpad management feed.
+#[derive(Deserialize)]
+struct ScratchpadQuery {
+    kind: Option<String>,
+    limit: Option<i64>,
+}
+
+/// GET /v1/scratchpad — what the agent is holding on to, and for how long.
+/// Disposables are invisible without this: an operator could never see the
+/// scripts a run generated, only find them on disk.
+async fn scratchpad_list(
+    State(state): State<AppState>,
+    Query(q): Query<ScratchpadQuery>,
+) -> ApiResult {
+    let path = state.db_path.clone();
+    let kind = q.kind.unwrap_or_default();
+    let limit = q.limit.unwrap_or(100);
+    let entries = blocking(move || db::list_scratchpad_entries(&path, &kind, limit)).await?;
+    let count = entries.len();
+    let pinned = entries
+        .iter()
+        .filter(|e| e.get("pinned").and_then(Value::as_bool).unwrap_or(false))
+        .count();
+    let tools = entries
+        .iter()
+        .filter(|e| e.get("kind").and_then(Value::as_str) == Some("tool"))
+        .count();
+    Ok(Json(
+        json!({ "entries": entries, "count": count, "pinned": pinned, "tools": tools }),
+    ))
+}
+
+/// DELETE /v1/scratchpad/{id} — drop one entry (and its file, if ATLAS owns it).
+async fn scratchpad_delete(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+) -> ApiResult {
+    require_arg(&id, "entry id must be non-empty")?;
+    dispatch_atlas(&state.atlas_cmd, &["scratch", "rm", "--", &id]).await?;
+    Ok(Json(json!({ "deleted": true, "id": id })))
+}
+
+#[derive(Deserialize)]
+struct ScratchpadPinBody {
+    pinned: Option<bool>,
+}
+
+/// POST /v1/scratchpad/{id}/pin — the promotion out of disposability (and back).
+async fn scratchpad_pin(
+    State(state): State<AppState>,
+    AxPath(id): AxPath<String>,
+    Json(body): Json<ScratchpadPinBody>,
+) -> ApiResult {
+    require_arg(&id, "entry id must be non-empty")?;
+    let mut args = vec!["scratch", "pin", &id];
+    if body.pinned == Some(false) {
+        args.push("--unpin");
+    }
+    dispatch_atlas(&state.atlas_cmd, &args).await?;
+    Ok(Json(json!({ "id": id, "pinned": body.pinned.unwrap_or(true) })))
+}
+
+/// POST /v1/scratchpad/sweep — purge expired entries now instead of waiting for
+/// the next startup. Pinned entries always survive, so this cannot destroy
+/// anything the operator or agent marked as kept.
+async fn scratchpad_sweep(State(state): State<AppState>) -> ApiResult {
+    let output = dispatch_atlas(&state.atlas_cmd, &["scratch", "sweep", "--startup"]).await?;
+    Ok(Json(json!({ "swept": true, "detail": output.trim() })))
+}
+
 /// The MCP server registry (module-declared and operator-added).
 async fn mcp_servers_list(State(state): State<AppState>) -> ApiResult {
     let path = state.db_path.clone();
@@ -4263,6 +4333,13 @@ pub fn app(state: AppState) -> Router {
             get(module_records_list),
         )
         .route("/v1/mcp", get(mcp_servers_list))
+        .route("/v1/scratchpad", get(scratchpad_list))
+        .route("/v1/scratchpad/sweep", post(scratchpad_sweep))
+        .route(
+            "/v1/scratchpad/{id}",
+            axum::routing::delete(scratchpad_delete),
+        )
+        .route("/v1/scratchpad/{id}/pin", post(scratchpad_pin))
         .route("/cashflow/full", get(cashflow_full))
         .route("/v1/cashflow/status", get(cashflow_status))
         .route("/v1/cashflow/summary", get(cashflow_summary))
