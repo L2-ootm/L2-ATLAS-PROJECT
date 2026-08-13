@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Ban, Download } from 'lucide-react';
 import { Page } from '../components/Page';
-import { AgentBadge, GlassPanel, HudLabel, StatusBadge } from '../components/hud';
+import { AgentBadge, GlassPanel, HudLabel, StatusBadge, VerificationBadge } from '../components/hud';
 import LiveBadge from '../components/LiveBadge';
 import RunTimeline from '../components/RunTimeline';
 import GlowBorder from '../components/GlowBorder';
@@ -15,6 +15,7 @@ import {
 	cancelRun,
 	listChangeSetFiles,
 	listRunChangeSets,
+	type AuditEvent,
 	type EvidenceFileChange,
 	type Run
 } from '../lib/api';
@@ -33,6 +34,26 @@ function fmt(iso: string | null): string {
 	if (!iso) return '—';
 	const d = new Date(iso);
 	return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('en-GB', { hour12: false });
+}
+
+/**
+ * The run's verification verdict, read off its own `verification_verdict` audit
+ * event — the same durable record the CLI and the actor projection read, rather
+ * than a second derivation that could disagree with them. Returns null for
+ * `no_mutations` and for a run that has none, so the badge stays absent unless
+ * there is something to answer for.
+ */
+export function verdictOf(events: AuditEvent[]): string | null {
+	for (let i = events.length - 1; i >= 0; i--) {
+		if (events[i].event_type !== 'verification_verdict') continue;
+		const data = events[i].data;
+		const state =
+			typeof data === 'string'
+				? (JSON.parse(data) as { state?: unknown }).state
+				: (data as { state?: unknown } | null)?.state;
+		return typeof state === 'string' && state !== 'no_mutations' ? state : null;
+	}
+	return null;
 }
 
 export default function RunDetail() {
@@ -268,6 +289,7 @@ export default function RunDetail() {
 						</Link>
 					)}
 					<StatusBadge status={stream.status} />
+					<VerificationBadge verdict={verdictOf(stream.events)} />
 					{run?.agent_runtime && <AgentBadge agent={run.agent_runtime} />}
 					{run && (
 						<span style={{ fontFamily: 'var(--l2-font-mono)', fontSize: 11, color: 'var(--l2-fg-3)', fontVariantNumeric: 'tabular-nums' }}>

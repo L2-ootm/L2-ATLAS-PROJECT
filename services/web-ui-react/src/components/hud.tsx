@@ -125,6 +125,59 @@ function getBadgeStyle(s: string): BadgeStyle {
 			return { background: 'rgba(237,234,224,0.04)', border: 'var(--l2-hairline)', color: '#9BA0AD' };
 	}
 }
+// ── VerificationBadge — what the run's own tool trail says about its claim. ──
+//
+// Sits beside StatusBadge because the two answer different questions: status is
+// whether the run finished, this is whether anything checked what it changed.
+// `no_mutations` renders nothing — a read-only run has nothing to answer for,
+// and a badge on every run would train the eye to skip the ones that matter.
+const VERDICT_STYLE: Record<string, BadgeStyle & { label: string; title: string }> = {
+	verified: {
+		background: 'rgba(70,240,224,0.10)',
+		border: 'rgba(70,240,224,0.30)',
+		color: '#46F0E0',
+		label: 'VERIFIED',
+		title: 'A test, build, lint or typecheck ran after this run changed state, and passed.'
+	},
+	unverified: {
+		background: 'rgba(255,214,0,0.10)',
+		border: 'rgba(255,214,0,0.28)',
+		color: '#FFD600',
+		label: 'UNVERIFIED',
+		title: 'This run changed state and never checked it.'
+	},
+	contradicted: {
+		background: 'rgba(255,0,85,0.10)',
+		border: 'rgba(255,0,85,0.30)',
+		color: '#FF4D7D',
+		label: 'VERIFICATION FAILED',
+		title: 'This run changed state, ran checks, and every one of them failed.'
+	}
+};
+
+export function VerificationBadge({ verdict }: { verdict: string | null }) {
+	const s = verdict ? VERDICT_STYLE[verdict] : undefined;
+	if (!s) return null;
+	return (
+		<span
+			title={s.title}
+			style={{
+				fontFamily: 'var(--l2-font-mono)',
+				fontSize: 11,
+				textTransform: 'uppercase',
+				letterSpacing: '0.1em',
+				padding: '4px 8px',
+				borderRadius: 4,
+				border: `1px solid ${s.border}`,
+				background: s.background,
+				color: s.color
+			}}
+		>
+			{s.label}
+		</span>
+	);
+}
+
 export function StatusBadge({ status }: { status: string }) {
 	const s = getBadgeStyle(status);
 	return (
