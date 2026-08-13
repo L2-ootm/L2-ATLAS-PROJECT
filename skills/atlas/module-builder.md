@@ -1,5 +1,8 @@
 # Skill: module-builder
 
+**Use when:** building or changing an ATLAS module — its manifest, slash
+commands, cockpit pages, collections, doctrine, workflows or MCP servers.
+
 Build a new ATLAS module the operator can toggle, without touching ATLAS
 source. Contracts: `docs/plans/2026-07-16-module-framework-design.md` (v1) and
 `docs/plans/2026-08-12-module-capabilities-v2-and-outreach-design.md` (v2).

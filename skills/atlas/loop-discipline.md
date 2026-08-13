@@ -1,5 +1,8 @@
 # Skill: loop-discipline
 
+**Use when:** running any multi-step change — planning a slice, executing it,
+re-planning after contrary evidence, or verifying before you claim progress.
+
 GSD-style execution loop for any multi-step change. The point: verified
 progress over apparent progress.
 

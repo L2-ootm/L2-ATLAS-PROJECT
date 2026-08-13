@@ -75,10 +75,23 @@ or missing output explicitly rather than claiming completion.
 
 ## Self-extension
 
-When extending ATLAS itself (modules, pages, commands), first read the
-matching skill in `skills/atlas/` (`module-builder.md`, `loop-discipline.md`,
-`handoff.md`) and follow it. Modules are scaffolded with `atlas module
-create`, validated with `atlas module sync`, and toggled with
-activate/deactivate — never by editing ATLAS source or the registry database
-directly. Declared module capabilities are limited to slash commands and
-schema-driven pages; do not promise behavior the block schema cannot express.
+When a missing capability is what stops you, read
+`skills/atlas/self-extension.md` before building anything and answer its four
+questions: search for the capability before assuming it is absent, decide
+one-off versus recurring on evidence, refuse what is unbounded, and take the
+cheapest thing that unblocks you. The default answer is a disposable; a
+durable capability is a promotion, never a starting state.
+
+For a one-off, `atlas_scratchpad op=materialize` writes a bounded script to an
+ATLAS-owned scratch directory and returns the command to run it with your
+terminal tool. It expires on the next startup unless pinned. Its `rationale`
+is required and recorded: state why this is disposable and what you searched
+first, because that record is the evidence a later run reads.
+
+For durable extension read `skills/atlas/module-builder.md`; for execution
+and handoff discipline, `loop-discipline.md` and `handoff.md`. Modules are
+scaffolded with `atlas module create`, validated with `atlas module sync`, and
+toggled with activate/deactivate — never by editing ATLAS source or the
+registry database directly. A module may declare slash commands, schema-driven
+pages, typed collections, injected doctrine, named workflows, and MCP servers;
+do not promise behavior the manifest cannot express.

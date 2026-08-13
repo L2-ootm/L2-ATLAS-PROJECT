@@ -208,19 +208,81 @@ def test_failure_retriever_empty_without_mission(db):
     assert mr.FailurePatternRetriever().retrieve(db, mr.RouterQuery(mission_id=None)) == []
 
 
-def test_skill_retriever_matches_and_ranks(tmp_path):
-    inv = tmp_path / "SKILL_INVENTORY.md"
-    inv.write_text(
-        "| skill | class | reason |\n"
-        "|---|---|---|\n"
-        "| executor-runner | operator | Runs the executor subprocess loop. |\n"
-        "| lunch-orderer | operator | Orders tacos for the team. |\n",
+def _skill_tree(tmp_path):
+    """An ATLAS doctrine dir and a Hermes-shaped packaged-skill dir."""
+    atlas = tmp_path / "atlas"
+    atlas.mkdir()
+    (atlas / "README.md").write_text("# index, not a skill\n", encoding="utf-8")
+    (atlas / "executor-runner.md").write_text(
+        "# Skill: executor-runner\n\n**Use when:** running the executor subprocess loop.\n",
         encoding="utf-8",
     )
-    r = mr.SkillRetriever(path=inv)
+    (atlas / "lunch-orderer.md").write_text(
+        "# Skill: lunch-orderer\n\nOrders tacos for the team.\n", encoding="utf-8"
+    )
+    hermes = tmp_path / "hermes"
+    (hermes / "category" / "packaged-thing").mkdir(parents=True)
+    (hermes / "category" / "packaged-thing" / "SKILL.md").write_text(
+        "---\nname: packaged-thing\ndescription: Runs a vendored executor helper.\n---\n\n# body\n",
+        encoding="utf-8",
+    )
+    return atlas, hermes
+
+
+def test_skill_retriever_matches_and_ranks(tmp_path):
+    atlas, hermes = _skill_tree(tmp_path)
+    r = mr.SkillRetriever(path=atlas, hermes_dir=hermes)
     snippets = r.retrieve(None, mr.RouterQuery(terms=("executor", "loop"), has_focus=True))
     assert [s.source for s in snippets] == ["skill:executor-runner"]
     assert "executor-runner" in snippets[0].text
+    # The path is the actionable half: a name alone is not something to read.
+    assert "executor-runner.md" in snippets[0].text
+    assert "tacos" not in snippets[0].text
+
+
+def test_skill_retriever_reads_packaged_frontmatter_and_prefers_atlas_doctrine(tmp_path):
+    atlas, hermes = _skill_tree(tmp_path)
+    r = mr.SkillRetriever(path=atlas, hermes_dir=hermes)
+    packaged = r.retrieve(None, mr.RouterQuery(terms=("vendored", "helper"), has_focus=True))
+    assert [s.source for s in packaged] == ["skill:packaged-thing"]
+    # "executor" hits both; ATLAS's own doctrine outranks the vendored skill.
+    both = r.retrieve(None, mr.RouterQuery(terms=("executor",), has_focus=True))
+    assert [s.source for s in both][0] == "skill:executor-runner"
+
+
+def test_skill_retriever_excludes_the_readme_index(tmp_path):
+    atlas, hermes = _skill_tree(tmp_path)
+    r = mr.SkillRetriever(path=atlas, hermes_dir=hermes)
+    snippets = r.retrieve(None, mr.RouterQuery(terms=("index", "skill"), has_focus=True))
+    assert all("README" not in s.text for s in snippets)
+
+
+def test_skill_retriever_drops_stopword_coincidences(tmp_path):
+    """A term shared by every skill is not a match worth a slot."""
+    atlas = tmp_path / "atlas"
+    atlas.mkdir()
+    for name in ("alpha", "beta", "gamma", "delta"):
+        (atlas / f"{name}.md").write_text(
+            f"# Skill: {name}\n\n**Use when:** you need to build something.\n", encoding="utf-8"
+        )
+    (atlas / "sirocco.md").write_text(
+        "# Skill: sirocco\n\n**Use when:** you build a sirocco.\n", encoding="utf-8"
+    )
+    r = mr.SkillRetriever(path=atlas, hermes_dir=tmp_path / "absent")
+    snippets = r.retrieve(None, mr.RouterQuery(terms=("build", "sirocco"), has_focus=True))
+    assert [s.source for s in snippets] == ["skill:sirocco"]
+
+
+def test_skill_retriever_sees_the_real_atlas_doctrine(tmp_path):
+    """The regression this rewrite exists for: `skills/atlas/self-extension.md`
+    was invisible to every run because the section parsed an imported planning
+    document instead of the skills on disk."""
+    r = mr.SkillRetriever()
+    snippets = r.retrieve(
+        None,
+        mr.RouterQuery(terms=("missing", "capability", "disposable"), has_focus=True),
+    )
+    assert "skill:self-extension" in [s.source for s in snippets]
 
 
 def test_hybrid_knowledge_pure_fts_without_embeddings(db, lock):
@@ -249,15 +311,14 @@ def test_hybrid_knowledge_blends_semantic(db, lock, tmp_path):
     assert any("Executor wiring" in s.text for s in snippets)
 
 
-def test_skill_retriever_missing_file_is_empty(tmp_path):
-    r = mr.SkillRetriever(path=tmp_path / "nope.md")
+def test_skill_retriever_missing_dir_is_empty(tmp_path):
+    r = mr.SkillRetriever(path=tmp_path / "nope", hermes_dir=tmp_path / "also-nope")
     assert r.retrieve(None, mr.RouterQuery(terms=("executor",), has_focus=True)) == []
 
 
 def test_skill_retriever_empty_without_focus_or_terms(tmp_path):
-    inv = tmp_path / "SKILL_INVENTORY.md"
-    inv.write_text("| s | operator | x |\n", encoding="utf-8")
-    r = mr.SkillRetriever(path=inv)
+    atlas, hermes = _skill_tree(tmp_path)
+    r = mr.SkillRetriever(path=atlas, hermes_dir=hermes)
     assert r.retrieve(None, mr.RouterQuery(terms=("x",), has_focus=False)) == []
     assert r.retrieve(None, mr.RouterQuery(terms=(), has_focus=True)) == []
 

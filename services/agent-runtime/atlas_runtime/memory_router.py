@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import math
 import pathlib
 import re
 import sqlite3
@@ -648,78 +649,216 @@ class BrainRetriever:
 # Skill-matching retriever (B-WP3)
 # ---------------------------------------------------------------------------
 
-# In-repo skill source (no sibling-repo dependency). memory_router.py lives at
+# In-repo skill sources. memory_router.py lives at
 # services/agent-runtime/atlas_runtime/ -> parents[3] = repo root (matches db.py).
-SKILL_INVENTORY_PATH = (
-    pathlib.Path(__file__).resolve().parents[3] / "docs" / "imports" / "SKILL_INVENTORY.md"
-)
-_SKILL_CLASSES = frozenset(
-    {"core", "operator", "l2-internal", "personal-private", "experimental",
-     "deprecated", "external-reference"}
+#
+# This used to parse `docs/imports/SKILL_INVENTORY.md`, an imported *planning*
+# document. Its rows include proposed packs ("Analyst Pack (proposed)") and
+# taxonomy headings, and none of them are ATLAS skills — so the brief advertised
+# capabilities that do not exist while ATLAS's own doctrine (`skills/atlas/`)
+# stayed invisible to every run. That is the exact failure the core prompt
+# forbids: asserting a capability without confirming it exists here. The section
+# is now sourced from files on disk, and every snippet carries the path the model
+# can read.
+ATLAS_SKILLS_DIR = pathlib.Path(__file__).resolve().parents[3] / "skills" / "atlas"
+HERMES_SKILLS_DIR = (
+    pathlib.Path(__file__).resolve().parents[3]
+    / "foundation" / "atlas-hermes" / "optional-skills"
 )
 _SKILL_MAX = 4
 _SKILL_TOKEN = re.compile(r"[a-z0-9]+")
-_skill_cache: dict[tuple[str, float], list[tuple[str, str, frozenset[str]]]] = {}
+_SKILL_USE_WHEN = re.compile(r"^\*\*Use when:\*\*\s*(.+)$", re.IGNORECASE)
+_SKILL_HEAD_BYTES = 2048
+# Matching still uses the full description; only what reaches the brief is cut.
+_SKILL_DESC_CHARS = 160
+# ATLAS's own doctrine outranks a vendored framework skill on an equal term
+# overlap: it is the layer that governs how ATLAS itself behaves.
+_SKILL_ORIGIN_RANK = {"atlas": 0, "hermes": 1}
+# A term matching one skill scores ~1.0; one matching most of them scores near
+# zero. Below this, the "match" is a stopword coincidence and not worth a slot.
+_SKILL_MIN_SCORE = 0.25
+# ...and a match worth less than this fraction of the best one is noise beside it.
+_SKILL_RELATIVE_FLOOR = 0.4
+_skill_cache: dict[
+    tuple[tuple[str, float], ...], list[tuple[str, str, str, str, frozenset[str]]]
+] = {}
+_skill_weight_cache: dict[int, dict[str, float]] = {}
 
 
-def _parse_skill_inventory(path: pathlib.Path) -> list[tuple[str, str, frozenset[str]]]:
-    """Parse the markdown inventory into (name, description, tokens). Skill rows are
-    table rows tagged with a known class value; that selects them and excludes the
-    taxonomy/schema tables. Cached by file mtime; absent file -> empty (no hard dep)."""
+def _skill_files(
+    atlas_dir: pathlib.Path, hermes_dir: pathlib.Path
+) -> list[tuple[pathlib.Path, str, str]]:
+    """(path, origin, kind) for every skill file on disk, in a stable order.
+
+    Two shapes: loose doctrine markdown directly under `skills/atlas/` (README
+    excluded — it is an index, not a skill), and packaged `SKILL.md` skills at
+    any depth under either tree (Hermes nests them one category deep)."""
+    found: list[tuple[pathlib.Path, str, str]] = []
     try:
-        mtime = path.stat().st_mtime
+        for path in sorted(atlas_dir.glob("*.md")):
+            if path.name.lower() != "readme.md":
+                found.append((path, "atlas", "doctrine"))
     except OSError:
-        return []
-    cached = _skill_cache.get((str(path), mtime))
+        pass
+    for directory, origin in ((atlas_dir, "atlas"), (hermes_dir, "hermes")):
+        try:
+            found.extend(
+                (path, origin, "packaged") for path in sorted(directory.rglob("SKILL.md"))
+            )
+        except OSError:
+            continue
+    return found
+
+
+def _parse_skill_file(path: pathlib.Path, kind: str) -> tuple[str, str]:
+    """(name, description) from a skill file's head. Only the first 2 KB is read:
+    the name and the one-line purpose live there in both shapes, and a run brief
+    must never pay to load 90 skill bodies."""
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            head = handle.read(_SKILL_HEAD_BYTES)
+    except OSError:
+        return "", ""
+    name = path.stem if kind == "doctrine" else path.parent.name
+    description = ""
+    lines = head.splitlines()
+    if lines and lines[0].strip() == "---":  # YAML frontmatter (Hermes shape)
+        for line in lines[1:]:
+            if line.strip() == "---":
+                break
+            key, _, value = line.partition(":")
+            if key.strip() == "name" and value.strip():
+                name = value.strip()
+            elif key.strip() == "description" and value.strip():
+                description = value.strip()
+    if not description:
+        for line in lines:
+            stripped = line.strip()
+            if not stripped or stripped in {"---"} or stripped.startswith("#"):
+                continue
+            match = _SKILL_USE_WHEN.match(stripped)
+            description = match.group(1).strip() if match else stripped
+            break
+    return name, description
+
+
+def _scan_skills(
+    atlas_dir: pathlib.Path, hermes_dir: pathlib.Path
+) -> list[tuple[str, str, str, str, frozenset[str]]]:
+    """(name, description, origin, path, tokens) for the installed skills.
+
+    Cached on the exact (path, mtime) signature of every candidate file, so an
+    edited skill body invalidates the cache while a repeated brief costs only
+    the stat calls."""
+    files = _skill_files(atlas_dir, hermes_dir)
+    signature: list[tuple[str, float]] = []
+    live: list[tuple[pathlib.Path, str, str]] = []
+    for path, origin, kind in files:
+        try:
+            signature.append((str(path), path.stat().st_mtime))
+        except OSError:  # vanished between glob and stat
+            continue
+        live.append((path, origin, kind))
+    key = tuple(signature)
+    cached = _skill_cache.get(key)
     if cached is not None:
         return cached
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError:
-        return []
-    entries: list[tuple[str, str, frozenset[str]]] = []
-    for line in text.splitlines():
-        if not line.lstrip().startswith("|"):
+    entries: list[tuple[str, str, str, str, frozenset[str]]] = []
+    repo_root = pathlib.Path(__file__).resolve().parents[3]
+    for path, origin, kind in live:
+        name, description = _parse_skill_file(path, kind)
+        if not name:
             continue
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if not any(c in _SKILL_CLASSES for c in cells):
-            continue
-        name = cells[0].strip("`* ")
-        if not name or name.lower() in {"skill", "class", "name"}:
-            continue
-        desc = max((c for c in cells[1:] if c not in _SKILL_CLASSES), key=len, default="")
-        tokens = frozenset(_SKILL_TOKEN.findall(f"{name} {desc}".lower()))
-        entries.append((name, desc, tokens))
-    _skill_cache[(str(path), mtime)] = entries
+        tokens = frozenset(_SKILL_TOKEN.findall(f"{name} {description}".lower()))
+        if len(description) > _SKILL_DESC_CHARS:
+            description = description[: _SKILL_DESC_CHARS - 1].rstrip() + "…"
+        try:  # a repo-relative path travels; an absolute one leaks the machine
+            shown = path.relative_to(repo_root).as_posix()
+        except ValueError:
+            shown = path.as_posix()
+        entries.append((name, description, origin, shown, tokens))
+    _skill_cache.clear()  # one signature is live at a time; do not grow unbounded
+    _skill_cache[key] = entries
     return entries
 
 
-class SkillRetriever:
-    """Match curated ATLAS skills (from the in-repo inventory) to the Focus terms,
-    so a run is reminded of the tooling already available for the work."""
+def _skill_term_weights(
+    entries: list[tuple[str, str, str, str, frozenset[str]]],
+) -> dict[str, float]:
+    """Inverse-document-frequency weight per term across the installed skills.
 
-    def __init__(self, path: pathlib.Path | None = None):
-        self._path = path or SKILL_INVENTORY_PATH
+    A term in one skill is worth ~1.0; a term in most of them approaches 0.
+    Memoized on the identity of the (cached) entry list, so it is computed once
+    per scan generation rather than once per brief."""
+    cached = _skill_weight_cache.get(id(entries))
+    if cached is not None:
+        return cached
+    total = len(entries) or 1
+    frequency: dict[str, int] = {}
+    for *_rest, tokens in entries:
+        for token in tokens:
+            frequency[token] = frequency.get(token, 0) + 1
+    weights = {
+        term: math.log(1 + total / count) / math.log(1 + total)
+        for term, count in frequency.items()
+    }
+    _skill_weight_cache.clear()
+    _skill_weight_cache[id(entries)] = weights
+    return weights
+
+
+class SkillRetriever:
+    """Match the skills actually installed in this repo to the Focus terms, so a
+    run is reminded of doctrine and tooling it can genuinely use.
+
+    Every snippet carries the file path: a name alone is a hint, a path is an
+    instruction the model can act on with its read tool. ATLAS's own doctrine in
+    `skills/atlas/` wins ties against a vendored Hermes skill.
+    """
+
+    def __init__(
+        self,
+        path: pathlib.Path | None = None,
+        *,
+        hermes_dir: pathlib.Path | None = None,
+    ):
+        # `path` stays positional-compatible with the previous signature; it now
+        # names the ATLAS skills directory rather than an inventory file.
+        self._atlas_dir = path or ATLAS_SKILLS_DIR
+        self._hermes_dir = hermes_dir if hermes_dir is not None else HERMES_SKILLS_DIR
 
     def section_lines(self, query: RouterQuery) -> list[str]:
         return [
             "## Relevant Skills",
-            "_From the ATLAS skill inventory, matched to the current Focus._",
+            "_Installed skills matched to the current Focus. Read the file "
+            "before following one._",
         ]
 
     def retrieve(self, conn: sqlite3.Connection, query: RouterQuery) -> list[MemorySnippet]:
         terms = {t.lower() for t in query.terms}
         if not terms or not query.has_focus:
             return []
-        scored: list[tuple[int, str, str]] = []
-        for name, desc, tokens in _parse_skill_inventory(self._path):
-            overlap = len(terms & tokens)
-            if overlap > 0:
-                scored.append((overlap, name, desc))
-        scored.sort(key=lambda e: (-e[0], e[1]))
+        entries = _scan_skills(self._atlas_dir, self._hermes_dir)
+        weights = _skill_term_weights(entries)
+        scored: list[tuple[float, int, str, str, str]] = []
+        for name, desc, origin, path, tokens in entries:
+            matched = terms & tokens
+            # Weighted, not counted: "build", "run" and "state" appear in most
+            # of 90 skill descriptions, so a plain overlap count ranked three
+            # finance-modelling skills above the one doctrine file that answers
+            # the Focus. A term shared by everything carries almost no signal.
+            score = sum(weights.get(term, 1.0) for term in matched)
+            if score >= _SKILL_MIN_SCORE:
+                scored.append((score, _SKILL_ORIGIN_RANK.get(origin, 9), name, desc, path))
+        scored.sort(key=lambda e: (-e[0], e[1], e[2]))
+        # Relative cut: a run with one strong match should be told about that
+        # one skill, not padded to four with stopword coincidences. Filling the
+        # section is not the goal; being right about it is.
+        floor = scored[0][0] * _SKILL_RELATIVE_FLOOR if scored else 0.0
+        scored = [entry for entry in scored if entry[0] >= floor]
         out: list[MemorySnippet] = []
-        for overlap, name, desc in scored[:_SKILL_MAX]:
-            text = f"- **{name}** — {desc}" if desc else f"- **{name}**"
+        for overlap, _rank, name, desc, path in scored[:_SKILL_MAX]:
+            text = f"- **{name}** (`{path}`)" + (f" — {desc}" if desc else "")
             out.append(
                 MemorySnippet(
                     text=text,

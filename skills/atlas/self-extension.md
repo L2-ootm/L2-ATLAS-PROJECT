@@ -1,5 +1,8 @@
 # Skill: self-extension
 
+**Use when:** a missing capability, tool, script, module or integration is what
+blocks the work, and you are deciding whether to build a disposable or stop.
+
 Read this when a missing capability is what stops you from finishing the work.
 Roadmap and rationale: `docs/plans/2026-08-12-atlas-self-extension-roadmap.md`.
 
@@ -35,12 +38,21 @@ argued for, never a starting state.
 
 Use `atlas module create` for a new module; see `module-builder.md`.
 
-`op=materialize` is the whole L2 path: give it a title, a body and a language,
-get back an `invocation` line, and run that with your terminal tool under the
-normal permission rules. The file lives under `<ATLAS home>/scratch/tools`,
-never in the working tree, and it is deleted on the next startup unless someone
-pins it. You may mint five per run — hitting that cap means you are building
-around a problem instead of naming it.
+`op=materialize` is the whole L2 path: give it a title, a body, a language and a
+`rationale`, get back an `invocation` line, and run that with your terminal tool
+under the normal permission rules. The file lives under
+`<ATLAS home>/scratch/tools`, never in the working tree, and it is deleted on
+the next startup unless someone pins it. You may mint five per run — hitting
+that cap means you are building around a problem instead of naming it.
+
+**The `rationale` is required and it is read.** Answer questions 1 and 2 in it:
+what you searched, and why this is a one-off rather than something durable. It
+is stored on the entry, shown to the operator next to the tool, and written to
+the audit trail permanently — so when the same disposable is built a third time,
+the case for promoting it is already assembled. Write it for that reader, not to
+satisfy the field. "Needed a script" tells them nothing; "checked `atlas_module
+op=list` and the tool catalog, nothing parses this log format, and only this
+mission needs it" tells them everything.
 
 Your open scratchpad entries come back to you automatically at the start of a
 run that resumes the same session (the **Open Scratchpad** section of the

@@ -1,5 +1,8 @@
 # Skill: handoff
 
+**Use when:** a session changed repository or project state and must leave a
+handoff, state file or session summary the next session can trust cold.
+
 When a session changed project state, leave a handoff the next session (agent
 or human) can trust without this conversation's history.
 
