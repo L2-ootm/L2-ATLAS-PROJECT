@@ -2865,6 +2865,8 @@ def scratch_get(entry_id: str = typer.Argument(..., help="Entry id.")) -> None:
         typer.echo(f"Error: no scratchpad entry {entry_id!r}", err=True)
         raise typer.Exit(1)
     typer.echo(f"# {entry['title']} ({entry['kind']}, ttl={entry['ttl_policy']})")
+    if entry.get("rationale"):
+        typer.echo(f"# why: {entry['rationale']}")
     typer.echo(entry["body"])
 
 
@@ -2873,6 +2875,10 @@ def scratch_materialize(
     title: str = typer.Argument(..., help="What the disposable tool does."),
     from_file: str = typer.Option("", "--from-file", help="Read the script body from a file."),
     body: str = typer.Option("", "--body", help="Script body (inline)."),
+    why: str = typer.Option(
+        "", "--why",
+        help="Required: why this is disposable and what already-existing thing it is not.",
+    ),
     language: str = typer.Option("python", "--lang", help="python|bash|powershell|node|sql|text."),
     ttl: str = typer.Option("next_startup", "--ttl", help="Expiry policy."),
     entry_id: str = typer.Option("", "--id", help="Explicit entry id (default: slug of title)."),
@@ -2891,7 +2897,7 @@ def scratch_materialize(
     try:
         result = scratchpad_service.materialize_tool(
             _get_connection(), _get_lock(),
-            title=title, body=body, language=language, ttl_policy=ttl,
+            title=title, body=body, rationale=why, language=language, ttl_policy=ttl,
             entry_id=entry_id or None, scope="global", owner="operator",
         )
     except scratchpad_service.ScratchpadError as exc:

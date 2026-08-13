@@ -302,6 +302,10 @@ class AuditEvent(BaseModel):
         "provider_fallback",
         # Long-horizon mission completion judge receipt.
         "goal_judgement",
+        # L2 self-extension: the agent materialized a disposable tool. Carries
+        # the required rationale, so the decision outlives the disposable's TTL
+        # and a repeatedly rebuilt tool becomes visible evidence for promotion.
+        "self_extension",
     ]
     tool_name: str | None = None
     timestamp: datetime.datetime = Field(

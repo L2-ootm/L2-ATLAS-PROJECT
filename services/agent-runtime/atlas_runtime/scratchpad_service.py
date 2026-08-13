@@ -55,6 +55,11 @@ TTL_POLICIES = ("run", "session", "next_startup", "hours", "permanent")
 # cannot leave a hundred scripts behind.
 MAX_TOOLS_PER_RUN = 5
 MAX_TOOL_BODY_BYTES = 64 * 1024
+# Long enough that "because" does not pass, short enough that a real sentence
+# does. The floor is a nudge against an empty gesture, not a quality bar — no
+# character count can tell a good decision from a bad one.
+MIN_RATIONALE_CHARS = 40
+MAX_RATIONALE_CHARS = 2000
 
 # language -> (file extension, how the operator/agent invokes it)
 TOOL_LANGUAGES: dict[str, tuple[str, str]] = {
@@ -95,7 +100,7 @@ def _slug(text: str) -> str:
 
 _COLUMNS = (
     "id, scope, owner, run_id, session_id, kind, title, body, path, ttl_policy,"
-    " expires_at, pinned, created_at, updated_at"
+    " expires_at, pinned, rationale, created_at, updated_at"
 )
 
 
@@ -214,6 +219,7 @@ def write_entry(
     path: str = "",
     pinned: Optional[bool] = None,
     append: bool = False,
+    rationale: str = "",
 ) -> dict[str, Any]:
     """Create or overwrite an entry (append=True adds to the existing body).
 
@@ -257,21 +263,25 @@ def write_entry(
     now = _now()
     expires_at = _expiry_for(ttl_policy, expires_in_hours)
     resolved_pin = bool(existing["pinned"]) if (existing and pinned is None) else bool(pinned)
+    # An overwrite that says nothing new must not erase the recorded decision:
+    # re-materializing a tool to fix a typo keeps the reasoning that justified it.
+    rationale = str(rationale or "").strip() or (existing or {}).get("rationale", "")
     with lock:
         with conn:
             conn.execute(
                 "INSERT INTO scratchpad_entries(id, scope, owner, run_id, session_id, kind,"
-                " title, body, path, ttl_policy, expires_at, pinned, created_at, updated_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+                " title, body, path, ttl_policy, expires_at, pinned, rationale, created_at,"
+                " updated_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
                 " ON CONFLICT(id) DO UPDATE SET"
                 " scope=excluded.scope, owner=excluded.owner, run_id=excluded.run_id,"
                 " session_id=excluded.session_id, kind=excluded.kind, title=excluded.title,"
                 " body=excluded.body, path=excluded.path, ttl_policy=excluded.ttl_policy,"
                 " expires_at=excluded.expires_at, pinned=excluded.pinned,"
-                " updated_at=excluded.updated_at",
+                " rationale=excluded.rationale, updated_at=excluded.updated_at",
                 (
                     entry_id, scope, owner, run_id, session_id, kind, title, body, path,
-                    ttl_policy, expires_at, int(resolved_pin), now, now,
+                    ttl_policy, expires_at, int(resolved_pin), rationale, now, now,
                 ),
             )
     written = get_entry(conn, entry_id)
@@ -334,6 +344,7 @@ def materialize_tool(
     *,
     title: str,
     body: str,
+    rationale: str,
     language: str = "python",
     entry_id: Optional[str] = None,
     ttl_policy: str = "next_startup",
@@ -353,8 +364,26 @@ def materialize_tool(
     the agent did not already have — a disposable tool is a saved command, not a
     plugin. It expires on the next startup unless someone pins it.
 
+    `rationale` is required, and deliberately so. WP-A of the self-extension
+    roadmap — search before building, decide once-vs-recurring on evidence,
+    refuse the unbounded, take the cheapest unblock — shipped as doctrine that
+    nothing checked. A required field cannot make the judgment good, but it
+    makes it *stated*: the operator sees why the agent is holding a script, and
+    the third rebuild of the same disposable leaves three readable decisions
+    behind instead of three anonymous files. That is the evidence WP-C promotes
+    on.
+
     Returns the entry plus `invocation` (how to run it) and `root`.
     """
+    rationale = str(rationale or "").strip()
+    if len(rationale) < MIN_RATIONALE_CHARS:
+        raise ScratchpadError(
+            "rationale is required: say what you searched, why nothing existing "
+            "covers this, and why it is disposable rather than durable "
+            f"(at least {MIN_RATIONALE_CHARS} characters)"
+        )
+    if len(rationale) > MAX_RATIONALE_CHARS:
+        raise ScratchpadError(f"rationale exceeds {MAX_RATIONALE_CHARS} characters")
     if language not in TOOL_LANGUAGES:
         raise ScratchpadError(
             f"language must be one of {', '.join(sorted(TOOL_LANGUAGES))}"
@@ -410,9 +439,62 @@ def materialize_tool(
         session_id=session_id,
         owner=owner,
         path=str(target),
+        rationale=rationale,
+    )
+    _record_self_extension(
+        conn, lock, entry=entry, rationale=rationale, language=language,
+        body_bytes=len(body.encode("utf-8")), reused=existing is not None,
     )
     invocation = f"{runner} {target}".strip() if runner else str(target)
     return {**entry, "invocation": invocation, "root": str(directory)}
+
+
+def _record_self_extension(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    *,
+    entry: dict[str, Any],
+    rationale: str,
+    language: str,
+    body_bytes: int,
+    reused: bool,
+) -> None:
+    """Emit the durable `self_extension` audit record for a materialized tool.
+
+    The scratchpad row is the *live* state and disappears with its TTL — by
+    design. The audit event is the permanent one: it is how "this disposable
+    has been rebuilt three times" becomes visible after the three disposables
+    are gone. Attribution (WP-F) rides on it too: run, session, path, size.
+
+    Fail-open. A disposable that was written to disk must not be reported as a
+    failure because bookkeeping could not be persisted; the caller already has
+    a working tool and the row that owns its lifetime.
+    """
+    if not entry.get("run_id"):
+        return  # audit events are run-scoped; an operator CLI mint has no run
+    try:
+        from atlas_runtime import audit_service  # noqa: PLC0415 — avoid an import cycle
+
+        audit_service.emit(
+            conn, lock,
+            run_id=str(entry["run_id"]),
+            event_type="self_extension",
+            session_id=entry.get("session_id") or None,
+            tool_name="atlas_scratchpad",
+            data={
+                "action": "materialize",
+                "entry_id": entry["id"],
+                "title": entry["title"],
+                "language": language,
+                "path": entry.get("path", ""),
+                "ttl_policy": entry.get("ttl_policy", ""),
+                "body_bytes": body_bytes,
+                "updated_existing": reused,
+                "rationale": rationale,
+            },
+        )
+    except Exception:  # noqa: BLE001 — bookkeeping must never fail the tool
+        logger.warning("could not record the self_extension audit event", exc_info=True)
 
 
 def set_pinned(

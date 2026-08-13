@@ -84,6 +84,10 @@ _KIND_MAP: dict[str, EventKind] = {
     "model_call_end": "text",
     "provider_fallback": "error",
     "goal_judgement": "task",
+    # The agent built itself a disposable tool. "tool_result" rather than
+    # "task": a chat surface should render it as something the agent produced
+    # and can now call, next to the tool cards it already shows.
+    "self_extension": "tool_result",
 }
 
 

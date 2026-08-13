@@ -2251,6 +2251,8 @@ async fn modules_list_includes_manifest_fields() {
 
 const MIGRATION_0034: &str =
     include_str!("../../../../../infra/migrations/0034_module_capabilities.sql");
+const MIGRATION_0035: &str =
+    include_str!("../../../../../infra/migrations/0035_scratchpad_rationale.sql");
 
 /// Manifest modules + 0034 with two records and two MCP servers.
 fn seeded_db_module_records(dir: &tempfile::TempDir) -> PathBuf {
@@ -2334,11 +2336,12 @@ async fn mcp_registry_is_served() {
 
 // --- Scratchpad / disposables management view (0034) -------------------------
 
-/// 0034 plus one plan and one materialized disposable tool.
+/// 0034+0035 plus one plan and one materialized disposable tool.
 fn seeded_db_scratchpad(dir: &tempfile::TempDir) -> PathBuf {
     let path = seeded_db_manifest_modules(dir);
     let conn = rusqlite::Connection::open(&path).unwrap();
     conn.execute_batch(MIGRATION_0034).unwrap();
+    conn.execute_batch(MIGRATION_0035).unwrap();
     conn.execute(
         "INSERT INTO scratchpad_entries(id, scope, owner, run_id, session_id, kind, title, body, \
          path, ttl_policy, pinned, created_at, updated_at) \
@@ -2349,9 +2352,10 @@ fn seeded_db_scratchpad(dir: &tempfile::TempDir) -> PathBuf {
     .unwrap();
     conn.execute(
         "INSERT INTO scratchpad_entries(id, scope, owner, run_id, session_id, kind, title, body, \
-         path, ttl_policy, pinned, created_at, updated_at) \
+         path, ttl_policy, pinned, rationale, created_at, updated_at) \
          VALUES ('probe','run','run-1','run-1','sess-1','tool','Probe','print(1)','/tmp/probe.py', \
-         'next_startup', 1, '2026-08-12T00:00:00Z', '2026-08-12T01:00:00Z')",
+         'next_startup', 1, 'nothing in the tool catalog probes this; one-off', \
+         '2026-08-12T00:00:00Z', '2026-08-12T01:00:00Z')",
         [],
     )
     .unwrap();
@@ -2375,6 +2379,13 @@ async fn scratchpad_is_served_pinned_first_without_bodies() {
     // The management view reports size, never the working memory itself.
     assert_eq!(body["entries"][0]["chars"], 8);
     assert!(body["entries"][0].get("body").is_none());
+    // ...but it does report why the disposable exists (0035): "pin or let it
+    // expire?" is unanswerable from a filename.
+    assert_eq!(
+        body["entries"][0]["rationale"],
+        "nothing in the tool catalog probes this; one-off"
+    );
+    assert_eq!(body["entries"][1]["rationale"], "");
 }
 
 #[tokio::test]

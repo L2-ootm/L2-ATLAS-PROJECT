@@ -1141,6 +1141,10 @@ export interface ScratchpadEntry {
 	chars: number;
 	created_at: string;
 	updated_at: string;
+	/** Why the agent built this rather than using something that exists (0035).
+	 * Required for materialized tools; '' for entries written before the field
+	 * and for ordinary notes. */
+	rationale?: string;
 }
 
 export interface ScratchpadView {

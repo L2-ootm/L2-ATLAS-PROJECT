@@ -40,7 +40,8 @@ TOOL_SCHEMA = {
         "when a missing capability blocks you, first check whether it already "
         "exists (atlas_module, your tool list, the MCP registry); if it does "
         "not and the work is bounded, build it as a disposable rather than "
-        "reporting a dead end, and record why in a kind=finding entry. "
+        "reporting a dead end. It requires a `rationale`: what you searched and "
+        "why this is disposable, recorded on the entry and in the audit trail. "
         "Disposables expire on the next startup unless pinned."
     ),
     "parameters": {
@@ -91,6 +92,15 @@ TOOL_SCHEMA = {
                 ],
                 "description": "Script language (op=materialize, default python).",
             },
+            "rationale": {
+                "type": "string",
+                "description": (
+                    "Required for op=materialize: what you searched before "
+                    "concluding the capability is missing, and why this is "
+                    "disposable rather than a durable capability. Recorded on "
+                    "the entry and in the audit trail — a later run reads it."
+                ),
+            },
             "pinned": {"type": "boolean", "description": "Pin state (op=pin)."},
             "search": {"type": "string", "description": "Substring filter (op=list)."},
             "limit": {"type": "number", "description": "Max entries (op=list, default 25)."},
@@ -102,7 +112,7 @@ TOOL_SCHEMA = {
 _KNOWN_ARGS = frozenset(
     {
         "op", "id", "title", "body", "kind", "scope", "ttl", "expires_in_hours",
-        "path", "pinned", "search", "limit", "language",
+        "path", "pinned", "search", "limit", "language", "rationale",
     }
 )
 
@@ -182,6 +192,7 @@ def atlas_scratchpad_tool(
                 conn, lock,
                 title=str(args.get("title") or entry_id or ""),
                 body=str(args.get("body") or ""),
+                rationale=str(args.get("rationale") or ""),
                 language=str(args.get("language") or "python"),
                 entry_id=entry_id or None,
                 ttl_policy=str(args.get("ttl") or "next_startup"),

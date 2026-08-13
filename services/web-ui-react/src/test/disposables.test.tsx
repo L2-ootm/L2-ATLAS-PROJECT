@@ -31,13 +31,24 @@ function entry(over: Partial<api.ScratchpadEntry> = {}): api.ScratchpadEntry {
 		chars: 42,
 		created_at: '2026-08-12T00:00:00Z',
 		updated_at: '2026-08-12T00:00:00Z',
+		rationale: 'searched atlas_module and the tool catalog; nothing reaches the gateway, one-off',
 		...over
 	};
 }
 
 beforeEach(() => {
 	vi.mocked(api.listScratchpad).mockResolvedValue({
-		entries: [entry(), entry({ id: 'the-plan', kind: 'plan', title: 'The plan', path: '', ttl_policy: 'session' })],
+		entries: [
+			entry(),
+			entry({
+				id: 'the-plan',
+				kind: 'plan',
+				title: 'The plan',
+				path: '',
+				ttl_policy: 'session',
+				rationale: ''
+			})
+		],
 		count: 2,
 		pinned: 0,
 		tools: 1
@@ -56,6 +67,15 @@ describe('DisposablesPanel', () => {
 		expect(screen.getByText(/UNTIL RESTART · 42C/)).toBeInTheDocument();
 		expect(screen.getByText(/WITH ITS SESSION/)).toBeInTheDocument();
 		expect(screen.getByText('probe.py')).toBeInTheDocument();
+	});
+
+	it('shows why a disposable exists, so pin-or-expire is a decidable question', async () => {
+		render(<DisposablesPanel />);
+		expect(
+			await screen.findByText(/searched atlas_module and the tool catalog/)
+		).toBeInTheDocument();
+		// An entry with no recorded decision renders no empty line for one.
+		expect(screen.getAllByText(/searched atlas_module/)).toHaveLength(1);
 	});
 
 	it('pins an entry — the promotion out of disposability', async () => {

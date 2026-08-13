@@ -119,43 +119,52 @@ export function DisposablesPanel() {
 						key={entry.id}
 						style={{
 							display: 'flex',
-							alignItems: 'center',
+							alignItems: 'flex-start',
 							justifyContent: 'space-between',
 							gap: 16,
 							padding: '13px 18px',
 							borderTop: i === 0 ? 'none' : '1px solid var(--l2-hairline)'
 						}}
 					>
-						<div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-							<span
-								style={{
-									fontFamily: 'var(--l2-font-mono)',
-									fontSize: 8.5,
-									letterSpacing: '0.16em',
-									color: kindTone(entry.kind),
-									border: `1px solid ${kindTone(entry.kind)}`,
-									borderRadius: 2,
-									padding: '1px 6px',
-									textTransform: 'uppercase',
-									flexShrink: 0
-								}}
-							>
-								{entry.kind}
-							</span>
-							<span style={{ color: 'var(--l2-fg-1)', fontSize: 13, wordBreak: 'break-word' }}>
-								{entry.title || entry.id}
-							</span>
-							{entry.path && (
+						<div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+							<div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
 								<span
 									style={{
 										fontFamily: 'var(--l2-font-mono)',
-										fontSize: 10,
-										color: 'var(--l2-fg-3)',
-										wordBreak: 'break-all'
+										fontSize: 8.5,
+										letterSpacing: '0.16em',
+										color: kindTone(entry.kind),
+										border: `1px solid ${kindTone(entry.kind)}`,
+										borderRadius: 2,
+										padding: '1px 6px',
+										textTransform: 'uppercase',
+										flexShrink: 0
 									}}
-									title={entry.path}
 								>
-									{entry.path.split(/[\\/]/).pop()}
+									{entry.kind}
+								</span>
+								<span style={{ color: 'var(--l2-fg-1)', fontSize: 13, wordBreak: 'break-word' }}>
+									{entry.title || entry.id}
+								</span>
+								{entry.path && (
+									<span
+										style={{
+											fontFamily: 'var(--l2-font-mono)',
+											fontSize: 10,
+											color: 'var(--l2-fg-3)',
+											wordBreak: 'break-all'
+										}}
+										title={entry.path}
+									>
+										{entry.path.split(/[\\/]/).pop()}
+									</span>
+								)}
+							</div>
+							{/* The decision, not just the artifact. "Pin or let it expire?" is
+							    unanswerable from a filename — this is the sentence that answers it. */}
+							{entry.rationale && (
+								<span style={rationaleText} title={entry.rationale}>
+									{entry.rationale}
 								</span>
 							)}
 						</div>
@@ -198,6 +207,16 @@ const label: React.CSSProperties = {
 	fontSize: 11,
 	letterSpacing: '0.22em',
 	color: 'var(--atlas-bronze)'
+};
+
+const rationaleText: React.CSSProperties = {
+	fontSize: 11.5,
+	lineHeight: 1.5,
+	color: 'var(--l2-fg-3)',
+	display: '-webkit-box',
+	WebkitLineClamp: 2,
+	WebkitBoxOrient: 'vertical',
+	overflow: 'hidden'
 };
 
 const code: React.CSSProperties = {

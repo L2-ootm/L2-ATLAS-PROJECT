@@ -944,7 +944,7 @@ pub fn list_scratchpad_entries(path: &Path, kind: &str, limit: i64) -> Result<Ve
     let conn = open_ro(path)?;
     let limit = limit.clamp(1, 500);
     let sql = "SELECT id, scope, owner, run_id, session_id, kind, title, path, ttl_policy, \
-               expires_at, pinned, LENGTH(body), created_at, updated_at \
+               expires_at, pinned, LENGTH(body), created_at, updated_at, rationale \
                FROM scratchpad_entries \
                WHERE (?1 = '' OR kind = ?1) \
                ORDER BY pinned DESC, updated_at DESC LIMIT ?2";
@@ -968,6 +968,10 @@ pub fn list_scratchpad_entries(path: &Path, kind: &str, limit: i64) -> Result<Ve
                 "chars": row.get::<_, i64>(11)?,
                 "created_at": row.get::<_, String>(12)?,
                 "updated_at": row.get::<_, String>(13)?,
+                // The build/dispose decision (0035). Bodies stay unserved, but
+                // the reason a disposable exists is exactly what the operator
+                // needs to judge whether to pin it or let it expire.
+                "rationale": row.get::<_, String>(14)?,
             }))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;

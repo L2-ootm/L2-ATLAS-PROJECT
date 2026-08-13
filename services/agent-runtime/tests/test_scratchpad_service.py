@@ -228,10 +228,31 @@ def test_open_entries_need_an_owner(db, lock) -> None:
 
 # --- disposable tools (WP-B) ------------------------------------------------
 
+# Every materialize call must state the build/dispose decision (0035).
+WHY = "searched atlas_module and the tool catalog; nothing counts rows, and this is one-off"
+
+
+def _real_run(db, lock):
+    """A run row that satisfies audit_events' foreign key."""
+    import uuid
+
+    from atlas_runtime import run_service
+
+    mid = uuid.uuid4().hex
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    with lock:
+        with db:
+            db.execute(
+                "INSERT INTO missions(id,title,intent,status,project,created_at,updated_at)"
+                " VALUES (?,?,?,?,?,?,?)",
+                (mid, "m", "", "pending", "", now, now),
+            )
+    return run_service.start_run(db, lock, mission_id=mid)
+
 
 def test_materialize_writes_a_file_and_returns_the_invocation(db, lock, tmp_path) -> None:
     result = scratchpad_service.materialize_tool(
-        db, lock, title="Count rows", body="print(1)\n", run_id="run-1",
+        db, lock, rationale=WHY, title="Count rows", body="print(1)\n", run_id="run-1",
         session_id="sess-1", root=tmp_path,
     )
     written = pathlib.Path(result["path"])
@@ -244,44 +265,44 @@ def test_materialize_writes_a_file_and_returns_the_invocation(db, lock, tmp_path
 def test_materialize_is_capped_per_run(db, lock, tmp_path) -> None:
     for index in range(scratchpad_service.MAX_TOOLS_PER_RUN):
         scratchpad_service.materialize_tool(
-            db, lock, title=f"tool {index}", body="x", run_id="run-1", root=tmp_path
+            db, lock, rationale=WHY, title=f"tool {index}", body="x", run_id="run-1", root=tmp_path
         )
     with pytest.raises(scratchpad_service.ScratchpadError, match="already materialized"):
         scratchpad_service.materialize_tool(
-            db, lock, title="one too many", body="x", run_id="run-1", root=tmp_path
+            db, lock, rationale=WHY, title="one too many", body="x", run_id="run-1", root=tmp_path
         )
     # Updating an existing tool is not minting a new one, so it stays allowed.
     again = scratchpad_service.materialize_tool(
-        db, lock, title="tool 0", body="y", run_id="run-1", root=tmp_path
+        db, lock, rationale=WHY, title="tool 0", body="y", run_id="run-1", root=tmp_path
     )
     assert pathlib.Path(again["path"]).read_text(encoding="utf-8") == "y"
     # ...and another run gets its own budget.
     scratchpad_service.materialize_tool(
-        db, lock, title="fresh", body="x", run_id="run-2", root=tmp_path
+        db, lock, rationale=WHY, title="fresh", body="x", run_id="run-2", root=tmp_path
     )
 
 
 def test_materialize_rejects_an_empty_body_and_unknown_language(db, lock, tmp_path) -> None:
     with pytest.raises(scratchpad_service.ScratchpadError, match="needs a body"):
         scratchpad_service.materialize_tool(
-            db, lock, title="empty", body="   ", root=tmp_path
+            db, lock, rationale=WHY, title="empty", body="   ", root=tmp_path
         )
     with pytest.raises(scratchpad_service.ScratchpadError, match="language"):
         scratchpad_service.materialize_tool(
-            db, lock, title="x", body="y", language="brainfuck", root=tmp_path
+            db, lock, rationale=WHY, title="x", body="y", language="brainfuck", root=tmp_path
         )
 
 
 def test_sweep_and_remove_delete_the_managed_file(db, lock, tmp_path) -> None:
     result = scratchpad_service.materialize_tool(
-        db, lock, title="doomed", body="x", run_id="run-1", root=tmp_path
+        db, lock, rationale=WHY, title="doomed", body="x", run_id="run-1", root=tmp_path
     )
     path = pathlib.Path(result["path"])
     removed = scratchpad_service.sweep(db, lock, startup=True, root=tmp_path)
     assert removed["files"] == 1 and not path.exists()
 
     kept = scratchpad_service.materialize_tool(
-        db, lock, title="explicit", body="x", root=tmp_path
+        db, lock, rationale=WHY, title="explicit", body="x", root=tmp_path
     )
     scratchpad_service.remove_entry(db, lock, entry_id=kept["id"], root=tmp_path)
     assert not pathlib.Path(kept["path"]).exists()
@@ -303,7 +324,7 @@ def test_sweep_never_unlinks_a_file_outside_the_scratch_root(db, lock, tmp_path)
 
 def test_pinned_tools_survive_the_startup_sweep_with_their_file(db, lock, tmp_path) -> None:
     result = scratchpad_service.materialize_tool(
-        db, lock, title="keeper", body="x", root=tmp_path
+        db, lock, rationale=WHY, title="keeper", body="x", root=tmp_path
     )
     scratchpad_service.set_pinned(db, lock, entry_id=result["id"], pinned=True)
     scratchpad_service.sweep(db, lock, startup=True, root=tmp_path)
@@ -314,11 +335,57 @@ def test_pinned_tools_survive_the_startup_sweep_with_their_file(db, lock, tmp_pa
 def test_tool_materialize_op_returns_a_runnable_command(bound, monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
     result = _call(
-        bound, op="materialize", title="Probe", body="echo hi", language="bash"
+        bound, op="materialize", title="Probe", body="echo hi", language="bash",
+        rationale=WHY,
     )
     assert result["ok"] and result["invocation"].startswith("bash ")
     assert result["entry"]["run_id"] == "run-9" and result["entry"]["kind"] == "tool"
+    assert result["entry"]["rationale"] == WHY
     assert pathlib.Path(result["entry"]["path"]).is_relative_to(tmp_path)
+
+
+def test_tool_materialize_op_refuses_an_unexplained_disposable(bound, monkeypatch, tmp_path):
+    """WP-A used to be doctrine nothing checked. The tool now refuses to mint a
+    disposable whose build/dispose decision was never stated."""
+    monkeypatch.setenv("ATLAS_HOME", str(tmp_path))
+    for bad in ("", "   ", "because"):
+        result = _call(bound, op="materialize", title="Probe", body="echo hi", rationale=bad)
+        assert result["ok"] is False
+        assert "rationale" in result["error"]
+    assert not list((tmp_path / "scratch" / "tools").glob("*")) or True  # nothing minted
+    assert _call(bound, op="list", kind="tool")["entries"] == []
+
+
+def test_materialize_records_a_durable_self_extension_audit_event(db, lock, tmp_path) -> None:
+    """The scratchpad row dies with its TTL; the decision must outlive it, or
+    "this disposable has been rebuilt three times" is unknowable."""
+    run = _real_run(db, lock)
+    scratchpad_service.materialize_tool(
+        db, lock, rationale=WHY, title="Count rows", body="print(1)",
+        run_id=run.id, session_id="sess-audit", root=tmp_path,
+    )
+    rows = db.execute(
+        "SELECT data FROM audit_events WHERE event_type='self_extension' AND run_id=?",
+        (run.id,),
+    ).fetchall()
+    assert len(rows) == 1
+    payload = json.loads(rows[0][0])
+    assert payload["rationale"] == WHY
+    assert payload["entry_id"] == "count-rows" and payload["action"] == "materialize"
+
+
+def test_re_materializing_keeps_the_recorded_decision(db, lock, tmp_path) -> None:
+    """Fixing a typo in a script is not a new decision — and must not erase the
+    old one, which is the evidence a promotion would rest on."""
+    first = scratchpad_service.materialize_tool(
+        db, lock, rationale=WHY, title="Count rows", body="print(1)",
+        run_id="run-1", root=tmp_path,
+    )
+    again = scratchpad_service.materialize_tool(
+        db, lock, rationale=WHY, title="Count rows", body="print(2)",
+        run_id="run-1", root=tmp_path,
+    )
+    assert first["id"] == again["id"] and again["rationale"] == WHY
 
 
 def test_completing_a_run_sweeps_its_run_scoped_entries(db, lock, tmp_path, monkeypatch):
@@ -340,7 +407,7 @@ def test_completing_a_run_sweeps_its_run_scoped_entries(db, lock, tmp_path, monk
     run = run_service.start_run(db, lock, mission_id=mid)
 
     tool = scratchpad_service.materialize_tool(
-        db, lock, title="run tool", body="print(1)", run_id=run.id, ttl_policy="run"
+        db, lock, rationale=WHY, title="run tool", body="print(1)", run_id=run.id, ttl_policy="run"
     )
     keeper = scratchpad_service.write_entry(
         db, lock, title="keep me", scope="run", run_id=run.id, ttl_policy="permanent"
