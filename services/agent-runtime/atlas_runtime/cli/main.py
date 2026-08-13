@@ -1070,7 +1070,7 @@ def run_mission(
     outcome = _execute_run_chain(
         conn, lock, agent_name=agent, mission_id=mission_id, run_id=run.id
     )
-    typer.echo(outcome.status)
+    _echo_outcome(conn, run.id, outcome)
 
 
 @mission_app.command("retry")
@@ -1126,7 +1126,7 @@ def retry_mission(
     outcome = run_executor.execute_run(
         conn, lock, agent=get_agent(agent), mission_id=mission_id, run_id=run.id, prompt=prompt
     )
-    typer.echo(outcome.status)
+    _echo_outcome(conn, run.id, outcome)
 
 
 @mission_app.command("cancel")
@@ -1340,6 +1340,42 @@ def _run_prompt(conn: sqlite3.Connection, mission_id: str) -> str:
     return ctx.markdown + ("\n\n---\n\n" + intent if intent else "")
 
 
+def _echo_outcome(conn: sqlite3.Connection, run_id: str, outcome: object) -> None:
+    """Print a finished run's status, then what its own trail says about it.
+
+    The status keeps the first line to itself because scripts read it. The
+    verdict is read back from its `verification_verdict` audit event rather than
+    parsed out of the outcome's prose, so what the operator is shown and what
+    the record holds cannot drift apart. `no_mutations` prints nothing: a
+    read-only run has nothing to answer for, and a line saying so on every run
+    would train the operator to skip the ones that matter.
+    """
+    typer.echo(getattr(outcome, "status", ""))
+    try:
+        row = conn.execute(
+            "SELECT data FROM audit_events WHERE run_id=? AND "
+            "event_type='verification_verdict' ORDER BY timestamp DESC, rowid DESC LIMIT 1",
+            (run_id,),
+        ).fetchone()
+        payload = json.loads(row[0]) if row and row[0] else {}
+    except Exception:  # noqa: BLE001 — reporting must never fail the command
+        return
+    state = payload.get("state")
+    changes = payload.get("mutation_count") or 0
+    if state == "verified":
+        detail = f"passed {', '.join(payload.get('signals') or []) or 'a check'}"
+    elif state == "contradicted":
+        detail = (
+            f"every check failed ({', '.join(payload.get('failed_signals') or [])}) "
+            f"after {changes} change(s)"
+        )
+    elif state == "unverified":
+        detail = f"{changes} change(s), no test/build/lint/typecheck ran after them"
+    else:
+        return
+    typer.echo(f"verification: {state} — {detail}")
+
+
 def _print_context(conn: sqlite3.Connection, mission_id: str) -> None:
     """Print the assembled context brief with a provenance/budget header (debug)."""
     from atlas_runtime.memory_router import estimate_tokens
@@ -1393,7 +1429,7 @@ def run_exec(
     outcome = _execute_run_chain(
         conn, lock, agent_name=agent_name, mission_id=mission_id, run_id=run_id
     )
-    typer.echo(outcome.status)
+    _echo_outcome(conn, run_id, outcome)
 
 
 def _execute_run_chain(

@@ -352,6 +352,65 @@ def test_verdict_reaches_the_next_run_through_the_compounding_observation(file_d
     assert any("unverified" in body for body in bodies)
 
 
+def test_cli_shows_the_verdict_after_a_run(file_db, monkeypatch):
+    """A verdict the operator never sees is half a mechanism.
+
+    Asserts the shape too: `status` keeps the first line to itself because
+    scripts read it, and the verdict follows on its own.
+    """
+    from typer.testing import CliRunner
+
+    from atlas_runtime.cli.main import app
+
+    conn, lock = file_db, threading.Lock()
+    mid = _mission(conn, lock)
+    monkeypatch.setattr("atlas_runtime.cli.main._get_connection", lambda: conn)
+    monkeypatch.setattr("atlas_runtime.cli.main._get_lock", lambda: lock)
+    monkeypatch.setattr("atlas_runtime.agents.get_agent", lambda name: _TracingAgent())
+    monkeypatch.setattr(
+        "atlas_runtime.cli.main._execute_run_chain",
+        lambda conn_, lock_, **kw: run_executor.execute_run(
+            conn_, lock_, agent=_TracingAgent(), mission_id=kw["mission_id"],
+            run_id=kw["run_id"], prompt="go",
+        ),
+    )
+
+    result = CliRunner().invoke(app, ["mission", "run", mid, "--execute"])
+    assert result.exit_code == 0, result.output
+    lines = [line for line in result.output.splitlines() if line.strip()]
+    assert lines[-2] == "succeeded"
+    assert lines[-1].startswith("verification: unverified — 1 change(s)")
+
+
+def test_cli_stays_quiet_about_read_only_runs(file_db, monkeypatch):
+    """A line on every run would train the operator to skip the ones that matter."""
+    from typer.testing import CliRunner
+
+    from atlas_runtime.cli.main import app
+
+    class _Idle(AgentRuntime):
+        name = "idle"
+
+        def execute(self, conn, lock, *, mission_id, run_id, prompt, cancel_token=None):  # type: ignore[override]
+            return RunOutcome(status="succeeded", summary="read some files")
+
+    conn, lock = file_db, threading.Lock()
+    mid = _mission(conn, lock)
+    monkeypatch.setattr("atlas_runtime.cli.main._get_connection", lambda: conn)
+    monkeypatch.setattr("atlas_runtime.cli.main._get_lock", lambda: lock)
+    monkeypatch.setattr(
+        "atlas_runtime.cli.main._execute_run_chain",
+        lambda conn_, lock_, **kw: run_executor.execute_run(
+            conn_, lock_, agent=_Idle(), mission_id=kw["mission_id"],
+            run_id=kw["run_id"], prompt="go",
+        ),
+    )
+
+    result = CliRunner().invoke(app, ["mission", "run", mid, "--execute"])
+    assert result.exit_code == 0, result.output
+    assert "verification:" not in result.output
+
+
 def test_gate_can_be_switched_off(file_db, monkeypatch):
     conn, lock = file_db, threading.Lock()
     monkeypatch.setenv("ATLAS_VERIFICATION_GATE", "0")
