@@ -229,25 +229,62 @@ def _skill_tree(tmp_path):
     return atlas, hermes
 
 
+def _packaged(hermes, name: str, description: str) -> None:
+    """A Hermes-shaped domain skill — the population lexical matching serves."""
+    (hermes / "category" / name).mkdir(parents=True, exist_ok=True)
+    (hermes / "category" / name / "SKILL.md").write_text(
+        f"---\nname: {name}\ndescription: {description}\n---\n\n# body\n", encoding="utf-8"
+    )
+
+
 def test_skill_retriever_matches_and_ranks(tmp_path):
+    """Lexical ranking, exercised on the domain catalogue it now governs.
+
+    ATLAS's own files are pinned rather than matched, so a ranking test has to
+    use Hermes-side skills to be testing anything.
+    """
     atlas, hermes = _skill_tree(tmp_path)
+    _packaged(hermes, "executor-loop", "Runs the executor subprocess loop.")
+    _packaged(hermes, "pizza-orderer", "Orders pizza for the team.")
     r = mr.SkillRetriever(path=atlas, hermes_dir=hermes)
     snippets = r.retrieve(None, mr.RouterQuery(terms=("executor", "loop"), has_focus=True))
-    assert [s.source for s in snippets] == ["skill:executor-runner"]
-    assert "executor-runner" in snippets[0].text
+    matched = [s for s in snippets if s.source == "skill:executor-loop"]
+    assert matched, [s.source for s in snippets]
     # The path is the actionable half: a name alone is not something to read.
-    assert "executor-runner.md" in snippets[0].text
-    assert "tacos" not in snippets[0].text
+    assert "SKILL.md" in matched[0].text
+    # An unrelated domain skill is not selected. (ATLAS doctrine is pinned and
+    # appears regardless — that is the point of pinning, not a ranking failure.)
+    assert "skill:pizza-orderer" not in [s.source for s in snippets]
 
 
 def test_skill_retriever_reads_packaged_frontmatter_and_prefers_atlas_doctrine(tmp_path):
     atlas, hermes = _skill_tree(tmp_path)
     r = mr.SkillRetriever(path=atlas, hermes_dir=hermes)
     packaged = r.retrieve(None, mr.RouterQuery(terms=("vendored", "helper"), has_focus=True))
-    assert [s.source for s in packaged] == ["skill:packaged-thing"]
-    # "executor" hits both; ATLAS's own doctrine outranks the vendored skill.
+    assert "skill:packaged-thing" in [s.source for s in packaged]
+    # ATLAS's own doctrine leads the section regardless of what matched.
     both = r.retrieve(None, mr.RouterQuery(terms=("executor",), has_focus=True))
     assert [s.source for s in both][0] == "skill:executor-runner"
+
+
+def test_atlas_doctrine_survives_a_focus_that_shares_no_vocabulary(tmp_path):
+    """The live-run regression.
+
+    A run asked to "check these JSON files for duplicate keys" was shown
+    huggingface-accelerate, openclaw-migration and darwinian-evolver — and never
+    `self-extension.md`, the file that answers what it was actually doing.
+    Situational doctrine cannot be reached by domain-lexical matching, so it is
+    pinned instead of ranked.
+    """
+    atlas, hermes = _skill_tree(tmp_path)
+    _packaged(hermes, "accelerate", "Distributed training for any PyTorch script.")
+    r = mr.SkillRetriever(path=atlas, hermes_dir=hermes)
+    snippets = r.retrieve(
+        None, mr.RouterQuery(terms=("json", "duplicate", "keys"), has_focus=True)
+    )
+    sources = [s.source for s in snippets]
+    assert "skill:executor-runner" in sources, sources
+    assert "skill:lunch-orderer" in sources  # every atlas doctrine file, not a subset
 
 
 def test_skill_retriever_excludes_the_readme_index(tmp_path):
@@ -259,16 +296,11 @@ def test_skill_retriever_excludes_the_readme_index(tmp_path):
 
 def test_skill_retriever_drops_stopword_coincidences(tmp_path):
     """A term shared by every skill is not a match worth a slot."""
-    atlas = tmp_path / "atlas"
-    atlas.mkdir()
+    hermes = tmp_path / "hermes"
     for name in ("alpha", "beta", "gamma", "delta"):
-        (atlas / f"{name}.md").write_text(
-            f"# Skill: {name}\n\n**Use when:** you need to build something.\n", encoding="utf-8"
-        )
-    (atlas / "sirocco.md").write_text(
-        "# Skill: sirocco\n\n**Use when:** you build a sirocco.\n", encoding="utf-8"
-    )
-    r = mr.SkillRetriever(path=atlas, hermes_dir=tmp_path / "absent")
+        _packaged(hermes, name, "You need to build something.")
+    _packaged(hermes, "sirocco", "You build a sirocco.")
+    r = mr.SkillRetriever(path=tmp_path / "absent-atlas", hermes_dir=hermes)
     snippets = r.retrieve(None, mr.RouterQuery(terms=("build", "sirocco"), has_focus=True))
     assert [s.source for s in snippets] == ["skill:sirocco"]
 

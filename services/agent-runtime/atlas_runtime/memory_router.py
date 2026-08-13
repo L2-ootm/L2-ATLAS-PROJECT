@@ -665,7 +665,13 @@ HERMES_SKILLS_DIR = (
     pathlib.Path(__file__).resolve().parents[3]
     / "foundation" / "atlas-hermes" / "optional-skills"
 )
-_SKILL_MAX = 4
+_SKILL_MAX = 8
+# ATLAS's own doctrine is pinned, not matched (see _doctrine_snippets). Kept
+# short — a name, a path and a clause saying when it applies — so always-on
+# costs a couple of hundred tokens rather than crowding the brief.
+_SKILL_DOCTRINE_MAX = 5
+_SKILL_DOCTRINE_DESC_CHARS = 110
+_SKILL_DOCTRINE_SCORE = 1000.0
 _SKILL_TOKEN = re.compile(r"[a-z0-9]+")
 _SKILL_USE_WHEN = re.compile(r"^\*\*Use when:\*\*\s*(.+)$", re.IGNORECASE)
 _SKILL_HEAD_BYTES = 2048
@@ -862,8 +868,8 @@ class SkillRetriever:
     def section_lines(self, query: RouterQuery) -> list[str]:
         return [
             "## Relevant Skills",
-            "_Installed skills matched to the current Focus. Read the file "
-            "before following one._",
+            "_ATLAS's own operating doctrine, then installed skills matched to "
+            "the current Focus. Read the file before following one._",
         ]
 
     def retrieve(self, conn: sqlite3.Connection, query: RouterQuery) -> list[MemorySnippet]:
@@ -871,6 +877,7 @@ class SkillRetriever:
         if not terms or not query.has_focus:
             return []
         entries = _scan_skills(self._atlas_dir, self._hermes_dir)
+        doctrine = self._doctrine_snippets(entries)
         weights = _skill_term_weights(entries)
         scored: list[tuple[float, int, str, str, str]] = []
         for name, desc, origin, path, tokens in entries:
@@ -888,8 +895,11 @@ class SkillRetriever:
         # section is not the goal; being right about it is.
         floor = scored[0][0] * _SKILL_RELATIVE_FLOOR if scored else 0.0
         scored = [entry for entry in scored if entry[0] >= floor]
-        out: list[MemorySnippet] = []
-        for overlap, _rank, name, desc, path in scored[:_SKILL_MAX]:
+        pinned = {snippet.source for snippet in doctrine}
+        out: list[MemorySnippet] = list(doctrine)
+        for overlap, _rank, name, desc, path in scored[: _SKILL_MAX - len(doctrine)]:
+            if f"skill:{name}" in pinned:
+                continue
             text = f"- **{name}** (`{path}`)" + (f" — {desc}" if desc else "")
             out.append(
                 MemorySnippet(
@@ -900,6 +910,41 @@ class SkillRetriever:
                 )
             )
         return out
+
+    def _doctrine_snippets(
+        self, entries: list[tuple[str, str, str, str, frozenset[str]]]
+    ) -> list[MemorySnippet]:
+        """ATLAS's own doctrine, always present — never lexically matched.
+
+        Lexical retrieval cannot find situational doctrine. A skill description
+        names a *situation* ("you are about to write the same code a second
+        time"); a Focus names a *domain* ("check these JSON files for duplicate
+        keys"). The two share no vocabulary, so the file that answers the
+        situation scores zero while a distributed-training skill wins a slot on
+        the word "script". That is not a tuning problem — it is the wrong
+        matching model for this kind of content, and it is why a run asked to
+        set itself up for a repeated check was never shown `self-extension.md`.
+
+        These files are the operating standard rather than reference material,
+        and there are only a handful, so they are listed by name and path on
+        every brief. The lexical retriever keeps the remaining slots for the ~90
+        domain skills, where matching on vocabulary is exactly right.
+        """
+        snippets: list[MemorySnippet] = []
+        for name, desc, origin, path, _tokens in entries:
+            if origin != "atlas" or len(snippets) >= _SKILL_DOCTRINE_MAX:
+                continue
+            summary = desc[:_SKILL_DOCTRINE_DESC_CHARS].rstrip()
+            text = f"- **{name}** (`{path}`)" + (f" — {summary}" if summary else "")
+            snippets.append(
+                MemorySnippet(
+                    text=text,
+                    score=_SKILL_DOCTRINE_SCORE,
+                    source=f"skill:{name}",
+                    approx_tokens=estimate_tokens(text),
+                )
+            )
+        return snippets
 
 
 # ---------------------------------------------------------------------------
