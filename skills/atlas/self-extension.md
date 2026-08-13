@@ -1,10 +1,25 @@
 # Skill: self-extension
 
-**Use when:** a missing capability, tool, script, module or integration is what
-blocks the work, and you are deciding whether to build a disposable or stop.
+**Use when:** a capability, tool, script, module or integration you need is
+missing — or you are about to write the same throwaway code a second time and
+want it to survive the turn instead of being retyped and re-checked.
 
-Read this when a missing capability is what stops you from finishing the work.
 Roadmap and rationale: `docs/plans/2026-08-12-atlas-self-extension-roadmap.md`.
+
+## The trigger is reuse, not blockage
+
+This skill used to say "read this when a missing capability is what *stops* you".
+That trigger never fires. A live run on 2026-08-13 was asked to set itself up to
+check JSON files for duplicate keys on demand, and answered it with two
+`execute_code` calls and zero `atlas_*` calls — correctly, by the old rule,
+because nothing stopped it. With code execution in hand almost nothing does.
+
+So the moment to catch is not "I am blocked". It is **"I am about to write this
+again"**: the operator says they will ask repeatedly, or you are reaching for
+the same twenty lines you already wrote this session. Ad-hoc code is cheapest
+exactly once. The second time you pay to rewrite it, re-read it, and re-establish
+that it works — a disposable you can re-invoke has already paid for itself, and
+it leaves a record that a later run can find.
 
 ## Before building anything, answer these four
 
@@ -19,8 +34,10 @@ Roadmap and rationale: `docs/plans/2026-08-12-atlas-self-extension-roadmap.md`.
 3. **Is it bounded?** If it needs new credentials, network write access, or
    more than a couple hundred lines, it is a feature request, not a
    self-extension. Say so, record it, and continue with what you have.
-4. **What is the cheapest thing that unblocks you?** Usually a shell command, a
-   query, or a workflow entry — not a new tool.
+4. **What is the cheapest thing over the whole session?** For a genuine one-off,
+   a shell command or a query — not a new tool. But count the reruns: ad-hoc
+   code is cheapest only the first time, and from the second it costs a rewrite
+   and a fresh check every turn.
 
 **The default answer is disposable.** Durability is a promotion that has to be
 argued for, never a starting state.

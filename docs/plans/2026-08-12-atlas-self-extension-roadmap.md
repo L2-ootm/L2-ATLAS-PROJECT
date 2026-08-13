@@ -457,6 +457,46 @@ the work. And the whole sequence remains **unexercised**: no run has needed a
 capability it did not have and built its way through. That sentence has now
 survived two sessions, which is itself the finding.
 
+**The L2 sequence was finally run in anger (2026-08-13), and it did not fire.**
+The mission: "throughout this session I will keep asking you to check JSON files
+for duplicate keys; set yourself up so you can run that check on demand, then
+use it on these two files." A textbook fit for a disposable — bounded, stated as
+recurring, no credentials.
+
+ATLAS answered it with two `execute_code` calls and **zero `atlas_*` calls**. It
+never considered `op=materialize`, and by the doctrine as written it was right
+not to: the trigger was "when a missing capability is what *stops* you", and
+nothing stopped it. **An agent holding code execution is essentially never
+blocked, so the trigger could never fire.** The mechanism was unreachable by
+construction — not undiscovered, not badly explained. Mis-triggered.
+
+Fixed by changing the trigger from blockage to reuse, in both delivery channels:
+the moment worth catching is "I am about to write this again", not "I cannot
+proceed". Ad-hoc code is cheapest exactly once; from the second use it costs a
+rewrite and a fresh check every turn, while a disposable can be re-invoked and
+leaves a record a later run can find. The L1 line now says so explicitly
+("Nothing has to block you first"), under a delivery test.
+
+**Two more findings from the same run, both about the limits of what we built.**
+
+*The gate's blind spot, stated plainly.* That run's verdict was `no_mutations` —
+correct, it changed nothing — and its answer was **wrong**: it reported that a
+duplicate key "makes the JSON invalid; `json.load` raises Extra data". It does
+not; `json.loads` accepts duplicates silently, last key wins, which is what the
+mission premise said. The agent printed that under a heading reading "**Verified
+findings**". So: the gate judges whether *state changes* were checked. A
+read-only run that asserts something false is `no_mutations` by design and the
+gate has nothing to say about it. Earlier text here said the gate lets ATLAS
+"tell a working run from a run that says it worked" — that is true only for
+state-changing runs, and the sentence overclaimed. Read-only correctness is the
+hard, unsolved half; nothing in this program addresses it yet, and pretending
+otherwise would be the exact failure the gate exists to catch.
+
+*"Verified" is still free in prose.* The L1 prompt already says to use the word
+only for a fact supported by current tool output. This run used it as a heading
+decoration over an unchecked claim. Prompt rules do not bind; that is the whole
+argument for mechanisms, and it is unfinished business.
+
 **Where that stands after WP-E-1 (2026-08-13):** the honest number moves from
 ~20% to ~25%, and the movement is not in code generation. What changed is that
 ATLAS can now tell a working run from a run that says it worked — including its

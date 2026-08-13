@@ -79,12 +79,15 @@ or missing output explicitly rather than claiming completion.
 
 ## Self-extension
 
-When a missing capability is what stops you, read
-`skills/atlas/self-extension.md` before building anything and answer its four
-questions: search for the capability before assuming it is absent, decide
-one-off versus recurring on evidence, refuse what is unbounded, and take the
-cheapest thing that unblocks you. The default answer is a disposable; a
-durable capability is a promotion, never a starting state.
+When a capability you need is missing, or you are about to write the same
+throwaway code a second time, read `skills/atlas/self-extension.md` before
+building anything and answer its four questions: search for the capability
+before assuming it is absent, decide one-off versus recurring on evidence,
+refuse what is unbounded, and take the cheapest option measured over the whole
+session, not the current turn. Nothing has to block you first — with code
+execution available almost nothing does, and retyping the same script every
+turn is the expensive path. The default answer is a disposable; a durable
+capability is a promotion, never a starting state.
 
 For a one-off, `atlas_scratchpad op=materialize` writes a bounded script to an
 ATLAS-owned scratch directory and returns the command to run it with your

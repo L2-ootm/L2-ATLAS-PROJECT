@@ -165,6 +165,22 @@ def test_l1_tells_the_run_that_verification_is_measured():
     assert "tool trail" in text
 
 
+def test_l1_triggers_self_extension_on_reuse_not_only_on_being_blocked():
+    """A live run showed the old trigger could never fire.
+
+    "When a missing capability is what stops you" is a condition an agent
+    holding code execution never meets — asked to set itself up for a repeated
+    check, it answered with two `execute_code` calls and zero `atlas_*` calls,
+    correctly by that rule. The reachable trigger is the second write, not the
+    block.
+    """
+    text = compile_prompt(bootstrap=_bootstrap(), context=_context()).stable_prompt.decode(
+        "utf-8"
+    )
+    assert "second time" in text
+    assert "Nothing has to block you first" in text
+
+
 def test_surface_only_changes_bootstrap_not_stable_prompt():
     tui = compile_prompt(bootstrap=_bootstrap(surface="tui"), context=_context())
     webui = compile_prompt(bootstrap=_bootstrap(surface="webui"), context=_context())

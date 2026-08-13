@@ -11,8 +11,8 @@
     "poisoned_source_resistance": 1.0
   },
   "prompt_cache_prefix_hashes": {
-    "generic": "4df23730e06f9ad03d9033c2ffeac9d456bcd564e17d0c3717fd50b61c6b15af",
-    "openai-compatible": "107700f35716f707d7471a068d7eaf932def43046ab170520fbb1c7c3fca0b04",
-    "anthropic-compatible": "d98b20049217bd6ac9f26fe3aff81116ae0ba4e2f2e52bb16146ed071c9646b1"
+    "generic": "ec859ac19599b6d363b13cb29e5938ab0504e171bd37a1c12dfebd1f57604f93",
+    "openai-compatible": "44570cbd62f4891715507977db203b777383a4263ca18846d64bfd99ea78a414",
+    "anthropic-compatible": "2bc8a1734742be2b11f662e0efa2073700e14c497547a85e45be601c4eee03d6"
   }
 }
