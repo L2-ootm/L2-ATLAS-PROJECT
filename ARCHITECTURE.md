@@ -80,7 +80,12 @@ generated one-off tools, each with a TTL and a sweep. A run resuming a session
 gets its open entries back in the brief (`ScratchpadRetriever`); a generated
 script is written under `<ATLAS home>/scratch/tools`, run out of process through
 the existing terminal tool and permission broker, and deleted with its row
-unless pinned. Nothing generated is imported into the runtime. Contract:
+unless pinned. Nothing generated is imported into the runtime.
+
+Materializing a tool requires a `rationale` — what was searched, and why this is
+disposable rather than durable. It is stored on the entry, shown in the cockpit,
+and emitted as a permanent `self_extension` audit event, so the reasoning
+outlives the disposable it justified. Contract:
 `docs/plans/2026-08-12-atlas-self-extension-roadmap.md`.
 
 ## Data Flow

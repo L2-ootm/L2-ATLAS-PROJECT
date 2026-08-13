@@ -25,6 +25,34 @@ what the levels between here and there are, and what each one costs.
 > mechanically enforces the build/dispose judgment (WP-A is still doctrine), and
 > there is no promotion pipeline (WP-C). See the per-row states below.
 
+> **Update 2026-08-13 — the doctrine was not reaching a run.** Before writing
+> more machinery, this session went looking for what "use it in anger" would
+> break against. It found the answer upstream of the mechanism: the L2 doctrine
+> was unreachable.
+>
+> 1. **The L1 core prompt was stale.** Its `## Self-extension` section named
+>    three skills and not `self-extension.md`, and told the model that module
+>    capabilities were "limited to slash commands and schema-driven pages" —
+>    capability *v1* language, false since v2. A run was actively instructed
+>    that it could not do things it can, and never told that the disposable path
+>    exists at all.
+> 2. **The brief's "Relevant Skills" section advertised skills that are not
+>    installed.** `SkillRetriever` parsed `docs/imports/SKILL_INVENTORY.md`, an
+>    imported *planning* document. Of its 74 parsed rows, several are proposed
+>    packs ("Analyst Pack (proposed, post-v1.0)") and taxonomy headings, none is
+>    an ATLAS skill, and none is invocable by the ATLAS agent. Meanwhile the 90
+>    real skills on disk — including all four `skills/atlas/` doctrine files —
+>    reached no run at all. That is precisely what `atlas_core.md` forbids:
+>    asserting a capability without confirming it exists here.
+>
+> Both are closed, and WP-A is no longer doctrine-only: `op=materialize`
+> requires a `rationale`, stores it on the entry (migration 0035), emits a
+> durable `self_extension` audit event, and shows it in the Disposables panel.
+> The judgment is still the model's; the *record* of it is now the product's.
+> Honest number: ~35%. The measurement did not move much, because delivering
+> doctrine correctly is a precondition for L2 rather than a level beyond it —
+> what changed is that the ~30% claimed on 2026-08-12 was partly untrue.
+
 ## Honest measurement: roughly 20% of the target
 
 What exists today (verified, in this repo):
@@ -37,7 +65,8 @@ What exists today (verified, in this repo):
 | Durable working memory across compaction | **Works** — `atlas_scratchpad` with TTL policies and a sweep. |
 | Wire an external integration | **Partial** — `mcp_service` registers and projects servers; the agent cannot yet enable one itself (operator-gated on purpose). |
 | Write actual executable code for itself | **Partial (2026-08-12)** — `atlas_scratchpad op=materialize` writes a bounded script to `<ATLAS home>/scratch/tools` and returns its invocation; it runs out of process through the existing terminal tool. Nothing registers it as a first-class ATLAS tool — that is L3. |
-| Judge durable vs disposable | **Doctrine only** — the four questions live in `skills/atlas/self-extension.md` and in the `atlas_scratchpad` description; nothing mechanically enforces them. |
+| Judge durable vs disposable | **Doctrine, now recorded (2026-08-13)** — the four questions live in `skills/atlas/self-extension.md`, in the `atlas_scratchpad` description, and in the L1 core prompt, and all three are now reachable by a run. `op=materialize` refuses without a `rationale`, which is stored on the entry, emitted as a `self_extension` audit event, and shown in the cockpit. Nothing grades the answer — that is not enforceable — but an unexplained disposable can no longer be minted. |
+| Find the doctrine that applies to the work | **Works (2026-08-13)** — the brief's "Relevant Skills" section is sourced from the 90 skills actually on disk (`skills/atlas/` doctrine + packaged `SKILL.md` skills), IDF-weighted so a stopword match cannot outrank a real one, and each entry carries its path. It previously listed proposed packs from an imported planning document. |
 | Disposable artifacts with managed lifetime | **Works (2026-08-12)** — materialize + TTL + sweep deletes row *and* file, 5 tools per run, writes confined to the scratch root, operator-visible in the cockpit Disposables panel. |
 | Recover its own working memory after a reset | **Works (2026-08-12)** — `ScratchpadRetriever` hands a resuming run its open plans/findings/tools, session-keyed, self-budgeted, redacted. |
 | Verify its own extension before adopting it | **Does not exist** — no generated-capability test gate. |
@@ -100,7 +129,7 @@ Everything below is the work between L1 and L3, in dependency order.
 
 ---
 
-## WP-A — The build/dispose decision (the judgment layer)
+## WP-A — The build/dispose decision (the judgment layer) — RECORDED 2026-08-13
 
 Before anything is generated, ATLAS must answer, in the run transcript:
 
@@ -118,10 +147,29 @@ Before anything is generated, ATLAS must answer, in the run transcript:
    one-liner, a query, or a workflow entry — not a tool.
 
 The default answer is **disposable**. Durability is a promotion, never a
-starting state. This decision gets recorded as a scratchpad entry
-(`kind='finding'`) so the next run can see the reasoning instead of re-deriving
-it — and so a pattern of the same disposable being rebuilt becomes visible
-evidence for promotion.
+starting state.
+
+**What ships (2026-08-13).** The decision is a required field, not a hoped-for
+habit. `op=materialize` (and `atlas scratch materialize --why`) refuses a tool
+whose reasoning was not stated, and the reasoning lands in three places with
+three different lifetimes:
+
+| Where | Lifetime | Who reads it |
+|---|---|---|
+| `scratchpad_entries.rationale` (0035) | dies with the disposable's TTL | the run, on read-back |
+| `self_extension` audit event | permanent | a later run, and WP-C's promotion evidence |
+| Disposables panel, under the title | live | the operator deciding pin-or-expire |
+
+The audit event is the load-bearing one. A scratchpad row is *supposed* to
+disappear; without a record that outlives it, "this same disposable has been
+rebuilt three times" is unknowable, and the promotion criterion in WP-C has no
+evidence to read.
+
+What this does **not** do: judge the answer. A 40-character floor stops an empty
+gesture and nothing more. A model that writes a plausible sentence and skips the
+search still gets its tool. Mechanising the *quality* of the judgment would mean
+verifying a negative ("nothing existing covers this"), which is the search
+problem again — see WP-C, where a test gate does the verifying instead.
 
 ## WP-B — Disposable tools (L2) — SHIPPED 2026-08-12
 
@@ -243,24 +291,32 @@ invokes them at the right moments without being asked.
 ## Sequencing
 
 1. ~~**WP-D-1 (scratchpad read-back)**~~ — done 2026-08-12.
-2. ~~**WP-B (disposables)**~~ — done 2026-08-12. **WP-A shipped as doctrine
-   only** (the four questions in `skills/atlas/self-extension.md` and in the
-   tool description). That is the honest state: the judgment is instructed, not
-   enforced. The per-run cap is the only mechanical bound on the landfill
-   failure mode.
-3. **Use it in anger.** Before building more machinery: let a real run hit a
-   real missing capability. The next work package should come from what breaks,
-   not from this list.
-4. **WP-E (loop discipline)** — plan artifact, re-plan checkpoint, enforced
+2. ~~**WP-B (disposables)**~~ — done 2026-08-12. ~~**WP-A doctrine only**~~ —
+   the decision is now required and recorded (2026-08-13); see WP-A above.
+3. ~~**WP-G (doctrine delivery)**~~ — done 2026-08-13, and it was not on this
+   list. Looking for what "in anger" would break against turned up something
+   upstream of the run: the L1 prompt described capability v1 and never named
+   `self-extension.md`, and the brief's skills section came from an imported
+   planning document rather than the skills on disk. **The lesson worth keeping:
+   a doctrine layer needs a delivery test, not just a file.** Two now exist —
+   `test_skill_retriever_sees_the_real_atlas_doctrine` asserts the real
+   `skills/atlas/self-extension.md` is reachable through the real retriever, and
+   the prompt goldens pin the L1 text.
+4. **Use it in anger.** Still owed, and now worth more: a run that hits a real
+   missing capability will be told the truth about what it can do, will find the
+   doctrine that applies, and cannot mint a disposable without saying why. The
+   next work package should come from what breaks, not from this list.
+5. **WP-E (loop discipline)** — plan artifact, re-plan checkpoint, enforced
    verification step. `kind='plan'` read-back is the substrate; what is missing
    is the loop invoking it without being asked.
-5. **WP-C (promotion pipeline)** — only after there are disposables worth
+6. **WP-C (promotion pipeline)** — only after there are disposables worth
    promoting and a test gate to promote them through. The evidence for
-   promotion is now collectable: a disposable rebuilt three times leaves three
-   findings behind.
-6. **L4/L5** — not before the above have run in anger for a while. A system that
+   promotion is now collectable and durable: a disposable rebuilt three times
+   leaves three `self_extension` audit events behind, each with the reasoning
+   that justified it, and they survive the sweep that removes the tools.
+7. **L4/L5** — not before the above have run in anger for a while. A system that
    proposes changes to itself is only as good as its verification, and the
-   verification is what we are building in 3–5.
+   verification is what we are building in 4–6.
 
 ## What "done" looks like for the next slice
 
@@ -283,3 +339,14 @@ product now has; steps 2 and 4 are instructions the model is asked to follow.
 Nothing verifies that it did. Calling this "L2 complete" would be the exact
 overclaim the roadmap exists to prevent — the machinery is in place and it has
 never been exercised by a run that actually needed it.
+
+**Where that stands after 2026-08-13:** step 4 moved from instruction to
+mechanism — a disposable cannot exist without a recorded reason, and the record
+outlives the disposable. Step 1's *first half* also moved: the run is now told
+what it can actually do (capability v2, not v1) and is handed the doctrine file
+that governs the decision, which it previously had no way to find. Step 2 is
+still an instruction, and the search in step 1 is still unverified — a run that
+skips it and writes a fluent rationale is indistinguishable from one that did
+the work. And the whole sequence remains **unexercised**: no run has needed a
+capability it did not have and built its way through. That sentence has now
+survived two sessions, which is itself the finding.

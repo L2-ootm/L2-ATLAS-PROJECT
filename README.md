@@ -175,10 +175,12 @@ by hand.
 - **Working memory that survives a reset** — the agent keeps plans, findings and
   drafts in a scratchpad with an expiry, and a run resuming the same session is handed
   them back automatically instead of re-deriving them.
-- **Disposable tools** — when a missing capability blocks it, the agent can write a
-  bounded one-off script to an ATLAS-owned scratch directory and run it out of process
-  under the normal permission rules. It expires on the next restart unless you keep it;
-  Control → Tools shows everything it is holding.
+- **Disposable tools, with the reason attached** — when a missing capability blocks it,
+  the agent can write a bounded one-off script to an ATLAS-owned scratch directory and
+  run it out of process under the normal permission rules. It cannot do so silently: it
+  must state what it searched and why this is disposable, and that reasoning is recorded
+  permanently even after the tool expires. It expires on the next restart unless you keep
+  it; Control → Tools shows everything it is holding and why.
 - **Native direction** — the gateway and new infrastructure are Rust-first; the Hermes
   plugin surface and LLM adapters remain Python where that boundary is useful.
 
