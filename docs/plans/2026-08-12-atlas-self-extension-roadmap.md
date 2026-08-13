@@ -477,6 +477,29 @@ rewrite and a fresh check every turn, while a disposable can be re-invoked and
 leaves a record a later run can find. The L1 line now says so explicitly
 ("Nothing has to block you first"), under a delivery test.
 
+**Three live runs, two fixes, and the behaviour did not change.** After fixing
+the trigger, the same mission was run again: still zero `atlas_*` calls. Cause
+two, found in the persisted contract: the brief's Relevant Skills section had
+offered `huggingface-accelerate`, `openclaw-migration` and `darwinian-evolver`,
+and never `self-extension.md`. Situational doctrine cannot be reached by
+domain-lexical matching, so ATLAS's own doctrine is now pinned rather than
+ranked. Third run: `skill:self-extension` reaches the brief — **and there were
+still zero `atlas_*` calls.**
+
+What the third run did do is write a script with `write_file` and run it twice
+with `terminal`. That is the *reuse* behaviour the trigger fix was aiming at,
+reached without the mechanism. Which is the finding worth keeping:
+
+> `op=materialize` competes with `write_file` and loses, because `write_file`
+> already persists and the agent already knows it.
+
+Everything `materialize` adds — a TTL, the sweep, a recorded rationale, a
+`self_extension` event, promotion evidence — is value to the *operator and the
+system*, not to the agent in the moment it is choosing a tool. Doctrine cannot
+win that trade by asserting itself harder; three runs across two fixes are the
+evidence. Either the managed path becomes the path of least resistance, or the
+mechanism stays unused. **That, not more prose, is what WP-B needs next.**
+
 **Two more findings from the same run, both about the limits of what we built.**
 
 *The gate's blind spot, stated plainly.* That run's verdict was `no_mutations` —
