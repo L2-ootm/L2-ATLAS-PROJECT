@@ -324,6 +324,26 @@ _ARG_EVENTS = ("tool_requested", "tool_call")
 _OUTCOME_EVENTS = ("tool_completed", "tool_failed")
 
 
+def _as_args(raw: Any) -> dict[str, Any]:
+    """Tool arguments as a dict, however the trail happens to hold them.
+
+    Runtimes differ (`arguments` vs `input`, dict vs pre-serialized string), and
+    an over-cap audit preview can arrive as encoded JSON rather than a mapping.
+    Treating any non-dict as "no arguments" loses the path or command, which is
+    the only part the classifier needs.
+    """
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str) and raw.lstrip().startswith("{"):
+        try:
+            parsed = json.loads(raw)
+        except (TypeError, ValueError):
+            return {}
+        if isinstance(parsed, dict):
+            return parsed
+    return {}
+
+
 def observed_calls(conn: sqlite3.Connection, run_id: str) -> tuple[ObservedCall, ...]:
     """Rebuild a run's tool calls from its audit events, in execution order.
 
@@ -367,7 +387,7 @@ def observed_calls(conn: sqlite3.Connection, run_id: str) -> tuple[ObservedCall,
             raw_args = payload.get("arguments")
             if raw_args is None:
                 raw_args = payload.get("input")
-            args[call_id] = raw_args if isinstance(raw_args, dict) else {}
+            args[call_id] = _as_args(raw_args)
         elif payload.get("is_error") or event_type == "tool_failed":
             failed[call_id] = True
 

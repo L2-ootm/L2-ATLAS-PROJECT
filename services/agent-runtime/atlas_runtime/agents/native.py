@@ -44,6 +44,10 @@ from atlas_runtime.memory_router import (
 logger = logging.getLogger(__name__)
 
 _SUMMARY_CAP = 2000
+# Floor for a single field in an over-cap preview: enough for a full path or a
+# short command, so the identifying argument survives however many fields the
+# cap has to be split across.
+_PREVIEW_MIN_FIELD = 120
 _DEFAULT_MAX_RUNTIME_S = 1800.0  # 30 min
 _DEFAULT_MAX_ITERATIONS = 40
 # Delta coalescing: the gateway relays audit rows on a ~200ms poll, so
@@ -203,6 +207,14 @@ def _json_safe_preview(value: Any, cap: int) -> Any:
     arbitrary objects. Strings pass through capped; everything else is
     serialized with `default=str` and, when small enough, decoded back so the
     payload keeps its structure for the surface renderers (ToolCallCard).
+
+    Over the cap, the shape is preserved and the *fields* are shrunk instead.
+    Truncating the encoded JSON used to throw away the only part worth keeping:
+    a tool call's identifying arguments are short and come first (`path`,
+    `command`), while the bulk is the payload behind them (file content). In the
+    live history that cost every large `write_file` its path and every long
+    `terminal` call its command — unreadable to the surface renderers and to
+    anything reasoning over what a run actually did.
     """
     if isinstance(value, str):
         return value[:cap]
@@ -215,6 +227,25 @@ def _json_safe_preview(value: Any, cap: int) -> Any:
             return json.loads(encoded)
         except Exception:  # noqa: BLE001
             return encoded[:cap]
+    if isinstance(value, dict) and value:
+        budget = max(_PREVIEW_MIN_FIELD, cap // len(value))
+        shrunk: dict[Any, Any] = {}
+        for key, item in value.items():
+            text = item if isinstance(item, str) else None
+            if text is None:
+                try:
+                    text = json.dumps(item, ensure_ascii=False, default=str)
+                except Exception:  # noqa: BLE001
+                    text = str(item)
+                if len(text) <= budget:
+                    shrunk[key] = item
+                    continue
+            shrunk[key] = text[:budget] + "…" if len(text) > budget else text
+        try:
+            if len(json.dumps(shrunk, ensure_ascii=False, default=str)) <= cap:
+                return shrunk
+        except Exception:  # noqa: BLE001
+            pass
     return encoded[:cap]
 
 

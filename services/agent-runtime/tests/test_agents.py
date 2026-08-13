@@ -887,9 +887,33 @@ def test_json_safe_preview_caps_and_roundtrips() -> None:
         def __str__(self) -> str:
             return "weird"
     assert "weird" in json.dumps(_json_safe_preview({"o": Weird()}, 2000))
-    # Oversized structures degrade to a capped JSON string.
+    # A structure that cannot fit even with every field at the floor still
+    # degrades to a capped JSON string.
     big = _json_safe_preview({"k": "y" * 5000}, 100)
     assert isinstance(big, str) and len(big) == 100
+
+
+def test_oversized_tool_args_keep_their_identifying_fields() -> None:
+    """The audit trail's whole point is saying what a run did.
+
+    Truncating the encoded JSON kept the first 2 KB of a file's *content* and
+    threw away the `path` in front of it, so every large write in the live
+    history is recorded without naming the file it wrote.
+    """
+    from atlas_runtime.agents.native import _json_safe_preview
+
+    preview = _json_safe_preview(
+        {"path": "C:/Users/Davi/notes.md", "content": "z" * 40_000}, 2000
+    )
+    assert isinstance(preview, dict), "structure must survive the cap"
+    assert preview["path"] == "C:/Users/Davi/notes.md"
+    assert len(json.dumps(preview)) <= 2000
+
+    command = "echo hello && " + "ls dir; " * 4000
+    shell = _json_safe_preview({"command": command, "timeout": 15}, 2000)
+    assert isinstance(shell, dict)
+    assert shell["command"].startswith("echo hello && ls dir;")
+    assert shell["timeout"] == 15  # small values are not stringified
 
 
 # --- compaction hardening (silent middle-turn deletion) --------------------

@@ -253,6 +253,46 @@ def test_reader_rebuilds_claude_code_and_codex_shape(file_db):
     assert verification_gate.classify_run(conn, run.id).state == "verified"
 
 
+def test_a_large_write_still_names_the_file_it_wrote(file_db):
+    """End to end over the exact case the live history got wrong.
+
+    A 40 KB write goes through the real audit preview, into a real audit event,
+    and back out through the reader. Before the preview kept its shape over the
+    cap, the path was lost here and every large write was an anonymous mutation
+    that could not be matched against a later read-back.
+    """
+    from atlas_runtime.agents.native import _json_safe_preview
+
+    conn, lock = file_db, threading.Lock()
+    mid = _mission(conn, lock)
+    run = start_run(conn, lock, mission_id=mid)
+    target = "C:/Users/Davi/Desktop/notes.md"
+
+    audit_service.emit(
+        conn, lock, run_id=run.id, event_type="tool_requested", tool_name="write_file",
+        data={
+            "tool": "write_file", "call_id": "w1",
+            "arguments": _json_safe_preview({"path": target, "content": "z" * 40_000}, 2000),
+        },
+    )
+    audit_service.emit(
+        conn, lock, run_id=run.id, event_type="tool_requested", tool_name="read_file",
+        data={"tool": "read_file", "call_id": "r1", "arguments": {"path": target}},
+    )
+
+    verdict = verification_gate.classify_run(conn, run.id)
+    assert verdict.mutations == (f"write_file: {target}",)
+    assert verdict.weak_signals == ("read_back",)
+
+
+def test_arguments_recorded_as_a_json_string_are_still_read():
+    """Runtimes disagree on whether args arrive as a mapping or as JSON text."""
+    call = verification_gate.ObservedCall(
+        tool="terminal", args=verification_gate._as_args('{"command": "pytest -q"}')
+    )
+    assert classify([_write("a.py"), call]).state == "verified"
+
+
 # -- integration through the executor ---------------------------------------
 
 
