@@ -307,3 +307,22 @@ written down once — an L2 doctrine file — rather than rediscovered a fourth 
    ledger, surface-aware exemptions. Do not re-vendor 12,412 commits to get them.
 5. **Write the idempotency doctrine once**, as an L2 file, now that three projects have converged
    on it independently.
+
+## 6. What was acted on — 2026-08-13
+
+Same day, in this repo. Items 1, 4 and 5 are closed; 2 and 3 are not, for stated reasons.
+
+| # | Item | Outcome |
+|---|---|---|
+| 1 | deepseek-harness | **Nothing built**, as recommended. The watch condition (`has_issues` true, `/pulls` returning 200) is unchanged; nothing to re-check until it flips. |
+| 2 | Ship a hermes-agent plugin | **Not done.** Publishing a package under ATLAS's name to an external index is an outward-facing release, not a code change — it needs an operator decision on naming, ownership and where it is hosted before a line is written. |
+| 3 | Open a `fix(scope):` PR | **Not done**, and correctly skipped: §2.1 puts the outside long tail at ~11% and the queue at 21,127 open. Item 2 is the higher-EV channel and it is blocked on the same decision. |
+| 4 | Port the three verification shapes | **Shipped.** See `docs/decisions/D-024-verification-contract-and-check-ledger.md`. Declared contract (`.atlas/verification.json`) + durable check ledger (`verification_checks`, migration 0036) + a documentation-only `exempt` verdict. Two of the three shapes landed as specified; the third was narrowed — see below. |
+| 5 | Write the idempotency doctrine once | **Shipped** as `skills/atlas/idempotency.md`, with a delivery test in `test_memory_router.py`, because a doctrine file no run can retrieve is a document rather than doctrine. |
+
+The narrowing on item 4: hermes's surface-aware exemption has two halves, and only one was
+portable. Doc-only edits are derivable from the audit trail the gate already reads, so that half
+shipped. Gating the enforced check turn off for **messaging** surfaces is not implementable here
+today — ATLAS's surface kinds are `cli|tui|webui|api|native|test` and the Discord sidecar creates
+no surface session, so the branch would never execute. Shipping a knob that nothing can trigger
+would have looked like three-for-three and been two-and-a-half.
