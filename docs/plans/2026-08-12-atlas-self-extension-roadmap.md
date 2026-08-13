@@ -500,6 +500,30 @@ win that trade by asserting itself harder; three runs across two fixes are the
 evidence. Either the managed path becomes the path of least resistance, or the
 mechanism stays unused. **That, not more prose, is what WP-B needs next.**
 
+### Adoption — and the L2 sequence finally completes (run 4)
+
+ATLAS stopped asking. The agent is told in the turn context that throwaway
+scripts belong in `scratch_root()`; it writes there with `write_file`, the tool
+it already reaches for; and at run end anything unmanaged in that directory
+becomes a disposable with a TTL, a sweep and a `self_extension` record. The
+natural act is now the managed act, at no cost to the agent. Adoption is
+confined to that one ATLAS-owned directory — the only place the sweep may
+delete from — is idempotent, and records honestly that no rationale was stated
+rather than inventing one.
+
+**Run 4, with this in place:** the agent wrote
+`~/.atlas/scratch/tools/duplicate_key_check.py`, ran it twice against the two
+fixtures, and ATLAS registered it (`kind=tool`, `ttl=next_startup`, one
+`self_extension` event). The gate said `verified — passed exercised`. That is
+steps 1–5 of "what done looks like" happening in one run, for the first time
+since the machinery shipped.
+
+The design lesson generalises beyond this feature: **when an agent consistently
+declines a mechanism, the mechanism is competing with something cheaper, and the
+fix is to move the bookkeeping rather than the burden.** Three of the four runs
+were spent learning that, and none of the three fixes before it changed
+behaviour at all.
+
 **Two more findings from the same run, both about the limits of what we built.**
 
 *The gate's blind spot, stated plainly.* That run's verdict was `no_mutations` —
