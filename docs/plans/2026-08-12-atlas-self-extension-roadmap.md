@@ -113,7 +113,9 @@ capability and built its way through it.
 **L3 — Verified durable tools.** A disposable that proved its worth is promoted:
 the agent writes a manifest + a test, ATLAS runs the test, the operator
 approves, and the tool becomes a registered ATLAS capability with provenance and
-a rollback handle.
+a rollback handle. Its precondition — ATLAS being able to tell a verified run
+from a run that claims to be one — shipped 2026-08-13 as the verification gate
+(WP-E-1); the promotion pipeline itself is still WP-C.
 
 **L4 — Feature-level self-extension.** The agent proposes a change to ATLAS
 itself (a service, a route, a page), implements it on a branch, runs the real
@@ -265,11 +267,69 @@ The practices worth importing, and what each requires here:
 | Compaction that preserves the plan | Claude Code | The scratchpad survives compaction by construction; needs the read-back from WP-D-1 |
 | Subagents for bounded fan-out | shipped | `atlas_actor` / teams — needs the disposable-scratchpad scoping from WP-D-3 |
 | Hooks at lifecycle points | Claude Code | ATLAS has audit events; a hook surface (pre-run, post-tool, pre-commit) would let the operator enforce policy without patching the runtime |
-| Self-verification before claiming done | GSD/L2 doctrine | A verification step the loop enforces, not one the model remembers — the evidence tiers already exist in the contract |
+| Self-verification before claiming done | GSD/L2 doctrine | ~~A verification step the loop enforces, not one the model remembers~~ — **shipped 2026-08-13**, see below |
 
 The theme: ATLAS already has most of the *mechanisms* (audit events, actors,
 steering, scratchpad, missions). What is missing is the **loop discipline** that
 invokes them at the right moments without being asked.
+
+### WP-E-1 — The verification gate (shipped 2026-08-13)
+
+The last line of this document said the remaining work was "judgment,
+verification and loop discipline, not code generation", and that steps 2 and 4
+were "instructions the model is asked to follow — nothing verifies that it did".
+The verification gate is the first of those to become mechanism, and it applies
+far beyond self-extension: it governs every run ATLAS executes.
+
+`verification_gate.py` reconstructs what a run did from its own audit trail —
+tool arguments from `tool_requested`/`tool_call`, outcomes from
+`tool_completed`/`tool_failed`, joined on call id — and reduces it to one
+verdict:
+
+| verdict | the trail showed |
+|---|---|
+| `no_mutations` | nothing observable changed; nothing required verification |
+| `verified` | state changed, then a test/build/lint/typecheck ran **after** it and passed |
+| `contradicted` | state changed, checks ran, and every one failed — a success claim here is false |
+| `unverified` | state changed and was never checked |
+
+Three design decisions carry the weight.
+
+**The trail, not the transcript.** The model cannot narrate its way to
+`verified`; the classifier never reads the final response. This is the first
+claim ATLAS makes about a run that does not originate with the agent.
+
+**Ordering is load-bearing.** A signal only counts when it follows a mutation. A
+suite run before the edit says nothing about the edit, and that distinction is
+tested rather than assumed.
+
+**Weak signals stay weak.** `git status` and re-reading a file you just wrote
+are recorded and reported, but never promote a run to `verified`. `git status`
+runs in a large share of sessions; if it counted, the gate would agree with
+every claim it was built to question.
+
+Placed in `run_executor.execute_run` — the chokepoint every runtime passes
+through — and applied before `complete_run`, so the verdict rides the paths that
+already exist: the run summary, the compounding-loop observation, and the brain
+graph. An unverified change is inherited by the next run rather than forgotten
+at the end of this one. Team and actor workers have their own execution paths
+and are not yet covered.
+
+**What it deliberately does not do:** change `RunOutcome.status`. A heuristic
+classifier on its first day must not be able to fail runs that worked — that is
+the same unverified self-modification the gate exists to catch. Promoting
+`contradicted` to a failed run is a later change, and the evidence for it will
+come from what this one observes. `ATLAS_VERIFICATION_GATE=0` disables it.
+
+**Delivery.** The L1 core prompt now names the rule in the gate's own
+vocabulary and `skills/atlas/loop-discipline.md` carries the detail, both under
+delivery tests — the discipline adopted after the previous doctrine layer
+reached no run at all. Writing those tests found that the retriever indexed only
+the *first line* of a `**Use when:**` block (all four ATLAS doctrine files wrap
+it, so `handoff.md` was searchable by everything except the word "handoff") and
+read `description: |` as the literal string `"|"` (the ultra pack was indexed
+under one meaningless token). Both fixed. The lesson repeats: the delivery test
+is worth more than the doctrine file.
 
 ## WP-F — Safety rails (non-negotiable, gates every level above L1)
 
@@ -306,9 +366,16 @@ invokes them at the right moments without being asked.
    missing capability will be told the truth about what it can do, will find the
    doctrine that applies, and cannot mint a disposable without saying why. The
    next work package should come from what breaks, not from this list.
-5. **WP-E (loop discipline)** — plan artifact, re-plan checkpoint, enforced
-   verification step. `kind='plan'` read-back is the substrate; what is missing
-   is the loop invoking it without being asked.
+5. **WP-E (loop discipline)** — ~~enforced verification step~~ done 2026-08-13
+   (WP-E-1 above): the loop now judges the claim without being asked. Still
+   open: the **plan artifact** (a run mode that produces a plan and stops for
+   approval) and the **re-plan checkpoint** (a budget trigger that forces a
+   re-think mid-run). `kind='plan'` read-back remains the substrate for both.
+   The obvious next increment on the gate itself is the enforced turn: when a
+   run ends `unverified`, spend one more turn demanding the check rather than
+   only recording its absence. That needs `native.execute`'s single opaque
+   `run_conversation` call refactored into a reusable `_run_turn`, which is also
+   what the re-plan checkpoint needs — one refactor, two features.
 6. **WP-C (promotion pipeline)** — only after there are disposables worth
    promoting and a test gate to promote them through. The evidence for
    promotion is now collectable and durable: a disposable rebuilt three times
@@ -350,3 +417,14 @@ skips it and writes a fluent rationale is indistinguishable from one that did
 the work. And the whole sequence remains **unexercised**: no run has needed a
 capability it did not have and built its way through. That sentence has now
 survived two sessions, which is itself the finding.
+
+**Where that stands after WP-E-1 (2026-08-13):** the honest number moves from
+~20% to ~25%, and the movement is not in code generation. What changed is that
+ATLAS can now tell a working run from a run that says it worked — including its
+own self-extension runs, which produce exactly the mutation-without-a-check
+signature the gate is built to catch (`materialize` writes an executable and is
+classified as a state change for this reason). Step 2 of the L2 sequence — "state
+whether this is one-off or recurring, with evidence" — is still an instruction.
+Step 1's search is still unverified. But the *outer* claim, "and completes the
+original task", is no longer taken on the model's word, and that was the claim
+everything else rested on.
