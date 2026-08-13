@@ -80,6 +80,49 @@ def test_tests_run_before_the_change_do_not_verify_it():
     assert verdict.signals == ()
 
 
+def test_running_the_file_you_just_wrote_is_verification():
+    """The exact false negative the first live run produced.
+
+    ATLAS wrote `adder.py` and checked it with
+    `python -c "from adder import add; ..."` — a real check, scored `unverified`
+    because it was not pytest. Matching on the stem is what makes it work: code
+    refers to a module by stem, not by path.
+    """
+    verdict = classify(
+        [
+            _write("/tmp/livegate/adder.py"),
+            _shell('cd "/tmp/livegate" && python -c "from adder import add; print(add(2,3))"'),
+        ]
+    )
+    assert verdict.state == "verified"
+    assert verdict.signals == ("exercised",)
+
+
+def test_an_exercise_that_fails_contradicts_the_claim():
+    verdict = classify(
+        [_write("/tmp/adder.py"), _shell("python /tmp/adder.py", failed=True)]
+    )
+    assert verdict.state == "contradicted"
+    assert verdict.failed_signals == ("exercised",)
+
+
+def test_running_something_unrelated_is_not_verification():
+    """Both halves are required: a runner *and* a reference to what was written."""
+    verdict = classify([_write("/tmp/adder.py"), _shell("python /tmp/unrelated.py")])
+    assert verdict.state == "unverified"
+
+
+def test_merely_naming_the_file_is_not_running_it():
+    verdict = classify([_write("/tmp/adder.py"), _shell("cat /tmp/adder.py")])
+    assert verdict.state == "unverified"
+
+
+def test_a_generic_stem_is_not_evidence_on_its_own():
+    """Two-letter stems match almost any command; they are not a signal."""
+    verdict = classify([_write("/tmp/io.py"), _shell("python manage.py migrate")])
+    assert verdict.state == "unverified"
+
+
 def test_git_status_alone_never_promotes_a_run_to_verified():
     verdict = classify([_write("src/a.py"), _shell("git status --short")])
     assert verdict.state == "unverified"
@@ -250,6 +293,43 @@ def test_reader_rebuilds_claude_code_and_codex_shape(file_db):
         data={"tool_call_id": "t2", "is_error": False},
     )
 
+    assert verification_gate.classify_run(conn, run.id).state == "verified"
+
+
+def test_a_second_argumentless_event_does_not_erase_the_command(file_db):
+    """The real native event sequence, taken from a live run.
+
+    A native run emits `tool_requested` carrying the arguments and then a bare
+    `tool_call` for the same call id from the tool layer. Letting the second
+    overwrite the first blanked the command on every terminal call — the gate
+    could not see the check the agent actually ran.
+    """
+    conn, lock = file_db, threading.Lock()
+    mid = _mission(conn, lock)
+    run = start_run(conn, lock, mission_id=mid)
+
+    audit_service.emit(
+        conn, lock, run_id=run.id, event_type="tool_requested", tool_name="write_file",
+        data={"tool": "write_file", "call_id": "c1", "arguments": {"path": "/tmp/adder.py"}},
+    )
+    audit_service.emit(
+        conn, lock, run_id=run.id, event_type="tool_requested", tool_name="terminal",
+        data={
+            "tool": "terminal", "call_id": "c2",
+            "arguments": {"command": 'python -c "from adder import add; print(add(2,3))"'},
+        },
+    )
+    audit_service.emit(  # the bare follow-up that used to clobber it
+        conn, lock, run_id=run.id, event_type="tool_call", tool_name="terminal",
+        data={"tool": "terminal", "call_id": "c2"},
+    )
+    audit_service.emit(
+        conn, lock, run_id=run.id, event_type="tool_completed", tool_name="terminal",
+        data={"tool": "terminal", "call_id": "c2", "is_error": False},
+    )
+
+    calls = {c.tool: c for c in verification_gate.observed_calls(conn, run.id)}
+    assert calls["terminal"].args.get("command"), "the command must survive the second event"
     assert verification_gate.classify_run(conn, run.id).state == "verified"
 
 

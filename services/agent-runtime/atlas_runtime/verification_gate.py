@@ -121,6 +121,29 @@ _WEAK_SIGNALS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("review", re.compile(r"\bgit\s+(?:diff|status|show)\b", re.IGNORECASE)),
 )
 
+# Running the thing you just wrote is verification — often the most direct kind
+# available, and for a script or a one-off there may be no suite to run at all.
+# The first live run of this gate wrote `adder.py` and checked it with
+# `python -c "from adder import add; ..."`; scoring that `unverified` would have
+# taught agents that a real check does not count and pushed them toward ceremony.
+#
+# Both halves are required: a code runner AND a reference to something this run
+# wrote. `python other.py` after writing `adder.py` proves nothing about it, and
+# `cat adder.py` is a read, not an exercise.
+_CODE_RUNNERS = (
+    re.compile(
+        _ANCHOR + r"(?:python[0-9.]*|py|node|deno|bun|ruby|perl|php|java|Rscript)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\b(?:go|cargo|dotnet)\s+run\b", re.IGNORECASE),
+    re.compile(_ANCHOR + r"(?:bash|sh|zsh|pwsh|powershell)\s+\S", re.IGNORECASE),
+    # Direct execution of a path: ./run.sh, .\build.ps1
+    re.compile(r"(?:^|[;&|]\s*)\.{1,2}[/\\]\S+"),
+)
+
+# Below this a stem is too generic to be evidence of anything ("a", "io").
+_MIN_STEM = 3
+
 _MUTATING_COMMANDS: tuple[re.Pattern[str], ...] = (
     re.compile(_ANCHOR + r"(?:rm|mv|cp|mkdir|touch|chmod|chown|ln)\b", re.IGNORECASE),
     re.compile(
@@ -231,6 +254,24 @@ def _atlas_mutation(call: ObservedCall) -> Optional[str]:
     return f"{call.tool}:{op}" if op in ops else None
 
 
+def _stem_of(path: str) -> str:
+    """The filename without directories or extension — how code refers to it.
+
+    A module is imported by stem (`from adder import add`), not by path, so the
+    stem is what a command exercising the file will actually contain.
+    """
+    tail = path.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+    return tail.rsplit(".", 1)[0].lower() if "." in tail else tail.lower()
+
+
+def _exercises_written(command: str, stems: set[str]) -> bool:
+    """Did this command run code that references something this run wrote?"""
+    if not stems or not any(runner.search(command) for runner in _CODE_RUNNERS):
+        return False
+    lowered = command.lower()
+    return any(len(stem) >= _MIN_STEM and stem in lowered for stem in stems)
+
+
 def _signal_kinds(
     command: str, table: Iterable[tuple[str, re.Pattern[str]]]
 ) -> tuple[str, ...]:
@@ -255,6 +296,7 @@ def classify(calls: Iterable[ObservedCall]) -> VerificationVerdict:
     failed_signals: list[str] = []
     weak: list[str] = []
     written: set[str] = set()
+    written_stems: set[str] = set()
 
     for call in calls:
         command = _command_of(call)
@@ -262,6 +304,8 @@ def classify(calls: Iterable[ObservedCall]) -> VerificationVerdict:
 
         if command:
             strong = _signal_kinds(command, _STRONG_SIGNALS)
+            if not strong and mutations and _exercises_written(command, written_stems):
+                strong = ("exercised",)
             if strong and mutations:
                 target = failed_signals if call.failed else signals
                 for kind in strong:
@@ -278,6 +322,7 @@ def classify(calls: Iterable[ObservedCall]) -> VerificationVerdict:
         if call.tool in _WRITE_TOOLS:
             for path in paths:
                 written.add(_normalise_path(path))
+                written_stems.add(_stem_of(path))
             mutations.append(
                 f"{call.tool}: {paths[0] if paths else '(unnamed target)'}"
             )
@@ -387,7 +432,14 @@ def observed_calls(conn: sqlite3.Connection, run_id: str) -> tuple[ObservedCall,
             raw_args = payload.get("arguments")
             if raw_args is None:
                 raw_args = payload.get("input")
-            args[call_id] = _as_args(raw_args)
+            parsed_args = _as_args(raw_args)
+            # Never let a later, argument-less event erase what an earlier one
+            # recorded. A native run emits `tool_requested` (with arguments) and
+            # then a bare `tool_call` for the same call id from the tool layer;
+            # overwriting blanked the command on every terminal call, so the
+            # first live run of this gate could not see the check it ran.
+            if parsed_args or call_id not in args:
+                args[call_id] = parsed_args
         elif payload.get("is_error") or event_type == "tool_failed":
             failed[call_id] = True
 
