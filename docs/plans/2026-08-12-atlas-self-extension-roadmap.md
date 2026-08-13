@@ -321,6 +321,24 @@ the same unverified self-modification the gate exists to catch. Promoting
 `contradicted` to a failed run is a later change, and the evidence for it will
 come from what this one observes. `ATLAS_VERIFICATION_GATE=0` disables it.
 
+**First use in anger (same day).** The gate was run over all 205 runs in the
+live history — the standing instruction in this document is that the next work
+package should come from what breaks, not from the list. It broke something
+upstream of itself. `_json_safe_preview` truncated the *encoded JSON* of tool
+arguments over 2 KB, and a tool call's identifying argument (`path`, `command`)
+is short and sits in front of the bulk that overflows. Every large write in the
+history is recorded without naming the file it wrote, and 176 of 229 `terminal`
+calls without their command. That is an audit-trail defect, not a gate defect:
+the surface renderers and any later reasoning about what a run did were reading
+the same broken rows. Fixed by shrinking fields instead of the envelope.
+
+The distribution is worth recording precisely because it is unflattering to the
+exercise: **200 of the 205 historical runs made no observable state change.**
+This machine's history is dominated by read-only chat and demo runs, so it
+validated the *reader* against real payload shapes and taught the classifier
+nothing about runs that do real work. That evidence still has to come from live
+runs, and the roadmap should not claim otherwise.
+
 **Delivery.** The L1 core prompt now names the rule in the gate's own
 vocabulary and `skills/atlas/loop-discipline.md` carries the detail, both under
 delivery tests — the discipline adopted after the previous doctrine layer
