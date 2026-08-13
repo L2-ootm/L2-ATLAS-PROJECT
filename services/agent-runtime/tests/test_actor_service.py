@@ -413,6 +413,65 @@ def test_run_actor_success_completes_actor_and_child_run(db, lock, run_id) -> No
     assert child[0] == "succeeded"
 
 
+class _UncheckedRuntime:
+    """A child that edits a file and never checks it — then claims success."""
+
+    def execute(self, conn, lock, *, mission_id, run_id, prompt, cancel_token=None):  # noqa: ANN001
+        from atlas_runtime import audit_service
+
+        audit_service.emit(
+            conn, lock, run_id=run_id, event_type="tool_requested", tool_name="write_file",
+            data={"tool": "write_file", "call_id": "w1", "arguments": {"path": "src/a.py"}},
+        )
+        audit_service.emit(
+            conn, lock, run_id=run_id, event_type="tool_completed", tool_name="write_file",
+            data={"tool": "write_file", "call_id": "w1", "is_error": False},
+        )
+        return RunOutcome(status="succeeded", summary="refactored it")
+
+
+def test_actor_runs_are_verified_like_any_other_run(db, lock, run_id) -> None:
+    """Actors bypass run_executor, so the gate has to be applied on their path.
+
+    This is where ATLAS is most autonomous and least watched — the child's own
+    account of its work is the claim most worth checking.
+    """
+    import json as _json
+
+    actor, _ = _spawn(db, lock, run_id, goal="refactor the module")
+    assert run_actor(db, lock, actor["id"], agent_factory=lambda _n: _UncheckedRuntime())
+
+    final = actor_service.get_actor(db, actor["id"])
+    row = db.execute(
+        "SELECT data FROM audit_events WHERE run_id=? AND event_type='verification_verdict'",
+        (final["child_run_id"],),
+    ).fetchone()
+    assert row is not None, "an actor's child run must get a verdict too"
+    assert _json.loads(row[0])["state"] == "unverified"
+
+
+def test_parent_sees_the_childs_verdict_not_only_its_summary(db, lock, run_id) -> None:
+    """`a child result is evidence, not automatic proof of completion` (L1 doctrine).
+
+    The parent was handed `result_preview` — the child's own words. The verdict
+    is the half of that judgement the parent could not make for itself.
+    """
+    from atlas_runtime import actor_bridge
+
+    actor, _ = _spawn(db, lock, run_id, goal="refactor the module")
+    run_actor(db, lock, actor["id"], agent_factory=lambda _n: _UncheckedRuntime())
+
+    view = actor_bridge._actor_view(actor_service.get_actor(db, actor["id"]), db)
+    assert view["result"] == "refactored it"
+    assert view["verification"].startswith("unverified — 1 change(s)")
+
+    # Without a connection the projection is unchanged — callers that cannot
+    # reach the DB must still get a valid view.
+    assert "verification" not in actor_bridge._actor_view(
+        actor_service.get_actor(db, actor["id"])
+    )
+
+
 def test_read_only_actor_mutation_records_incident_before_blocked_completion(
     db, lock, run_id, surface_session
 ) -> None:

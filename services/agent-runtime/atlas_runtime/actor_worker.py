@@ -26,6 +26,7 @@ from typing import Any, Callable, Optional
 
 from atlas_runtime import actor_service
 from atlas_runtime import db as atlas_db
+from atlas_runtime import verification_gate
 from atlas_runtime.mission_service import create_mission
 from atlas_runtime.run_service import complete_run, start_run
 
@@ -237,6 +238,7 @@ def _wake_parent(
         outcome = agent_factory("native").execute(
             conn, lock, mission_id=mission.id, run_id=run.id, prompt=prompt
         )
+        outcome = verification_gate.apply(conn, lock, run_id=run.id, outcome=outcome)
         complete_run(
             conn, lock,
             run_id=run.id, mission_id=mission.id,
@@ -328,6 +330,10 @@ def run_actor(
             run_id=run.id,
             prompt=actor["goal"],
         )
+        # An actor is where ATLAS is most autonomous and least watched, so the
+        # child's own account of its work is the claim most worth checking.
+        # This path never reaches run_executor, so the gate is applied here.
+        outcome = verification_gate.apply(conn, lock, run_id=run.id, outcome=outcome)
         if outcome.status == "succeeded":
             actor_service.complete_actor(
                 conn, lock, actor_id,

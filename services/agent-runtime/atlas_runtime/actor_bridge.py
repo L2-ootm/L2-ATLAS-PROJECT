@@ -21,11 +21,12 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sqlite3
 import threading
 import uuid
 from typing import Any, Optional
 
-from atlas_runtime import actor_service
+from atlas_runtime import actor_service, verification_gate
 
 logger = logging.getLogger(__name__)
 
@@ -172,8 +173,17 @@ def _tool_error(message: str) -> str:
     return json.dumps({"ok": False, "error": message})
 
 
-def _actor_view(actor: dict[str, Any]) -> dict[str, Any]:
-    """Bounded, model-facing projection of an actor row."""
+def _actor_view(
+    actor: dict[str, Any], conn: Optional[sqlite3.Connection] = None
+) -> dict[str, Any]:
+    """Bounded, model-facing projection of an actor row.
+
+    Carries the child run's verification verdict when there is one. ATLAS's own
+    doctrine tells the parent that "a child result is evidence, not automatic
+    proof of completion" — but the parent was handed only the child's summary,
+    which is the child's own account of its work. The verdict is the part of
+    that judgement the parent could not make for itself.
+    """
     view = {
         "actor_id": actor["id"],
         "status": actor["status"],
@@ -186,6 +196,11 @@ def _actor_view(actor: dict[str, Any]) -> dict[str, Any]:
     }
     if actor.get("result_preview"):
         view["result"] = actor["result_preview"]
+    child_run_id = actor.get("child_run_id")
+    if conn is not None and child_run_id:
+        payload = verification_gate.verdict_for(conn, str(child_run_id))
+        if payload is not None:
+            view["verification"] = verification_gate.summarize(payload)
     if actor.get("error"):
         view["error"] = actor["error"]
     if actor.get("delivery"):
@@ -314,7 +329,7 @@ def atlas_actor_tool(
                 pid = launch_actor_worker(conn, lock, actor["id"])
                 if pid is None:
                     refreshed = actor_service.get_actor(conn, actor["id"]) or actor
-                    return json.dumps({"ok": False, **_actor_view(refreshed)})
+                    return json.dumps({"ok": False, **_actor_view(refreshed, conn)})
             if op == "spawn":
                 refreshed = actor_service.get_actor(conn, actor["id"]) or actor
                 return json.dumps(
@@ -325,7 +340,7 @@ def atlas_actor_tool(
                             "delivered to you at a later turn, or join it with "
                             "op=wait"
                         ),
-                        **_actor_view(refreshed),
+                        **_actor_view(refreshed, conn),
                     }
                 )
             joined = actor_service.wait_for_actor(
@@ -344,7 +359,7 @@ def atlas_actor_tool(
                         ),
                     }
                 )
-            return json.dumps({"ok": True, **_actor_view(joined)})
+            return json.dumps({"ok": True, **_actor_view(joined, conn)})
 
         if op == "status":
             if not actor_id:
@@ -352,7 +367,7 @@ def atlas_actor_tool(
             actor = actor_service.get_actor(conn, actor_id)
             if actor is None:
                 return _tool_error(f"unknown actor: {actor_id}")
-            return json.dumps({"ok": True, **_actor_view(actor)})
+            return json.dumps({"ok": True, **_actor_view(actor, conn)})
 
         if op == "wait":
             if not actor_id:
@@ -373,7 +388,7 @@ def atlas_actor_tool(
                         "note": f"not terminal after {timeout:.0f}s",
                     }
                 )
-            return json.dumps({"ok": True, **_actor_view(joined)})
+            return json.dumps({"ok": True, **_actor_view(joined, conn)})
 
         if op == "steer":
             if not actor_id:
@@ -501,6 +516,13 @@ def on_pre_llm_call(*, session_id: str = "", **_: Any) -> Optional[dict[str, str
                 frag += f" — goal: {goal}"
             if delivery.get("result_preview"):
                 frag += f"\n  result: {str(delivery['result_preview'])[:2000]}"
+            # The child's own account arrives above; this is the part of it the
+            # parent could not have judged for itself.
+            child_run_id = delivery.get("child_run_id")
+            if child_run_id:
+                payload = verification_gate.verdict_for(conn, str(child_run_id))
+                if payload is not None:
+                    frag += f"\n  verification: {verification_gate.summarize(payload)}"
             if delivery.get("error"):
                 frag += f"\n  error: {str(delivery['error'])[:500]}"
             lines.append(frag)

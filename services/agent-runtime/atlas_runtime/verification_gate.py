@@ -457,6 +457,52 @@ def describe(verdict: VerificationVerdict) -> dict[str, tuple[str, ...]]:
 # -- gate --------------------------------------------------------------------
 
 
+def verdict_for(conn: sqlite3.Connection, run_id: str) -> Optional[dict[str, Any]]:
+    """The recorded verdict payload for a finished run, or None.
+
+    Every consumer reads the durable audit event rather than re-deriving or
+    parsing prose, so an operator surface and the record cannot drift apart.
+    Returns None for `no_mutations` as well as for an unclassified run: callers
+    display a verdict when there is something to answer for, and a read-only run
+    is not a finding.
+    """
+    try:
+        row = conn.execute(
+            "SELECT data FROM audit_events WHERE run_id=? AND "
+            "event_type='verification_verdict' ORDER BY timestamp DESC, rowid DESC LIMIT 1",
+            (run_id,),
+        ).fetchone()
+    except Exception:  # noqa: BLE001 — a reporting read must never raise
+        return None
+    if not row or not row[0]:
+        return None
+    try:
+        payload = json.loads(row[0])
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(payload, dict) or payload.get("state") == "no_mutations":
+        return None
+    return payload
+
+
+def summarize(payload: dict[str, Any]) -> str:
+    """One operator-readable line for a verdict payload."""
+    state = payload.get("state")
+    changes = payload.get("mutation_count") or 0
+    if state == "verified":
+        detail = f"passed {', '.join(payload.get('signals') or []) or 'a check'}"
+    elif state == "contradicted":
+        detail = (
+            f"every check failed ({', '.join(payload.get('failed_signals') or [])}) "
+            f"after {changes} change(s)"
+        )
+    elif state == "unverified":
+        detail = f"{changes} change(s), no test/build/lint/typecheck ran after them"
+    else:
+        return str(state or "unknown")
+    return f"{state} — {detail}"
+
+
 def enabled() -> bool:
     return os.environ.get("ATLAS_VERIFICATION_GATE", "1").strip().lower() not in {
         "0",
@@ -524,4 +570,6 @@ __all__ = [
     "describe",
     "enabled",
     "observed_calls",
+    "summarize",
+    "verdict_for",
 ]
