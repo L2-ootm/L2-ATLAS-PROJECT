@@ -1,0 +1,135 @@
+id: admissions
+name: Admissions
+version: 0.1.0
+description: >
+  The college application campaign — deadlines, materials, activities and the
+  package review — read from Pattern Forge rather than duplicated here. ATLAS
+  reviews, checks and reports; the surface and the record stay where the
+  applicant already works.
+author: L2 Systems
+
+capabilities:
+  # -------------------------------------------------------------------------
+  # Doctrine. These are the rules that keep being re-derived by hand in the
+  # vault, one run at a time. `always` files are the ones a run cannot be
+  # correct without.
+  # -------------------------------------------------------------------------
+  context:
+    - id: doctrine
+      title: Admissions doctrine
+      path: context/doctrine.md
+      inject: always
+      max_tokens: 700
+    - id: limits
+      title: Hard limits and where they bind
+      path: context/limits.md
+      inject: always
+      max_tokens: 400
+    - id: essays
+      title: Reviewing an essay without writing it
+      path: context/essays.md
+      inject: matched
+      terms: [essay, supplement, personal statement, draft, prompt, revise, rubric]
+      max_tokens: 700
+    - id: list
+      title: Building the list as an international applicant
+      path: context/list.md
+      inject: matched
+      terms: [college, list, school, reach, safety, aid, chancing, cull, early, restrictive]
+      max_tokens: 700
+
+  # -------------------------------------------------------------------------
+  # NO COLLECTIONS, DELIBERATELY.
+  #
+  # Every other module keeps its records in `module_records`. This one must not.
+  # Pattern Forge owns the application record — it has the surface the applicant
+  # actually uses, the account system, and RLS. Copying colleges and deadlines
+  # into ATLAS would create a second live writer for the same fact, which is how
+  # one SAT score came to be recorded as both 1410 and 1480 in two canonical
+  # documents and cost a scheduled day to reconcile. ATLAS reads over the API.
+  # -------------------------------------------------------------------------
+
+  mcp:
+    - name: pattern-forge-application
+      transport: http
+      url: http://127.0.0.1:3000/mcp/application
+      enabled: false
+      env: {PATTERNFORGE_SERVICE_KEY: "${PATTERNFORGE_SERVICE_KEY}"}
+      description: >
+        The application record, served by Pattern Forge. Disabled until the
+        endpoint exists and a service key is issued — `apiKeys.kind` in that
+        project already carries a `service` variant for exactly this. Point `url`
+        at the deployment before enabling; nothing runs until you do.
+
+  workflows:
+    - id: deadline_sweep
+      title: What is due, and what is stuck behind something
+      description: The fortnight ahead, plus anything blocking that has been open too long.
+      steps:
+        - GET /api/application and read deadlines, colleges and requirements.
+        - Report overdue first, then blocking (oldest first — an item open since
+          July is urgent because everything behind it has waited, not because of
+          its date), then the next fourteen days.
+        - For each item name ONE concrete next action. "Chase the recommender" is
+          an action; "make progress on recommendations" is not.
+        - Say plainly if nothing is due. A sweep that invents urgency to look
+          useful trains the operator to stop reading it.
+      done_when: >
+        Every open item inside the window is listed with one next action, and the
+        blocking list is stated even when it is empty.
+
+    - id: package_check
+      title: Is the package internally consistent
+      description: Run the validator and read its findings — do not re-derive them.
+      steps:
+        - GET /api/application/validate. It re-reads the record server-side and
+          returns blockers and warnings.
+        - Report blockers first. A blocker is not submittable as it stands; a
+          warning is a judgement call and must not be reported as a failure.
+        - Do NOT recompute character counts or plan conflicts yourself. The
+          validator is the single definition; a second opinion computed in a run
+          is how two answers to one question start existing.
+        - If it returns ok=true, say so without padding.
+      done_when: >
+        The validator's own findings are reported, blockers separated from
+        warnings, with nothing added that it did not say.
+
+    - id: consistency_pass
+      title: Does the application argue one thing
+      description: Cross-document reading — the task no single surface can do.
+      steps:
+        - Read the activities list, the essays and the college list together.
+        - Ask whether the thing the essay claims to care about appears anywhere
+          in the activities. An essay about a passion with no evidence behind it
+          is the most common structural failure in an application.
+        - Ask whether any activity description merely restates the resume line
+          above it.
+        - Report what does not add up, and what to cut. A pass that only adds is
+          not a pass.
+      done_when: >
+        Each inconsistency names the two documents that disagree and quotes the
+        line from each.
+
+  commands:
+    - name: app-status
+      description: deadlines, blockers and the package check in one read
+      template: |
+        Report the application campaign's current state. Fetch the play with
+        atlas_module(op="workflow", module="admissions", workflow_id="deadline_sweep")
+        and follow it, then run the package_check workflow. Report overdue and
+        blocking items first, then the validator's blockers, then warnings.
+        Do not start doing the work — report it. Operator input: $ARGUMENTS
+
+    - name: deadline-sweep
+      description: what is due in the next fortnight, and what is stuck
+      template: |
+        Fetch atlas_module(op="workflow", module="admissions", workflow_id="deadline_sweep")
+        and follow it exactly against the live record. One concrete next action
+        per item. Operator input: $ARGUMENTS
+
+    - name: package-check
+      description: run the validator and report what it found
+      template: |
+        Fetch atlas_module(op="workflow", module="admissions", workflow_id="package_check")
+        and follow it. Report the validator's findings; do not recompute them.
+        Operator input: $ARGUMENTS

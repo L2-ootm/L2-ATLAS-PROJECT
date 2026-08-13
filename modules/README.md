@@ -10,8 +10,9 @@ here ship with the checkout; operator/agent-installed modules live in
 |---|---|
 | `gsd` | Goal · Slice · Deliver — the L2 execution doctrine as slash commands |
 | `outreach` | Evidence-gated outbound: research, gates, drafting, CRM (see its README) |
+| `admissions` | The college application campaign, read from Pattern Forge rather than stored here (see its README) |
 
-Both ship **inactive**. A bundled module is an offer, not a default.
+All ship **inactive**. A bundled module is an offer, not a default.
 
 ## Registry control
 
