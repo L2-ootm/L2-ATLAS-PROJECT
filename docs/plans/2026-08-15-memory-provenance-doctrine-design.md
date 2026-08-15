@@ -253,22 +253,64 @@ begin with. Feeding the intent into the term list is the whole of D; the enrich-
 from-high-grades layer the design imagined is unnecessary now that the ask reaches
 the retrievers and the grades reach the model.
 
-## Part G — What is not done
+## Part G — Closed in `9690e61`
 
-* **`verified` is never assigned.** Nothing promotes a node when its run's gate
-  verdict comes back `verified`. The grade exists, ranks correctly and renders,
-  but only `stated`, `observed`, `derived`, `reported` and `asserted` are
-  reachable in practice. The promotion hook belongs at run end, beside the
-  existing verdict write.
-* **Conflicts are recorded and never surfaced.** `brain_node_conflicts` fills up,
-  including rows flagged `needs_operator`, and nothing shows them — no CLI, no
-  cockpit panel. The escalation path is a table.
-* **The Brain retriever still infers grades for pre-0038 rows.** The backfill
-  handled existing data, so `_brain_node_grade` is now only a fallback for rows
-  written by a path that bypasses the graded writers. It should be deleted once
-  nothing can produce an ungraded node.
-* **`asserted` is written but nothing promotes it.** The holding pen has no exit:
-  a claim later backed by evidence stays `asserted` unless re-written.
+* **`verified` is reachable.** The tempting rule — promote a run's claims when
+  its verdict is `verified` — over-claims: a run can check one thing and write
+  down five. The rule shipped is narrower. A `derived` node is promoted when the
+  evidence it *cited* includes a tool call the gate counted as a **passing**
+  check. `ObservedCall` already carried the call id at the loader, so the cost
+  was one field, one list and one function, with nothing added to the verdict
+  payload — no audit row grew, no fixture churned.
+* **Conflicts are surfaced.** `atlas brain conflicts` lists what lost and what
+  was kept; `--needs-operator` filters to the decisions ATLAS refused to make;
+  `--ack` discards a row once acted on, because a list the operator cannot clear
+  stops being read. No new module, no migration, no dependency.
+* **The grade inference is deleted**, along with `_BRAIN_MACHINE_TYPES`. Every
+  writer states its grade and `_node()` floors anything unstated at `asserted`. A
+  reader that second-guesses its writers only adds a second answer to disagree
+  with the first — which is precisely how an `asserted` node got reported as
+  `derived`.
+* **A live bug it exposed.** `run_executor` mirrors every terminal run into the
+  graph and declared no grade, so both nodes floored to `asserted` — below the
+  retrieval floor. Every future run would have filed itself out of every brief,
+  silently, because the write succeeds. Caught before it reached the live DB
+  (348 nodes, all still `observed`, because no run had completed since 0038).
+
+## Part H — Measured, and deliberately not built
+
+Baseline, 500 brain nodes and 200 wiki pages, one context assembly:
+
+| | |
+|---|---|
+| queries per brief | **340** — of which ~320 are SQLite's own FTS5 index reads |
+| application-level queries | ~20; the operator profile adds exactly **one** |
+| median assembly | **23.8 ms** before this work, **24.5 ms** after (run-to-run variance; the work is byte-identical) |
+| brief | 5758 chars, 724 est. tokens against a 8000 budget |
+
+**`brain_service.search` runs one unindexed `LIKE %term%` scan per term**, up to
+six per brief. Measured slope:
+
+| nodes | median |
+|---:|---:|
+| 350 | 0.70 ms |
+| 5 000 | 8.45 ms |
+| 20 000 | 33.58 ms |
+| 50 000 | 95.12 ms |
+
+Cleanly linear at ~1.8 ms per 1000 nodes, **per brief**. At today's 348 nodes it
+is 0.7 ms and not worth touching; an FTS index over a 348-row table is the
+premature optimisation. The number to act on is **~10k nodes (~20 ms)**, and the
+fix when it arrives is an FTS5 index over `label`/`metadata_json`, not a
+different store.
+
+## Part I — Still open
+
+* **`asserted` has no exit.** The holding pen is one-way: a claim later backed by
+  evidence stays `asserted` unless re-written. Promotion only lifts `derived`.
+* **Conflicts have no cockpit surface.** The CLI makes escalation real; whether a
+  `needs_operator` conflict should also interrupt the operator in the UI is a
+  second use case, and has not been demonstrated yet.
 
 ---
 
