@@ -43,6 +43,27 @@ def test_start_run_creates_run_row(db, lock, mission_id):
     assert count == 1
 
 
+def test_a_run_without_a_caller_session_gets_no_invented_one(db, lock, mission_id):
+    """A minted `cli-<uuid>` matched no earlier run, so it carried no context,
+    and it was not a real surface session, so every attempt to persist a turn
+    under it failed against the foreign key — silently. NULL is the honest
+    record of a run that belongs to no conversation."""
+    run = run_service.start_run(db, lock, mission_id=mission_id)
+    stored = db.execute("SELECT session_id FROM runs WHERE id=?", (run.id,)).fetchone()[0]
+    assert stored is None
+
+    phantoms = db.execute(
+        "SELECT COUNT(*) FROM runs WHERE session_id LIKE 'cli-%'"
+    ).fetchone()[0]
+    assert phantoms == 0
+
+
+def test_a_caller_supplied_session_is_kept_verbatim(db, lock, mission_id, surface_session):
+    run = run_service.start_run(db, lock, mission_id=mission_id, session_id=surface_session)
+    stored = db.execute("SELECT session_id FROM runs WHERE id=?", (run.id,)).fetchone()[0]
+    assert stored == surface_session
+
+
 def test_start_run_emits_audit_event(db, lock, mission_id):
     """start_run() emits at least one AuditEvent."""
     run = run_service.start_run(db, lock, mission_id=mission_id)

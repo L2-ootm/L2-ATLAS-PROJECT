@@ -32,7 +32,6 @@ import threading
 from typing import Literal, Optional
 
 from atlas_core.schemas.core import SECRET_PATTERNS, Run
-import uuid
 
 from atlas_runtime.audit_service import emit, get_events_for_run
 from atlas_runtime.run_summary_service import generate_run_summary
@@ -183,14 +182,21 @@ def start_run(
 
     `agent_runtime` records which AgentRuntime will execute the run (P4).
 
+    A run with no `session_id` belongs to no conversation, and that is recorded
+    as NULL rather than papered over. This used to mint a `cli-<uuid>` id per
+    run, on the stated reasoning that a run needs a session id to receive prior
+    context — which has it backwards. A freshly-invented id matches no earlier
+    run, so it carries no context by construction, and because
+    `session_messages.surface_session_id` is FK-bound to a real surface session
+    that never existed, every attempt to persist a turn under it failed
+    silently. The result was a run that could neither read a conversation nor
+    contribute to one, while looking like it had a session. Continuity comes
+    from a caller passing a real surface session (`--session-id`, or the
+    cockpit's own), not from generating one here.
+
     Raises:
         ValueError: If the mission does not exist or is not in pending state.
     """
-    # Auto-generate session_id so the agent always receives prior context.
-    # Without this, native.py's ConversationHistoryRetriever gate fails
-    # because session_id is NULL and no history is injected.
-    if session_id is None:
-        session_id = f"cli-{uuid.uuid4().hex[:12]}"
     # Pydantic-first: construct Run model before any SQL
     run_kwargs = {
         "mission_id": mission_id,
