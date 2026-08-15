@@ -744,6 +744,54 @@ def test_envelope_filters_only_snippets_reporting_real_relevance(db):
     assert "weak" in envelope.rejected_source_ids
 
 
+def test_the_brain_retriever_reports_the_grade_the_node_was_written_at(db):
+    """Found by an end-to-end check, not by a unit test.
+
+    The retriever inferred a grade from `entity_type` — correct while the column
+    did not exist, and wrong the moment it did. An `asserted` node came back as
+    `derived`, which put it above the retrieval floor and into the brief: the one
+    outcome the floor exists to prevent.
+    """
+    for node_id, grade in (
+        ("concept:checked-thing", provenance.VERIFIED),
+        ("concept:guessed-thing", provenance.ASSERTED),
+    ):
+        db.execute(
+            "INSERT INTO brain_nodes(id,entity_type,label,project_id,source_id,"
+            "source_version,updated_at,confidence,grade,metadata_json) VALUES "
+            "(?,'concept',?,NULL,'run:r1','2026-08-15T00:00:00Z',"
+            "'2026-08-15T00:00:00Z',0.8,?,'{}')",
+            (node_id, node_id.split(":")[1].replace("-", " "), grade),
+        )
+    db.commit()
+
+    grades = {
+        s.source: s.grade
+        for s in mr.BrainRetriever().retrieve(db, mr.RouterQuery(terms=("thing",)))
+    }
+
+    assert grades["brain:concept:checked-thing"] == provenance.VERIFIED
+    assert grades["brain:concept:guessed-thing"] == provenance.ASSERTED
+
+
+def test_an_asserted_brain_node_is_kept_out_of_the_brief(db):
+    """The end-to-end consequence of the bug above."""
+    db.execute(
+        "INSERT INTO brain_nodes(id,entity_type,label,project_id,source_id,"
+        "source_version,updated_at,confidence,grade,metadata_json) VALUES "
+        "('concept:guess','concept','auth thing',NULL,'run:r1',"
+        "'2026-08-15T00:00:00Z','2026-08-15T00:00:00Z',0.8,'asserted','{}')"
+    )
+    db.commit()
+
+    envelope = mr.MemoryRouter(retrievers=[mr.BrainRetriever()]).assemble_envelope(
+        db, mr.RouterQuery(terms=("auth",))
+    )
+
+    assert "brain:concept:guess" in envelope.rejected_source_ids
+    assert "auth thing" not in envelope.markdown
+
+
 # --- the operator profile ---------------------------------------------------
 
 

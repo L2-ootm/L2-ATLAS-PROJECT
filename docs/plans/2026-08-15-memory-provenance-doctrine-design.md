@@ -1,6 +1,6 @@
 # Memory Provenance Doctrine — Design
 
-**Status:** slice A designed and executing; B–D sequenced, not started
+**Status:** A–D shipped 2026-08-15 (`07102b4`, `a6d2007`, `d061843`, `f546366`)
 **Date:** 2026-08-15
 **Amends:** `2026-08-12-atlas-memory-v2-design-and-execution-plan.md` (B.2, B.4, B.5)
 **Relates to:** `2026-08-12-knowledge-graph-control-plan.md`
@@ -236,16 +236,39 @@ the model as evidence at all.
 
 ## Part E — Sequencing
 
-| Slice | Scope | Depends on |
+| Slice | Scope | Commit |
 |---|---|---|
-| **A** | read boundary: ladder primitive, grades on all 9 retrievers, rendering, `confidence` deleted | — |
-| **B** | write boundary: evidence citation, contradiction rows, redact-on-write, `skills/atlas/memory.md` | A |
-| **C** | operator absorption: style/intent/convention as graded graph structure | A + B |
-| **D** | prompt enhancement: thin prompt enriched from `stated` + `verified` only | C |
+| **A** | read boundary: ladder primitive, grades on all 9 retrievers, rendering, `confidence` fixed | `07102b4` |
+| **B** | write boundary: evidence citation, contradiction rows, redact-on-write, `skills/atlas/memory.md` | `a6d2007` |
+| **C** | operator absorption: `brain remember` + `OperatorProfileRetriever` | `d061843` |
+| **D** | the ask drives retrieval | `f546366` |
 
-D is the visible payoff — *"small shitty prompts turn out as great results."*
-Building it before C would enrich from ungraded data, which manufactures
-confident garbage: the exact failure this design exists to prevent.
+D turned out to be the largest gap, and not the one the design predicted. The
+plan was "enrich a thin prompt from `stated` + `verified` material". The measured
+problem was more basic: **the operator's ask contributed nothing to retrieval at
+all.** Terms came from the Focus alone, so a run with no standing Focus derived
+zero terms, every matched retriever no-opped, and the router abstained. There was
+no thin-prompt enrichment to tune because there was no prompt-driven retrieval to
+begin with. Feeding the intent into the term list is the whole of D; the enrich-
+from-high-grades layer the design imagined is unnecessary now that the ask reaches
+the retrievers and the grades reach the model.
+
+## Part G — What is not done
+
+* **`verified` is never assigned.** Nothing promotes a node when its run's gate
+  verdict comes back `verified`. The grade exists, ranks correctly and renders,
+  but only `stated`, `observed`, `derived`, `reported` and `asserted` are
+  reachable in practice. The promotion hook belongs at run end, beside the
+  existing verdict write.
+* **Conflicts are recorded and never surfaced.** `brain_node_conflicts` fills up,
+  including rows flagged `needs_operator`, and nothing shows them — no CLI, no
+  cockpit panel. The escalation path is a table.
+* **The Brain retriever still infers grades for pre-0038 rows.** The backfill
+  handled existing data, so `_brain_node_grade` is now only a fallback for rows
+  written by a path that bypasses the graded writers. It should be deleted once
+  nothing can produce an ungraded node.
+* **`asserted` is written but nothing promotes it.** The holding pen has no exit:
+  a claim later backed by evidence stays `asserted` unless re-written.
 
 ---
 

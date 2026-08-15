@@ -828,15 +828,23 @@ _BRAIN_MACHINE_TYPES = frozenset({"run", "mission"})
 
 
 def _brain_node_grade(node: Any) -> Grade:
-    """Where a Brain node came from, inferred from what the schema records today.
+    """The grade the node was written at; inferred only if it has none.
 
-    `brain_nodes` has no grade column yet — slice B adds one, written at the point
-    the node is created, which is the only place the answer is actually known. Until
-    then this infers conservatively from `entity_type`, and the ceiling for anything
-    agent-authored is `derived`: the graph currently stores a self-declared
-    `confidence` (default 0.8) with no evidence behind it, so nothing in it can
-    honestly claim to have been observed or checked.
+    Migration 0038 added `brain_nodes.grade`, written at creation — the only point
+    where the answer is actually known — and backfilled every existing row. The
+    stored value is therefore the answer, and reading it is what lets an
+    `asserted` node be kept out of a brief.
+
+    The inference below survives as a fallback for a row that reaches here without
+    a grade: a connection to a database older than 0038, or a write path that
+    bypasses the graded writers. It is deliberately conservative — machine-written
+    projections are `observed`, and `derived` is the ceiling for anything else,
+    because a row with no recorded provenance cannot claim to have been checked.
+    Delete it once no path can produce an ungraded node.
     """
+    stored = getattr(node, "grade", "") or ""
+    if stored in provenance.RANK:
+        return stored  # type: ignore[return-value]
     if node.entity_type in _BRAIN_MACHINE_TYPES:
         return provenance.OBSERVED
     return provenance.DERIVED
