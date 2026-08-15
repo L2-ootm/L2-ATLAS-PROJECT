@@ -357,6 +357,22 @@ def test_skill_retriever_delivers_the_delegation_doctrine(tmp_path):
     assert "skill:delegation" in [s.source for s in snippets]
 
 
+def test_skill_retriever_delivers_the_memory_doctrine(tmp_path):
+    """A run deciding what to remember must be able to reach the rules for it.
+
+    This one matters more than most: the knowledge graph sat writable and unused
+    because nothing ever told the agent what belonged in it. Gating an unwalked
+    path only produces a well-governed empty graph.
+    """
+    snippets = mr.SkillRetriever().retrieve(
+        None,
+        mr.RouterQuery(
+            terms=("remember", "knowledge", "graph", "evidence", "stale"), has_focus=True
+        ),
+    )
+    assert "skill:memory" in [s.source for s in snippets]
+
+
 def test_use_when_is_indexed_past_its_first_line(tmp_path):
     """Found by the delivery test above: every ATLAS doctrine file wraps its
     "Use when" sentence, and only line one was indexed — so `handoff.md` was

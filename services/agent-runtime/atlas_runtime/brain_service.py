@@ -23,16 +23,20 @@ import datetime
 import json
 import sqlite3
 from collections import deque
+from dataclasses import dataclass
 
+from atlas_core.schemas import provenance
 from atlas_core.schemas.brain import BrainEdge, BrainNode
+from atlas_core.schemas.provenance import ASSERTED
 
 MAX_RESULTS = 100
 MAX_DEPTH = 4
 
 _NODE_COLUMNS = (
     "id,entity_type,label,project_id,source_id,source_version,updated_at,"
-    "confidence,metadata_json"
+    "confidence,grade,metadata_json"
 )
+_NODE_PLACEHOLDERS = "?,?,?,?,?,?,?,?,?,?"
 
 
 def _now() -> str:
@@ -49,20 +53,149 @@ def _node(row: sqlite3.Row | tuple) -> BrainNode:
         source_version=row[5],
         updated_at=row[6],
         confidence=row[7],
-        metadata_json=row[8],
+        grade=row[8] or ASSERTED,
+        metadata_json=row[9],
     )
 
 
+@dataclass(frozen=True)
+class UpsertOutcome:
+    """What an upsert did, when it did not simply write the node.
+
+    `kept` is what is in the graph now — the incumbent when the write was
+    refused, the incoming node otherwise. Callers render `conflict` back to the
+    agent so a refused write is a fact it can act on rather than a silent no-op
+    it will repeat.
+    """
+
+    node: BrainNode
+    written: bool
+    conflict: dict | None = None
+
+
+def _summary_of(node: BrainNode) -> str:
+    try:
+        return str(json.loads(node.metadata_json).get("summary") or "")
+    except (ValueError, AttributeError):
+        return ""
+
+
+def _contradicts(incoming: BrainNode, incumbent: BrainNode) -> bool:
+    """Whether these two say materially different things about the same entity.
+
+    Only the claim is compared — label and summary. A node re-asserted with the
+    same content by a weaker source is not a contradiction, it is corroboration,
+    and refusing it would make repeat observations look like disputes.
+    """
+    return (
+        incoming.label.strip() != incumbent.label.strip()
+        or _summary_of(incoming).strip() != _summary_of(incumbent).strip()
+    )
+
+
+def _record_conflict(
+    conn: sqlite3.Connection,
+    *,
+    incumbent: BrainNode,
+    incoming: BrainNode,
+    needs_operator: bool,
+) -> dict:
+    run_id = incoming.source_id if incoming.source_id.startswith("run:") else ""
+    conflict = {
+        "node_id": incumbent.id,
+        "incumbent_grade": incumbent.grade,
+        "incumbent_label": incumbent.label,
+        "incoming_grade": incoming.grade,
+        "incoming_label": incoming.label,
+        "incoming_body": _summary_of(incoming),
+        "run_id": run_id,
+        "needs_operator": needs_operator,
+    }
+    if not _table_exists(conn, "brain_node_conflicts"):
+        # A DB that predates 0038 still gets the refusal and the returned
+        # conflict; it just cannot durably record it. Degraded, not broken.
+        return conflict
+    conn.execute(
+        "INSERT INTO brain_node_conflicts(node_id,incumbent_grade,incumbent_label,"
+        "incoming_grade,incoming_label,incoming_body,run_id,needs_operator,created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        (
+            incumbent.id, incumbent.grade, incumbent.label,
+            incoming.grade, incoming.label, _summary_of(incoming),
+            run_id, int(needs_operator), _now(),
+        ),
+    )
+    return conflict
+
+
+def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
+    return (
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
+        ).fetchone()
+        is not None
+    )
+
+
+def upsert_node_checked(conn: sqlite3.Connection, node: BrainNode) -> UpsertOutcome:
+    """Upsert, refusing a weaker claim that contradicts a stronger one.
+
+    Node ids derive from ``(entity_type, label)``, so re-asserting an entity
+    overwrites it. Before grades existed that meant a later self-declared guess
+    silently replaced an earlier checked fact and the disagreement left no trace
+    — recency decided what the graph believed, which is the weakest possible
+    tiebreak and the only one available when nothing records provenance.
+
+    Now rank decides, and the losing claim is *kept* rather than discarded: two
+    sources that disagree is information, and only one of them surviving quietly
+    is not. Equal ranks still resolve by recency, because once provenance is
+    exhausted recency is genuinely all that is left.
+    """
+    incumbent = explain(conn, node.id)
+    if incumbent is None or not _contradicts(node, incumbent):
+        return UpsertOutcome(node=upsert_node(conn, node), written=True)
+
+    if provenance.is_conflict_for_operator(node.grade, incumbent.grade):
+        # Reality disagreeing with the operator's intent is not ATLAS's call.
+        # Both claims are kept and the operator is told; the graph is not
+        # quietly edited in either direction.
+        with conn:
+            conflict = _record_conflict(
+                conn, incumbent=incumbent, incoming=node, needs_operator=True
+            )
+        return UpsertOutcome(node=incumbent, written=False, conflict=conflict)
+
+    if provenance.outranks(node.grade, incumbent.grade):
+        with conn:
+            _record_conflict(
+                conn, incumbent=incumbent, incoming=node, needs_operator=False
+            )
+        return UpsertOutcome(node=upsert_node(conn, node), written=True)
+
+    with conn:
+        conflict = _record_conflict(
+            conn, incumbent=incumbent, incoming=node, needs_operator=False
+        )
+    return UpsertOutcome(node=incumbent, written=False, conflict=conflict)
+
+
 def upsert_node(conn: sqlite3.Connection, node: BrainNode) -> BrainNode:
+    """Unconditional write. Prefer `upsert_node_checked` for agent-driven writes.
+
+    Kept unguarded because ATLAS's own projections (run and mission mirroring
+    after every terminal run) are restating rows they own, not contesting a
+    claim, and routing them through conflict detection would manufacture
+    disputes out of ordinary bookkeeping.
+    """
     with conn:
         conn.execute(
-            "INSERT INTO brain_nodes "
-            "(id,entity_type,label,project_id,source_id,source_version,updated_at,"
-            "confidence,metadata_json) VALUES (?,?,?,?,?,?,?,?,?) "
+            f"INSERT INTO brain_nodes ({_NODE_COLUMNS}) "
+            f"VALUES ({_NODE_PLACEHOLDERS}) "
             "ON CONFLICT(id) DO UPDATE SET entity_type=excluded.entity_type,"
             "label=excluded.label,project_id=excluded.project_id,source_id=excluded.source_id,"
             "source_version=excluded.source_version,updated_at=excluded.updated_at,"
-            "confidence=excluded.confidence,metadata_json=excluded.metadata_json",
+            "confidence=excluded.confidence,grade=excluded.grade,"
+            "metadata_json=excluded.metadata_json",
             (
                 node.id,
                 node.entity_type,
@@ -72,6 +205,7 @@ def upsert_node(conn: sqlite3.Connection, node: BrainNode) -> BrainNode:
                 node.source_version,
                 node.updated_at,
                 node.confidence,
+                node.grade,
                 node.metadata_json,
             ),
         )
@@ -106,8 +240,7 @@ def upsert_edge(conn: sqlite3.Connection, edge: BrainEdge) -> BrainEdge:
 
 def explain(conn: sqlite3.Connection, node_id: str) -> BrainNode | None:
     row = conn.execute(
-        "SELECT id,entity_type,label,project_id,source_id,source_version,updated_at,"
-        "confidence,metadata_json FROM brain_nodes WHERE id=?",
+        f"SELECT {_NODE_COLUMNS} FROM brain_nodes WHERE id=?",
         (node_id,),
     ).fetchone()
     return None if row is None else _node(row)
@@ -125,8 +258,7 @@ def search(
     params: list[object] = [] if project_id is None else [project_id]
     params.extend((f"%{query.strip()}%", f"%{query.strip()}%", limit))
     rows = conn.execute(
-        "SELECT id,entity_type,label,project_id,source_id,source_version,updated_at,"
-        f"confidence,metadata_json FROM brain_nodes WHERE {scope_sql} "
+        f"SELECT {_NODE_COLUMNS} FROM brain_nodes WHERE {scope_sql} "
         "AND (label LIKE ? OR metadata_json LIKE ?) "
         "ORDER BY confidence DESC, updated_at DESC, id ASC LIMIT ?",
         params,
@@ -338,7 +470,8 @@ def export_graph(conn: sqlite3.Connection) -> dict:
             "source_version": row[5],
             "updated_at": row[6],
             "confidence": row[7],
-            "metadata_json": row[8],
+            "grade": row[8],
+            "metadata_json": row[9],
         }
         for row in conn.execute(f"SELECT {_NODE_COLUMNS} FROM brain_nodes ORDER BY id")
     ]
@@ -440,6 +573,9 @@ def update_node(
         source_version=current.source_version,
         updated_at=updated_at or _now(),
         confidence=current.confidence if confidence is None else confidence,
+        # Curation corrects what a node says, never how it came to be known.
+        # A wrong label fixed by hand does not turn a guess into an observation.
+        grade=current.grade,
         metadata_json=json.dumps(merged),
     )
 
@@ -448,7 +584,7 @@ def update_node(
             # Insert the new row before repointing edges: the edge FKs (where
             # enforced) require the endpoint to exist first.
             conn.execute(
-                f"INSERT INTO brain_nodes ({_NODE_COLUMNS}) VALUES (?,?,?,?,?,?,?,?,?)",
+                f"INSERT INTO brain_nodes ({_NODE_COLUMNS}) VALUES ({_NODE_PLACEHOLDERS})",
                 (
                     updated.id,
                     updated.entity_type,
@@ -458,6 +594,7 @@ def update_node(
                     updated.source_version,
                     updated.updated_at,
                     updated.confidence,
+                    updated.grade,
                     updated.metadata_json,
                 ),
             )
@@ -475,13 +612,14 @@ def update_node(
         else:
             conn.execute(
                 "UPDATE brain_nodes SET entity_type=?,label=?,source_id=?,"
-                "updated_at=?,confidence=?,metadata_json=? WHERE id=?",
+                "updated_at=?,confidence=?,grade=?,metadata_json=? WHERE id=?",
                 (
                     updated.entity_type,
                     updated.label,
                     updated.source_id,
                     updated.updated_at,
                     updated.confidence,
+                    updated.grade,
                     updated.metadata_json,
                     node_id,
                 ),

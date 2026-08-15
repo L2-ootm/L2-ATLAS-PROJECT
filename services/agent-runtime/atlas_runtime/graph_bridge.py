@@ -44,8 +44,11 @@ import datetime
 import json
 import logging
 import re
+import sqlite3
 import threading
 from typing import Any, Optional
+
+from atlas_core.schemas import provenance
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +105,21 @@ TOOL_SCHEMA = {
             },
             "confidence": {
                 "type": "number",
-                "description": "Confidence 0..1 for the node (op=add_node|update).",
+                "description": (
+                    "Ranking hint 0..1 within a grade (op=add_node|update). This does "
+                    "NOT set how trusted the node is — that is derived from `evidence`."
+                ),
+            },
+            "evidence": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "op=add_node: ids of tool calls or audit events from THIS run that "
+                    "back the claim. Citing real evidence records the node as `derived`; "
+                    "citing nothing records it as `asserted`, which is stored but kept "
+                    "out of future runs' context. Ids that do not resolve reject the "
+                    "write — do not invent them."
+                ),
             },
             "source_id": {
                 "type": "string",
@@ -149,8 +166,8 @@ TOOL_SCHEMA = {
 _KNOWN_ARGS = frozenset(
     {
         "op", "query", "node_id", "label", "entity_type", "summary", "confidence",
-        "source_id", "target_id", "relation", "project_id", "depth", "scope_id",
-        "path", "kind", "limit",
+        "evidence", "source_id", "target_id", "relation", "project_id", "depth",
+        "scope_id", "path", "kind", "limit",
     }
 )
 
@@ -191,6 +208,9 @@ def _node_view(node: Any) -> dict[str, Any]:
         "label": node.label,
         "project_id": node.project_id,
         "confidence": node.confidence,
+        # Returned on every read so the agent sees the standing of what it is
+        # about to build on, not only of what it just wrote.
+        "grade": getattr(node, "grade", provenance.ASSERTED),
         "metadata": metadata,
     }
 
@@ -212,7 +232,11 @@ def atlas_graph_tool(
     **framework: Any,
 ) -> str:
     """Hermes plugin handler for `atlas_graph`; returns a JSON string."""
-    from atlas_runtime import brain_service, graph_scope_service  # noqa: PLC0415
+    from atlas_runtime import (  # noqa: PLC0415
+        brain_service,
+        graph_scope_service,
+        memory_router,
+    )
     from atlas_core.schemas.brain import BrainEdge, BrainNode  # noqa: PLC0415
 
     if args is None:
@@ -309,24 +333,56 @@ def atlas_graph_tool(
             if not label:
                 return _tool_error("op=add_node requires label")
             run_id = _current_run_id(parent_agent, task_id) or "agent"
+            cited = _citations(args)
+            resolved, unresolved = _resolve_citations(conn, run_id, cited)
+            if unresolved:
+                # A citation that does not resolve is worth surfacing rather than
+                # quietly downgrading: either the model invented an id, or it is
+                # pointing at evidence from a different run. Both are wrong in
+                # ways the agent can correct on the next attempt.
+                return _tool_error(
+                    "evidence ids not found in this run's audit trail: "
+                    + ", ".join(sorted(unresolved))
+                    + ". Cite tool calls made in this run, or omit `evidence` "
+                    "and the node will be recorded as unbacked."
+                )
             metadata: dict[str, Any] = {}
-            summary = str(args.get("summary") or "").strip()
+            # Redact on the way IN. The router redacts on the way out, so a secret
+            # written here used to be scrubbed in transit while sitting in the
+            # clear in the database forever.
+            summary = memory_router.redact(str(args.get("summary") or "").strip())
             if summary:
                 metadata["summary"] = summary[:2000]
+            if resolved:
+                metadata["evidence"] = resolved[:20]
             node = BrainNode(
                 id=node_id_for(entity_type, label),
                 entity_type=entity_type,
-                label=label,
+                label=memory_router.redact(label),
                 project_id=project_id,
                 source_id=f"run:{run_id}",
                 source_version=_now(),
                 updated_at=_now(),
                 confidence=_confidence(args, default=0.8),
+                grade=_grade_for_write(resolved),
                 metadata_json=json.dumps(metadata),
             )
             with lock:
-                brain_service.upsert_node(conn, node)
-            return json.dumps({"ok": True, "node": _node_view(node)})
+                outcome = brain_service.upsert_node_checked(conn, node)
+            if not outcome.written:
+                # Refused, and told why. A silent no-op would be repeated.
+                return json.dumps({
+                    "ok": False,
+                    "error": (
+                        "a better-established claim about this entity is already "
+                        f"recorded ({outcome.conflict['incumbent_grade']} beats "
+                        f"{node.grade}). Your claim was kept as a conflict, not "
+                        "discarded."
+                    ),
+                    "conflict": outcome.conflict,
+                    "node": _node_view(outcome.node),
+                })
+            return json.dumps({"ok": True, "node": _node_view(outcome.node)})
 
         if op == "link":
             source_id = str(args.get("source_id") or "").strip()
@@ -466,6 +522,63 @@ def _confidence(args: dict[str, Any], *, default: float | None) -> float | None:
         return max(0.0, min(1.0, float(raw)))
     except (TypeError, ValueError):
         return default
+
+
+def _citations(args: dict[str, Any]) -> list[str]:
+    """The evidence ids the caller offered, in whatever shape the model sent.
+
+    Models pass a list, a comma-joined string, or a bare id with roughly equal
+    frequency. All three mean the same thing, and rejecting two of them would
+    push callers back toward citing nothing — which is the outcome this whole
+    mechanism exists to make unattractive.
+    """
+    raw = args.get("evidence")
+    if raw is None or raw == "":
+        return []
+    if isinstance(raw, str):
+        return [part.strip() for part in raw.split(",") if part.strip()]
+    if isinstance(raw, (list, tuple)):
+        return [str(part).strip() for part in raw if str(part).strip()]
+    return []
+
+
+def _resolve_citations(
+    conn: sqlite3.Connection, run_id: str, cited: list[str]
+) -> tuple[list[str], list[str]]:
+    """Split cited ids into those this run actually produced and those it did not.
+
+    A citation is checked against `audit_events` for *this* run, by event id or
+    tool call id. Scoping to the run is the point: without it a model could cite
+    any id in the database, and a citation that cannot be wrong is not evidence.
+    """
+    if not cited or not run_id or run_id == "agent":
+        return [], list(cited)
+    placeholders = ",".join("?" for _ in cited)
+    try:
+        rows = conn.execute(
+            f"SELECT id, tool_call_id FROM audit_events WHERE run_id=? "  # noqa: S608
+            f"AND (id IN ({placeholders}) OR tool_call_id IN ({placeholders}))",
+            (run_id, *cited, *cited),
+        ).fetchall()
+    except sqlite3.Error as exc:
+        # Unreadable audit trail must not reject an otherwise good write; it
+        # only costs the node its promotion to `derived`.
+        logger.debug("citation check failed for run %s: %s", run_id, exc)
+        return [], list(cited)
+    known = {str(value) for row in rows for value in row if value}
+    resolved = [cid for cid in cited if cid in known]
+    return resolved, [cid for cid in cited if cid not in known]
+
+
+def _grade_for_write(resolved: list[str]) -> str:
+    """What a node written through this tool is entitled to claim.
+
+    `derived` is the ceiling for anything an agent writes, even with citations:
+    it read some evidence and drew a conclusion, which is not the same as the
+    conclusion having been checked. Promotion to `verified` happens elsewhere,
+    from the verification gate's verdict, and never on the writer's say-so.
+    """
+    return provenance.DERIVED if resolved else provenance.ASSERTED
 
 
 def _now() -> str:
