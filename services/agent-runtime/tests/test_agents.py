@@ -421,6 +421,65 @@ def test_native_persists_mission_intent_not_compiled_operator_context(
     assert json.loads(row[1])["compiled_context_excluded"] is True
 
 
+def test_native_carries_the_whole_thread_into_each_following_turn(
+    db: sqlite3.Connection, lock: threading.Lock, surface_session: str
+) -> None:
+    """The operator-facing bug: follow-ups arrived without the conversation.
+
+    Three turns in one session, the middle one failing the way a real run fails
+    (harness error, watchdog, cancel). The third turn must see both earlier
+    questions — including the failed one, which the operator did ask — the
+    answer that did land, and must not see its own prompt replayed as history.
+    """
+    harness = _FakeHarness(
+        {
+            "final_response": "answer one",
+            "api_calls": 1,
+            "completed": True,
+            "failed": False,
+            "error": None,
+        }
+    )
+
+    def turn(prompt: str, *, fail: bool = False) -> None:
+        mid = _pending_mission(db, intent=prompt)
+        rid = _running_run_in_session(db, mid, surface_session)
+        if fail:
+            broken = _FakeHarness({})
+            broken.run_conversation = _raise_harness_error  # type: ignore[method-assign]
+            NativeAtlasAgent(agent_factory=lambda session_id: broken).execute(
+                db, lock, mission_id=mid, run_id=rid, prompt=prompt
+            )
+            return
+        NativeAtlasAgent(agent_factory=lambda session_id: harness).execute(
+            db, lock, mission_id=mid, run_id=rid, prompt=prompt
+        )
+
+    turn("question one")
+    turn("question two", fail=True)
+    turn("question three")
+
+    history = harness.histories[-1] or []
+    replayed = [item["content"] for item in history]
+    assert "question one" in replayed
+    assert "answer one" in replayed
+    assert "question two" in replayed, (
+        "a failed run still contained a real operator question"
+    )
+    assert "question three" not in replayed, (
+        "the live turn's own prompt must not be replayed back to it as history"
+    )
+    # No two adjacent turns share a role: the unanswered question two is merged
+    # with question three's predecessor rather than handed over as a second
+    # consecutive user message.
+    roles = [item["role"] for item in history]
+    assert all(a != b for a, b in zip(roles, roles[1:]))
+
+
+def _raise_harness_error(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+    raise RuntimeError("provider connection reset")
+
+
 def test_native_falls_back_to_run_id_without_a_session(
     db: sqlite3.Connection, lock: threading.Lock
 ) -> None:

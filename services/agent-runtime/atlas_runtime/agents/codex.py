@@ -31,6 +31,7 @@ import sqlite3
 import threading
 from typing import Any, Callable, Iterable, Iterator, Optional
 
+from atlas_runtime import session_continuity
 from atlas_runtime.agents.base import AgentRuntime, RunOutcome
 from atlas_runtime.audit_service import emit
 
@@ -187,8 +188,26 @@ class CodexAgent(AgentRuntime):
         runner = self._runner_fn or _default_runner
         summary: list[str] = []
         state = {"status": "succeeded"}
+
+        # Each Codex thread is ephemeral by construction (see _default_runner),
+        # so continuity cannot come from the SDK: the prior turns are replayed
+        # into the prompt and the record is ATLAS's own session_messages.
+        session_key = session_continuity.resolve_session(conn, run_id)
+        operator_prompt = session_continuity.operator_message(conn, mission_id, prompt)
+        session_continuity.record(
+            conn, lock, session_key,
+            run_id=run_id, role="user", content=operator_prompt,
+            metadata={"compiled_context_excluded": operator_prompt != prompt},
+        )
+        turn_prompt = session_continuity.with_history(
+            prompt,
+            session_continuity.transcript(
+                session_continuity.load(conn, session_key, exclude_run_id=run_id)
+            ),
+        )
+
         try:
-            for event in runner(prompt, cancel_token):
+            for event in runner(turn_prompt, cancel_token):
                 self._map_event(conn, lock, run_id, event, summary, state)
                 if cancel_token is not None and cancel_token.is_set():
                     self._safe_emit(
@@ -207,7 +226,11 @@ class CodexAgent(AgentRuntime):
                 data={"runtime": "codex", "error": str(exc)},
             )
             return RunOutcome(status="failed", summary=f"codex error: {exc}"[:_SUMMARY_CAP])
-        return RunOutcome(status=state["status"], summary="\n".join(summary).strip()[:_SUMMARY_CAP])
+        answer = "\n".join(summary).strip()
+        session_continuity.record(
+            conn, lock, session_key, run_id=run_id, role="assistant", content=answer
+        )
+        return RunOutcome(status=state["status"], summary=answer[:_SUMMARY_CAP])
 
     # -- internal ----------------------------------------------------------
 

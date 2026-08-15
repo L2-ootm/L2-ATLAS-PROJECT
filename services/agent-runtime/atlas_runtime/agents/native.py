@@ -33,14 +33,10 @@ from typing import Any, Callable, Optional
 
 from atlas_core.schemas.core import SECRET_PATTERNS
 
-from atlas_runtime import storage_compressor
+from atlas_runtime import session_continuity, storage_compressor
 from atlas_runtime.agents.base import AgentRuntime, RunOutcome
 from atlas_runtime.audit_service import emit
-from atlas_runtime.memory_router import (
-    ConversationHistoryRetriever,
-    RouterQuery,
-    history_snippets_to_messages,
-)
+from atlas_runtime.memory_router import history_snippets_to_messages
 
 logger = logging.getLogger(__name__)
 
@@ -749,30 +745,14 @@ class NativeAtlasAgent(AgentRuntime):
         # callbacks below close over it to persist conversation history: relying
         # on a closure reading a name assigned later in the function works, but
         # only by accident of call ordering.
-        session_key: Optional[str] = None
-        try:
-            session_row = conn.execute(
-                "SELECT session_id FROM runs WHERE id=?", (run_id,)
-            ).fetchone()
-            if session_row and session_row[0]:
-                session_key = str(session_row[0])
-        except Exception as exc:
-            logger.debug("Failed to resolve surface session for run %s: %s", run_id, exc)
+        session_key: Optional[str] = session_continuity.resolve_session(conn, run_id)
 
         # Durable conversation history (migration 0030). Persist the operator's
         # actual mission intent, not the compiled prompt containing the entire
         # ATLAS Operator Context brief. Replaying that brief as a user turn
         # duplicated machine evidence, hid the last message, and encouraged
         # summary-JSON echo/hallucination on follow-ups.
-        operator_prompt = prompt
-        try:
-            mission_row = conn.execute(
-                "SELECT intent FROM missions WHERE id=?", (mission_id,)
-            ).fetchone()
-            if mission_row and str(mission_row[0] or "").strip():
-                operator_prompt = str(mission_row[0]).strip()
-        except Exception as exc:
-            logger.debug("Failed to resolve operator prompt for run %s: %s", run_id, exc)
+        operator_prompt = session_continuity.operator_message(conn, mission_id, prompt)
 
         # The operator's ask is
         # recorded before execution so a run that dies mid-turn still leaves the
@@ -1050,18 +1030,14 @@ class NativeAtlasAgent(AgentRuntime):
         # Load bounded durable user/assistant turns from previous runs in the
         # same session. Synthesized runs.summary rows are evidence, not dialogue,
         # and must never be replayed as assistant messages.
-        conversation_history: list[dict[str, Any]] = []
-        if session_key:
-            try:
-                history_query = RouterQuery(session_id=session_key, max_runs=5)
-                snippets = ConversationHistoryRetriever().retrieve(conn, history_query)
-                conversation_history = history_snippets_to_messages(snippets)
-            except Exception as exc:
-                logger.debug(
-                    "Failed to load conversation history for session continuity: %s", exc
-                )
-                # Non-fatal: proceed without history
-                conversation_history = []
+        # `session_continuity.load` owns the window and the exclusion of this
+        # run's own operator message (persisted above, before the turn is
+        # driven) so every runtime replays the same thread — the two CLI
+        # runtimes were written without any of this and served the same session
+        # as a cold start.
+        conversation_history: list[dict[str, Any]] = history_snippets_to_messages(
+            session_continuity.load(conn, session_key, exclude_run_id=run_id)
+        )
 
         # One deadline for the whole run rather than one per turn: the enforced
         # verification turn below shares this budget, so a run cannot exceed its
@@ -1395,47 +1371,19 @@ class NativeAtlasAgent(AgentRuntime):
     ) -> None:
         """Append one turn to durable conversation history (migration 0030).
 
-        No-ops without a surface session: `session_messages.surface_session_id`
-        is FK-bound, and a run outside any session has nothing to attach to.
-        Fail-open like `_safe_emit` — losing a history row must never take down
-        a run that is otherwise succeeding.
+        Thin wrapper over `session_continuity.record` so the durable record has
+        one writer across all three runtimes; kept as a method because the tool
+        callbacks above already close over it.
         """
-        if not session_key or not content:
-            return
-        try:
-            from atlas_runtime import session_message_service  # noqa: PLC0415
-        except Exception as exc:  # noqa: BLE001 — fail-open history
-            logger.debug("session message persistence unavailable (%s): %s", role, exc)
-            return
-        try:
-            session_message_service.append_message(
-                conn, lock,
-                surface_session_id=session_key,
-                run_id=run_id,
-                role=role,
-                content=content,
-                tool_call_id=tool_call_id,
-                tool_name=tool_name,
-                metadata=metadata,
-            )
-        except session_message_service.DatabaseBusyExhausted as exc:
-            logger.warning(
-                "session message persistence warning: %s",
-                json.dumps(
-                    {
-                        "event": "session_message_persistence_failed",
-                        "reason": exc.reason,
-                        "attempts": exc.attempts,
-                        "role": role,
-                        "run_id": run_id,
-                        "surface_session_id": session_key,
-                    },
-                    separators=(",", ":"),
-                    sort_keys=True,
-                ),
-            )
-        except Exception as exc:  # noqa: BLE001 — fail-open history
-            logger.debug("session message persistence failed (%s): %s", role, exc)
+        session_continuity.record(
+            conn, lock, session_key,
+            run_id=run_id,
+            role=role,
+            content=content,
+            tool_call_id=tool_call_id,
+            tool_name=tool_name,
+            metadata=metadata,
+        )
 
     def _map_result(
         self,

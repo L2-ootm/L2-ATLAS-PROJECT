@@ -25,7 +25,9 @@ from __future__ import annotations
 
 import datetime
 import json
+import logging
 import math
+import os
 import pathlib
 import re
 import sqlite3
@@ -36,6 +38,8 @@ from atlas_core.schemas.core import SECRET_PATTERNS
 from atlas_core.schemas.run_summary import RunSummary
 
 from atlas_runtime import brain_service, goal_service, scratchpad_service
+
+logger = logging.getLogger(__name__)
 
 # Wiki FTS retrieval budget (ported from context_service's original inline logic).
 _KNOWLEDGE_MAX_PAGES = 5
@@ -122,6 +126,10 @@ class RouterQuery:
     # mission_id: a session spans the runs of one conversational thread, which a
     # mission need not (see native.py's session-continuity call site).
     session_id: str | None = None
+    # The run being executed right now, whose own operator message is already in
+    # `session_messages` (native.py records it before driving the turn) and must
+    # not be replayed back to the model as if it were a previous exchange.
+    exclude_run_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -213,7 +221,57 @@ class RecentRunsRetriever:
 # MemoryRouter's shared token_budget) so session history cannot crowd out the
 # wiki/brain/skills sections when the router is shared — the highest-priority
 # section per the operational-importance research finding, but still bounded.
-_CONVERSATION_TOKEN_BUDGET = 2000
+#
+# 2000 tokens was roughly four exchanges of real operator chat, which is why a
+# conversation of any length arrived at the model already amputated. The budget
+# is an operator knob now because the right size depends on the context window
+# the active provider gives a run, which this module cannot know.
+_CONVERSATION_TOKEN_BUDGET = 6000
+_CONVERSATION_TOKEN_BUDGET_ENV = "ATLAS_CONVERSATION_TOKEN_BUDGET"
+
+# Hard row cap on the newest-first scan. The budget stops the walk long before
+# this in every realistic session; this only bounds the SQL read so a session
+# with tens of thousands of messages cannot pull them all into memory to throw
+# almost all of them away.
+_CONVERSATION_SCAN_ROWS = 400
+
+_TRUNCATION_MARKER = "\n\n[… earlier part of this message omitted for length]"
+
+
+def conversation_token_budget() -> int:
+    """Token budget for replayed session history, overridable per deployment."""
+    raw = os.environ.get(_CONVERSATION_TOKEN_BUDGET_ENV, "").strip()
+    if raw:
+        try:
+            parsed = int(raw)
+        except ValueError:
+            logger.warning(
+                "%s=%r is not an integer; using the %d-token default",
+                _CONVERSATION_TOKEN_BUDGET_ENV, raw, _CONVERSATION_TOKEN_BUDGET,
+            )
+        else:
+            if parsed > 0:
+                return parsed
+            logger.warning(
+                "%s=%d is not positive; using the %d-token default",
+                _CONVERSATION_TOKEN_BUDGET_ENV, parsed, _CONVERSATION_TOKEN_BUDGET,
+            )
+    return _CONVERSATION_TOKEN_BUDGET
+
+
+def _truncate_to_tokens(text: str, budget: int) -> str:
+    """Keep the tail of an oversized turn, marked as truncated.
+
+    The tail, not the head: the end of a long operator message is where the
+    actual instruction usually is, and the end of a long answer is its
+    conclusion. A turn that cannot fit is still worth more truncated than
+    dropped — dropping it is how a single pasted stack trace used to cost the
+    model the entire conversation around it.
+    """
+    keep_chars = max(1, budget * 4 - len(_TRUNCATION_MARKER))
+    if len(text) <= keep_chars:
+        return text
+    return text[-keep_chars:] + _TRUNCATION_MARKER
 
 
 class ConversationHistoryRetriever:
@@ -222,9 +280,22 @@ class ConversationHistoryRetriever:
     ``runs.summary`` is synthesized evidence, not conversation. Replaying it as
     assistant speech caused models to echo raw summary JSON, trust hallucinated
     file claims, and forget the actual preceding operator message. Migration
-    0030's ``session_messages`` rows are the canonical conversational record.
-    The newest ``max_runs`` are selected, then replayed oldest-first under a
-    dedicated ~2000-token budget.
+    0030's ``session_messages`` rows are the canonical conversational record,
+    and this retriever reads them directly, ordered by ``seq``.
+
+    Two rules define the window, and both exist because of the way this used to
+    lose the operator's last message:
+
+    * **The walk runs newest-first and the budget cuts the far end.** Filling a
+      budget from the oldest turn forward means the turns that get dropped are
+      the most recent ones — the model kept the opening of a conversation and
+      lost the exchange it was being asked to follow up on. Snippets are
+      reversed back into chronological order before returning.
+    * **Run status does not decide whether the operator spoke.** The question is
+      persisted before the turn is driven, so selecting only ``succeeded`` runs
+      deleted the operator's own words from every run that failed, timed out, or
+      was cancelled. ``max_runs`` still bounds how far back the window reaches;
+      it no longer decides which turns inside it were real.
     """
 
     def section_lines(self, query: RouterQuery) -> list[str]:
@@ -233,46 +304,56 @@ class ConversationHistoryRetriever:
     def retrieve(self, conn: sqlite3.Connection, query: RouterQuery) -> list[MemorySnippet]:
         if not query.session_id or not _table_exists(conn, "session_messages"):
             return []
-        run_rows = conn.execute(
-            "SELECT id FROM runs WHERE session_id=? "
-            "AND status IN ('succeeded','completed') "
-            "ORDER BY started_at DESC LIMIT ?",
-            (query.session_id, query.max_runs),
+        rows = conn.execute(
+            "SELECT role, content, run_id FROM session_messages "
+            "WHERE surface_session_id=? AND role IN ('user','assistant') "
+            "ORDER BY seq DESC LIMIT ?",
+            (query.session_id, _CONVERSATION_SCAN_ROWS),
         ).fetchall()
-        run_ids = [str(row[0]) for row in reversed(run_rows)]
-        if not run_ids:
-            return []
+
+        budget = conversation_token_budget()
+        newest_first: list[tuple[str, str, str]] = []  # (role, text, run_id)
+        used_tokens = 0
+        window_runs: list[str] = []
+        for role, content, run_id in rows:
+            run_key = str(run_id or "")
+            if query.exclude_run_id and run_key == query.exclude_run_id:
+                continue
+            if run_key and run_key not in window_runs:
+                if len(window_runs) >= query.max_runs:
+                    break
+                window_runs.append(run_key)
+            role = str(role)
+            text = _clean_history_turn(role, str(content or ""))
+            if not text:
+                continue
+            tokens = estimate_tokens(text)
+            if not newest_first and tokens > budget:
+                # The most recent turn is never dropped for being too long: a
+                # conversation whose newest message is a pasted log would come
+                # back completely empty.
+                text = _truncate_to_tokens(text, budget)
+                tokens = estimate_tokens(text)
+            elif newest_first and used_tokens + tokens > budget:
+                break
+            used_tokens += tokens
+            newest_first.append((role, text, run_key))
 
         out: list[MemorySnippet] = []
-        used_tokens = 0
         last_user_text = ""
-        for run_index, run_id in enumerate(run_ids):
-            rows = conn.execute(
-                "SELECT role,content FROM session_messages "
-                "WHERE surface_session_id=? AND run_id=? "
-                "AND role IN ('user','assistant') ORDER BY seq ASC",
-                (query.session_id, run_id),
-            ).fetchall()
-            for message_index, (role, content) in enumerate(rows):
-                text = _clean_history_turn(str(role), str(content or ""))
-                if not text:
+        for index, (role, text, run_key) in enumerate(reversed(newest_first)):
+            if role == "user":
+                if text == last_user_text:
                     continue
-                if role == "user":
-                    if text == last_user_text:
-                        continue
-                    last_user_text = text
-                tokens = estimate_tokens(text)
-                if out and used_tokens + tokens > _CONVERSATION_TOKEN_BUDGET:
-                    return out
-                used_tokens += tokens
-                out.append(
-                    MemorySnippet(
-                        text=text,
-                        score=float(-(run_index * 10 + message_index)),
-                        source=f"session_{role}:{run_id}",
-                        approx_tokens=tokens,
-                    )
+                last_user_text = text
+            out.append(
+                MemorySnippet(
+                    text=text,
+                    score=float(-index),
+                    source=f"session_{role}:{run_key}",
+                    approx_tokens=estimate_tokens(text),
                 )
+            )
         return out
 
 
@@ -310,30 +391,45 @@ def history_snippets_to_messages(snippets: list[MemorySnippet]) -> list[dict[str
     New snippets carry the durable role in their source id. Legacy source types
     remain understood for compatibility with retained tests/data, but the live
     retriever no longer produces synthesized summary/tool turns.
+
+    Consecutive same-role turns are merged. Since a run that failed contributes
+    its operator question without an answer after it, replayed history can now
+    legitimately hold two user turns in a row — which strict providers reject
+    outright. Merging keeps both messages and keeps the conversation valid;
+    dropping either one would be losing exactly the context this retriever
+    exists to preserve.
     """
     messages: list[dict[str, Any]] = []
     for i, snip in enumerate(snippets):
         source_type, _, source_id = snip.source.partition(":")
         text = redact(snip.text)
         if source_type == "session_user":
-            messages.append({"role": "user", "content": text})
+            message = {"role": "user", "content": text}
         elif source_type == "session_assistant":
-            messages.append({"role": "assistant", "content": text})
+            message = {"role": "assistant", "content": text}
         elif source_type == "run_tools":
-            messages.append(
-                {
-                    "role": "tool",
-                    "content": text,
-                    "tool_call_id": f"history-{source_id}-{i}",
-                }
-            )
+            message = {
+                "role": "tool",
+                "content": text,
+                "tool_call_id": f"history-{source_id}-{i}",
+            }
         elif source_type == "run_prompt":
             # Restores user/assistant alternation. Previously every replayed
             # turn was an assistant message, so the model saw a transcript of
             # answers to questions that were never shown.
-            messages.append({"role": "user", "content": text})
+            message = {"role": "user", "content": text}
         else:
-            messages.append({"role": "assistant", "content": text})
+            message = {"role": "assistant", "content": text}
+        # Tool messages carry a call id and are never merged; two of them in a
+        # row is valid in the OpenAI shape this list is consumed as.
+        if (
+            messages
+            and message["role"] != "tool"
+            and messages[-1]["role"] == message["role"]
+        ):
+            messages[-1]["content"] = f"{messages[-1]['content']}\n\n{message['content']}"
+            continue
+        messages.append(message)
     return messages
 
 

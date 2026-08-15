@@ -23,6 +23,7 @@ import sqlite3
 import threading
 from typing import Any, Callable, Optional
 
+from atlas_runtime import session_continuity
 from atlas_runtime.agents.base import AgentRuntime, RunOutcome
 from atlas_runtime.audit_service import emit
 
@@ -96,9 +97,26 @@ class ClaudeCodeAgent(AgentRuntime):
         summary: list[str] = []
         state = {"status": "succeeded"}
 
+        # The SDK takes one string and keeps no ATLAS-visible session, so the
+        # thread is replayed into the prompt. Recorded before the turn is
+        # driven, so a run that dies still leaves the question in the record.
+        session_key = session_continuity.resolve_session(conn, run_id)
+        operator_prompt = session_continuity.operator_message(conn, mission_id, prompt)
+        session_continuity.record(
+            conn, lock, session_key,
+            run_id=run_id, role="user", content=operator_prompt,
+            metadata={"compiled_context_excluded": operator_prompt != prompt},
+        )
+        turn_prompt = session_continuity.with_history(
+            prompt,
+            session_continuity.transcript(
+                session_continuity.load(conn, session_key, exclude_run_id=run_id)
+            ),
+        )
+
         async def _drive() -> None:
             options = options_factory()
-            async for msg in query_fn(prompt=prompt, options=options):
+            async for msg in query_fn(prompt=turn_prompt, options=options):
                 self._map_message(conn, lock, run_id, msg, summary, state)
 
         try:
@@ -111,7 +129,11 @@ class ClaudeCodeAgent(AgentRuntime):
             )
             return RunOutcome(status="failed", summary=f"claude_code error: {exc}"[:_SUMMARY_CAP])
 
-        return RunOutcome(status=state["status"], summary="".join(summary).strip()[:_SUMMARY_CAP])
+        answer = "".join(summary).strip()
+        session_continuity.record(
+            conn, lock, session_key, run_id=run_id, role="assistant", content=answer
+        )
+        return RunOutcome(status=state["status"], summary=answer[:_SUMMARY_CAP])
 
     # -- internal ----------------------------------------------------------
 

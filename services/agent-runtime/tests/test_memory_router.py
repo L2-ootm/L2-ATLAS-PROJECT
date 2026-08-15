@@ -788,8 +788,12 @@ def test_history_does_not_repeat_identical_operator_turn_per_run(db, surface_ses
         )
     )
 
-    assert [m["role"] for m in messages] == ["user", "assistant", "assistant"]
+    # The repeated ask is stated once, and the two answers that followed it
+    # collapse into the single assistant turn the providers will accept.
+    assert [m["role"] for m in messages] == ["user", "assistant"]
     assert sum("keep going until green" in m["content"] for m in messages) == 1
+    assert "first attempt" in messages[1]["content"]
+    assert "second attempt" in messages[1]["content"]
 
 
 def test_history_uses_newest_runs_and_remembers_last_message(db, surface_session):
