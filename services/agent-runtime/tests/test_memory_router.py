@@ -706,12 +706,12 @@ def test_envelope_filters_only_snippets_reporting_real_relevance(db):
 # --- session history includes the operator's ask ---------------------------
 
 
-def _session_run(db, session_id, mission_id, summary, started_at, messages=()):
+def _session_run(db, session_id, mission_id, summary, started_at, messages=(), status="succeeded"):
     rid = str(uuid.uuid4())
     db.execute(
         "INSERT INTO runs(id, mission_id, session_id, status, started_at, finished_at, summary) "
-        "VALUES (?, ?, ?, 'succeeded', ?, ?, ?)",
-        (rid, mission_id, session_id, started_at, started_at, summary),
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (rid, mission_id, session_id, status, started_at, started_at, summary),
     )
     db.commit()
     lock = threading.Lock()
@@ -830,6 +830,86 @@ def test_history_uses_newest_runs_and_remembers_last_message(db, surface_session
     assert "question 0" not in text
     assert "answer 5" in text
     assert messages[-1]["content"] == "answer 5"
+
+
+@pytest.mark.parametrize("status", ["failed", "cancelled", "timeout", "running"])
+def test_history_keeps_the_operator_turn_of_a_run_that_did_not_succeed(
+    db, surface_session, status
+):
+    """A turn that broke is the one most likely to be followed up on.
+
+    The operator's message is persisted before the turn is driven, so selecting
+    replay by run status deleted the question from every run that failed, timed
+    out or was cancelled — and the follow-up then arrived with nothing to follow
+    up on. Status describes the run; it never decides whether the operator spoke.
+    """
+    session = surface_session
+    _session_run(
+        db,
+        session,
+        _mission(db, "deploy the gateway"),
+        "shipped",
+        "2026-07-26T01:00:00Z",
+        [("user", "deploy the gateway"), ("assistant", "gateway is live")],
+    )
+    _session_run(
+        db,
+        session,
+        _mission(db, "now migrate the database"),
+        "",
+        "2026-07-26T02:00:00Z",
+        [("user", "now migrate the database")],
+        status=status,
+    )
+
+    messages = mr.history_snippets_to_messages(
+        mr.ConversationHistoryRetriever().retrieve(
+            db, mr.RouterQuery(session_id=session, max_runs=5)
+        )
+    )
+
+    text = "\n".join(message["content"] for message in messages)
+    assert "now migrate the database" in text, f"lost the operator turn of a {status} run"
+    assert "deploy the gateway" in text
+    assert messages[-1]["content"] == "now migrate the database"
+
+
+def test_history_excludes_the_live_run_without_touching_the_rest(db, surface_session):
+    """The turn being answered is not history of itself.
+
+    The live run's own message is already on the wire as the prompt; replaying
+    it makes the model answer the same question twice. Exclusion is by run id —
+    not by the accident of that run's status not yet being terminal.
+    """
+    session = surface_session
+    _session_run(
+        db,
+        session,
+        _mission(db, "what broke?"),
+        "traced it",
+        "2026-07-26T01:00:00Z",
+        [("user", "what broke?"), ("assistant", "the migration did")],
+    )
+    live = _session_run(
+        db,
+        session,
+        _mission(db, "and how do I fix it?"),
+        "",
+        "2026-07-26T02:00:00Z",
+        [("user", "and how do I fix it?")],
+        status="running",
+    )
+
+    messages = mr.history_snippets_to_messages(
+        mr.ConversationHistoryRetriever().retrieve(
+            db, mr.RouterQuery(session_id=session, max_runs=5, exclude_run_id=live)
+        )
+    )
+
+    text = "\n".join(message["content"] for message in messages)
+    assert "and how do I fix it?" not in text
+    assert "what broke?" in text
+    assert "the migration did" in text
 
 
 def test_history_strips_compiled_context_and_drops_summary_dump(db, surface_session):
