@@ -13,6 +13,7 @@ import uuid
 
 import pytest
 
+from atlas_core.schemas import provenance
 from atlas_runtime import memory_router as mr
 from atlas_runtime import session_message_service
 
@@ -45,8 +46,13 @@ class _FakeRetriever:
         return self._snippets
 
 
-def _snip(text: str, score: float, source: str) -> mr.MemorySnippet:
-    return mr.MemorySnippet(text=text, score=score, source=source, approx_tokens=mr.estimate_tokens(text))
+def _snip(
+    text: str, score: float, source: str, grade: str = provenance.OBSERVED
+) -> mr.MemorySnippet:
+    return mr.MemorySnippet(
+        text=text, score=score, source=source,
+        approx_tokens=mr.estimate_tokens(text), grade=grade,
+    )
 
 
 def test_estimate_tokens_chars_over_four():
@@ -653,13 +659,16 @@ class _FixedRetriever:
         return ["## Fixed evidence"]
 
 
-def _snippet(source: str, score: float, relevance=None) -> mr.MemorySnippet:
+def _snippet(
+    source: str, score: float, relevance=None, grade: str = provenance.OBSERVED
+) -> mr.MemorySnippet:
     return mr.MemorySnippet(
         text=f"evidence from {source}",
         score=score,
         source=source,
         approx_tokens=5,
         relevance=relevance,
+        grade=grade,
     )
 
 
@@ -701,6 +710,190 @@ def test_envelope_filters_only_snippets_reporting_real_relevance(db):
     assert "unscored" in sources
     assert "weak" not in sources
     assert "weak" in envelope.rejected_source_ids
+
+
+# --- the provenance ladder at the read boundary -----------------------------
+
+
+def test_every_item_reaches_the_model_carrying_where_it_came_from(db):
+    """The defect this slice exists to fix.
+
+    Every snippet used to render `trust="evidence"` — the operator's own words
+    and an unchecked third-party claim were typographically identical in the
+    brief, so the model had no basis to weigh one against the other.
+    """
+    router = mr.MemoryRouter(retrievers=[
+        _FixedRetriever([
+            _snippet("session_user:r1", -0.0, grade=provenance.STATED),
+            _snippet("actor:a9", -1.0, grade=provenance.REPORTED),
+        ])
+    ])
+
+    envelope = router.assemble_envelope(db, mr.RouterQuery(terms=("ship",)))
+
+    assert 'source="session_user:r1" grade="stated"' in envelope.markdown
+    assert 'source="actor:a9" grade="reported"' in envelope.markdown
+    assert {item.grade for item in envelope.selected} == {
+        provenance.STATED, provenance.REPORTED
+    }
+
+
+def test_unbacked_assertions_never_reach_the_brief(db):
+    """`asserted` is a holding pen, not knowledge.
+
+    Once an unbacked claim is rendered beside checked evidence in a prompt, it is
+    indistinguishable from it. The floor keeps it out rather than trusting the
+    model to discount it.
+    """
+    router = mr.MemoryRouter(retrievers=[
+        _FixedRetriever([
+            _snippet("brain:guess", -0.0, grade=provenance.ASSERTED),
+            _snippet("run:real", -1.0, grade=provenance.OBSERVED),
+        ])
+    ])
+
+    envelope = router.assemble_envelope(db, mr.RouterQuery(terms=("ship",)))
+
+    assert [item.source_id for item in envelope.selected] == ["run:real"]
+    assert "brain:guess" in envelope.rejected_source_ids
+    assert "brain:guess" not in envelope.markdown
+
+
+def test_the_floor_can_be_lowered_deliberately(db):
+    """Excluded is not deleted — an explicit ask can still reach the holding pen."""
+    router = mr.MemoryRouter(retrievers=[
+        _FixedRetriever([_snippet("brain:guess", -0.0, grade=provenance.ASSERTED)])
+    ])
+
+    envelope = router.assemble_envelope(
+        db, mr.RouterQuery(terms=("ship",)), grade_floor=provenance.ASSERTED
+    )
+
+    assert [item.source_id for item in envelope.selected] == ["brain:guess"]
+
+
+def test_confidence_comes_from_the_ladder_not_from_the_sort_key(db):
+    """It used to be max(0.0, min(1.0, score)).
+
+    `score` is a private per-retriever sort key, usually a negated index, so the
+    old confidence was 0.0 for nearly every snippet in the system — a broken
+    value that no consumer read, which is exactly how it would have survived to
+    become load-bearing later.
+    """
+    router = mr.MemoryRouter(retrievers=[
+        _FixedRetriever([_snippet("session_user:r1", -7.0, grade=provenance.STATED)])
+    ])
+
+    envelope = router.assemble_envelope(db, mr.RouterQuery(terms=("ship",)))
+
+    assert envelope.selected[0].confidence > 0.0
+    assert envelope.selected[0].confidence == pytest.approx(4 / 5)
+
+
+def test_the_grade_key_explains_only_the_grades_actually_present(db):
+    """A fixed six-line legend on every brief gets tuned out within a few runs."""
+    router = mr.MemoryRouter(retrievers=[
+        _FixedRetriever([
+            _snippet("session_user:r1", -0.0, grade=provenance.STATED),
+            _snippet("run:2", -1.0, grade=provenance.OBSERVED),
+        ])
+    ])
+
+    markdown = router.assemble_envelope(db, mr.RouterQuery(terms=("ship",))).markdown
+
+    assert "How to weigh the evidence above" in markdown
+    assert provenance.LICENCE[provenance.STATED] in markdown
+    assert provenance.LICENCE[provenance.OBSERVED] in markdown
+    # Nothing derived, reported or verified was retrieved, so nothing describes them.
+    assert provenance.LICENCE[provenance.DERIVED] not in markdown
+    assert provenance.LICENCE[provenance.VERIFIED] not in markdown
+    # And the intent-vs-fact rule stays silent without a `verified` item to weigh
+    # against — naming a grade the run cannot see teaches it to reason about
+    # evidence it does not have.
+    assert "`verified` settles what is true" not in markdown
+
+
+def test_the_intent_versus_fact_rule_appears_when_both_sides_are_present(db):
+    """The one conflict ATLAS refuses to resolve on the operator's behalf."""
+    router = mr.MemoryRouter(retrievers=[
+        _FixedRetriever([
+            _snippet("session_user:r1", -0.0, grade=provenance.STATED),
+            _snippet("check:c1", -1.0, grade=provenance.VERIFIED),
+        ])
+    ])
+
+    markdown = router.assemble_envelope(db, mr.RouterQuery(terms=("ship",))).markdown
+
+    assert "`verified` settles what is true" in markdown
+    assert "Surface the disagreement" in markdown
+
+
+def test_a_single_grade_needs_no_key(db):
+    """With nothing to weigh against, the key is noise in every run's context."""
+    router = mr.MemoryRouter(retrievers=[
+        _FixedRetriever([
+            _snippet("run:1", -0.0, grade=provenance.OBSERVED),
+            _snippet("run:2", -1.0, grade=provenance.OBSERVED),
+        ])
+    ])
+
+    markdown = router.assemble_envelope(db, mr.RouterQuery(terms=("ship",))).markdown
+
+    assert "How to weigh the evidence above" not in markdown
+
+
+def test_a_stale_observation_is_rendered_with_its_age(db):
+    """An observation's truth is pinned to a moment, so the moment travels with it."""
+    old = (
+        datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=21)
+    ).isoformat()
+    snippet = mr.MemorySnippet(
+        text="gateway listens on 8080", score=-0.0, source="run:old",
+        approx_tokens=5, grade=provenance.OBSERVED, observed_at=old,
+    )
+    router = mr.MemoryRouter(retrievers=[_FixedRetriever([snippet])])
+
+    markdown = router.assemble_envelope(db, mr.RouterQuery(terms=("ship",))).markdown
+
+    assert 'age="21d"' in markdown
+
+
+def test_a_fresh_or_unparseable_timestamp_states_no_age_at_all(db):
+    """A wrong age is worse than no age, and today's reading needs no qualifier."""
+    fresh = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    router = mr.MemoryRouter(retrievers=[
+        _FixedRetriever([
+            mr.MemorySnippet(
+                text="read just now", score=-0.0, source="run:fresh",
+                approx_tokens=5, grade=provenance.OBSERVED, observed_at=fresh,
+            ),
+            mr.MemorySnippet(
+                text="who knows when", score=-1.0, source="run:junk",
+                approx_tokens=5, grade=provenance.OBSERVED, observed_at="not-a-date",
+            ),
+        ])
+    ])
+
+    markdown = router.assemble_envelope(db, mr.RouterQuery(terms=("ship",))).markdown
+
+    assert "age=" not in markdown
+
+
+def test_retrievers_grade_the_operator_and_the_agent_differently(db, surface_session):
+    """A run must not launder its own earlier guess into fact by repeating it."""
+    _session_run(
+        db, surface_session, _mission(db, "what is the port?"), "answered",
+        "2026-07-26T01:00:00Z",
+        [("user", "what is the port?"), ("assistant", "probably 8080")],
+    )
+
+    snippets = mr.ConversationHistoryRetriever().retrieve(
+        db, mr.RouterQuery(session_id=surface_session, max_runs=5)
+    )
+
+    by_role = {s.source.split(":", 1)[0]: s.grade for s in snippets}
+    assert by_role["session_user"] == provenance.STATED
+    assert by_role["session_assistant"] == provenance.REPORTED
 
 
 # --- session history includes the operator's ask ---------------------------

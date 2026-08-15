@@ -5,6 +5,7 @@ import datetime
 import threading
 import uuid
 
+from atlas_core.schemas import provenance
 from atlas_runtime import memory_router as mr
 from atlas_runtime import session_message_service
 
@@ -220,10 +221,17 @@ def test_consecutive_same_role_turns_are_merged_for_the_provider(db):
     messages in a row is a 400 on strict providers, so the message projection
     merges them instead of handing the harness an invalid conversation."""
     snippets = [
-        mr.MemorySnippet(text="first ask", score=0.0, source="session_user:a", approx_tokens=2),
-        mr.MemorySnippet(text="second ask", score=-1.0, source="session_user:b", approx_tokens=2),
         mr.MemorySnippet(
-            text="the answer", score=-2.0, source="session_assistant:b", approx_tokens=2
+            text="first ask", score=0.0, source="session_user:a", approx_tokens=2,
+            grade=provenance.STATED,
+        ),
+        mr.MemorySnippet(
+            text="second ask", score=-1.0, source="session_user:b", approx_tokens=2,
+            grade=provenance.STATED,
+        ),
+        mr.MemorySnippet(
+            text="the answer", score=-2.0, source="session_assistant:b", approx_tokens=2,
+            grade=provenance.REPORTED,
         ),
     ]
     assert mr.history_snippets_to_messages(snippets) == [
@@ -331,6 +339,7 @@ def test_history_conversion_redacts_secrets():
             score=0.0,
             source="session_assistant:run",
             approx_tokens=8,
+            grade=provenance.REPORTED,
         )
     ]
     messages = mr.history_snippets_to_messages(snippets)

@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from atlas_core.schemas import provenance
 from atlas_runtime import memory_router as mr
 
 
@@ -31,6 +32,7 @@ class _PoisonedEvidence:
                 score=1.0,
                 source="wiki:poisoned",
                 approx_tokens=12,
+                grade=provenance.STATED,
             )
         ]
 

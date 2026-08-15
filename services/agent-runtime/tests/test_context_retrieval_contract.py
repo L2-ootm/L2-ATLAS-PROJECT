@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import time
 
+from atlas_core.schemas import provenance
 from atlas_runtime.memory_router import MemoryRouter, MemorySnippet, RouterQuery
 
 
@@ -21,6 +22,7 @@ class FixtureRetriever:
                 score=0.95,
                 source="wiki:relevant",
                 approx_tokens=8,
+                grade=provenance.STATED,
                 relevance=0.95,
             ),
             MemorySnippet(
@@ -28,6 +30,7 @@ class FixtureRetriever:
                 score=0.1,
                 source="wiki:irrelevant",
                 approx_tokens=5,
+                grade=provenance.STATED,
                 relevance=0.1,
             ),
         ]

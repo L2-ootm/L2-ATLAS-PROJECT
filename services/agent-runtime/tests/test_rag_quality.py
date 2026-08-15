@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from atlas_core.schemas import provenance
 from atlas_runtime import memory_router as mr
 
 
@@ -21,6 +22,7 @@ class _FixtureRetriever:
                 score=1.0,
                 source="wiki:atlas",
                 approx_tokens=8,
+                grade=provenance.STATED,
             )
         ]
 
