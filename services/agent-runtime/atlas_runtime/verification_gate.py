@@ -216,11 +216,18 @@ def _is_doc_path(path: str) -> bool:
 
 @dataclass(frozen=True)
 class ObservedCall:
-    """One tool invocation as the audit trail recorded it."""
+    """One tool invocation as the audit trail recorded it.
+
+    `call_id` is the audit trail's own identifier for the call. It is what an
+    agent cites as evidence when recording a claim in the knowledge graph, so
+    carrying it here is what lets a passing check be matched to the claim that
+    rests on it.
+    """
 
     tool: str
     args: dict[str, Any]
     failed: bool = False
+    call_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -235,6 +242,10 @@ class VerificationVerdict:
     # run can be told how this project really invokes its own checks.
     signal_commands: tuple[tuple[str, str], ...] = ()
     failed_signal_commands: tuple[tuple[str, str], ...] = ()
+    # Audit call ids of the checks that passed. Deliberately absent from
+    # `as_payload`: no consumer reads it out of the audit row, and adding it
+    # would grow every verdict event to serve one in-process caller.
+    signal_call_ids: tuple[str, ...] = ()
     # The operator's declared contract, and the part of it this run did not meet.
     required: tuple[str, ...] = ()
     missing_required: tuple[str, ...] = ()
@@ -359,6 +370,7 @@ def classify(
     signal_commands: list[tuple[str, str]] = []
     failed_signals: list[str] = []
     failed_commands: list[tuple[str, str]] = []
+    signal_call_ids: list[str] = []
     weak: list[str] = []
     written: set[str] = set()
     written_stems: set[str] = set()
@@ -376,6 +388,8 @@ def classify(
             if strong and mutations:
                 target = failed_signals if call.failed else signals
                 commands = failed_commands if call.failed else signal_commands
+                if not call.failed and call.call_id:
+                    signal_call_ids.append(call.call_id)
                 for kind in strong:
                     if kind not in target:
                         target.append(kind)
@@ -456,6 +470,7 @@ def classify(
         weak_signals=tuple(weak),
         signal_commands=tuple(signal_commands),
         failed_signal_commands=tuple(failed_commands),
+        signal_call_ids=tuple(dict.fromkeys(signal_call_ids)),
         required=required,
         missing_required=missing,
         contract_source=str(getattr(contract, "source", "") or ""),
@@ -543,7 +558,12 @@ def observed_calls(conn: sqlite3.Connection, run_id: str) -> tuple[ObservedCall,
             failed[call_id] = True
 
     return tuple(
-        ObservedCall(tool=tools[call_id], args=args.get(call_id, {}), failed=failed.get(call_id, False))
+        ObservedCall(
+            tool=tools[call_id],
+            args=args.get(call_id, {}),
+            failed=failed.get(call_id, False),
+            call_id=call_id,
+        )
         for call_id in ordered
     )
 
@@ -793,6 +813,20 @@ def apply(
                 )
         except Exception as exc:  # noqa: BLE001 — bookkeeping never fails a run
             logger.debug("verification ledger write failed for %s: %s", run_id, exc)
+
+        # The only path by which a knowledge-graph claim becomes `verified`.
+        # Scoped to claims citing a check that passed, not to every claim this
+        # run recorded — see brain_service.promote_checked_claims.
+        try:
+            from atlas_runtime import brain_service  # noqa: PLC0415
+
+            promoted = brain_service.promote_checked_claims(
+                conn, run_id=run_id, passing_call_ids=verdict.signal_call_ids
+            )
+            if promoted:
+                logger.debug("promoted %d claim(s) to verified for %s", promoted, run_id)
+        except Exception as exc:  # noqa: BLE001 — a grade never fails a run
+            logger.debug("claim promotion failed for %s: %s", run_id, exc)
 
         summary = outcome.summary
         if verdict.state == "contradicted" and outcome.status == "succeeded":

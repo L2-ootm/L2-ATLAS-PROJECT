@@ -192,6 +192,37 @@ def test_execute_run_writes_brain_graph(file_db):
     assert edge == ("produced",)
 
 
+def test_brain_nodes_a_run_writes_still_reach_a_brief(file_db):
+    """Every writer must state its grade, or its own output disappears.
+
+    `BrainNode.grade` floors an unstated grade at `asserted`, and `asserted` sits
+    below the retrieval floor. A writer that forgets to declare therefore keeps
+    writing rows that no run will ever be shown — silently, since the write
+    succeeds. That is what happened here: the run/mission mirror declared no
+    grade, so every terminal run was quietly filing itself out of the graph.
+    """
+    from atlas_core.schemas import provenance
+    from atlas_runtime import brain_service, memory_router as mr
+
+    _, conn = file_db
+    lock = threading.Lock()
+    mid = _new_mission(conn, lock)
+    run = start_run(conn, lock, mission_id=mid)
+    run_executor.execute_run(
+        conn, lock, agent=_FakeAgent(status="succeeded", summary="gateway cors fixed"),
+        mission_id=mid, run_id=run.id, prompt="hi",
+    )
+
+    assert brain_service.explain(conn, f"run:{run.id}").grade == provenance.OBSERVED
+    assert brain_service.explain(conn, f"mission:{mid}").grade == provenance.OBSERVED
+
+    envelope = mr.MemoryRouter(retrievers=[mr.BrainRetriever()]).assemble_envelope(
+        conn, mr.RouterQuery(terms=("gateway",))
+    )
+    assert f"brain:run:{run.id}" not in envelope.rejected_source_ids
+    assert "gateway cors fixed" in envelope.markdown
+
+
 def test_execute_run_brain_labels_are_redacted(file_db):
     _, conn = file_db
     lock = threading.Lock()

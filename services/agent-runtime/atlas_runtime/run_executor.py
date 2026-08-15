@@ -25,6 +25,7 @@ import sqlite3
 import threading
 from typing import Callable, Optional
 
+from atlas_core.schemas import provenance
 from atlas_core.schemas.brain import BrainEdge, BrainNode
 from atlas_core.schemas.core import Run
 from atlas_runtime import brain_service, goal_service, mission_service, verification_gate
@@ -183,6 +184,12 @@ def _record_brain_outcome(
                 source_version="1",
                 updated_at=now,
                 confidence=1.0,
+                # ATLAS projecting a row it already owns. Machine-written record
+                # of what happened, so `observed` — and stated explicitly because
+                # BrainNode floors an undeclared grade at `asserted`, which sits
+                # below the retrieval floor and would keep every run and mission
+                # out of every future brief.
+                grade=provenance.OBSERVED,
             ),
         )
         brain_service.upsert_node(
@@ -196,6 +203,7 @@ def _record_brain_outcome(
                 source_version="1",
                 updated_at=now,
                 confidence=0.9 if outcome.status == "succeeded" else 0.5,
+                grade=provenance.OBSERVED,  # the run happened; this records it
                 metadata_json=json.dumps(
                     {"status": outcome.status, "stop_reason": outcome.stop_reason or ""}
                 ),

@@ -150,3 +150,114 @@ def test_curation_corrects_what_a_node_says_not_how_it_came_to_be_known(db):
     updated = brain_service.update_node(db, node.id, label="Gateway")
 
     assert updated.grade == provenance.ASSERTED
+
+
+# ---------------------------------------------------------------------------
+# Promotion to `verified` — the only path that produces the top grade
+# ---------------------------------------------------------------------------
+
+
+def _cited(label: str, *, evidence: list[str], run_id: str = "r1") -> BrainNode:
+    return BrainNode(
+        id=brain_service_node_id("concept", label),
+        entity_type="concept",
+        label=label,
+        source_id=f"run:{run_id}",
+        source_version="2026-08-15T00:00:00Z",
+        updated_at="2026-08-15T00:00:00Z",
+        confidence=0.8,
+        grade=provenance.DERIVED,
+        metadata_json=json.dumps({"summary": label, "evidence": evidence}),
+    )
+
+
+def test_a_claim_resting_on_a_passing_check_is_promoted(db):
+    node = _cited("suite is green", evidence=["call-pytest"])
+    brain_service.upsert_node_checked(db, node)
+
+    promoted = brain_service.promote_checked_claims(
+        db, run_id="r1", passing_call_ids=("call-pytest",)
+    )
+
+    assert promoted == 1
+    assert brain_service.explain(db, node.id).grade == provenance.VERIFIED
+
+
+def test_a_claim_the_check_never_touched_is_not_promoted(db):
+    """The rule that keeps `verified` meaning something.
+
+    Promoting every claim a passing run recorded would manufacture exactly the
+    false confidence the ladder exists to prevent — a run can check one thing
+    and write down five.
+    """
+    checked = _cited("suite is green", evidence=["call-pytest"])
+    unrelated = _cited("the gateway probably uses redis", evidence=["call-grep"])
+    brain_service.upsert_node_checked(db, checked)
+    brain_service.upsert_node_checked(db, unrelated)
+
+    brain_service.promote_checked_claims(
+        db, run_id="r1", passing_call_ids=("call-pytest",)
+    )
+
+    assert brain_service.explain(db, checked.id).grade == provenance.VERIFIED
+    assert brain_service.explain(db, unrelated.id).grade == provenance.DERIVED
+
+
+def test_a_failing_check_promotes_nothing(db):
+    """`signal_call_ids` carries passing checks only; a failed one is not evidence."""
+    node = _cited("suite is green", evidence=["call-pytest"])
+    brain_service.upsert_node_checked(db, node)
+
+    assert brain_service.promote_checked_claims(
+        db, run_id="r1", passing_call_ids=()
+    ) == 0
+    assert brain_service.explain(db, node.id).grade == provenance.DERIVED
+
+
+def test_promotion_does_not_reach_another_runs_claims(db):
+    """A check proves something about the run that ran it, and nothing else."""
+    mine = _cited("suite is green", evidence=["call-pytest"], run_id="r1")
+    theirs = _cited("their suite is green", evidence=["call-pytest"], run_id="r2")
+    brain_service.upsert_node_checked(db, mine)
+    brain_service.upsert_node_checked(db, theirs)
+
+    brain_service.promote_checked_claims(
+        db, run_id="r1", passing_call_ids=("call-pytest",)
+    )
+
+    assert brain_service.explain(db, mine.id).grade == provenance.VERIFIED
+    assert brain_service.explain(db, theirs.id).grade == provenance.DERIVED
+
+
+def test_promotion_is_idempotent(db):
+    """Replaying a run's completion must not re-promote or double-count."""
+    node = _cited("suite is green", evidence=["call-pytest"])
+    brain_service.upsert_node_checked(db, node)
+
+    first = brain_service.promote_checked_claims(
+        db, run_id="r1", passing_call_ids=("call-pytest",)
+    )
+    second = brain_service.promote_checked_claims(
+        db, run_id="r1", passing_call_ids=("call-pytest",)
+    )
+
+    assert (first, second) == (1, 0)
+    assert brain_service.explain(db, node.id).grade == provenance.VERIFIED
+
+
+def test_an_uncited_claim_can_never_be_promoted(db):
+    """`asserted` has no route to the top of the ladder; it must be re-earned."""
+    node = BrainNode(
+        id=brain_service_node_id("concept", "a hunch"),
+        entity_type="concept", label="a hunch",
+        source_id="run:r1", source_version="2026-08-15T00:00:00Z",
+        updated_at="2026-08-15T00:00:00Z", confidence=0.8,
+        grade=provenance.ASSERTED, metadata_json=json.dumps({"summary": "a hunch"}),
+    )
+    brain_service.upsert_node_checked(db, node)
+
+    brain_service.promote_checked_claims(
+        db, run_id="r1", passing_call_ids=("call-pytest",)
+    )
+
+    assert brain_service.explain(db, node.id).grade == provenance.ASSERTED

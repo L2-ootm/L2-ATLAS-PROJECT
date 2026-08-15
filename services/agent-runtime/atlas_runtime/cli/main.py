@@ -709,6 +709,61 @@ def brain_search(
     typer.echo(json.dumps([_brain_node_view(n) for n in nodes]))
 
 
+@brain_app.command("conflicts")
+def brain_conflicts(
+    needs_operator: bool = typer.Option(
+        False, "--needs-operator", help="Only the ones ATLAS refused to decide"
+    ),
+    ack: Optional[int] = typer.Option(
+        None, "--ack", help="Discard one conflict by id, once you have acted on it"
+    ),
+    limit: int = typer.Option(20, "--limit", help="Max conflicts to return"),
+) -> None:
+    """Claims that lost a contest, and the ones ATLAS refused to settle.
+
+    When a weaker claim contradicts a stronger one the graph keeps the incumbent
+    and records the loser — two sources disagreeing is information. Without this
+    command that record was write-only, which made the escalation path
+    (`needs_operator`: a `verified` fact against a `stated` intent) terminate in
+    a table nobody could read.
+
+    Resolving one is an ordinary write: re-state the intent with `brain remember`
+    or record the fact with better evidence. `--ack` then discards the row, since
+    a list the operator cannot clear stops being read.
+    """
+    conn = _get_connection()
+    if ack is not None:
+        with _get_lock():
+            with conn:
+                changed = conn.execute(
+                    "DELETE FROM brain_node_conflicts WHERE id=?", (ack,)
+                ).rowcount
+        if not changed:
+            typer.echo(f"Error: no conflict with id {ack}", err=True)
+            raise typer.Exit(1)
+        typer.echo(json.dumps({"ok": True, "acked": ack}))
+        return
+
+    where = "WHERE needs_operator=1 " if needs_operator else ""
+    rows = conn.execute(
+        "SELECT id,node_id,incumbent_grade,incumbent_label,incoming_grade,"
+        f"incoming_label,incoming_body,run_id,needs_operator,created_at "  # noqa: S608
+        f"FROM brain_node_conflicts {where}ORDER BY needs_operator DESC, id DESC LIMIT ?",
+        (max(1, min(limit, 100)),),
+    ).fetchall()
+    typer.echo(
+        json.dumps([
+            {
+                "id": r[0], "node_id": r[1],
+                "kept": {"grade": r[2], "label": r[3]},
+                "rejected": {"grade": r[4], "label": r[5], "body": r[6]},
+                "run_id": r[7], "needs_operator": bool(r[8]), "created_at": r[9],
+            }
+            for r in rows
+        ])
+    )
+
+
 @brain_app.command("show")
 def brain_show(
     node_id: str = typer.Argument(..., help="Node id, e.g. concept:retry-safety"),

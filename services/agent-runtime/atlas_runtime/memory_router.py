@@ -820,34 +820,17 @@ class HybridKnowledgeRetriever:
 _BRAIN_MAX = 5
 _BRAIN_QUERY_TERMS = 6
 
-# Entity types ATLAS writes itself, projecting rows it already holds
-# (`run_executor` mirrors every terminal run and its mission into the graph).
-# Those are machine-written records of what happened. Everything else in the
-# graph was authored by an agent through `atlas_graph`.
-_BRAIN_MACHINE_TYPES = frozenset({"run", "mission"})
 
-
-def _brain_node_grade(node: Any) -> Grade:
-    """The grade the node was written at; inferred only if it has none.
-
-    Migration 0038 added `brain_nodes.grade`, written at creation — the only point
-    where the answer is actually known — and backfilled every existing row. The
-    stored value is therefore the answer, and reading it is what lets an
-    `asserted` node be kept out of a brief.
-
-    The inference below survives as a fallback for a row that reaches here without
-    a grade: a connection to a database older than 0038, or a write path that
-    bypasses the graded writers. It is deliberately conservative — machine-written
-    projections are `observed`, and `derived` is the ceiling for anything else,
-    because a row with no recorded provenance cannot claim to have been checked.
-    Delete it once no path can produce an ungraded node.
-    """
-    stored = getattr(node, "grade", "") or ""
-    if stored in provenance.RANK:
-        return stored  # type: ignore[return-value]
-    if node.entity_type in _BRAIN_MACHINE_TYPES:
-        return provenance.OBSERVED
-    return provenance.DERIVED
+# There is deliberately no grade inference here. This retriever briefly guessed
+# one from `entity_type`, which was defensible only while `brain_nodes` had no
+# grade column. Once migration 0038 added one, the guess and the stored value
+# could disagree — and did: an `asserted` node was reported as `derived`, which
+# lifted it over the retrieval floor and into a brief.
+#
+# Every writer now states its grade (`run_executor` for its own projections, the
+# CLI for the operator, `graph_bridge` from resolved citations) and `_node()`
+# floors anything unstated at `asserted`. A reader that second-guesses its
+# writers just adds a second answer to disagree with the first.
 
 
 class BrainRetriever:
@@ -886,7 +869,7 @@ class BrainRetriever:
                     score=node.confidence,
                     source=f"brain:{node.id}",
                     approx_tokens=estimate_tokens(text),
-                    grade=_brain_node_grade(node),
+                    grade=node.grade,
                     observed_at=node.updated_at,
                 )
             )

@@ -245,3 +245,75 @@ def test_a_long_sentence_keeps_its_full_text_in_the_summary(cli):
 
     assert len(node["label"]) <= 80
     assert node["metadata"]["summary"].startswith("always thing0")
+
+
+# ---------------------------------------------------------------------------
+# `brain conflicts` — the escalation path stops ending in a table
+# ---------------------------------------------------------------------------
+
+
+def _contested(db, cli) -> None:
+    """Make the operator state an intent, then have reality contradict it."""
+    from atlas_core.schemas import provenance
+    from atlas_core.schemas.brain import BrainNode
+    from atlas_runtime import brain_service, graph_bridge
+
+    payload(cli("remember", "ship on friday", "--kind", "intent"))
+    node_id = graph_bridge.node_id_for("intent", "ship on friday")
+    brain_service.upsert_node_checked(db, BrainNode(
+        id=node_id, entity_type="intent", label="ship on friday",
+        source_id="run:r1", source_version="2026-08-15T01:00:00Z",
+        updated_at="2026-08-15T01:00:00Z", confidence=1.0,
+        grade=provenance.VERIFIED,
+        metadata_json=json.dumps({"summary": "the build is broken"}),
+    ))
+
+
+def test_conflicts_lists_what_lost_and_what_was_kept(cli, db):
+    _contested(db, cli)
+
+    rows = payload(cli("conflicts"))
+
+    assert len(rows) == 1
+    assert rows[0]["kept"]["grade"] == "stated"
+    assert rows[0]["rejected"]["grade"] == "verified"
+    assert rows[0]["needs_operator"] is True
+
+
+def test_conflicts_can_show_only_what_atlas_refused_to_decide(cli, db):
+    """Ordinary rank losses are noise next to a decision the operator owes."""
+    from atlas_core.schemas import provenance
+
+    from atlas_core.schemas.brain import BrainNode
+    from atlas_runtime import brain_service, graph_bridge
+
+    _contested(db, cli)
+    # An ordinary rank loss: a guess contradicting an observation.
+    for grade, summary in (
+        (provenance.OBSERVED, "port 8080"), (provenance.ASSERTED, "port 9090"),
+    ):
+        brain_service.upsert_node_checked(db, BrainNode(
+            id=graph_bridge.node_id_for("concept", "Port"), entity_type="concept",
+            label="Port", source_id="run:r2", source_version="2026-08-15T02:00:00Z",
+            updated_at="2026-08-15T02:00:00Z", confidence=0.8, grade=grade,
+            metadata_json=json.dumps({"summary": summary}),
+        ))
+
+    assert len(payload(cli("conflicts"))) == 2
+    only_escalated = payload(cli("conflicts", "--needs-operator"))
+    assert len(only_escalated) == 1
+    assert only_escalated[0]["needs_operator"] is True
+
+
+def test_a_conflict_can_be_acked_once_it_has_been_acted_on(cli, db):
+    """A list the operator cannot clear stops being read."""
+    _contested(db, cli)
+    conflict_id = payload(cli("conflicts"))[0]["id"]
+
+    assert payload(cli("conflicts", "--ack", str(conflict_id)))["acked"] == conflict_id
+    assert payload(cli("conflicts")) == []
+
+
+def test_acking_an_unknown_conflict_is_an_error_not_a_silent_success(cli):
+    result = cli("conflicts", "--ack", "9999")
+    assert result.exit_code == 1

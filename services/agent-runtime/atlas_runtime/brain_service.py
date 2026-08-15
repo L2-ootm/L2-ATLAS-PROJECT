@@ -179,6 +179,46 @@ def upsert_node_checked(conn: sqlite3.Connection, node: BrainNode) -> UpsertOutc
     return UpsertOutcome(node=incumbent, written=False, conflict=conflict)
 
 
+def promote_checked_claims(
+    conn: sqlite3.Connection, *, run_id: str, passing_call_ids: tuple[str, ...]
+) -> int:
+    """Raise this run's `derived` nodes to `verified` when a check backs them.
+
+    The narrow rule, and the only one that is honest: a claim is promoted when
+    the evidence it *cited* includes a tool call the gate counted as a **passing**
+    check. Not "the run's verdict was verified" — that would promote every claim
+    a passing run happened to record, including ones about things the check never
+    touched, which manufactures exactly the false confidence the ladder exists to
+    prevent.
+
+    Returns the number promoted. Bounded by nodes-written-per-run, so the
+    metadata parse stays cheap; the `grade='derived'` filter means a re-run
+    promotes nothing twice.
+    """
+    if not run_id or not passing_call_ids:
+        return 0
+    passing = set(passing_call_ids)
+    rows = conn.execute(
+        "SELECT id, metadata_json FROM brain_nodes WHERE source_id=? AND grade=?",
+        (f"run:{run_id}", provenance.DERIVED),
+    ).fetchall()
+    promoted = 0
+    with conn:
+        for node_id, metadata_json in rows:
+            try:
+                cited = json.loads(metadata_json or "{}").get("evidence") or []
+            except (TypeError, ValueError):
+                continue
+            if not passing.intersection(str(c) for c in cited):
+                continue
+            conn.execute(
+                "UPDATE brain_nodes SET grade=? WHERE id=?",
+                (provenance.VERIFIED, node_id),
+            )
+            promoted += 1
+    return promoted
+
+
 def upsert_node(conn: sqlite3.Connection, node: BrainNode) -> BrainNode:
     """Unconditional write. Prefer `upsert_node_checked` for agent-driven writes.
 
