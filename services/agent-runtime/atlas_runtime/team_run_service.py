@@ -97,6 +97,15 @@ def parse_target(content: str) -> tuple[str, str]:
     return "all", (content or "").strip()
 
 
+_INBOX_HEADER = (
+    "--- Team chat so far. Each teammate message is that teammate's account of "
+    "its own work; the lines under it are what ATLAS observed. Where you are "
+    "about to rely on a teammate's result, check that specific thing yourself "
+    "rather than assuming it holds. ---"
+)
+_NO_PROVENANCE = "no check ran against this — treat it as an unchecked claim"
+
+
 def is_done_signal(content: str) -> bool:
     """A member's turn ends the run early when its whole message is `DONE`."""
     return (content or "").strip().upper() == "DONE"
@@ -444,7 +453,17 @@ def append_message(
     content: str,
     sender_actor_id: Optional[str] = None,
     target: Optional[str] = None,
+    sender_status: str = "",
+    verification: str = "",
 ) -> dict[str, Any]:
+    """Append one message to a team run's chat log.
+
+    `sender_status` and `verification` are the provenance of the message: what
+    happened to the actor that produced it, and what — if anything — checked
+    what it says. They are recorded here rather than derived at read time
+    because the verdict a later member needs is the one that was true when the
+    message was sent, not the state of the world when it is read.
+    """
     resolved_target, cleaned = (target, content) if target else parse_target(content)
     stored_content = _lossless_team_content(conn, team_run_id, cleaned)
     now = _now()
@@ -468,11 +487,13 @@ def append_message(
             msg_id = f"msg-{uuid.uuid4()}"
             conn.execute(
                 "INSERT INTO team_chat_messages(id, team_run_id, seq, round,"
-                " sender_actor_id, sender_role, target, content, created_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?)",
+                " sender_actor_id, sender_role, target, content, created_at,"
+                " sender_status, verification)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     msg_id, team_run_id, next_seq, round_no, sender_actor_id,
                     sender_role, resolved_target, stored_content, now,
+                    sender_status, verification,
                 ),
             )
     cur = conn.execute("SELECT * FROM team_chat_messages WHERE id=?", (msg_id,))
@@ -509,13 +530,31 @@ def build_inbox(
 
 
 def render_inbox(inbox: list[dict[str, Any]]) -> str:
-    """Render an inbox as plain text context to append to a member's goal."""
+    """Render an inbox as plain text context to append to a member's goal.
+
+    Each teammate message is rendered with its provenance attached, because a
+    member reading `[researcher]: the migration is applied and green` has no
+    way to tell an established fact from an unexamined assertion — and the
+    default reading of an unqualified statement is that it is true. The
+    orchestrator's own messages carry no provenance line: they are the brief,
+    not a peer's claim about work it did.
+    """
     if not inbox:
         return ""
-    lines = ["", "--- Team chat so far ---"]
+    lines = ["", _INBOX_HEADER]
     for msg in inbox:
-        sender = msg["sender_role"] if msg.get("sender_actor_id") else "orchestrator"
+        from_actor = bool(msg.get("sender_actor_id"))
+        sender = msg["sender_role"] if from_actor else "orchestrator"
         lines.append(f"[{sender}]: {msg['content']}")
+        if not from_actor:
+            continue
+        status = str(msg.get("sender_status") or "").strip()
+        verification = str(msg.get("verification") or "").strip()
+        if status:
+            lines.append(f"  ({sender} run: {status})")
+        lines.append(
+            f"  (verification: {verification or _NO_PROVENANCE})"
+        )
     lines.append("--- End team chat ---")
     return "\n".join(lines)
 

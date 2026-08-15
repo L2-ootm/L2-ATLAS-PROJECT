@@ -11,6 +11,7 @@ can follow by reading the file.
 | `self-extension.md` | a missing capability is what is blocking the work |
 | `loop-discipline.md` | any multi-step build/change on ATLAS or an operator project |
 | `idempotency.md` | writing or reviewing anything that can run twice — retries, webhooks, queues, ledgers, replayed state machines |
+| `delegation.md` | handing work to a subagent, actor or team member — and reading what one of them sent back |
 | `handoff.md` | ending a session that changed project state |
 | `gsd/` | Goal-Slice-Deliver execution doctrine (8 skills: init, discuss, plan, execute, verify, ship, progress, debug) |
 | `ultra/` | Subagent-native systematic work (9 modes: plan, review, design, execute, research, simulate, audit, synthesize, migrate) |

@@ -698,6 +698,48 @@ def summarize(payload: dict[str, Any]) -> str:
     return f"{state} — {detail}"
 
 
+_UNCHECKED = "no check ran against this — treat it as an unchecked claim"
+
+
+def position_for(conn: sqlite3.Connection, run_id: Optional[str]) -> str:
+    """One line stating where a run stands, for every possible state.
+
+    `verdict_for` returns None for three unrelated situations — a read-only
+    run, a documentation-only run, and a run nothing ever classified — and a
+    caller that renders a verdict only when there is one collapses all three
+    into silence. Silence next to a success claim reads as confirmation, which
+    is exactly how one agent comes to build on what another merely asserted.
+    This never returns an empty string: whatever the state, the reader is told
+    what it is.
+    """
+    if not run_id:
+        return _UNCHECKED
+    try:
+        row = conn.execute(
+            "SELECT data FROM audit_events WHERE run_id=? AND "
+            "event_type='verification_verdict' ORDER BY timestamp DESC, rowid DESC LIMIT 1",
+            (run_id,),
+        ).fetchone()
+    except Exception:  # noqa: BLE001 — a reporting read must never raise
+        return _UNCHECKED
+    if not row or not row[0]:
+        return _UNCHECKED
+    try:
+        payload = json.loads(row[0])
+    except (TypeError, ValueError):
+        return _UNCHECKED
+    if not isinstance(payload, dict):
+        return _UNCHECKED
+    state = payload.get("state")
+    if state == "no_mutations":
+        return "no_mutations — nothing observable changed, so there was nothing to check"
+    if state == "exempt":
+        return summarize(payload)
+    if state is None:
+        return _UNCHECKED
+    return summarize(payload)
+
+
 def enabled() -> bool:
     return os.environ.get("ATLAS_VERIFICATION_GATE", "1").strip().lower() not in {
         "0",
@@ -778,6 +820,7 @@ __all__ = [
     "describe",
     "enabled",
     "observed_calls",
+    "position_for",
     "summarize",
     "verdict_for",
 ]

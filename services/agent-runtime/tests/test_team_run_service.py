@@ -242,11 +242,37 @@ def test_build_inbox_filters_by_target_and_cursor(db: sqlite3.Connection, lock: 
 def test_render_inbox_formats_lines() -> None:
     inbox = [
         {"sender_role": "orchestrator", "sender_actor_id": None, "content": "kickoff"},
-        {"sender_role": "researcher", "sender_actor_id": "actor-1", "content": "found it"},
+        {
+            "sender_role": "researcher",
+            "sender_actor_id": "actor-1",
+            "content": "found it",
+            "sender_status": "completed",
+            "verification": "verified — passed tests",
+        },
     ]
     text = team_run_service.render_inbox(inbox)
     assert "[orchestrator]: kickoff" in text
     assert "[researcher]: found it" in text
+    assert "(researcher run: completed)" in text
+    assert "(verification: verified — passed tests)" in text
+    # The brief is not a peer's claim about work it did.
+    assert text.count("verification:") == 1
+
+
+def test_render_inbox_never_lets_a_teammate_claim_pass_unqualified() -> None:
+    """The failure this framing exists for: one member reads another's output
+    as an established fact and builds on it. A message with no recorded
+    provenance says so, rather than arriving as bare, confident text."""
+    inbox = [
+        {
+            "sender_role": "researcher",
+            "sender_actor_id": "actor-1",
+            "content": "the migration is applied and the suite is green",
+        }
+    ]
+    text = team_run_service.render_inbox(inbox)
+    assert "unchecked claim" in text
+    assert "check that specific thing yourself" in text
 
 
 def test_render_inbox_empty_is_empty_string() -> None:

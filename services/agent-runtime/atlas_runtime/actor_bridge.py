@@ -37,6 +37,17 @@ _registered = False
 _PENDING_CLAIMS: dict[str, str] = {}
 _CLAIMS_LOCK = threading.Lock()
 
+# What an actor reports is its own account of its own work. The parent reads it
+# with none of the context that produced it, which is precisely the position in
+# which an unqualified "done" gets treated as an established fact. The header
+# says what the block is before the model reads a word of it.
+_COMPLETIONS_HEADER = (
+    "[ATLAS actor completions — each result below is what that actor said about "
+    "its own work, not something ATLAS confirmed. The verification line is the "
+    "only part of it that was checked. Before you depend on one of these "
+    "results, check the specific thing you are about to depend on.]"
+)
+
 # Surface (caller-facing) session id, keyed by ATLAS run id.
 #
 # native.py always constructs the Hermes harness with `session_id=run_id`
@@ -91,7 +102,14 @@ TOOL_SCHEMA = {
         "actor; op=logs tails what a running actor has actually been doing; "
         "op=steer sends a correction the actor reads at its next step, so a "
         "child going the wrong way can be redirected instead of killed; "
-        "op=cancel idempotently stops an actor and its descendants."
+        "op=cancel idempotently stops an actor and its descendants. "
+        "A child inherits none of this conversation: `goal` must carry the "
+        "paths, the acceptance criterion and what not to touch, or the actor "
+        "will answer a question you did not ask. Give parallel actors "
+        "non-overlapping files — two writing the same one produce a result "
+        "neither reported. What comes back is the actor's account of its own "
+        "work: before you build on part of it, check that part. "
+        "See skills/atlas/delegation.md."
     ),
     "parameters": {
         "type": "object",
@@ -507,7 +525,7 @@ def on_pre_llm_call(*, session_id: str = "", **_: Any) -> Optional[dict[str, str
         with _CLAIMS_LOCK:
             _PENDING_CLAIMS[run_id] = token
         lines = [steering] if steering else []
-        lines.append("[ATLAS actor completions]")
+        lines.append(_COMPLETIONS_HEADER)
         for delivery in claimed:
             status = delivery.get("status", "completed")
             frag = f"- actor {delivery.get('actor_id')}: {status}"
@@ -517,12 +535,13 @@ def on_pre_llm_call(*, session_id: str = "", **_: Any) -> Optional[dict[str, str
             if delivery.get("result_preview"):
                 frag += f"\n  result: {str(delivery['result_preview'])[:2000]}"
             # The child's own account arrives above; this is the part of it the
-            # parent could not have judged for itself.
+            # parent could not have judged for itself. Stated unconditionally:
+            # a missing verification line is read as a passing one, and that
+            # inference is how a parent ends up building on an assertion.
             child_run_id = delivery.get("child_run_id")
-            if child_run_id:
-                payload = verification_gate.verdict_for(conn, str(child_run_id))
-                if payload is not None:
-                    frag += f"\n  verification: {verification_gate.summarize(payload)}"
+            frag += "\n  verification: " + verification_gate.position_for(
+                conn, str(child_run_id) if child_run_id else None
+            )
             if delivery.get("error"):
                 frag += f"\n  error: {str(delivery['error'])[:500]}"
             lines.append(frag)

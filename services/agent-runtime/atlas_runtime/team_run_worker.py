@@ -23,7 +23,7 @@ from typing import Optional
 
 from atlas_runtime import actor_service
 from atlas_runtime import db as atlas_db
-from atlas_runtime import team_run_service, team_service
+from atlas_runtime import team_run_service, team_service, verification_gate
 from atlas_runtime.actor_worker import run_actor
 from atlas_runtime.mission_service import create_mission
 from atlas_runtime.run_service import complete_run, start_run
@@ -147,6 +147,11 @@ def run_team_run(conn: sqlite3.Connection, lock: threading.Lock, team_run_id: st
                     break
                 actor = actor_service.get_actor(conn, actor["id"]) or actor
                 content = actor.get("result_preview") or actor.get("error") or "(no output)"
+                # Captured here, with the actor row and its child run in hand,
+                # because the next member needs the verdict that was true when
+                # this message was sent — not whatever the world looks like by
+                # the time it reads the log.
+                child_run_id = actor.get("child_run_id")
                 try:
                     team_run_service.append_message(
                         conn, lock, team_run_id,
@@ -154,6 +159,10 @@ def run_team_run(conn: sqlite3.Connection, lock: threading.Lock, team_run_id: st
                         sender_role=member["role_label"],
                         sender_actor_id=actor["id"],
                         content=content,
+                        sender_status=str(actor.get("status") or ""),
+                        verification=verification_gate.position_for(
+                            conn, str(child_run_id) if child_run_id else None
+                        ),
                     )
                 except team_run_service.TeamRunCancelledError:
                     final_status = "cancelled"

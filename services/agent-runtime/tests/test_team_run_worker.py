@@ -64,6 +64,35 @@ def test_run_team_run_exits_early_on_done_signal(
     assert messages[2]["sender_role"] == "writer"
 
 
+def test_a_members_message_records_what_was_known_about_it(
+    db: sqlite3.Connection, lock: threading.Lock, monkeypatch
+) -> None:
+    """The next member reads this message with none of the context that
+    produced it. What the actor's run actually did, and whether anything
+    checked it, is recorded with the message rather than left to be assumed."""
+    team = _make_team(db, lock)
+    run = team_run_service.create_team_run(
+        db, lock, team_id=team["id"], kickoff_message="Investigate.", max_rounds=1
+    )
+    monkeypatch.setattr(
+        team_run_worker, "run_actor", _stub_run_actor(["schema migrated, tests green", "DONE"])
+    )
+    team_run_worker.run_team_run(db, lock, run["id"])
+
+    messages = team_run_service.list_messages(db, run["id"])
+    kickoff, researcher = messages[0], messages[1]
+    assert kickoff["sender_status"] == ""  # the brief is not a peer's claim
+    assert researcher["sender_status"] == "completed"
+    assert researcher["verification"], "a message with no provenance is a claim in disguise"
+
+    # And the member that reads it is shown that provenance, not just the text.
+    inbox = team_run_service.build_inbox(db, run["id"], role_label="writer", since_seq=0)
+    rendered = team_run_service.render_inbox(inbox)
+    assert "schema migrated, tests green" in rendered
+    assert "(researcher run: completed)" in rendered
+    assert "verification:" in rendered
+
+
 def test_run_team_run_exhausts_max_rounds_without_done(
     db: sqlite3.Connection, lock: threading.Lock, monkeypatch
 ) -> None:

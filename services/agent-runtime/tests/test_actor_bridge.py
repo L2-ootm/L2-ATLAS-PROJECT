@@ -195,6 +195,31 @@ def test_inbox_pre_claims_and_post_acknowledges(bound) -> None:
     assert actor_bridge.on_pre_llm_call(session_id="sess-1") is None
 
 
+def test_a_completion_states_its_verification_position(bound) -> None:
+    """A child's own account of its work is a claim. Silence about whether
+    anything checked that claim reads to the parent as confirmation, which is
+    how one agent ends up building on what another only asserted."""
+    agent, run_id = bound
+    conn = atlas_audit.get_connection()
+    lock = atlas_audit.get_lock()
+    actor, _ = actor_service.spawn_actor(
+        conn, lock, parent_run_id=run_id, goal="migrate the schema", mode="detached"
+    )
+    actor_service.mark_running(conn, lock, actor["id"])
+    actor_service.complete_actor(
+        conn, lock, actor["id"], result_preview="migration applied cleanly"
+    )
+
+    injected = actor_bridge.on_pre_llm_call(session_id="sess-1")
+    assert injected is not None
+    context = injected["context"]
+    assert "migration applied cleanly" in context
+    assert "verification:" in context
+    # No child run was classified, so the parent is told exactly that rather
+    # than being left to read the absence as a pass.
+    assert "unchecked claim" in context
+
+
 def test_inbox_noop_without_completions(bound) -> None:
     assert actor_bridge.on_pre_llm_call(session_id="sess-1") is None
     actor_bridge.on_post_llm_call(session_id="sess-1")  # must not raise

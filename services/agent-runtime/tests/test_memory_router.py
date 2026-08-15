@@ -338,6 +338,19 @@ def test_skill_retriever_delivers_the_idempotency_doctrine(tmp_path):
     assert "skill:idempotency" in [s.source for s in snippets]
 
 
+def test_skill_retriever_delivers_the_delegation_doctrine(tmp_path):
+    """A run about to spawn an actor, or about to act on what one reported,
+    must be able to pull the rules for it. Doctrine no run can reach is a
+    document."""
+    snippets = mr.SkillRetriever().retrieve(
+        None,
+        mr.RouterQuery(
+            terms=("subagent", "delegate", "actor", "assume", "claim"), has_focus=True
+        ),
+    )
+    assert "skill:delegation" in [s.source for s in snippets]
+
+
 def test_use_when_is_indexed_past_its_first_line(tmp_path):
     """Found by the delivery test above: every ATLAS doctrine file wraps its
     "Use when" sentence, and only line one was indexed — so `handoff.md` was
