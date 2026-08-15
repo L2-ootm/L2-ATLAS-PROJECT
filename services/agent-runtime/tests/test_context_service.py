@@ -21,7 +21,7 @@ def lock_fixture() -> threading.Lock:
     return threading.Lock()
 
 
-def _mission(conn, lock, *, project_id=None, status="pending") -> str:
+def _mission(conn, lock, *, project_id=None, status="pending", intent="") -> str:
     mid = uuid.uuid4().hex
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
     with lock:
@@ -29,7 +29,7 @@ def _mission(conn, lock, *, project_id=None, status="pending") -> str:
             conn.execute(
                 "INSERT INTO missions(id,title,intent,status,project,project_id,created_at,updated_at) "
                 "VALUES (?,?,?,?,?,?,?,?)",
-                (mid, "ctx mission", "", status, "", project_id, now, now),
+                (mid, "ctx mission", intent, status, "", project_id, now, now),
             )
     return mid
 
@@ -312,3 +312,58 @@ def test_scratchpad_read_back_is_redacted(db, lock):
     )
     markdown = cs.assemble_context(db, session_id="sess-ctx").markdown
     assert "sk-leakscratch4242" not in markdown and "[REDACTED]" in markdown
+
+
+# ---------------------------------------------------------------------------
+# The operator's ask drives retrieval (provenance doctrine, slice D)
+# ---------------------------------------------------------------------------
+
+
+def test_what_the_operator_asked_for_becomes_retrieval_terms(db, lock):
+    """The gap this closes: the ask contributed nothing to what was retrieved.
+
+    Terms came from the Current Focus alone. A run with a real question and no
+    standing Focus derived no terms at all, so every matched retriever returned
+    nothing and the router abstained — context was thinnest exactly where the
+    prompt was thinnest.
+    """
+    _wiki_page(
+        db, lock, slug="gw", title="Gateway CORS",
+        body="the cockpit must run on port 5173 or every call fails",
+    )
+    mid = _mission(db, lock, intent="the gateway keeps rejecting cockpit requests")
+
+    ctx = cs.assemble_context(db, mission_id=mid)
+
+    assert "gateway" in ctx.retrieval.query
+    assert any(s.startswith("wiki:") for s in ctx.sources)
+    assert not ctx.retrieval.abstained
+
+
+def test_a_run_with_no_ask_and_no_focus_still_retrieves_nothing(db, lock):
+    """Deriving terms from the ask must not invent terms when there is no ask."""
+    _wiki_page(db, lock, slug="gw", title="Gateway CORS", body="port 5173")
+    mid = _mission(db, lock, intent="")
+
+    ctx = cs.assemble_context(db, mission_id=mid)
+
+    assert ctx.retrieval.query == ()
+    assert not any(s.startswith("wiki:") for s in ctx.sources)
+
+
+def test_the_ask_leads_the_focus_when_terms_compete_for_slots(db, lock):
+    """The term list is capped, so ordering decides who is dropped.
+
+    The ask is what this run is about; the Focus is what the operator is about in
+    general. When there are more candidates than slots, the specific one wins.
+    """
+    focus_service.create_focus(
+        db, lock, title="quarterly infrastructure consolidation programme"
+    )
+    mid = _mission(db, lock, intent="fix the gateway cors rejection")
+
+    ctx = cs.assemble_context(db, mission_id=mid)
+
+    query = list(ctx.retrieval.query)
+    assert "gateway" in query and "cors" in query
+    assert query.index("gateway") < query.index("consolidation")

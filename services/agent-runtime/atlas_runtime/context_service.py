@@ -123,9 +123,23 @@ def _collect_open_titles(nodes: list[dict], out: list[str]) -> None:
         _collect_open_titles(node.get("children") or [], out)
 
 
-def _knowledge_terms(focus_title: str | None, tree: list[dict]) -> list[str]:
-    """Deduplicated keyword terms from the Focus + open goals/tasks, for retrieval."""
-    titles = [focus_title or ""]
+def _knowledge_terms(
+    focus_title: str | None, tree: list[dict], intent: str | None = None
+) -> list[str]:
+    """Retrieval terms from what the operator asked for, then the Focus and goals.
+
+    The ask leads deliberately. These terms used to come from the Focus alone,
+    which meant the single most specific statement of what a run is about — the
+    sentence the operator just typed — contributed nothing to what was retrieved
+    for it. A run with no standing Focus derived *no* terms at all, so every
+    matched retriever returned nothing and the router abstained: context was
+    thinnest exactly where the prompt was thinnest and the need was greatest.
+
+    Ordering matters because the total is capped. The ask is what this run is
+    about; the Focus is what the operator is about in general. When there are
+    more candidate terms than slots, the specific one should win.
+    """
+    titles = [intent or "", focus_title or ""]
     _collect_open_titles(tree, titles)
     seen: set[str] = set()
     terms: list[str] = []
@@ -239,12 +253,16 @@ def assemble_context(
             _render_goal_nodes(tree, 0, lines, sources)
             lines.append("")
 
-    # Resolve the project (explicit id wins; else the mission's project).
+    # Resolve the project (explicit id wins; else the mission's project) and the
+    # operator's ask, which drives retrieval below. Loaded once for both.
     resolved_project_id = project_id
-    if resolved_project_id is None and mission_id is not None:
+    mission_intent: str | None = None
+    if mission_id is not None:
         mission = mission_service.get_mission(conn, mission_id)
         if mission is not None:
-            resolved_project_id = mission.project_id
+            mission_intent = mission.intent
+            if resolved_project_id is None:
+                resolved_project_id = mission.project_id
     if resolved_project_id:
         project = project_service.get_project(conn, resolved_project_id)
         if project is not None:
@@ -254,10 +272,13 @@ def assemble_context(
             lines.append("")
 
     # Dynamic, retrieved sections (recent runs, loop observations, wiki knowledge,
-    # and — as Phase B lands — prior failures, relevant skills): ranked, budgeted,
-    # and redacted by the MemoryRouter. Terms come from the Focus + open goals; the
-    # wiki retriever no-ops when there is no focus (empty terms).
-    terms = _knowledge_terms(focus.title, tree) if focus is not None else []
+    # prior failures, relevant skills): ranked, budgeted, and redacted by the
+    # MemoryRouter. Terms come from the operator's ask first, then the Focus and
+    # its open goals — so a run with a real question and no standing Focus still
+    # reaches the knowledge that answers it.
+    terms = _knowledge_terms(
+        focus.title if focus is not None else None, tree, mission_intent
+    )
 
     # Active-module doctrine (capability v2). Modules the operator switched on
     # get to state the rules that must hold whenever the agent works in their

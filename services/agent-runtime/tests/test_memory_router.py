@@ -441,11 +441,19 @@ def test_skill_retriever_missing_dir_is_empty(tmp_path):
     assert r.retrieve(None, mr.RouterQuery(terms=("executor",), has_focus=True)) == []
 
 
-def test_skill_retriever_empty_without_focus_or_terms(tmp_path):
+def test_skill_retriever_needs_terms_but_no_longer_needs_a_focus(tmp_path):
+    """Terms are the gate; a standing Focus is not.
+
+    `has_focus` was a redundant second condition — terms could only be non-empty
+    when a Focus existed, so it never decided anything. Now that terms also come
+    from what the operator asked for, requiring a Focus would deny doctrine to
+    precisely the runs with a bare ask and nothing else, which are the ones most
+    likely to need it.
+    """
     atlas, hermes = _skill_tree(tmp_path)
     r = mr.SkillRetriever(path=atlas, hermes_dir=hermes)
-    assert r.retrieve(None, mr.RouterQuery(terms=("x",), has_focus=False)) == []
     assert r.retrieve(None, mr.RouterQuery(terms=(), has_focus=True)) == []
+    assert r.retrieve(None, mr.RouterQuery(terms=("executor",), has_focus=False)) != []
 
 
 def test_failure_retriever_redacted_through_router(db, lock):

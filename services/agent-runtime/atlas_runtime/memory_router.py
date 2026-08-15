@@ -137,6 +137,10 @@ class RouterQuery:
     """Everything the retrievers need, resolved once by assemble_context."""
 
     terms: tuple[str, ...] = ()
+    # Whether a standing Current Focus exists. Records the run's state; it is no
+    # longer a retrieval gate — `terms` is. The two were interchangeable while
+    # terms came only from the Focus, and stopped being so once what the operator
+    # asked for started contributing them.
     has_focus: bool = False
     mission_id: str | None = None
     project_id: str | None = None
@@ -751,7 +755,12 @@ class HybridKnowledgeRetriever:
         return self._fts.section_lines(query)
 
     def _semantic(self, conn: sqlite3.Connection, query: RouterQuery) -> list[MemorySnippet]:
-        if not query.terms or not query.has_focus or not _table_exists(conn, "wiki_vec"):
+        # Gated on terms alone. `has_focus` used to be checked here too, which was
+        # redundant — terms were only ever derived from a Focus, so it could not
+        # be false while terms were non-empty. Now that terms also come from what
+        # the operator asked for, keeping it would deny semantic recall to exactly
+        # the runs that have a real ask and no standing Focus.
+        if not query.terms or not _table_exists(conn, "wiki_vec"):
             return []
         try:
             if conn.execute("SELECT 1 FROM wiki_vec LIMIT 1").fetchone() is None:
@@ -1105,7 +1114,10 @@ class SkillRetriever:
 
     def retrieve(self, conn: sqlite3.Connection, query: RouterQuery) -> list[MemorySnippet]:
         terms = {t.lower() for t in query.terms}
-        if not terms or not query.has_focus:
+        # See the note in HybridKnowledgeRetriever._semantic: `has_focus` was a
+        # redundant second condition here, and now excludes the runs that most
+        # need doctrine — a bare ask with no Focus set.
+        if not terms:
             return []
         entries = _scan_skills(self._atlas_dir, self._hermes_dir)
         doctrine = self._doctrine_snippets(entries)
