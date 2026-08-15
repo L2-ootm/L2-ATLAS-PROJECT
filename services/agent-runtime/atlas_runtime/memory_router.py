@@ -1181,6 +1181,98 @@ class SkillRetriever:
 
 
 # ---------------------------------------------------------------------------
+# Operator profile — how this operator works, on every brief
+# ---------------------------------------------------------------------------
+
+# The entity types `atlas brain remember` writes. Kept small on purpose: a
+# vocabulary the operator has to think about is one they stop using.
+OPERATOR_KINDS = ("preference", "convention", "intent")
+
+_PROFILE_MAX = 8
+_PROFILE_TOKEN_BUDGET = 600
+
+
+class OperatorProfileRetriever:
+    """What the operator has said about how they work, on every run.
+
+    Every other knowledge retriever matches on the Focus terms, which is right
+    for facts — you want what is relevant to this task. It is wrong for
+    preferences. "I want commits atomic" shares no vocabulary with "fix the
+    login redirect", so a term-matched profile would surface exactly when it was
+    already obvious and stay silent the rest of the time. A preference that only
+    applies when someone remembers to ask for it is not a preference.
+
+    So this retriever is self-keyed and unconditional, and is bounded instead by
+    being small: `stated` nodes only, a handful of them, on a budget of its own
+    so a growing profile cannot crowd out recall.
+
+    `stated` only is the whole safety property. Nothing an agent infers about the
+    operator can reach this section — an inferred preference is `derived`, sits
+    below the section's floor, and stays out of the standing instructions until
+    the operator says it themselves.
+    """
+
+    self_keyed = True
+
+    def __init__(
+        self,
+        *,
+        limit: int = _PROFILE_MAX,
+        token_budget: int = _PROFILE_TOKEN_BUDGET,
+    ) -> None:
+        self._limit = limit
+        self._token_budget = token_budget
+
+    def section_lines(self, query: RouterQuery) -> list[str]:
+        return [
+            "## How This Operator Works",
+            "_Stated by the operator, not inferred. Follow it unless it conflicts "
+            "with the task in front of you — and say so if it does._",
+        ]
+
+    def retrieve(self, conn: sqlite3.Connection, query: RouterQuery) -> list[MemorySnippet]:
+        if conn is None or not _table_exists(conn, "brain_nodes"):
+            return []
+        placeholders = ",".join("?" for _ in OPERATOR_KINDS)
+        try:
+            rows = conn.execute(
+                f"SELECT id, entity_type, label, metadata_json FROM brain_nodes "  # noqa: S608
+                f"WHERE grade=? AND entity_type IN ({placeholders}) "
+                "AND (project_id IS NULL OR project_id=?) "
+                "ORDER BY updated_at DESC LIMIT ?",
+                (provenance.STATED, *OPERATOR_KINDS, query.project_id, self._limit),
+            ).fetchall()
+        except sqlite3.Error as exc:
+            # A brief without the profile is worse than one with it, but a run
+            # that cannot start at all is worse than both.
+            logger.debug("operator profile unavailable: %s", exc)
+            return []
+
+        out: list[MemorySnippet] = []
+        used = 0
+        for node_id, entity_type, label, metadata_json in rows:
+            try:
+                summary = str(json.loads(metadata_json or "{}").get("summary") or "")
+            except (TypeError, ValueError):
+                summary = ""
+            text = f"- **{entity_type}** — {summary or label}"
+            tokens = estimate_tokens(text)
+            if out and used + tokens > self._token_budget:
+                break
+            used += tokens
+            out.append(
+                MemorySnippet(
+                    text=text,
+                    score=float(-len(out)),
+                    source=f"profile:{node_id}",
+                    approx_tokens=tokens,
+                    grade=provenance.STATED,
+                )
+            )
+        return out
+
+
+# ---------------------------------------------------------------------------
 # Scratchpad read-back (WP-D-1) — the agent's own open working memory
 # ---------------------------------------------------------------------------
 
@@ -1428,9 +1520,9 @@ def default_router(
     scratchpad_session_id: str = "",
     scratchpad_run_id: str = "",
 ) -> MemoryRouter:
-    """The default retriever set, in brief order: open scratchpad → session
-    history → runs → prior failures → observations → wiki knowledge → brain
-    graph → relevant skills.
+    """The default retriever set, in brief order: operator profile → open
+    scratchpad → session history → runs → prior failures → observations → wiki
+    knowledge → brain graph → relevant skills.
 
     `enable_semantic` toggles the semantic blend (pure FTS5 when off);
     `enable_skills` toggles the skill-matching section; `enable_brain` toggles
@@ -1438,9 +1530,14 @@ def default_router(
     the retrieved sections — it no-ops without a `RouterQuery.session_id` and
     enforces its own token budget, so it never displaces the other sections when
     unused. `scratchpad_*` enable read-back (WP-D-1); both empty = no section,
-    which is why every caller that does not know its session is unaffected."""
+    which is why every caller that does not know its session is unaffected.
+
+    `OperatorProfileRetriever` is first because it is the only section that
+    describes *how* to do the work rather than *what* the work concerns, and it
+    emits nothing at all until the operator has said something — so on a fresh
+    install it costs a query and no tokens."""
     knowledge: Retriever = HybridKnowledgeRetriever() if enable_semantic else WikiFtsRetriever()
-    retrievers: list[Retriever] = []
+    retrievers: list[Retriever] = [OperatorProfileRetriever()]
     if scratchpad_session_id or scratchpad_run_id:
         retrievers.append(
             ScratchpadRetriever(

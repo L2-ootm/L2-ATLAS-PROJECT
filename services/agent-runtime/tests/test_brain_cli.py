@@ -175,3 +175,73 @@ def test_export_to_stdout_is_valid_json(cli):
     exported = payload(cli("export"))
     assert exported["version"] == 1
     assert [n["id"] for n in exported["nodes"]] == ["concept:a"]
+
+
+# ---------------------------------------------------------------------------
+# `brain remember` — teaching ATLAS how this operator works
+# ---------------------------------------------------------------------------
+
+
+def test_remember_records_one_sentence_as_stated(cli):
+    """`brain add` wants a label, a type and a summary before it records anything.
+
+    That is three decisions too many for the thing an operator most wants to
+    capture: a preference, said once, in passing.
+    """
+    node = payload(cli("remember", "keep commits atomic"))
+
+    assert node["entity_type"] == "preference"
+    assert node["grade"] == "stated"
+    assert node["metadata"]["summary"] == "keep commits atomic"
+
+
+def test_an_operator_statement_outranks_what_an_agent_inferred(db, cli):
+    """The point of `stated`: an inference can never quietly replace it."""
+    from atlas_core.schemas import provenance
+    from atlas_core.schemas.brain import BrainNode
+    from atlas_runtime import brain_service
+
+    stated = payload(cli("remember", "never force push"))
+    guess = BrainNode(
+        id=stated["id"],
+        entity_type="preference",
+        label="never force push",
+        source_id="run:r1",
+        source_version="2026-08-15T01:00:00Z",
+        updated_at="2026-08-15T01:00:00Z",
+        confidence=1.0,
+        grade=provenance.DERIVED,
+        metadata_json=json.dumps({"summary": "force pushing seems fine actually"}),
+    )
+
+    outcome = brain_service.upsert_node_checked(db, guess)
+
+    assert not outcome.written
+    assert "never force push" in brain_service.explain(db, stated["id"]).metadata_json
+
+
+def test_remember_refuses_an_unknown_kind(cli):
+    """A vocabulary the operator has to guess at is one they stop using."""
+    result = cli("remember", "something", "--kind", "vibes")
+    assert result.exit_code == 1
+    assert "preference" in result.output
+
+
+def test_remember_redacts_before_storing(cli, db):
+    """The operator can paste a key into a sentence as easily as an agent can."""
+    node = payload(cli("remember", "auth with api_key=sk-operator-leak-1"))
+
+    stored = db.execute(
+        "SELECT metadata_json, label FROM brain_nodes WHERE id=?", (node["id"],)
+    ).fetchone()
+    assert "sk-operator-leak-1" not in stored[0]
+    assert "sk-operator-leak-1" not in stored[1]
+
+
+def test_a_long_sentence_keeps_its_full_text_in_the_summary(cli):
+    """The label is trimmed so the graph can key on it; nothing is lost."""
+    sentence = "always " + "and ".join(f"thing{i} " for i in range(40))
+    node = payload(cli("remember", sentence, "--kind", "convention"))
+
+    assert len(node["label"]) <= 80
+    assert node["metadata"]["summary"].startswith("always thing0")

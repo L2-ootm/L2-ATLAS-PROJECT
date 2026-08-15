@@ -660,6 +660,9 @@ def _brain_node_view(node) -> dict:
         "source_id": node.source_id,
         "updated_at": node.updated_at,
         "confidence": node.confidence,
+        # Where the claim came from. An operator inspecting the graph needs this
+        # more than the confidence number, which only ranks within a grade.
+        "grade": getattr(node, "grade", ""),
         "metadata": metadata,
     }
 
@@ -740,8 +743,9 @@ def brain_add(
 ) -> None:
     """Add or converge on a node. The id is derived from type+label, so running
     this twice updates rather than duplicates."""
-    from atlas_runtime import brain_service, graph_bridge
+    from atlas_core.schemas import provenance
     from atlas_core.schemas.brain import BrainNode
+    from atlas_runtime import brain_service, graph_bridge
 
     now = _brain_now()
     metadata = {"summary": summary[:2000]} if summary else {}
@@ -755,14 +759,81 @@ def brain_add(
             source_version=now,
             updated_at=now,
             confidence=confidence,
+            # Written by the operator at a terminal, so it is `stated` — the only
+            # entry point that produces it. Nothing an agent does can reach this
+            # grade, which is what makes it worth having.
+            grade=provenance.STATED,
             metadata_json=json.dumps(metadata),
         )
     except ValueError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1)
     with _get_lock():
-        brain_service.upsert_node(_get_connection(), node)
-    typer.echo(json.dumps(_brain_node_view(node)))
+        outcome = brain_service.upsert_node_checked(_get_connection(), node)
+    if not outcome.written:
+        typer.echo(
+            json.dumps({
+                "ok": False,
+                "error": "a verified fact contradicts this; both were kept",
+                "conflict": outcome.conflict,
+            }),
+            err=True,
+        )
+        raise typer.Exit(1)
+    typer.echo(json.dumps(_brain_node_view(outcome.node)))
+
+
+@brain_app.command("remember")
+def brain_remember(
+    text: str = typer.Argument(..., help="How you work, what you prefer, what you intend"),
+    kind: str = typer.Option(
+        "preference", "--kind",
+        help="preference | convention | intent — how the agent should read it",
+    ),
+    project: Optional[str] = typer.Option(None, "--project", help="Project scope"),
+) -> None:
+    """Teach ATLAS how you work, in one sentence.
+
+    `brain add` needs a label, a type and a summary before it will record
+    anything, which is three decisions too many for the thing an operator most
+    wants to capture: a preference, stated once, in passing. This takes the
+    sentence and derives the rest.
+
+    What it records is `stated` — the operator said it — so it outranks anything
+    an agent later infers and is never overwritten by one.
+    """
+    from atlas_core.schemas import provenance
+    from atlas_core.schemas.brain import BrainNode
+    from atlas_runtime import brain_service, graph_bridge, memory_router
+    from atlas_runtime.memory_router import OPERATOR_KINDS
+
+    sentence = memory_router.redact(text.strip())
+    if not sentence:
+        typer.echo("Error: nothing to remember", err=True)
+        raise typer.Exit(1)
+    if kind not in OPERATOR_KINDS:
+        typer.echo(f"Error: --kind must be one of {', '.join(sorted(OPERATOR_KINDS))}", err=True)
+        raise typer.Exit(1)
+
+    now = _brain_now()
+    # The label is the sentence, trimmed to something a graph can key on; the
+    # sentence itself lives in the summary so nothing is lost to that trim.
+    label = sentence if len(sentence) <= 80 else sentence[:77].rstrip() + "..."
+    node = BrainNode(
+        id=graph_bridge.node_id_for(kind, label),
+        entity_type=kind,
+        label=label,
+        project_id=project,
+        source_id="operator:cli",
+        source_version=now,
+        updated_at=now,
+        confidence=1.0,
+        grade=provenance.STATED,
+        metadata_json=json.dumps({"summary": sentence[:2000]}),
+    )
+    with _get_lock():
+        outcome = brain_service.upsert_node_checked(_get_connection(), node)
+    typer.echo(json.dumps(_brain_node_view(outcome.node)))
 
 
 @brain_app.command("link")

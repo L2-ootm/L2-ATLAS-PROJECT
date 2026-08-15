@@ -348,5 +348,13 @@ def test_history_conversion_redacts_secrets():
 
 
 def test_default_router_includes_conversation_history_first():
-    router = mr.default_router()
-    assert isinstance(router.retrievers[0], mr.ConversationHistoryRetriever)
+    """First of the sections that search — the thread outranks any recall.
+
+    The operator profile precedes it and does not search for anything; it states
+    how the operator works. Ordering is asserted relatively so that adding a
+    section ahead of the searching ones cannot fail this test without actually
+    demoting the conversation.
+    """
+    types = [type(r) for r in mr.default_router().retrievers]
+    assert types.index(mr.ConversationHistoryRetriever) < types.index(mr.RecentRunsRetriever)
+    assert types.index(mr.ConversationHistoryRetriever) < types.index(mr.SkillRetriever)

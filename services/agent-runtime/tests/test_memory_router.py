@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import datetime
 import importlib.util
+import json
 import threading
 import uuid
 
@@ -530,11 +531,18 @@ def test_scratchpad_retriever_enforces_its_own_budget(db, lock):
 
 
 def test_default_router_scratchpad_is_opt_in_and_leads():
+    """Opt-in, and ahead of every retriever that searches for something.
+
+    Asserted as a relative position rather than index 0: the operator profile
+    also precedes the searching retrievers, and pinning an absolute index makes
+    this test fail on ordering changes that do not affect what it guards.
+    """
     assert not any(
         isinstance(r, mr.ScratchpadRetriever) for r in mr.default_router().retrievers
     )
-    on = mr.default_router(scratchpad_session_id="sess-a")
-    assert isinstance(on.retrievers[0], mr.ScratchpadRetriever)
+    on = mr.default_router(scratchpad_session_id="sess-a").retrievers
+    types = [type(r) for r in on]
+    assert types.index(mr.ScratchpadRetriever) < types.index(mr.ConversationHistoryRetriever)
 
 
 # ---------------------------------------------------------------------------
@@ -726,6 +734,105 @@ def test_envelope_filters_only_snippets_reporting_real_relevance(db):
     assert "unscored" in sources
     assert "weak" not in sources
     assert "weak" in envelope.rejected_source_ids
+
+
+# --- the operator profile ---------------------------------------------------
+
+
+def _stated(db, kind: str, sentence: str, *, project=None, grade=None) -> None:
+    from atlas_core.schemas import provenance as prov
+
+    db.execute(
+        "INSERT OR REPLACE INTO brain_nodes(id,entity_type,label,project_id,source_id,"
+        "source_version,updated_at,confidence,grade,metadata_json) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (
+            f"{kind}:{uuid.uuid4().hex}", kind, sentence[:80], project, "operator:cli",
+            "2026-08-15T00:00:00Z", "2026-08-15T00:00:00Z", 1.0,
+            grade or prov.STATED, json.dumps({"summary": sentence}),
+        ),
+    )
+    db.commit()
+
+
+def test_the_operator_profile_arrives_without_being_asked_for(db):
+    """A preference that only applies when someone remembers to ask is not one.
+
+    Every other knowledge retriever matches the Focus terms. "I want commits
+    atomic" shares no vocabulary with "fix the login redirect", so a term-matched
+    profile would surface exactly when it was already obvious.
+    """
+    _stated(db, "preference", "keep commits atomic and messages in the imperative")
+
+    snippets = mr.OperatorProfileRetriever().retrieve(
+        db, mr.RouterQuery(terms=("login", "redirect"))
+    )
+
+    assert len(snippets) == 1
+    assert "atomic" in snippets[0].text
+    assert snippets[0].grade == provenance.STATED
+
+
+def test_nothing_the_agent_infers_can_enter_the_profile(db):
+    """The safety property that makes an unconditional section safe.
+
+    An inferred preference is `derived`. If it could reach this section it would
+    become a standing instruction on every run without the operator ever having
+    said it — the graph teaching itself its own guesses.
+    """
+    _stated(db, "preference", "operator said this one", grade=provenance.STATED)
+    _stated(db, "preference", "the agent guessed this one", grade=provenance.DERIVED)
+    _stated(db, "preference", "an actor claimed this one", grade=provenance.REPORTED)
+
+    snippets = mr.OperatorProfileRetriever().retrieve(db, mr.RouterQuery())
+
+    assert [s.text for s in snippets] == ["- **preference** — operator said this one"]
+
+
+def test_an_empty_profile_costs_a_query_and_no_tokens(db):
+    """On a fresh install this section must not exist at all."""
+    assert mr.OperatorProfileRetriever().retrieve(db, mr.RouterQuery()) == []
+
+
+def test_a_growing_profile_cannot_crowd_out_recall(db):
+    """Unconditional and unbounded would be a slow leak into every run."""
+    for index in range(30):
+        _stated(db, "convention", f"convention number {index} " + "x" * 200)
+
+    snippets = mr.OperatorProfileRetriever().retrieve(db, mr.RouterQuery())
+
+    assert 1 <= len(snippets) <= 8
+    assert sum(s.approx_tokens for s in snippets) <= mr._PROFILE_TOKEN_BUDGET + 60
+
+
+def test_a_project_scoped_preference_stays_in_its_project(db):
+    """Global preferences always apply; a project's conventions do not."""
+    _stated(db, "convention", "global rule")
+    _stated(db, "convention", "only for atlas", project="atlas")
+
+    everywhere = mr.OperatorProfileRetriever().retrieve(db, mr.RouterQuery())
+    in_atlas = mr.OperatorProfileRetriever().retrieve(
+        db, mr.RouterQuery(project_id="atlas")
+    )
+
+    assert [s.text for s in everywhere] == ["- **convention** — global rule"]
+    assert {s.text for s in in_atlas} == {
+        "- **convention** — global rule",
+        "- **convention** — only for atlas",
+    }
+
+
+def test_the_profile_survives_the_routers_abstain_guard(db):
+    """A run with no Focus and no mission is still run by the same operator."""
+    _stated(db, "preference", "always run the tests before claiming done")
+
+    envelope = mr.MemoryRouter(
+        retrievers=[mr.OperatorProfileRetriever()]
+    ).assemble_envelope(db, mr.RouterQuery())
+
+    assert not envelope.abstained
+    assert "always run the tests" in envelope.markdown
+    assert "How This Operator Works" in envelope.markdown
 
 
 # --- the provenance ladder at the read boundary -----------------------------
