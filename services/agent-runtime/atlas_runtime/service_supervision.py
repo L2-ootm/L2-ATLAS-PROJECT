@@ -556,9 +556,17 @@ def observe_service(
 
 
 def _owner_only(path: pathlib.Path) -> None:
-    """Apply the strongest dependency-free owner-only mode available."""
+    """Apply the strongest dependency-free owner-only mode available.
+
+    A directory also needs the owner execute bit: POSIX requires it to traverse
+    the directory at all, so an rw-only log directory locks out even the process
+    that just hardened it. The Windows DACL path is already mode-independent.
+    """
     if os.name == "nt":
         _owner_only_windows(path)
+        return
+    if path.is_dir():
+        path.chmod(stat.S_IRWXU)
         return
     path.chmod(stat.S_IRUSR | stat.S_IWUSR)
 

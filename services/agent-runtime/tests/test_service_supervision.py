@@ -245,6 +245,29 @@ def test_sensitive_log_rotates_is_owner_only_and_tail_is_bounded_redacted(
     assert "�" in tail.text
 
 
+def test_sensitive_log_directory_stays_traversable_after_hardening(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Hardening the log directory must not lock its owner out.
+
+    POSIX needs the owner execute bit to traverse a directory at all, so an
+    rw-only log directory makes every open inside it fail with EACCES — the
+    first one included, since the directory is hardened before the file.
+    """
+    path = tmp_path / "logs" / "service.log"
+
+    with supervision.open_sensitive_log(path) as handle:
+        handle.write(b"first\n")
+    with supervision.open_sensitive_log(path) as handle:
+        handle.write(b"second\n")
+
+    assert path.read_bytes() == b"first\nsecond\n"
+    if supervision.os.name != "nt":
+        mode = stat.S_IMODE(path.parent.stat().st_mode)
+        assert mode & 0o077 == 0
+        assert mode & stat.S_IXUSR
+
+
 def test_tail_byte_truncation_handles_split_utf8_and_missing_file(
     tmp_path: pathlib.Path,
 ) -> None:
