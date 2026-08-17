@@ -23,8 +23,23 @@ if (-not $bundle.StartsWith($artifactPrefix, [StringComparison]::OrdinalIgnoreCa
 $pythonVersion = '3.13.11'
 $pythonUrl = "https://www.python.org/ftp/python/$pythonVersion/python-$pythonVersion-embed-amd64.zip"
 $pythonSha256 = '1EC066FB61BA5E8C73E29E048CD07C26850F74585E3A116005135B31B8004890'
-$getPipUrl = 'https://bootstrap.pypa.io/get-pip.py'
-$getPipSha256 = 'A341E1A43E38001C551A1508A73FF23636A11970B61D901D9A1CAD2A18F57055'
+# Pinned to an immutable pypa/get-pip commit rather than
+# https://bootstrap.pypa.io/get-pip.py, which is a rolling URL: PyPA rotates it
+# on every pip release, so a fixed hash against it fails the build the day pip
+# ships. It did — 26.1.2 (5e84c836, the old pin) became 26.2.1 (af54dfe7) on
+# 2026-08-04 and broke the 0.1.9 release. A commit-addressed URL cannot rotate,
+# so the hash and the URL agree by construction. To bump: pick the new commit
+# from https://github.com/pypa/get-pip/commits/main/public/get-pip.py and record
+# its SHA-256 here.
+$getPipCommit = 'af54dfe793b24685f8dc4ebba0630d9f2d77653c'  # "Update to 26.2.1"
+# bootstrap.pypa.io stays as a second mirror: it serves these exact bytes for as
+# long as 26.2.1 is current, and once it rotates it simply stops matching the
+# hash — the same failure the commit-addressed primary now prevents.
+$getPipUrls = @(
+    "https://raw.githubusercontent.com/pypa/get-pip/$getPipCommit/public/get-pip.py",
+    'https://bootstrap.pypa.io/get-pip.py'
+)
+$getPipSha256 = 'FB24E693BAB954209A063D90953621412CCAD4A500905A726286E038F508DDF6'
 $cache = Join-Path $artifactRoot '.cache'
 $nativeBuildRoot = Join-Path $artifactRoot ".build\$Version"
 $gatewayBuild = Join-Path $nativeBuildRoot 'cargo\release\atlas-gateway.exe'
@@ -37,10 +52,31 @@ function Assert-Hash([string]$Path, [string]$Expected) {
     if ($actual -ne $Expected) { throw "SHA-256 mismatch for $Path (expected $Expected, got $actual)" }
 }
 
-function Get-PinnedFile([string]$Uri, [string]$Destination, [string]$Sha256) {
+# The SHA-256 is the contract, so any mirror serving the pinned bytes is
+# acceptable and anything else still fails Assert-Hash. Both hosts throttle
+# under load — a codeload 429 and a raw.githubusercontent 503 each broke a 0.1.9
+# release attempt — so try every mirror with backoff before giving up.
+function Get-PinnedFile([string[]]$Uris, [string]$Destination, [string]$Sha256) {
     if (-not (Test-Path -LiteralPath $Destination)) {
         New-Item -ItemType Directory -Force -Path (Split-Path $Destination -Parent) | Out-Null
-        Invoke-WebRequest -Uri $Uri -OutFile $Destination
+        $failures = @()
+        $ok = $false
+        foreach ($uri in $Uris) {
+            for ($attempt = 1; $attempt -le 3; $attempt++) {
+                try {
+                    Invoke-WebRequest -Uri $uri -OutFile $Destination
+                    $ok = $true
+                    break
+                } catch {
+                    $failures += "$uri (attempt $attempt): $($_.Exception.Message)"
+                    if ($attempt -lt 3) { Start-Sleep -Seconds (5 * $attempt) }
+                }
+            }
+            if ($ok) { break }
+        }
+        if (-not $ok) {
+            throw "could not download $Destination from any mirror:`n$($failures -join "`n")"
+        }
     }
     Assert-Hash $Destination $Sha256
 }
@@ -146,7 +182,7 @@ if (Test-Path -LiteralPath $bundle) { Remove-Item -LiteralPath $bundle -Recurse 
 New-Item -ItemType Directory -Force -Path $bundle | Out-Null
 
 Get-PinnedFile $pythonUrl $pythonZip $pythonSha256
-Get-PinnedFile $getPipUrl $getPip $getPipSha256
+Get-PinnedFile $getPipUrls $getPip $getPipSha256
 $pythonDir = Join-Path $bundle 'python'
 Expand-Archive -LiteralPath $pythonZip -DestinationPath $pythonDir
 $pth = Join-Path $pythonDir 'python313._pth'
