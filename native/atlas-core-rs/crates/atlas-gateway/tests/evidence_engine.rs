@@ -1,6 +1,5 @@
 use atlas_gateway::diff::{diff_file, DiffInput};
 use serde::Deserialize;
-use std::process::Command;
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Deserialize)]
@@ -29,6 +28,7 @@ fn fixtures() -> Vec<Fixture> {
 fn resident_bytes() -> Option<u64> {
     #[cfg(target_os = "windows")]
     {
+        use std::process::Command;
         let output = Command::new("tasklist")
             .args([
                 "/FI",
@@ -58,6 +58,7 @@ fn resident_bytes() -> Option<u64> {
     }
     #[cfg(target_os = "macos")]
     {
+        use std::process::Command;
         let output = Command::new("ps")
             .args(["-o", "rss=", "-p", &std::process::id().to_string()])
             .output()
