@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { verdictOf } from '../routes/RunDetail';
+import { verdictOf } from '../lib/runVerdict';
 import { VerificationBadge } from '../components/hud';
 import type { AuditEvent } from '../lib/api';
 
