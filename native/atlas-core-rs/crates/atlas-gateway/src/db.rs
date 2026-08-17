@@ -922,16 +922,19 @@ pub fn list_module_records(
         return Ok(vec![]);
     };
     let rows = stmt
-        .query_map(rusqlite::params![module_id, collection, limit.clamp(1, 500)], |row| {
-            let data_json: String = row.get(1)?;
-            Ok(json!({
-                "id": row.get::<_, String>(0)?,
-                "data": serde_json::from_str::<Value>(&data_json).unwrap_or(Value::Null),
-                "status": row.get::<_, String>(2)?,
-                "created_at": row.get::<_, String>(3)?,
-                "updated_at": row.get::<_, String>(4)?,
-            }))
-        })?
+        .query_map(
+            rusqlite::params![module_id, collection, limit.clamp(1, 500)],
+            |row| {
+                let data_json: String = row.get(1)?;
+                Ok(json!({
+                    "id": row.get::<_, String>(0)?,
+                    "data": serde_json::from_str::<Value>(&data_json).unwrap_or(Value::Null),
+                    "status": row.get::<_, String>(2)?,
+                    "created_at": row.get::<_, String>(3)?,
+                    "updated_at": row.get::<_, String>(4)?,
+                }))
+            },
+        )?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(rows)
 }

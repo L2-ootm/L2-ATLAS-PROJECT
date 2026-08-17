@@ -2286,8 +2286,11 @@ async fn module_records_served_for_active_modules_excluding_deleted() {
     let dir = tempfile::tempdir().unwrap();
     let path = seeded_db_module_records(&dir);
     let router = test_app(path);
-    let (status, body) =
-        get_json(&router, "/v1/modules/demo-mod/collections/prospects/records").await;
+    let (status, body) = get_json(
+        &router,
+        "/v1/modules/demo-mod/collections/prospects/records",
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["count"], 1, "soft-deleted rows must not be served");
     assert_eq!(body["records"][0]["id"], "acme");
@@ -2299,14 +2302,23 @@ async fn module_records_hidden_when_the_module_is_inactive() {
     let dir = tempfile::tempdir().unwrap();
     let path = seeded_db_module_records(&dir);
     let conn = rusqlite::Connection::open(&path).unwrap();
-    conn.execute("UPDATE modules SET status='inactive' WHERE id='demo-mod'", [])
-        .unwrap();
+    conn.execute(
+        "UPDATE modules SET status='inactive' WHERE id='demo-mod'",
+        [],
+    )
+    .unwrap();
     drop(conn);
     let router = test_app(path);
-    let (status, body) =
-        get_json(&router, "/v1/modules/demo-mod/collections/prospects/records").await;
+    let (status, body) = get_json(
+        &router,
+        "/v1/modules/demo-mod/collections/prospects/records",
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["count"], 0, "deactivation hides records on every surface");
+    assert_eq!(
+        body["count"], 0,
+        "deactivation hides records on every surface"
+    );
 }
 
 #[tokio::test]
@@ -2315,8 +2327,11 @@ async fn module_records_empty_before_the_migration() {
     let dir = tempfile::tempdir().unwrap();
     let path = seeded_db_manifest_modules(&dir);
     let router = test_app(path);
-    let (status, body) =
-        get_json(&router, "/v1/modules/demo-mod/collections/prospects/records").await;
+    let (status, body) = get_json(
+        &router,
+        "/v1/modules/demo-mod/collections/prospects/records",
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["count"], 0);
 }

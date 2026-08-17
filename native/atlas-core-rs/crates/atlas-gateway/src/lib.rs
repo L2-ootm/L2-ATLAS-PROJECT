@@ -3726,8 +3726,7 @@ async fn module_records_list(
     require_arg(&collection, "collection id must be non-empty")?;
     let path = state.db_path.clone();
     let limit = q.limit.unwrap_or(200);
-    let records =
-        blocking(move || db::list_module_records(&path, &id, &collection, limit)).await?;
+    let records = blocking(move || db::list_module_records(&path, &id, &collection, limit)).await?;
     let count = records.len();
     Ok(Json(json!({ "records": records, "count": count })))
 }
@@ -3765,10 +3764,7 @@ async fn scratchpad_list(
 }
 
 /// DELETE /v1/scratchpad/{id} — drop one entry (and its file, if ATLAS owns it).
-async fn scratchpad_delete(
-    State(state): State<AppState>,
-    AxPath(id): AxPath<String>,
-) -> ApiResult {
+async fn scratchpad_delete(State(state): State<AppState>, AxPath(id): AxPath<String>) -> ApiResult {
     require_arg(&id, "entry id must be non-empty")?;
     dispatch_atlas(&state.atlas_cmd, &["scratch", "rm", "--", &id]).await?;
     Ok(Json(json!({ "deleted": true, "id": id })))
@@ -3791,7 +3787,9 @@ async fn scratchpad_pin(
         args.push("--unpin");
     }
     dispatch_atlas(&state.atlas_cmd, &args).await?;
-    Ok(Json(json!({ "id": id, "pinned": body.pinned.unwrap_or(true) })))
+    Ok(Json(
+        json!({ "id": id, "pinned": body.pinned.unwrap_or(true) }),
+    ))
 }
 
 /// POST /v1/scratchpad/sweep — purge expired entries now instead of waiting for
